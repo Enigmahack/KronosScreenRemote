@@ -1,4 +1,4 @@
-# Kronos ScreenRemote — User Guide
+# Kronos ScreenRemote - User Guide
 
 Windows client for the Kronos ScreenRemote system. View and interact with the Kronos touchscreen from your PC over a wired LAN connection.
 
@@ -27,15 +27,15 @@ If the Kronos address was used before and credentials were saved, the app connec
 
 ### 2. Log In
 
-On first connect — or when saved credentials have expired — a login dialog appears. Enter the FTP username and password for the Kronos. These are the same credentials used by the Kronos FTP service (vsftpd), set via `/etc/shadow`, `/korg/rw/screenremote/KronosNet.conf`, or the vsftpd password database.
+On first connect - or when saved credentials have expired - a login dialog appears. Enter the FTP username and password for the Kronos. These are the same credentials used by the Kronos FTP service (vsftpd), set via `/etc/shadow`, `/korg/rw/screenremote/KronosNet.conf`, or the vsftpd password database.
 
 Check **Save password** to skip the dialog on future connections. The same credentials are used for both the screen stream and the File Manager.
 
 ### 3. Connecting
 
 The connection goes through a handshake:
-- "TCP connected — sending handshake…"
-- "Handshake OK — 800×600"
+- "TCP connected - sending handshake…"
+- "Handshake OK - 800×600"
 
 If credentials are wrong, an "Authentication Failed" message appears. If the connection times out after 10 seconds, a message lists likely causes: firewall blocking port 7373, daemon not running, or cable unplugged.
 
@@ -51,8 +51,8 @@ The Kronos screen is displayed live in the main window. The title bar shows the 
 
 Click anywhere on the displayed screen to send a tap to the Kronos at the corresponding position. The coordinates are scaled from the window display size back to the native 800×600 framebuffer space automatically.
 
-- **Click** — tap (press + release)
-- **Click and drag** — pen-down, move, pen-up (swipe or drag gestures)
+- **Click** - tap (press + release)
+- **Click and drag** - pen-down, move, pen-up (swipe or drag gestures)
 
 If touch calibration has been set up (see [Calibration](#calibration)), coordinates are corrected before being sent.
 
@@ -71,8 +71,8 @@ Click any button in the panel to trigger it. The panel groups buttons by functio
 | Value | INC, DEC |
 | Mix Play | MP1–MP8 |
 | Mix Select | MS1–MS8 |
-| Bank — Internal | I-A through I-G |
-| Bank — User | U-A through U-G |
+| Bank - Internal | I-A through I-G |
+| Bank - User | U-A through U-G |
 | Sequencer | Start, Rec, Locate, FF, Rew, Pause, Tap Tempo |
 | Sampling | Rec, Start |
 | Channel strip | Mix Knobs, Solo |
@@ -113,8 +113,8 @@ Bank shortcuts are unassigned by default. Assign them in Settings → Key Bindin
 
 ### Zoom
 
-- **Mouse wheel** over the frame — zoom in/out while keeping the area under the cursor centred.
-- **Toggle Zoom Window** (default: `Z`) — opens a floating magnification window. The zoom level and window size are set in Settings → View.
+- **Mouse wheel** over the frame - zoom in/out while keeping the area under the cursor centred.
+- **Toggle Zoom Window** (default: `Z`) - opens a floating magnification window. The zoom level and window size are set in Settings → View.
 
 ### Aspect Lock
 
@@ -188,7 +188,7 @@ It uses the same FTP credentials as the screen stream. Ensure the Kronos FTP ser
 | Del | Delete the selected item (confirmation required) |
 | Ctrl+A | Select all items in the active pane |
 | Ctrl+C / Ctrl+X / Ctrl+V | Copy / cut / paste within a pane |
-| Toolbar — New Folder | Create a folder in either pane |
+| Toolbar - New Folder | Create a folder in either pane |
 | Column header click | Sort by Name, Size, or Modified date |
 | Drive selector (local pane) | Switch between drives on your PC |
 
@@ -203,7 +203,7 @@ The calibration system corrects for systematic touch-position offsets between wh
 Press `C` (default) to enter calibration mode. In this mode:
 - A 5×5 grid of calibration nodes is overlaid on the frame.
 - Drag any node to offset it from its natural (evenly-spaced) position.
-- Optionally, add "bias dots" — extra test points — by clicking on the frame outside a node.
+- Optionally, add "bias dots" - extra test points - by clicking on the frame outside a node.
 
 Calibration applies a bilinear mesh warp: client coordinates are mapped through the mesh before being sent as touch events. If all nodes are at their natural positions (zero offset), no correction is applied.
 
@@ -280,7 +280,7 @@ Open via **Edit → Settings** (or the gear icon).
 | Stream Port | TCP port for the framebuffer stream (default 7373) |
 | Control Port | TCP port for the control channel (default 7374) |
 | FTP Port | TCP port for FTP file access used by the File Manager (default 21) |
-| Username / Password | FTP credentials — used for both the screen stream and the File Manager. Set via the login dialog on first connect. |
+| Username / Password | FTP credentials - used for both the screen stream and the File Manager. Set via the login dialog on first connect. |
 
 ### Streaming
 
@@ -341,9 +341,9 @@ See [Macros](#macros).
 
 ### Import / Export / Reset
 
-- **Export** — save all settings (including key bindings, macros, and raw key map) to a JSON file.
-- **Import** — load settings from a previously exported JSON file.
-- **Reset All Settings** — permanently deletes all saved settings, key mappings, calibration data, and palette overrides. The app returns to its out-of-the-box state.
+- **Export** - save all settings (including key bindings, macros, and raw key map) to a JSON file.
+- **Import** - load settings from a previously exported JSON file.
+- **Reset All Settings** - permanently deletes all saved settings, key mappings, calibration data, and palette overrides. The app returns to its out-of-the-box state.
 
 ---
 
@@ -370,7 +370,7 @@ The status bar at the bottom of the window shows:
 - Current Kronos mode
 - Frame dimensions
 - FPS indicator (when connected)
-- VU meter — shows the level of a selected local Windows audio device (click the ▲ picker button to choose a device; choice is saved in settings)
+- VU meter - shows the level of a selected local Windows audio device (click the ▲ picker button to choose a device; choice is saved in settings)
 - Error messages from the daemon (ERR responses on the persistent control connection)
 
 ---
@@ -408,13 +408,13 @@ Application data is stored in:
 
 ```
 %APPDATA%\KronosScreenRemote\
-  settings.json           — connection, streaming, display settings, key bindings, credentials
-  raw_key_mappings.json   — raw key map entries
-  macros.json             — recorded macro sequences
-  cal_data.json           — calibration mesh
-  palette_override.json   — palette overrides
-  palette_lock.json       — palette lock state
-  screenremote.log        — verbose diagnostic log (written when Debug Logging is enabled)
+  settings.json           - connection, streaming, display settings, key bindings, credentials
+  raw_key_mappings.json   - raw key map entries
+  macros.json             - recorded macro sequences
+  cal_data.json           - calibration mesh
+  palette_override.json   - palette overrides
+  palette_lock.json       - palette lock state
+  screenremote.log        - verbose diagnostic log (written when Debug Logging is enabled)
 ```
 
 All files are JSON and can be hand-edited. The **Export/Import** feature in Settings is the supported way to back them up or transfer them to another machine.
@@ -425,18 +425,18 @@ All files are JSON and can be hand-edited. The **Export/Import** feature in Sett
 
 **Login dialog appears on every connect / "Authentication Failed":**
 - Saved credentials are wrong or have changed. Clear them in Settings → Connection (Username/Password) and try again.
-- The Kronos FTP service (vsftpd) must be running — check with `ps | grep vsftpd` via SSH.
+- The Kronos FTP service (vsftpd) must be running - check with `ps | grep vsftpd` via SSH.
 - Credentials can be tested from a command line: `ftp 192.168.1.2` (or your Kronos IP).
 - If using KronosNet.conf, ensure the file at `/korg/rw/screenremote/KronosNet.conf` is readable and correctly formatted (`username:password`, one entry per line).
 
 **Connection times out after 10 seconds:**
 - Check that the Kronos is powered on and the `screenremote` daemon is running (`ps | grep screenremote` via SSH).
 - Verify the IP address and port (use UDP discovery or check the daemon's stderr output in dmesg).
-- Check Windows Firewall — it may block outbound connections to port 7373.
+- Check Windows Firewall - it may block outbound connections to port 7373.
 - Some antivirus/VPN drivers intercept socket I/O and delay connections. The 10-second watchdog is implemented by closing the socket, which bypasses this reliably.
 
 **Screen appears but touch does nothing:**
-- Confirm the control port (7374) is reachable — try `telnet 192.168.1.2 7374`.
+- Confirm the control port (7374) is reachable - try `telnet 192.168.1.2 7374`.
 - Check that the stream client connected first (access control: only the stream client IP can send control commands).
 - If using a VPN or multiple network interfaces, the daemon may have bound to a different LAN IP. Check `dmesg | grep screenremote` on the Kronos for the bound address.
 
@@ -447,7 +447,7 @@ All files are JSON and can be hand-edited. The **Export/Import** feature in Sett
 
 **Frame is frozen / no updates:**
 - Send `REFRESH` via a one-shot control connection to force a full frame resend.
-- In Change mode, if the Kronos screen is genuinely static, no frames are sent — this is normal.
+- In Change mode, if the Kronos screen is genuinely static, no frames are sent - this is normal.
 
 **VGA mirror turns off after a while:**
 - The screensaver timeout has fired. Reduce or disable it in Settings → VGA Output → Screensaver timeout.
