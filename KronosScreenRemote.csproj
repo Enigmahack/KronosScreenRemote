@@ -1,0 +1,94 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <AssemblyName>KronosScreenRemote</AssemblyName>
+    <RootNamespace>KronosScreenRemote</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Optimize>true</Optimize>
+    <SignAssembly>False</SignAssembly>
+    <PackageIcon>AppIcon.png</PackageIcon>
+    <AssemblyTitle>Kronos ScreenRemote</AssemblyTitle>
+    <Version>1.5.3</Version>
+    <AssemblyVersion>1.5.3</AssemblyVersion>
+    <FileVersion>1.5.3</FileVersion>
+    <Product>Kronos ScreenRemote</Product>
+    <Description>Remote viewer and control interface for Korg Kronos</Description>
+    <ApplicationIcon>Resources\Icons\AppIcon.ico</ApplicationIcon>
+    <!-- Single-file publish (produces one EXE, WPF native DLLs extracted to temp at first run):
+         dotnet publish -p:PublishProfile=win-x64
+         Then sign: .\sign.ps1   (run sign.ps1 -Setup once to create the certificate)
+    -->
+  </PropertyGroup>
+
+  <!-- Suppress WinForms/Drawing implicit usings — we use fully-qualified names for NotifyIcon. -->
+  <ItemGroup>
+    <Using Remove="System.Windows.Forms" />
+    <Using Remove="System.Drawing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Resources\Images\*.png" />
+    <Resource Include="Resources\Refs\*.png" />
+    <Resource Include="Resources\BootPhase\*.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Resources\cal_data.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Resources\Icons\AppIcon.ico">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="Properties\Settings.Designer.cs">
+      <DesignTimeSharedInput>True</DesignTimeSharedInput>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Settings.settings</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+  <Target Name="GenerateBuildInfo" BeforeTargets="CoreCompile">
+    <PropertyGroup>
+      <_BuildId>$([System.DateTime]::Now.ToString('yyyyMMdd'))-$(Version)</_BuildId>
+    </PropertyGroup>
+    <ItemGroup>
+      <_BiLines Include="// auto-generated — do not edit" />
+      <_BiLines Include="namespace KronosScreenRemote%3B" />
+      <_BiLines Include="static class BuildInfo" />
+      <_BiLines Include="{" />
+      <_BiLines Include="    public const string ClientVersion = %22$(Version)%22%3B" />
+      <_BiLines Include="    public const string ClientBuildId = %22$(_BuildId)%22%3B" />
+      <_BiLines Include="}" />
+    </ItemGroup>
+    <WriteLinesToFile File="$(IntermediateOutputPath)BuildInfo.g.cs" Lines="@(_BiLines)" Overwrite="true" />
+    <ItemGroup>
+      <Compile Include="$(IntermediateOutputPath)BuildInfo.g.cs" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <PackageReference Include="FluentFTP" Version="51.0.0" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Properties\Settings.settings">
+      <Generator>SettingsSingleFileGenerator</Generator>
+      <LastGenOutput>Settings.Designer.cs</LastGenOutput>
+    </None>
+    <None Update="Resources\Icons\AppIcon.png">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
+
+</Project>

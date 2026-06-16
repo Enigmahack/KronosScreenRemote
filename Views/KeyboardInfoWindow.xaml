@@ -1,0 +1,341 @@
+<Window x:Class="KronosScreenRemote.KeyboardInfoWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Keyboard Info"
+        Width="400" Height="504"
+        MinWidth="300" MinHeight="440"
+        ResizeMode="CanResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="#FF1A1A1A"
+        Foreground="#FFD0D0D0" SizeToContent="Height">
+    <DockPanel>
+
+        <!-- Bottom bar: update interval + status -->
+        <Border DockPanel.Dock="Bottom" Background="#FF121212" Padding="10,5">
+            <Grid>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center">
+                    <TextBlock Text="Update" Foreground="#FF666666"
+                               VerticalAlignment="Center" Margin="0,0,6,0" FontSize="11"
+                               ToolTip="How often to refresh data from the remote keyboard."/>
+                    <ComboBox x:Name="CBO_Interval" Width="65" FontSize="11"
+                              SelectionChanged="CBO_Interval_SelectionChanged"
+                              ToolTip="How often to poll the remote keyboard for updated system information.">
+                        <ComboBoxItem Content="1 s"   Tag="1"  IsSelected="True"/>
+                        <ComboBoxItem Content="5 s"   Tag="5"/>
+                        <ComboBoxItem Content="10 s"  Tag="10"/>
+                        <ComboBoxItem Content="30 s"  Tag="30"/>
+                        <ComboBoxItem Content="1 min" Tag="60"/>
+                    </ComboBox>
+                </StackPanel>
+                <TextBlock x:Name="TXT_Status" FontSize="11"
+                           HorizontalAlignment="Right" VerticalAlignment="Center"/>
+            </Grid>
+        </Border>
+
+        <!-- Main content -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Margin="10,8,10,8">
+
+                <!-- ── CPU ──────────────────────────────────── -->
+                <Grid Margin="0,0,0,3">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="CPU"
+                               FontSize="11" FontWeight="SemiBold" Foreground="#FF888888"
+                               ToolTip="Total CPU usage across all cores, as reported by /proc/stat."/>
+                    <TextBlock Grid.Column="1" x:Name="TXT_CpuTotal"
+                               FontSize="11" FontFamily="Consolas" Foreground="#FF4E9FE5"
+                               HorizontalAlignment="Right"/>
+                </Grid>
+
+                <!-- CPU rolling history graph -->
+                <Border Background="#FF131313" Height="76" CornerRadius="3" Margin="0,0,0,5"
+                        ToolTip="Rolling 60-sample CPU usage history. Dashed lines at 25%, 50%, and 75%.">
+                    <Canvas x:Name="CpuCanvas" ClipToBounds="True"
+                            HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+                </Border>
+
+                <!-- Per-core bars -->
+                <Grid Margin="0,0,0,6">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="18"/>
+                        <RowDefinition Height="18"/>
+                        <RowDefinition Height="18"/>
+                        <RowDefinition Height="18"/>
+                    </Grid.RowDefinitions>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="36"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="38"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- CPU0 -->
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="CPU0"
+                               FontSize="10" Foreground="#FF666666" VerticalAlignment="Center"
+                               ToolTip="CPU core 0 usage percentage."/>
+                    <Border Grid.Row="0" Grid.Column="1" Background="#FF252525"
+                            CornerRadius="2" Margin="4,3">
+                        <Grid x:Name="BarGrid0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="0*"/>
+                                <ColumnDefinition Width="100*"/>
+                            </Grid.ColumnDefinitions>
+                            <Rectangle Grid.Column="0" Fill="#FF4E9FE5" RadiusX="2" RadiusY="2"/>
+                        </Grid>
+                    </Border>
+                    <TextBlock Grid.Row="0" Grid.Column="2" x:Name="TXT_Core0"
+                               FontSize="10" FontFamily="Consolas" Foreground="#FF8080A0"
+                               HorizontalAlignment="Right" VerticalAlignment="Center"/>
+
+                    <!-- CPU1 -->
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="CPU1"
+                               FontSize="10" Foreground="#FF666666" VerticalAlignment="Center"
+                               ToolTip="CPU core 1 usage percentage."/>
+                    <Border Grid.Row="1" Grid.Column="1" Background="#FF252525"
+                            CornerRadius="2" Margin="4,3">
+                        <Grid x:Name="BarGrid1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="0*"/>
+                                <ColumnDefinition Width="100*"/>
+                            </Grid.ColumnDefinitions>
+                            <Rectangle Grid.Column="0" Fill="#FF4E9FE5" RadiusX="2" RadiusY="2"/>
+                        </Grid>
+                    </Border>
+                    <TextBlock Grid.Row="1" Grid.Column="2" x:Name="TXT_Core1"
+                               FontSize="10" FontFamily="Consolas" Foreground="#FF8080A0"
+                               HorizontalAlignment="Right" VerticalAlignment="Center"/>
+
+                    <!-- CPU2 -->
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="CPU2"
+                               FontSize="10" Foreground="#FF666666" VerticalAlignment="Center"
+                               ToolTip="CPU core 2 usage percentage."/>
+                    <Border Grid.Row="2" Grid.Column="1" Background="#FF252525"
+                            CornerRadius="2" Margin="4,3">
+                        <Grid x:Name="BarGrid2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="0*"/>
+                                <ColumnDefinition Width="100*"/>
+                            </Grid.ColumnDefinitions>
+                            <Rectangle Grid.Column="0" Fill="#FF4E9FE5" RadiusX="2" RadiusY="2"/>
+                        </Grid>
+                    </Border>
+                    <TextBlock Grid.Row="2" Grid.Column="2" x:Name="TXT_Core2"
+                               FontSize="10" FontFamily="Consolas" Foreground="#FF8080A0"
+                               HorizontalAlignment="Right" VerticalAlignment="Center"/>
+
+                    <!-- CPU3 -->
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="CPU3"
+                               FontSize="10" Foreground="#FF666666" VerticalAlignment="Center"
+                               ToolTip="CPU core 3 usage percentage."/>
+                    <Border Grid.Row="3" Grid.Column="1" Background="#FF252525"
+                            CornerRadius="2" Margin="4,3">
+                        <Grid x:Name="BarGrid3">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="0*"/>
+                                <ColumnDefinition Width="100*"/>
+                            </Grid.ColumnDefinitions>
+                            <Rectangle Grid.Column="0" Fill="#FF4E9FE5" RadiusX="2" RadiusY="2"/>
+                        </Grid>
+                    </Border>
+                    <TextBlock Grid.Row="3" Grid.Column="2" x:Name="TXT_Core3"
+                               FontSize="10" FontFamily="Consolas" Foreground="#FF8080A0"
+                               HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                </Grid>
+
+                <Rectangle Height="1" Fill="#FF2E2E2E" Margin="0,0,0,6"/>
+
+                <!-- ── Memory ──────────────────────────────── -->
+                <Grid Margin="0,0,0,3">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Kernel Memory"
+                               FontSize="11" FontWeight="SemiBold" Foreground="#FF888888"
+                               ToolTip="Kernel-reported RAM. 'Available' counts free pages plus reclaimable cache — a better measure of memory pressure than raw free."/>
+                    <TextBlock Grid.Column="1" x:Name="TXT_MemLabel"
+                               FontSize="11" FontFamily="Consolas" Foreground="#FF9B78CC"
+                               HorizontalAlignment="Right"/>
+                </Grid>
+                <Border Background="#FF252525" Height="16" CornerRadius="3" Margin="0,0,0,8">
+                    <Grid x:Name="MemBarGrid">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="0*"/>
+                            <ColumnDefinition Width="100*"/>
+                        </Grid.ColumnDefinitions>
+                        <Rectangle Grid.Column="0" Fill="#FF7D54B0" RadiusX="3" RadiusY="3"/>
+                    </Grid>
+                </Border>
+
+                <!-- ── Storage (/korg/rw) ─────────────────────── -->
+                <Grid Margin="0,0,0,3">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Storage  /korg/rw"
+                               FontSize="11" FontWeight="SemiBold" Foreground="#FF888888"
+                               ToolTip="Writable partition where kernel modules, extracted files, and user data are stored."/>
+                    <TextBlock Grid.Column="1" x:Name="TXT_DiskLabel"
+                               FontSize="11" FontFamily="Consolas" Foreground="#FF5AAA5A"
+                               HorizontalAlignment="Right"/>
+                </Grid>
+                <Border Background="#FF252525" Height="16" CornerRadius="3" Margin="0,0,0,8">
+                    <Grid x:Name="DiskBarGrid">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="0*"/>
+                            <ColumnDefinition Width="100*"/>
+                        </Grid.ColumnDefinitions>
+                        <Rectangle Grid.Column="0" Fill="#FF3E8C3E" RadiusX="3" RadiusY="3"/>
+                    </Grid>
+                </Border>
+
+                <!-- ── Storage (/korg/rw2) — hidden until daemon reports it ── -->
+                <StackPanel x:Name="RW2Section" Visibility="Collapsed">
+                    <Grid Margin="0,0,0,3">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Storage  /korg/rw2"
+                                   FontSize="11" FontWeight="SemiBold" Foreground="#FF888888"
+                                   ToolTip="Second internal SSD partition"/>
+                        <TextBlock Grid.Column="1" x:Name="TXT_DiskRw2Label"
+                                   FontSize="11" FontFamily="Consolas" Foreground="#FF5AAA5A"
+                                   HorizontalAlignment="Right"/>
+                    </Grid>
+                    <Border Background="#FF252525" Height="16" CornerRadius="3" Margin="0,0,0,8">
+                        <Grid x:Name="DiskRw2BarGrid">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="0*"/>
+                                <ColumnDefinition Width="100*"/>
+                            </Grid.ColumnDefinitions>
+                            <Rectangle Grid.Column="0" Fill="#FF3E8C3E" RadiusX="3" RadiusY="3"/>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+
+                <!-- ── USB drives — up to 2 slots, hidden until a drive is mounted ── -->
+                <StackPanel x:Name="USB0Section" Visibility="Collapsed">
+                    <Grid Margin="0,0,0,3">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" x:Name="TXT_Usb0MntLabel"
+                                   FontSize="11" FontWeight="SemiBold" Foreground="#FF888888"/>
+                        <TextBlock Grid.Column="1" x:Name="TXT_Usb0Space"
+                                   FontSize="11" FontFamily="Consolas" Foreground="#FFD49A3A"
+                                   HorizontalAlignment="Right"/>
+                    </Grid>
+                    <Border Background="#FF252525" Height="16" CornerRadius="3" Margin="0,0,0,8">
+                        <Grid x:Name="Usb0BarGrid">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="0*"/>
+                                <ColumnDefinition Width="100*"/>
+                            </Grid.ColumnDefinitions>
+                            <Rectangle Grid.Column="0" Fill="#FFB07020" RadiusX="3" RadiusY="3"/>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+                <StackPanel x:Name="USB1Section" Visibility="Collapsed">
+                    <Grid Margin="0,0,0,3">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" x:Name="TXT_Usb1MntLabel"
+                                   FontSize="11" FontWeight="SemiBold" Foreground="#FF888888"/>
+                        <TextBlock Grid.Column="1" x:Name="TXT_Usb1Space"
+                                   FontSize="11" FontFamily="Consolas" Foreground="#FFD49A3A"
+                                   HorizontalAlignment="Right"/>
+                    </Grid>
+                    <Border Background="#FF252525" Height="16" CornerRadius="3" Margin="0,0,0,8">
+                        <Grid x:Name="Usb1BarGrid">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="0*"/>
+                                <ColumnDefinition Width="100*"/>
+                            </Grid.ColumnDefinitions>
+                            <Rectangle Grid.Column="0" Fill="#FFB07020" RadiusX="3" RadiusY="3"/>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+
+                <Rectangle Height="1" Fill="#FF2E2E2E" Margin="0,0,0,8"/>
+
+                <!-- ── Stats table ─────────────────────────── -->
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="52"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="44"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Row 0: Uptime | Mode -->
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Uptime"
+                               FontSize="11" Foreground="#FF666666"
+                               ToolTip="Time elapsed since the remote system was powered on."/>
+                    <TextBlock Grid.Row="0" Grid.Column="1" x:Name="TXT_Uptime"
+                               FontSize="11" FontFamily="Consolas" Foreground="#FFD0D0D0"
+                               ToolTip="Time elapsed since the remote system was powered on."/>
+                    <TextBlock Grid.Row="0" Grid.Column="2" Text="Mode"
+                               FontSize="11" Foreground="#FF666666"
+                               ToolTip="Currently active operating mode (Combi, Program, Sequence, etc.)."/>
+                    <TextBlock Grid.Row="0" Grid.Column="3" x:Name="TXT_Mode"
+                               FontSize="11" FontFamily="Consolas" Foreground="#FFD0D0D0"
+                               ToolTip="Currently active operating mode."/>
+
+                    <!-- Row 1: Temp | Fan — per-sensor TextBlocks for color-coding -->
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Temp"
+                               FontSize="11" Foreground="#FF666666" Margin="0,4,0,0"
+                               ToolTip="CPU / motherboard temperature sensors. Turns amber above 80°C and red above 90°C."/>
+                    <StackPanel Grid.Row="1" Grid.Column="1" Orientation="Horizontal" Margin="0,4,0,0"
+                                ToolTip="CPU / motherboard temperature sensors. Turns amber above 80°C and red above 90°C.">
+                        <TextBlock x:Name="TXT_Temp1" FontSize="11" FontFamily="Consolas" Foreground="#FFD0D0D0"/>
+                        <TextBlock x:Name="TXT_Temp2" FontSize="11" FontFamily="Consolas" Foreground="#FFD0D0D0" Margin="6,0,0,0"/>
+                        <TextBlock x:Name="TXT_Temp3" FontSize="11" FontFamily="Consolas" Foreground="#FFD0D0D0" Margin="6,0,0,0"/>
+                    </StackPanel>
+                    <TextBlock Grid.Row="1" Grid.Column="2" Text="Fan"
+                               FontSize="11" Foreground="#FF666666" Margin="0,4,0,0"
+                               ToolTip="Main system fan speed in RPM. '—' means not reported by this model."/>
+                    <TextBlock Grid.Row="1" Grid.Column="3" x:Name="TXT_Fan"
+                               FontSize="11" FontFamily="Consolas" Foreground="#FFD0D0D0"
+                               Margin="0,4,0,0"
+                               ToolTip="Main system fan speed in RPM."/>
+
+                    <!-- Row 2: Load -->
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Load"
+                               FontSize="11" Foreground="#FF666666" Margin="0,4,0,0"
+                               ToolTip="Linux load averages over the last 1, 5, and 15 minutes. Values above the number of CPU cores indicate the system is under pressure."/>
+                    <TextBlock Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="3"
+                               x:Name="TXT_Load"
+                               FontSize="11" FontFamily="Consolas" Foreground="#FFD0D0D0"
+                               Margin="0,4,0,0"
+                               ToolTip="Linux load averages over the last 1, 5, and 15 minutes."/>
+
+                    <!-- Row 3: Audio engine -->
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Audio"
+                               FontSize="11" Foreground="#FF666666" Margin="0,4,0,0"
+                               ToolTip="Korg audio engine state: sample rate and output channel count. 'Active' means the engine processed real-time audio since the last update; 'Idle' means it is running but silent."/>
+                    <TextBlock Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3"
+                               x:Name="TXT_Audio"
+                               FontSize="11" FontFamily="Consolas" Foreground="#FFD0D0D0"
+                               Margin="0,4,0,0"
+                               ToolTip="Korg audio engine state: sample rate, channel count, and activity."/>
+                </Grid>
+
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

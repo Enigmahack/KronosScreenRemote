@@ -1,0 +1,103 @@
+<Window x:Class="KronosScreenRemote.ControlPaletteWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:KronosScreenRemote"
+        Title="Kronos Controls"
+        Width="810" Height="650"
+        MinWidth="400" MinHeight="325"
+        WindowStyle="ToolWindow"
+        ResizeMode="CanResizeWithGrip"
+        Background="Black"
+        ShowInTaskbar="False">
+
+    <!-- Viewbox scales the fixed 800×600 design to fill the window. -->
+    <Viewbox Stretch="Uniform">
+        <Grid Width="800" Height="600">
+
+            <Image Stretch="Fill"
+                   RenderOptions.BitmapScalingMode="HighQuality"
+                   SnapsToDevicePixels="False"
+                   IsHitTestVisible="False"
+                   Source="/Resources/Images/DataEntrySurfaceEmpty.png"/>
+
+            <!-- ── Mode buttons — confirmed by detection before lighting ──────── -->
+            <local:KronosButton x:Name="BTN_Setlist"
+                Margin="87,90,603,483"
+                UnlitSource="/Resources/Images/UnlitWideButton.png"
+                LitSource="/Resources/Images/LitWideButton.png"
+                ButtonMode="None" RadioGroup="PaletteWindowModeGroup"/>
+            <local:KronosButton x:Name="BTN_Combi"
+                Margin="289,91,401,482"
+                UnlitSource="/Resources/Images/UnlitWideButton.png"
+                LitSource="/Resources/Images/LitWideButton.png"
+                ButtonMode="None" RadioGroup="PaletteWindowModeGroup"/>
+            <local:KronosButton x:Name="BTN_Program"
+                Margin="407,91,283,482"
+                UnlitSource="/Resources/Images/UnlitWideButton.png"
+                LitSource="/Resources/Images/LitWideButton.png"
+                ButtonMode="None" RadioGroup="PaletteWindowModeGroup"/>
+            <local:KronosButton x:Name="BTN_Sequence"
+                Margin="522,91,168,482"
+                UnlitSource="/Resources/Images/UnlitWideButton.png"
+                LitSource="/Resources/Images/LitWideButton.png"
+                ButtonMode="None" RadioGroup="PaletteWindowModeGroup"/>
+            <local:KronosButton x:Name="BTN_Sampling"
+                Margin="289,169,401,404"
+                UnlitSource="/Resources/Images/UnlitWideButton.png"
+                LitSource="/Resources/Images/LitWideButton.png"
+                ButtonMode="None" RadioGroup="PaletteWindowModeGroup"/>
+            <local:KronosButton x:Name="BTN_Global"
+                Margin="407,169,283,404"
+                UnlitSource="/Resources/Images/UnlitWideButton.png"
+                LitSource="/Resources/Images/LitWideButton.png"
+                ButtonMode="None" RadioGroup="PaletteWindowModeGroup"/>
+            <local:KronosButton x:Name="BTN_Disk"
+                Margin="522,169,168,404"
+                UnlitSource="/Resources/Images/UnlitWideButton.png"
+                LitSource="/Resources/Images/LitWideButton.png"
+                ButtonMode="None" RadioGroup="PaletteWindowModeGroup"/>
+
+            <!-- ── Toggle buttons ──────────────────────────────────────────── -->
+            <local:KronosButton x:Name="BTN_Help"
+                Margin="671,91,79,482"
+                UnlitSource="/Resources/Images/UnlitThinButton.png"
+                LitSource="/Resources/Images/LitThinButton.png"
+                ButtonMode="Toggle"/>
+            <local:KronosButton x:Name="BTN_Compare"
+                Margin="671,169,79,404"
+                UnlitSource="/Resources/Images/UnlitThinButton.png"
+                LitSource="/Resources/Images/LitThinButton.png"
+                ButtonMode="Toggle"/>
+
+            <!-- ── Number pad ──────────────────────────────────────────────── -->
+            <local:KronosButton x:Name="BTN_data7"   Margin="289,250,401,325" UnlitSource="/Resources/Images/UnlitWideButton.png" ButtonMode="None"/>
+            <local:KronosButton x:Name="BTN_data8"   Margin="407,250,283,325" UnlitSource="/Resources/Images/UnlitWideButton.png" ButtonMode="None"/>
+            <local:KronosButton x:Name="BTN_data9"   Margin="522,250,168,325" UnlitSource="/Resources/Images/UnlitWideButton.png" ButtonMode="None"/>
+            <local:KronosButton x:Name="BTN_data4"   Margin="289,328,401,245" UnlitSource="/Resources/Images/UnlitWideButton.png" ButtonMode="None"/>
+            <local:KronosButton x:Name="BTN_data5"   Margin="407,328,283,245" UnlitSource="/Resources/Images/UnlitWideButton.png" ButtonMode="None"/>
+            <local:KronosButton x:Name="BTN_data6"   Margin="524,328,166,245" UnlitSource="/Resources/Images/UnlitWideButton.png" ButtonMode="None"/>
+            <local:KronosButton x:Name="BTN_data1"   Margin="289,409,401,164" UnlitSource="/Resources/Images/UnlitWideButton.png" ButtonMode="None"/>
+            <local:KronosButton x:Name="BTN_data2"   Margin="407,409,283,164" UnlitSource="/Resources/Images/UnlitWideButton.png" ButtonMode="None"/>
+            <local:KronosButton x:Name="BTN_data3"   Margin="524,409,166,164" UnlitSource="/Resources/Images/UnlitWideButton.png" ButtonMode="None"/>
+            <local:KronosButton x:Name="BTN_data_dash"   Margin="290,489,400,84" UnlitSource="/Resources/Images/UnlitWideButton.png" ButtonMode="None"/>
+            <local:KronosButton x:Name="BTN_data0"       Margin="407,489,283,84" UnlitSource="/Resources/Images/UnlitWideButton.png" ButtonMode="None"/>
+            <local:KronosButton x:Name="BTN_data_period" Margin="524,489,166,84" UnlitSource="/Resources/Images/UnlitWideButton.png" ButtonMode="None"/>
+
+            <!-- ── Exit / Enter ────────────────────────────────────────────── -->
+            <local:KronosButton x:Name="BTN_Exit"  Margin="80,493,603,80"  UnlitSource="/Resources/Images/ExitButton.png" ButtonMode="None"/>
+            <local:KronosButton x:Name="BTN_Enter" Margin="639,489,44,84"  UnlitSource="/Resources/Images/ExitButton.png" ButtonMode="None"/>
+
+            <!-- ── Data wheel ──────────────────────────────────────────────── -->
+            <Image x:Name="Data_Wheel"
+                   Margin="41,222,557,160"
+                   Source="/Resources/Images/DataWheelTransparent.png"
+                   RenderTransformOrigin="0.5,0.5"
+                   Cursor="SizeNS">
+                <Image.RenderTransform>
+                    <RotateTransform x:Name="WheelRotate" Angle="0"/>
+                </Image.RenderTransform>
+            </Image>
+
+        </Grid>
+    </Viewbox>
+</Window>
