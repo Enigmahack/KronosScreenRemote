@@ -18,7 +18,6 @@ A Windows desktop application for remotely viewing and controlling a **Korg Kron
 - **Remote Control** — Virtual button panel (mode keys, number pad, data wheel, bank selects) with drag, scroll, and keyboard-shortcut support
 - **Touch Calibration** — 5×5 warp mesh with bilinear interpolation for accurate touch-to-screen mapping
 - **Mode Detection** — Reference-image OCR to identify the active Kronos operating mode automatically
-- **Palette Editor** — Interactive 256-color palette editor with undo/redo and live preview
 - **Audio VU Meter** — WASAPI real-time level monitoring (L/R peak + RMS) with device selection
 - **FTP File Manager** — Browse, upload, and download files on the Kronos SD card with conflict resolution
 - **Command Palette** — Searchable keyboard-driven command interface (Ctrl+K)
