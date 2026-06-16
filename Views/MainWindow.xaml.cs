@@ -610,12 +610,12 @@ public partial class MainWindow : Window
         MNU_OpenLog.Click               += (sender, e) => OnNotifyBubbleClick();
         MNU_CheckForUpdates.Click       += (sender, e) =>
         {
-            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://github.com/enigmahack/KronosHackingWIP/releases") { UseShellExecute = true }); }
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://github.com/Enigmahack/KronosScreenRemote/releases") { UseShellExecute = true }); }
             catch { }
         };
         MNU_ReportIssue.Click           += (sender, e) =>
         {
-            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://github.com/enigmahack/KronosHackingWIP/issues") { UseShellExecute = true }); }
+            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("https://github.com/Enigmahack/KronosScreenRemote/issues") { UseShellExecute = true }); }
             catch { }
         };
 

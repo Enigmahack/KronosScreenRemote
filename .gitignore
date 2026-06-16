@@ -1,1 +1,19 @@
+# Build output
+bin/
+obj/
+
+# IDE / user-specific files
+*.user
+.vs/
+*.suo
+*.userprefs
+*.DotSettings.user
+
+# Code signing certificate
 codesign.pfx
+
+# Logs
+*.log
+
+# Publish output
+publish/

@@ -1,3 +1,0 @@
-C:\Users\Gamer-PC\Documents\KronosHackingWIP\ScreenRemote\KronosScreenRemote\bin\Release\net10.0-windows\win-x64\publish\KronosScreenRemote.pdb
-C:\Users\Gamer-PC\Documents\KronosHackingWIP\ScreenRemote\KronosScreenRemote\bin\Release\net10.0-windows\win-x64\publish\KronosScreenRemote.dll.config
-C:\Users\Gamer-PC\Documents\KronosHackingWIP\ScreenRemote\KronosScreenRemote\bin\Release\net10.0-windows\win-x64\publish\KronosScreenRemote.exe
