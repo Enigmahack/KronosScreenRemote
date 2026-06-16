@@ -85,7 +85,7 @@ namespace KronosScreenRemote {
                 return;
             }
             _contentLoaded = true;
-            System.Uri resourceLocater = new System.Uri("/KronosScreenRemote;V1.5.2;component/views/promptdialog.xaml", System.UriKind.Relative);
+            System.Uri resourceLocater = new System.Uri("/KronosScreenRemote;V1.5.3;component/views/promptdialog.xaml", System.UriKind.Relative);
             
             #line 1 "..\..\..\..\Views\PromptDialog.xaml"
             System.Windows.Application.LoadComponent(this, resourceLocater);

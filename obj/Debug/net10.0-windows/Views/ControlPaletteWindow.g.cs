@@ -254,7 +254,7 @@ namespace KronosScreenRemote {
                 return;
             }
             _contentLoaded = true;
-            System.Uri resourceLocater = new System.Uri("/KronosScreenRemote;V1.5.2;component/views/controlpalettewindow.xaml", System.UriKind.Relative);
+            System.Uri resourceLocater = new System.Uri("/KronosScreenRemote;V1.5.3;component/views/controlpalettewindow.xaml", System.UriKind.Relative);
             
             #line 1 "..\..\..\..\Views\ControlPaletteWindow.xaml"
             System.Windows.Application.LoadComponent(this, resourceLocater);

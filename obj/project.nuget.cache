@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "EYi35Rm9+gQ=",
+  "dgSpecHash": "PZ+CTHzI0u0=",
   "success": true,
-  "projectFilePath": "C:\\Users\\Gamer-PC\\Documents\\KronosHackingWIP\\ScreenRemote\\KronosScreenRemote\\KronosScreenRemote.csproj",
+  "projectFilePath": "C:\\Users\\Gamer-PC\\Documents\\KronosScreenRemote\\KronosScreenRemote.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\Gamer-PC\\.nuget\\packages\\fluentftp\\51.0.0\\fluentftp.51.0.0.nupkg.sha512",
     "C:\\Users\\Gamer-PC\\.nuget\\packages\\naudio\\2.2.1\\naudio.2.2.1.nupkg.sha512",
