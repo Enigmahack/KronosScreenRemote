@@ -36,7 +36,9 @@ A Windows desktop application for remotely viewing and controlling a **Korg Kron
 - **Zoom & Layout Presets** — Configurable window sizes (75–200%), fullscreen, always-on-top, and collapsible control rail
 <img width="1203" height="505" alt="image" src="https://github.com/user-attachments/assets/58331f2a-2183-4721-aa0f-d89767f6b6bf" />
 
-- **Connection Watchdog** — Automatic keepalive and dead-connection detection (~25 s for hard power-off)
+- **Hardware Stats Monitoring** — Monitor hard drive space, CPU core usage, Fan speed, CPU temperatures, and more.
+<img width="1202" height="504" alt="image" src="https://github.com/user-attachments/assets/1bc59ac4-2149-4535-8d2f-ee75af76dcee" />
+
 
 ---
 
