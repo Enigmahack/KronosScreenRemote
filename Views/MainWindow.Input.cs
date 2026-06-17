@@ -172,7 +172,7 @@ public partial class MainWindow
         if (ctrl && e.Key == Key.D3) { SetWindowSize(1.25); return; }
         if (ctrl && e.Key == Key.D4) { SetWindowSize(1.50); return; }
         if (ctrl && e.Key == Key.D5) { SetWindowSize(2.00); return; }
-        if (ctrl && e.Key == Key.S && !_edOpen && !_warpMode) { SaveScreenshot(); e.Handled = true; return; }
+        if (ctrl && e.Key == Key.S && !_edOpen && !_calMode) { SaveScreenshot(); e.Handled = true; return; }
 
         // ── Fullscreen shortcuts (intercept before capture so they work even when forwarding) ──
         if (_isFullscreen && !ctrl && !e.IsRepeat)
@@ -187,7 +187,7 @@ public partial class MainWindow
         }
 
         // ── Numpad Enter → Kronos when capture is active ─────────────────────
-        if (_kbdCapture && _kbdSendEnabled && !ctrl && !e.IsRepeat && !_warpMode && e.Key == Key.Return && _extendedKey)
+        if (_kbdCapture && _kbdSendEnabled && !ctrl && !e.IsRepeat && !_calMode && e.Key == Key.Return && _extendedKey)
         {
             _instantKeys.Add(Key.Return);   // suppress KEY-up so KEY 28 0 is never sent to vkbd
             BTN_Enter.FlashDepress();
@@ -196,7 +196,7 @@ public partial class MainWindow
         }
 
         // ── Macros (user-defined first, then built-ins) — requires modifier key ─
-        if (!e.IsRepeat && _kbdCapture && _kbdSendEnabled && !_edOpen && !_warpMode
+        if (!e.IsRepeat && _kbdCapture && _kbdSendEnabled && !_edOpen && !_calMode
             && Keyboard.Modifiers != ModifierKeys.None)
         {
             var baseKey = e.Key == Key.System ? e.SystemKey : e.Key;
@@ -206,8 +206,7 @@ public partial class MainWindow
         }
 
         // ── Numpad 0–9 / − / · : always forward when capture active ──────────
-        // These bypass the cal-mode restriction so they work during calibration.
-        if (_kbdCapture && _kbdSendEnabled && !_edOpen && !ctrl && !e.IsRepeat && !_warpMode)
+        if (_kbdCapture && _kbdSendEnabled && !_edOpen && !ctrl && !e.IsRepeat && !_calMode)
         {
             int? numBtn = e.Key switch
             {
@@ -222,7 +221,7 @@ public partial class MainWindow
 
         // ── Keyboard capture: forward before any local shortcut ──────────────
         // F1–F12 fall through to the IsAction checks below (mode select, help, etc.).
-        if (_kbdCapture && _kbdSendEnabled && !_edOpen && !ctrl && !e.IsRepeat && !_warpMode && !_calMode
+        if (_kbdCapture && _kbdSendEnabled && !_edOpen && !ctrl && !e.IsRepeat && !_calMode
             && (e.Key < Key.F1 || e.Key > Key.F12))
         {
             // Shifted override: Kronos needs a different keycode or Shift handling
@@ -343,16 +342,8 @@ public partial class MainWindow
         if (IsAction("Calibrate", e))
         {
             _calMode = !_calMode;
-            if (!_calMode) ExitCalMode();
+            if (_calMode) EnterCalMode(); else ExitCalMode();
             Console.WriteLine($"[cal] calibrate mode {(_calMode ? "ON" : "OFF")}");
-            OverlayLayer.InvalidateVisual(); return;
-        }
-
-        if (e.Key == Key.W && _calMode)
-        {
-            _warpMode = !_warpMode;
-            if (!_warpMode) _calDraggingNode = null;
-            Console.WriteLine($"[cal] warp mode {(_warpMode ? "ON" : "OFF")}");
             OverlayLayer.InvalidateVisual(); return;
         }
 
@@ -374,7 +365,7 @@ public partial class MainWindow
             OverlayLayer.InvalidateVisual(); return;
         }
 
-        if (_warpMode && e.Key == Key.S)
+        if (_calMode && e.Key == Key.S)
         {
             Storage.SaveCal(_calMesh, _calBiasDots);
             _calDirty = false;
@@ -524,24 +515,22 @@ public partial class MainWindow
     {
         var pos = e.GetPosition(RootGrid);
 
-        if (_warpMode)
+        if (_calMode)
         {
-            var prevHover = _calHoverNode;
             _calHoverNode = FindNearestCalNode(pos);
 
             if (_calDraggingNode.HasValue)
             {
                 var (col, row) = _calDraggingNode.Value;
-                var (nx, ny)   = ScreenToKronos(pos);
+                var (nx, ny)   = ScreenToKronosNode(pos);
                 _calMesh.SetOffset(col, row,
                     nx - _calMesh.NatX(col, _frameW),
                     ny - _calMesh.NatY(row, _frameH));
                 _calDirty = true;
-            }
-
-            if (_calHoverNode != prevHover || _calDraggingNode.HasValue)
                 OverlayLayer.InvalidateVisual();
-            return;
+                return;
+            }
+            // no active node drag — fall through to touch move logic
         }
 
         OverlayLayer.InvalidateVisual();
@@ -593,9 +582,36 @@ public partial class MainWindow
 
         OverlayLayer.InvalidateVisual();
 
-        // Warp mode: intercept all frame clicks for node dragging / dot deletion
-        if (_warpMode && _frameRect.Contains(pos))
+        // Calibration mode: right-click → dot add/remove; left-click near node → drag it;
+        // left-click with no nearby node → fall through to TOUCH_DOWN below
+        if (_calMode && CalHitRect.Contains(pos))
         {
+            if (e.ChangedButton == MouseButton.Right)
+            {
+                int? dotIdx = FindNearestBiasDot(pos);
+                if (dotIdx.HasValue)
+                {
+                    CalHistPush(new CalHistEntry(CalHistKind.DotRemoved,
+                        DotIdx: dotIdx.Value, Dot: _calBiasDots[dotIdx.Value]));
+                    _calBiasDots.RemoveAt(dotIdx.Value);
+                    Console.WriteLine($"[cal] bias dot {dotIdx.Value} removed");
+                }
+                else
+                {
+                    // Store InverseApply(click) so Apply(stored) == click position now,
+                    // and the dot moves naturally with any subsequent mesh changes.
+                    var (nx, ny) = ScreenToKronos(pos);
+                    var (sx, sy) = _calMesh.InverseApply(nx, ny, _frameW, _frameH);
+                    var dot = new CalBiasDot(sx, sy);
+                    _calBiasDots.Add(dot);
+                    CalHistPush(new CalHistEntry(CalHistKind.DotAdded,
+                        DotIdx: _calBiasDots.Count - 1, Dot: dot));
+                    Console.WriteLine($"[cal] bias dot → ({nx}, {ny}) stored as ({sx}, {sy})");
+                }
+                Storage.SaveCal(_calMesh, _calBiasDots);
+                OverlayLayer.InvalidateVisual();
+                return;
+            }
             if (e.ChangedButton == MouseButton.Left)
             {
                 var node = FindNearestCalNode(pos);
@@ -604,50 +620,10 @@ public partial class MainWindow
                     var (col, row) = node.Value;
                     _calDragStartOffset = _calMesh.GetOffset(col, row);
                     _calDraggingNode = node;
+                    return;
                 }
+                // no nearby node — fall through to TOUCH_DOWN below
             }
-            else if (e.ChangedButton == MouseButton.Right)
-            {
-                int? dotIdx = FindNearestBiasDot(pos);
-                if (dotIdx.HasValue)
-                {
-                    CalHistPush(new CalHistEntry(CalHistKind.DotRemoved,
-                        DotIdx: dotIdx.Value, Dot: _calBiasDots[dotIdx.Value]));
-                    _calBiasDots.RemoveAt(dotIdx.Value);
-                    Storage.SaveCal(_calMesh, _calBiasDots);
-                    Console.WriteLine($"[cal] bias dot {dotIdx.Value} removed");
-                    OverlayLayer.InvalidateVisual();
-                }
-            }
-            return;
-        }
-
-        // Cal observe mode: right-click near dot → delete it; elsewhere → add dot
-        if (_calMode && e.ChangedButton == MouseButton.Right && _frameRect.Contains(pos))
-        {
-            int? dotIdx = FindNearestBiasDot(pos);
-            if (dotIdx.HasValue)
-            {
-                CalHistPush(new CalHistEntry(CalHistKind.DotRemoved,
-                    DotIdx: dotIdx.Value, Dot: _calBiasDots[dotIdx.Value]));
-                _calBiasDots.RemoveAt(dotIdx.Value);
-                Console.WriteLine($"[cal] bias dot {dotIdx.Value} removed");
-            }
-            else
-            {
-                // Store InverseApply(click) so Apply(stored) == click position now,
-                // and the dot moves naturally with any subsequent mesh changes.
-                var (nx, ny) = ScreenToKronos(pos);
-                var (sx, sy) = _calMesh.InverseApply(nx, ny, _frameW, _frameH);
-                var dot = new CalBiasDot(sx, sy);
-                _calBiasDots.Add(dot);
-                CalHistPush(new CalHistEntry(CalHistKind.DotAdded,
-                    DotIdx: _calBiasDots.Count - 1, Dot: dot));
-                Console.WriteLine($"[cal] bias dot → ({nx}, {ny}) stored as ({sx}, {sy})");
-            }
-            Storage.SaveCal(_calMesh, _calBiasDots);
-            OverlayLayer.InvalidateVisual();
-            return;
         }
 
         if (e.ChangedButton == MouseButton.Left)
@@ -699,7 +675,7 @@ public partial class MainWindow
         if (e.ChangedButton != MouseButton.Left) return;
         var pos = e.GetPosition(RootGrid);
 
-        if (_calDraggingNode.HasValue && _warpMode)
+        if (_calDraggingNode.HasValue)
         {
             var (col, row) = _calDraggingNode.Value;
             var (newOffX, newOffY) = _calMesh.GetOffset(col, row);

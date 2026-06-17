@@ -1,9 +1,12 @@
 using System.Windows;
+using System.Windows.Threading;
 
 namespace KronosScreenRemote;
 
 public partial class MainWindow
 {
+    const int CalPad = 20;
+
     void SetCalGridSize(int size)
     {
         if (_calMesh.Cols == size) return;
@@ -29,12 +32,34 @@ public partial class MainWindow
         OverlayLayer.InvalidateVisual();
     }
 
+    void EnterCalMode()
+    {
+        FrameImage.Margin = new Thickness(CalPad);
+        var r = _frameRect;
+        r.Inflate(-CalPad, -CalPad);
+        _frameRect = r;
+        Dispatcher.InvokeAsync(RefreshFrameRect, DispatcherPriority.Loaded);
+    }
+
     void ExitCalMode()
     {
-        _warpMode        = false;
         _calDraggingNode = null;
         _calHoverNode    = null;
+        FrameImage.Margin = new Thickness(0);
+        var r = _frameRect;
+        r.Inflate(CalPad, CalPad);
+        _frameRect = r;
+        Dispatcher.InvokeAsync(RefreshFrameRect, DispatcherPriority.Loaded);
     }
+
+    // Returns the hit-test rect for cal mode: expanded back to the original frame area
+    // so that nodes dragged into the 20px margin can still be grabbed.
+    Rect CalHitRect { get {
+        if (!_calMode) return _frameRect;
+        var r = _frameRect;
+        r.Inflate(CalPad, CalPad);
+        return r;
+    } }
 
     // ── Coordinate transforms ─────────────────────────────────────────────────
 
@@ -46,6 +71,11 @@ public partial class MainWindow
         int ny = Math.Clamp((int)((screen.Y - fy) / fh * _frameH), 0, _frameH - 1);
         return (nx, ny);
     }
+
+    // Unclamped version for node dragging — allows offsets beyond the frame boundary
+    (int nx, int ny) ScreenToKronosNode(Point screen) =>
+        ((int)((screen.X - _frameRect.X) / _frameRect.Width  * _frameW),
+         (int)((screen.Y - _frameRect.Y) / _frameRect.Height * _frameH));
 
     (int cx, int cy) ApplyCal(int nx, int ny) =>
         _calMesh.InverseApply(nx, ny, _frameW, _frameH);

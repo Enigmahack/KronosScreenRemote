@@ -81,8 +81,7 @@ public partial class MainWindow : Window
     (int x, int y) _dragLast;
 
     // ── Calibration state ─────────────────────────────────────────────────────
-    bool   _calMode    = false;   // C: observe mode — grid shown faded, touches pass through
-    bool   _warpMode   = false;   // W (within calMode): edit mode — drag nodes, no touch output
+    bool   _calMode    = false;   // C: unified calibration — drag nodes, touch pass-through, keyboard stays local
     bool   _calDirty   = false;   // mesh has changes not yet written to disk
     CalMesh _calMesh   = new();
     List<CalBiasDot> _calBiasDots = new();
@@ -501,13 +500,11 @@ public partial class MainWindow : Window
         MENU_Tools.SubmenuOpened += (sender, e) =>
         {
             MNU_CalMode.IsChecked    = _calMode;
-            MNU_KbdWarp.IsChecked    = _warpMode;
-            MNU_KbdWarp.IsEnabled    = _calMode;
             MNU_DisableKbd.IsChecked = !_kbdSendEnabled;
         };
         // Palette editor is disabled — collapse the menu item so it is not accessible
         MNU_PaletteEd.Visibility = Visibility.Collapsed;
-        MNU_CalMode.Click   += (sender, e) => { _calMode = MNU_CalMode.IsChecked; if (!_calMode) ExitCalMode(); OverlayLayer.InvalidateVisual(); };
+        MNU_CalMode.Click   += (sender, e) => { _calMode = MNU_CalMode.IsChecked; if (_calMode) EnterCalMode(); else ExitCalMode(); OverlayLayer.InvalidateVisual(); };
 
         MNU_SettingsDlg.Click += (sender, e) => OpenSettingsDialog();
 
@@ -547,17 +544,7 @@ public partial class MainWindow : Window
         MNU_InputTester.Click  += (sender, e) => new InputTesterWindow(_ctrl) { Owner = this }.Show();
         MNU_KeyboardInfo.Click += (sender, e) => OpenKeyboardInfoWindow();
         CTX_KeyboardInfo.Click += (sender, e) => OpenKeyboardInfoWindow();
-        MNU_KbdWarp.Click += (sender, e) =>
-        {
-            _warpMode = MNU_KbdWarp.IsChecked;
-            if (_warpMode && !_calMode)
-            {
-                _calMode = true;
-                MNU_CalMode.IsChecked = true;
-            }
-            if (!_warpMode) _calDraggingNode = null;
-            OverlayLayer.InvalidateVisual();
-        };
+        MNU_KbdWarp.Visibility = Visibility.Collapsed;
 
         // Bank Select — items built in code to avoid 21 x:Name declarations in XAML
         char[] bankLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
@@ -640,7 +627,7 @@ public partial class MainWindow : Window
         };
         FrameImage.ContextMenuOpening += (s, e) =>
         {
-            if (_calMode || _warpMode) { e.Handled = true; return; }
+            if (_calMode) { e.Handled = true; return; }
             CTX_AspectLock.IsChecked = _aspectLock;
             CTX_Fullscreen.IsChecked = _isFullscreen;
             CTX_Disconnect.IsEnabled = _receiver != null;
@@ -1107,7 +1094,7 @@ public partial class MainWindow : Window
             // ── Tools
             new("Keyboard Info",                    "",              () => OpenKeyboardInfoWindow()),
             new("Toggle VGA Mirror",                K("Mirror"),        () => { _mirrorState = !_mirrorState; Ctrl(_mirrorState ? "MIRROR_ON" : "MIRROR_OFF"); }),
-            new("Toggle Calibration Mode",          K("Calibrate"),     () => { _calMode = !_calMode; if (!_calMode) ExitCalMode(); OverlayLayer.InvalidateVisual(); }),
+            new("Toggle Calibration Mode",          K("Calibrate"),     () => { _calMode = !_calMode; if (_calMode) EnterCalMode(); else ExitCalMode(); OverlayLayer.InvalidateVisual(); }),
             new("Save Screenshot…",                 "",              () => SaveScreenshot()),
             new("Toggle Keyboard Send",             "",              () => { _kbdSendEnabled = !_kbdSendEnabled; _instantKeys.Clear(); UpdateKbdStatus(); OverlayLayer.InvalidateVisual(); }),
             // ── Mode select

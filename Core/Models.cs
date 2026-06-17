@@ -106,8 +106,8 @@ sealed class CalMesh
     }
 
     public (int x, int y) NodeDst(int col, int row, int w, int h) =>
-        (Math.Clamp(NatX(col, w) + _offX[col, row], 0, w - 1),
-         Math.Clamp(NatY(row, h) + _offY[col, row], 0, h - 1));
+        (NatX(col, w) + _offX[col, row],
+         NatY(row, h) + _offY[col, row]);
 
     // ── Forward map: natural coords → warped coords ───────────────────────────
 

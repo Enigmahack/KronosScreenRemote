@@ -44,7 +44,7 @@ public partial class MainWindow
 
         if (_calMode)
             OverlayRenderer.DrawCalOverlay(dc, _calMesh, _calBiasDots,
-                _calHoverNode, _calDraggingNode, _warpMode, _calDirty, _frameRect,
+                _calHoverNode, _calDraggingNode, _calDirty, _frameRect,
                 _frameW, _frameH, winSize, _pixPerDip);
 
         if (_touchMarker.HasValue && (_dragActive || _dragPending ||

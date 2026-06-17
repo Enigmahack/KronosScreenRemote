@@ -288,21 +288,18 @@ static class OverlayRenderer
 
     public static void DrawCalOverlay(DrawingContext dc, CalMesh mesh, List<CalBiasDot> biasDots,
         (int col, int row)? hoverNode, (int col, int row)? draggingNode,
-        bool warpMode, bool dirty,
+        bool dirty,
         Rect frameRect, int kronW, int kronH, Size winSize, double pixPerDip)
     {
         double fx = frameRect.X, fy = frameRect.Y,
                fw = frameRect.Width, fh = frameRect.Height;
 
-        // Warp mode: darker tint so the grid stands out; observe: very faint
-        dc.DrawRectangle(B(0, 0, 0, (byte)(warpMode ? 80 : 30)), null, frameRect);
+        dc.DrawRectangle(B(0, 0, 0, 80), null, frameRect);
 
         Point ToScr((int x, int y) p) =>
             new(fx + p.x * fw / kronW, fy + p.y * fh / kronH);
 
-        byte gridA  = warpMode ? (byte)160 : (byte)60;
-        double lineW = warpMode ? 1.0 : 0.7;
-        var gridPen = new Pen(new SolidColorBrush(Color.FromArgb(gridA, 60, 120, 200)), lineW);
+        var gridPen = new Pen(new SolidColorBrush(Color.FromArgb(160, 60, 120, 200)), 1.0);
 
         for (int r = 0; r < mesh.Rows; r++)
             for (int c = 0; c < mesh.Cols - 1; c++)
@@ -316,21 +313,17 @@ static class OverlayRenderer
                     ToScr(mesh.NodeDst(c, r,     kronW, kronH)),
                     ToScr(mesh.NodeDst(c, r + 1, kronW, kronH)));
 
-        double nodeR = warpMode ? 5 : 3;
         for (int c = 0; c < mesh.Cols; c++)
         {
             for (int r = 0; r < mesh.Rows; r++)
             {
                 var sp      = ToScr(mesh.NodeDst(c, r, kronW, kronH));
-                bool isHov  = warpMode && hoverNode    == (c, r);
-                bool isDrag = warpMode && draggingNode == (c, r);
+                bool isHov  = hoverNode    == (c, r);
+                bool isDrag = draggingNode == (c, r);
                 var fill    = isDrag ? B(255, 200, 50)
                             : isHov  ? B(100, 200, 255)
-                                     : B((byte)(warpMode ? 60 : 40),
-                                         (byte)(warpMode ? 140 : 100),
-                                         (byte)(warpMode ? 220 : 160),
-                                         (byte)(warpMode ? 255 : 100));
-                dc.DrawEllipse(fill, null, sp, nodeR, nodeR);
+                                     : B(60, 140, 220, 255);
+                dc.DrawEllipse(fill, null, sp, 5, 5);
                 if (isHov || isDrag)
                     dc.DrawEllipse(null, new Pen(new SolidColorBrush(Colors.White), 1.2), sp, 10, 10);
             }
@@ -344,18 +337,12 @@ static class OverlayRenderer
         }
 
         int n = biasDots.Count;
-        Color barColor;
         string saveTag;
-        if (warpMode)
-        {
-            if (dirty) { saveTag = "  [UNSAVED]"; barColor = Color.FromRgb(220, 80, 60); }
-            else        { saveTag = "  [SAVED]";   barColor = Color.FromRgb(80, 210, 80); }
-        }
-        else { saveTag = ""; barColor = Color.FromRgb(150, 200, 255); }
+        Color barColor;
+        if (dirty) { saveTag = "  [UNSAVED]"; barColor = Color.FromRgb(220, 80, 60); }
+        else        { saveTag = "  [SAVED]";   barColor = Color.FromRgb(80, 210, 80); }
 
-        string msg = warpMode
-            ? $"WARP MODE{saveTag}  |  Drag nodes  RC=del dot  S=save  R=reset  X=clear all  W=done  |  {n} dot{(n != 1 ? "s" : "")}"
-            : $"CALIBRATE  |  Click=touch  RC=add/del dot  W=warp  C=exit  |  {n} dot{(n != 1 ? "s" : "")}";
+        string msg = $"CALIBRATE{saveTag}  |  Click=touch  Drag node=warp  RC=add/del dot  S=save  R=reset  X=clear  C=exit  |  {n} dot{(n != 1 ? "s" : "")}";
         var ft  = Fmt(msg, barColor, pixPerDip);
         double bw = ft.Width + 8, bh = ft.Height + 4;
         double bx_ = Math.Max(0, (winSize.Width - bw) / 2);
@@ -451,8 +438,7 @@ static class OverlayRenderer
             (K("Fullscreen",    "F"),  "Toggle fullscreen"),
             ("~ (fullscreen)",         "Show / hide menu bar"),
             (K("HideControls",  "—"),  "Hide/show control surface"),
-            (K("Calibrate",     "C"),  "Calibrate  |  Click=touch  RC=add/del dot  W=warp  C=exit"),
-            ("--> W, in warp mode",                    "Warp  |  drag nodes  RC=del dot  S=save  R=reset  X=clear  W=done"),
+            (K("Calibrate",     "C"),  "Calibrate  |  Click=touch  Drag node=warp  RC=add/del dot  S=save  R=reset  X=clear  C=exit"),
             ("Click (view)",           "Send touch tap to Kronos"),
             ("Scroll",                 "Turn data wheel (always active)"),
             ("Esc",                    "EXIT to Kronos  (or close overlay)"),
