@@ -15,13 +15,27 @@ A Windows desktop application for remotely viewing and controlling a **Korg Kron
 ## Features
 
 - **Live Screen Streaming** — 800×600 8-bit indexed color at up to 15 FPS via TCP; supports full-frame (pull) and change-only modes for bandwidth efficiency
+<img width="1202" height="504" alt="image" src="https://github.com/user-attachments/assets/255cdc73-ed24-4f39-a707-297bca95fdd5" />
+
 - **Remote Control** — Virtual button panel (mode keys, number pad, data wheel, bank selects) with drag, scroll, and keyboard-shortcut support
-- **Touch Calibration** — 5×5 warp mesh with bilinear interpolation for accurate touch-to-screen mapping
+<img width="1202" height="504" alt="image" src="https://github.com/user-attachments/assets/2c867bcd-60e4-423c-86d5-fe062720e055" />
+
+- **Touch Calibration** — 3x3 - 5x5 warp mesh with bilinear interpolation for accurate touch-to-screen mapping
+<img width="1202" height="504" alt="image" src="https://github.com/user-attachments/assets/103f3f42-e299-420c-b968-6a1d47f543e8" />
+
 - **Mode Detection** — Reference-image OCR to identify the active Kronos operating mode automatically
 - **Audio VU Meter** — WASAPI real-time level monitoring (L/R peak + RMS) with device selection
+<img width="1202" height="504" alt="image" src="https://github.com/user-attachments/assets/659cabac-e044-4663-9431-724142d6ef14" />
+
 - **FTP File Manager** — Browse, upload, and download files on the Kronos SD card with conflict resolution
+<img width="1203" height="505" alt="image" src="https://github.com/user-attachments/assets/86ef3f27-5bc0-4741-b285-72347d6a063e" />
+
 - **Command Palette** — Searchable keyboard-driven command interface (Ctrl+K)
+<img width="1203" height="505" alt="image" src="https://github.com/user-attachments/assets/8a416c12-6568-46d2-aa94-d4178634830f" />
+
 - **Zoom & Layout Presets** — Configurable window sizes (75–200%), fullscreen, always-on-top, and collapsible control rail
+<img width="1203" height="505" alt="image" src="https://github.com/user-attachments/assets/58331f2a-2183-4721-aa0f-d89767f6b6bf" />
+
 - **Connection Watchdog** — Automatic keepalive and dead-connection detection (~25 s for hard power-off)
 
 ---
