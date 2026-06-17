@@ -1,4 +1,4 @@
-# KronosScreenRemote
+# KronosScreenRemote for Windows
 
 A Windows desktop application for remotely viewing and controlling a **Korg Kronos** synthesizer over Ethernet. It streams the Kronos display in real time, forwards touch/button input back to the device, and provides supplementary tools for audio monitoring, file management, and display calibration.
 
