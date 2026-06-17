@@ -176,7 +176,7 @@
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="Storage  /korg/rw"
+                    <TextBlock Grid.Column="0" Text="Storage  SSD1"
                                FontSize="11" FontWeight="SemiBold" Foreground="#FF888888"
                                ToolTip="Writable partition where kernel modules, extracted files, and user data are stored."/>
                     <TextBlock Grid.Column="1" x:Name="TXT_DiskLabel"
@@ -200,7 +200,7 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Storage  /korg/rw2"
+                        <TextBlock Grid.Column="0" Text="Storage  SSD2"
                                    FontSize="11" FontWeight="SemiBold" Foreground="#FF888888"
                                    ToolTip="Second internal SSD partition"/>
                         <TextBlock Grid.Column="1" x:Name="TXT_DiskRw2Label"
