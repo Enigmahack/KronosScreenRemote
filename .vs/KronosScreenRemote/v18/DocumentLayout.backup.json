@@ -3,10 +3,6 @@
   "WorkspaceRootPath": "C:\\Users\\Gamer-PC\\Documents\\KronosScreenRemote\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{E6A2E3A9-58A3-57AA-B950-BD4EE1F3F7A2}|KronosScreenRemote.csproj|c:\\users\\gamer-pc\\documents\\kronosscreenremote\\kronosscreenremote.csproj||{04B8AB82-A572-4FEF-95CE-5222444B6B64}|",
-      "RelativeMoniker": "D:0:0:{E6A2E3A9-58A3-57AA-B950-BD4EE1F3F7A2}|KronosScreenRemote.csproj|solutionrelative:kronosscreenremote.csproj||{04B8AB82-A572-4FEF-95CE-5222444B6B64}|"
-    },
-    {
       "AbsoluteMoniker": "D:0:0:{E6A2E3A9-58A3-57AA-B950-BD4EE1F3F7A2}|KronosScreenRemote.csproj|c:\\users\\gamer-pc\\documents\\kronosscreenremote\\views\\mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
       "RelativeMoniker": "D:0:0:{E6A2E3A9-58A3-57AA-B950-BD4EE1F3F7A2}|KronosScreenRemote.csproj|solutionrelative:views\\mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
     }
@@ -31,18 +27,6 @@
             {
               "$type": "Document",
               "DocumentIndex": 0,
-              "Title": "KronosScreenRemote",
-              "DocumentMoniker": "C:\\Users\\Gamer-PC\\Documents\\KronosScreenRemote\\KronosScreenRemote.csproj",
-              "RelativeDocumentMoniker": "KronosScreenRemote.csproj",
-              "ToolTip": "C:\\Users\\Gamer-PC\\Documents\\KronosScreenRemote\\KronosScreenRemote.csproj",
-              "RelativeToolTip": "KronosScreenRemote.csproj",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000758|",
-              "WhenOpened": "2026-06-18T21:08:55.411Z",
-              "EditorCaption": ""
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 1,
               "Title": "MainWindow.xaml",
               "DocumentMoniker": "C:\\Users\\Gamer-PC\\Documents\\KronosScreenRemote\\Views\\MainWindow.xaml",
               "RelativeDocumentMoniker": "Views\\MainWindow.xaml",
