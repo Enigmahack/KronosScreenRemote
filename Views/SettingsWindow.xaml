@@ -253,6 +253,45 @@
                     </Grid>
                     <TextBlock Margin="0 12 0 0" Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
                                Text="Connection changes take effect on the next connect. The --host, --port, and --ctrl command-line arguments override these values for the current session only."/>
+
+                    <Border Background="#FF444444" Margin="0 16 0 12" Height="1"/>
+                    <TextBlock Text="FTP Credentials" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 0 0 8"/>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="130"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="8"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="8"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="FTP Username" VerticalAlignment="Center"
+                                   ToolTip="Username for FTP authentication to the Kronos."/>
+                        <TextBox   Grid.Row="0" Grid.Column="1" x:Name="TxtFtpUser"
+                                   ToolTip="Username for FTP authentication to the Kronos."/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="FTP Password" VerticalAlignment="Center"
+                                   ToolTip="Password for FTP authentication to the Kronos."/>
+                        <PasswordBox Grid.Row="2" Grid.Column="1" x:Name="TxtFtpPass"
+                                     Background="#FF2A2A2A" Foreground="White" BorderBrush="#FF555555"
+                                     Padding="4 2"
+                                     ToolTip="Password for FTP authentication to the Kronos."/>
+
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="FTP Port" VerticalAlignment="Center"
+                                   ToolTip="TCP port for FTP connections to the Kronos. Default: 21."/>
+                        <TextBox   Grid.Row="4" Grid.Column="1" x:Name="TxtFtpPort" Width="80" HorizontalAlignment="Left"
+                                   ToolTip="TCP port for FTP connections to the Kronos. Default: 21."/>
+                    </Grid>
+                    <Button x:Name="BtnClearFtp" Content="Clear FTP Credentials"
+                            Width="170" HorizontalAlignment="Left" Margin="0 12 0 0"
+                            Click="OnClearFtpCredentials"
+                            ToolTip="Clear the saved FTP username and password."/>
+                    <TextBlock Margin="0 12 0 0" Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
+                               Text="FTP credentials are used for the File Manager and for stream authentication. If left empty, you will be prompted when connecting."/>
                 </StackPanel>
             </TabItem>
 

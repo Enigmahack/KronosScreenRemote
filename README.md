@@ -17,6 +17,7 @@ A Windows desktop application for remotely viewing and controlling a **Korg Kron
 - **Live Screen Streaming** — 800×600 8-bit indexed color at up to 15 FPS via TCP; supports full-frame (pull) and change-only modes for bandwidth efficiency
 <img width="1202" height="504" alt="image" src="https://github.com/user-attachments/assets/255cdc73-ed24-4f39-a707-297bca95fdd5" />
 
+- **Value Slider** — Left-panel INC/DEC buttons and draggable 0–127 value slider mirroring the Kronos front-panel VALUE control
 - **Remote Control** — Virtual button panel (mode keys, number pad, data wheel, bank selects) with drag, scroll, and keyboard-shortcut support
 <img width="1202" height="504" alt="image" src="https://github.com/user-attachments/assets/2c867bcd-60e4-423c-86d5-fe062720e055" />
 
@@ -33,6 +34,7 @@ A Windows desktop application for remotely viewing and controlling a **Korg Kron
 - **Command Palette** — Searchable keyboard-driven command interface (Ctrl+K)
 <img width="1203" height="505" alt="image" src="https://github.com/user-attachments/assets/8a416c12-6568-46d2-aa94-d4178634830f" />
 
+- **Test Mode** — Enter the Kronos built-in hardware test mode for diagnostics (Tools menu)
 - **Zoom & Layout Presets** — Configurable window sizes (75–200%), fullscreen, always-on-top, and collapsible control rail
 <img width="1203" height="505" alt="image" src="https://github.com/user-attachments/assets/58331f2a-2183-4721-aa0f-d89767f6b6bf" />
 
@@ -135,14 +137,19 @@ KronosScreenRemote/
 
 | Shortcut | Action |
 |---|---|
-| Ctrl+K | Open command palette |
-| F1–F8 | Switch Kronos operating mode |
-| Ctrl+1–5 | Window size preset (75%–200%) |
+| F1 | Open help window |
+| F2–F8 | Switch Kronos operating mode (Setlist through Disk) |
+| A | Toggle aspect lock |
 | C | Toggle calibration grid overlay |
-| W | Enter warp/mesh editing mode |
 | F | Toggle fullscreen |
+| M | Toggle VGA mirror |
+| Q | Quit |
+| Z | Toggle zoom window |
+| Ctrl+1–5 | Window size preset (75%–200%) |
+| Ctrl+K | Open command palette |
+| Ctrl+S | Save screenshot |
 
-Shortcuts are rebindable via **Settings → Keybinds**.
+Shortcuts are rebindable via **Settings → Settings… → Keybindings**.
 
 ---
 

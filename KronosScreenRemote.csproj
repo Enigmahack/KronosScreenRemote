@@ -14,12 +14,14 @@
     <SignAssembly>False</SignAssembly>
     <PackageIcon>AppIcon.png</PackageIcon>
     <AssemblyTitle>Kronos ScreenRemote</AssemblyTitle>
-    <Version>1.5.3</Version>
-    <AssemblyVersion>1.5.3</AssemblyVersion>
-    <FileVersion>1.5.3</FileVersion>
+    <Version>1.6.1</Version>
+    <AssemblyVersion>1.6.1</AssemblyVersion>
+    <FileVersion>1.6.1</FileVersion>
     <Product>Kronos ScreenRemote</Product>
     <Description>Remote viewer and control interface for Korg Kronos</Description>
     <ApplicationIcon>Resources\Icons\AppIcon.ico</ApplicationIcon>
+    <Configurations>Debug;Release;Publish</Configurations>
+    <Platforms>AnyCPU;x86</Platforms>
     <!-- Single-file publish (produces one EXE, WPF native DLLs extracted to temp at first run):
          dotnet publish -p:PublishProfile=win-x64
          Then sign: .\sign.ps1   (run sign.ps1 -Setup once to create the certificate)

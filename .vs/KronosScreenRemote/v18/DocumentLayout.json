@@ -3,8 +3,8 @@
   "WorkspaceRootPath": "C:\\Users\\Gamer-PC\\Documents\\KronosScreenRemote\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{E6A2E3A9-58A3-57AA-B950-BD4EE1F3F7A2}|KronosScreenRemote.csproj|c:\\users\\gamer-pc\\documents\\kronosscreenremote\\views\\keyboardinfowindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
-      "RelativeMoniker": "D:0:0:{E6A2E3A9-58A3-57AA-B950-BD4EE1F3F7A2}|KronosScreenRemote.csproj|solutionrelative:views\\keyboardinfowindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
+      "AbsoluteMoniker": "D:0:0:{E6A2E3A9-58A3-57AA-B950-BD4EE1F3F7A2}|KronosScreenRemote.csproj|c:\\users\\gamer-pc\\documents\\kronosscreenremote\\views\\mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
+      "RelativeMoniker": "D:0:0:{E6A2E3A9-58A3-57AA-B950-BD4EE1F3F7A2}|KronosScreenRemote.csproj|solutionrelative:views\\mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
     }
   ],
   "DocumentGroupContainers": [
@@ -27,13 +27,13 @@
             {
               "$type": "Document",
               "DocumentIndex": 0,
-              "Title": "KeyboardInfoWindow.xaml",
-              "DocumentMoniker": "C:\\Users\\Gamer-PC\\Documents\\KronosScreenRemote\\Views\\KeyboardInfoWindow.xaml",
-              "RelativeDocumentMoniker": "Views\\KeyboardInfoWindow.xaml",
-              "ToolTip": "C:\\Users\\Gamer-PC\\Documents\\KronosScreenRemote\\Views\\KeyboardInfoWindow.xaml",
-              "RelativeToolTip": "Views\\KeyboardInfoWindow.xaml",
+              "Title": "MainWindow.xaml",
+              "DocumentMoniker": "C:\\Users\\Gamer-PC\\Documents\\KronosScreenRemote\\Views\\MainWindow.xaml",
+              "RelativeDocumentMoniker": "Views\\MainWindow.xaml",
+              "ToolTip": "C:\\Users\\Gamer-PC\\Documents\\KronosScreenRemote\\Views\\MainWindow.xaml",
+              "RelativeToolTip": "Views\\MainWindow.xaml",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003549|",
-              "WhenOpened": "2026-06-17T11:50:34.892Z",
+              "WhenOpened": "2026-06-18T20:04:49.564Z",
               "EditorCaption": ""
             }
           ]

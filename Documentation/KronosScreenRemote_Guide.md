@@ -56,28 +56,31 @@ Click anywhere on the displayed screen to send a tap to the Kronos at the corres
 
 If touch calibration has been set up (see [Calibration](#calibration)), coordinates are corrected before being sent.
 
-### Front-Panel Buttons
+### Value Slider (Left Panel)
 
-Physical buttons on the Kronos front panel can be triggered from the client. Buttons appear in the **Buttons** panel at the right side of the window (visible in Full and Focused layout modes).
+The left panel mirrors the Kronos front-panel **VALUE** slider and increment/decrement buttons.
 
-Click any button in the panel to trigger it. The panel groups buttons by function:
+| Control | Action |
+|---|---|
+| INC button | Send a single increment step to the Kronos |
+| DEC button | Send a single decrement step to the Kronos |
+| Slider thumb | Drag up or down to send a continuous value (0–127). Top = 127, bottom = 0 |
+
+The value slider command is sent only when the value changes. The left panel is visible in the **Full** layout when controls are shown. It hides automatically in **Focused** layout or when controls are hidden.
+
+### Control Surface (Right Panel)
+
+The right panel mirrors the physical Kronos front panel. Clicking any button sends the corresponding hardware button press to the Kronos.
 
 | Group | Buttons |
 |---|---|
 | Mode | Setlist, Combi, Program, Sequence, Sampling, Global, Disk |
 | Navigation | Exit, Enter |
-| Utility | Help, Compare, Reset |
+| Utility | Help, Compare |
 | Number pad | 0–9, Dot, Dash |
-| Value | INC, DEC |
-| Mix Play | MP1–MP8 |
-| Mix Select | MS1–MS8 |
-| Bank - Internal | I-A through I-G |
-| Bank - User | U-A through U-G |
-| Sequencer | Start, Rec, Locate, FF, Rew, Pause, Tap Tempo |
-| Sampling | Rec, Start |
-| Channel strip | Mix Knobs, Solo |
+| Data wheel | Drag up/down to scroll; mouse scroll wheel also works everywhere |
 
-Not all buttons are currently implemented in the Kronos Screen Remote software; some are intended for live control and are not suitable for use with a mouse or remote interface. 
+Bank select is available from the **Bank Select** menu (I-A through I-G, U-A through U-G, and chord banks U-AA through U-GG).
 
 ### Keyboard Input
 
@@ -130,13 +133,12 @@ Press the collapse button on the button rail to hide the right-side control pane
 
 ### Layout Presets
 
-Three layout presets are available (Settings → View → Layout Preset):
+Two layout presets are available (View → Layout Preset):
 
 | Preset | Description |
 |---|---|
-| **Full** | Frame + button rail + all controls visible |
-| **Focused** | Button rail collapsed by default; expands on hover |
-| **Detached** | Frame only; buttons/controls in a separate floating window |
+| **Full** | Value slider, screen panel, and control surface side by side (default) |
+| **Focused** | Screen fills the window; a narrow rail on the right edge can be clicked to temporarily expand the control surface. The value slider is hidden |
 
 
 ---
@@ -155,13 +157,20 @@ When the VGA mirror is active and the Kronos screen has been static for the scre
 
 ## Screenshots
 
-Press `Ctrl+S` to save a screenshot of the current frame as a PNG file. The output directory is set in Settings → General → Screenshot Directory. If no directory is set, a Save As dialog appears.
+| Action | Description |
+|---|---|
+| **Save Screenshot…** (`Ctrl+S`) | Shows a save dialog to choose filename and location |
+| **Quick Save Screenshot** | Saves instantly to the Screenshot Directory (or desktop if unset) |
+| **Copy Frame to Clipboard** | Copies the current frame to the system clipboard |
+| **Open Screenshots Folder** | Opens the screenshot output directory in Explorer |
+
+The output directory is set in Settings → General → Screenshot Directory.
 
 ---
 
 ## File Manager
 
-The File Manager (Tools → File Manager) is a dual-pane file browser for transferring files between your PC and the Kronos over FTP.
+The File Manager (Connection → File Manager) is a dual-pane file browser for transferring files between your PC and the Kronos over FTP.
 
 | Pane | Contents |
 |---|---|
@@ -210,6 +219,14 @@ Calibration applies a bilinear mesh warp: client coordinates are mapped through 
 Changes take effect immediately and are saved automatically.
 
 **Reset calibration:** Drag all nodes back to their natural positions, or use Settings → Reset All Settings (this resets everything, not just calibration).
+
+---
+
+## Test Mode
+
+Access via **Tools → Enter Kronos Test Mode**. This sends the Kronos into its built-in hardware test mode for diagnostics and hardware verification.
+
+> **Warning:** All unsaved changes on the Kronos will be lost, and the Kronos must be restarted after testing is complete. A confirmation dialog warns before proceeding. Only use this if you understand the risk.
 
 ---
 
@@ -270,7 +287,7 @@ Open Settings → Raw Key Map.
 
 ## Settings
 
-Open via **Edit → Settings** (or the gear icon).
+Open via **Settings → Settings…**.
 
 ### Connection
 
@@ -312,8 +329,8 @@ Open via **Edit → Settings** (or the gear icon).
 
 | Setting | Description |
 |---|---|
-| Layout Preset | Full / Focused / Detached (see [Layout Presets](#layout-presets)) |
-| Zoom default level | Magnification level for the zoom window (1×–5×) |
+| Layout Preset | Full / Focused (see [Layout Presets](#layout-presets)) |
+| Zoom default level | Magnification level for the zoom window (2.5×–10×) |
 | Zoom window size | Size multiplier for the floating zoom window |
 | Always on top | Keep the main window above all other windows |
 
@@ -366,12 +383,18 @@ The input tester (Settings → Raw Key Map → **Input Tester** button) lets you
 ## Status Bar
 
 The status bar at the bottom of the window shows:
-- Connection state (Connecting / Connected / Disconnected)
-- Current Kronos mode
-- Frame dimensions
-- FPS indicator (when connected)
-- VU meter - shows the level of a selected local Windows audio device (click the ▲ picker button to choose a device; choice is saved in settings)
-- Error messages from the daemon (ERR responses on the persistent control connection)
+
+| Element | Description |
+|---|---|
+| Coloured dot + text | Connection state: green = connected, amber = connecting, gray = disconnected |
+| ⌨ keyboard icon | Keyboard capture state — right-click to enable/disable keyboard send |
+| FPS | Measured incoming frame rate while connected |
+| Latency | Round-trip network latency to the Kronos |
+| Notification bubble | Click to open the log file; turns red on errors |
+| Keyboard Info | Opens a pane displaying CPU, memory, temperature, and storage stats |
+| VU meter | Audio level of a local Windows device (e.g. your DAW output). Click ▾ to pick the device; choice is saved |
+| Change / Pull | Active streaming mode for the current connection |
+| Mode | Current Kronos operating mode — right-click to change mode |
 
 ---
 
@@ -385,20 +408,25 @@ The app minimises to the system tray when the window is closed with **Minimize t
 
 | Key | Action |
 |---|---|
-| `F` | Toggle fullscreen |
-| `Z` | Toggle zoom window |
+| `F1` | Open help window |
+| `F2`–`F8` | Switch Kronos mode (Setlist through Disk) |
 | `A` | Toggle aspect lock |
-| `M` | Toggle VGA mirror |
 | `C` | Toggle calibration mode |
-| `F1` | Toggle help overlay |
+| `F` | Toggle fullscreen |
+| `M` | Toggle VGA mirror |
 | `Q` | Quit |
-| `F2`–`F8` | Switch Kronos mode (Setlist–Disk) |
-| `Ctrl+Z` | Undo (in palette editor) |
-| `Ctrl+Y` | Redo (in palette editor) |
+| `Z` | Toggle zoom window |
+| `+` / `−` | Zoom in / zoom out (enables zoom automatically if off) |
+| `Esc` | Send EXIT to Kronos / exit fullscreen / dismiss overlays |
+| `Enter` | Send ENTER to Kronos |
+| `Ctrl+1`–`Ctrl+5` | Window size: 75% / 100% / 125% / 150% / 200% |
+| `Ctrl+K` | Open command palette |
 | `Ctrl+S` | Save screenshot |
-| Mouse wheel | Zoom in/out (over frame) or data wheel (assigned to Kronos) |
+| `Ctrl+Z` / `Ctrl+Y` | Undo / redo (calibration mode) |
+| `~` (fullscreen) | Show / hide the menu bar while in fullscreen |
+| Mouse scroll | Data wheel (over frame or control surface) |
 
-All shortcuts except Ctrl+S, Ctrl+Z, and Ctrl+Y are rebindable in Settings → Key Bindings.
+All shortcuts (except Ctrl combos) are rebindable in Settings → Key Bindings.
 
 ---
 

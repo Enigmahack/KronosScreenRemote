@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:KronosScreenRemote"
         Title="Kronos ScreenRemote"
-        Width="1590" Height="625"
+        Width="1870" Height="625"
         ResizeMode="CanResize"
         Background="Black"
         Focusable="True"
@@ -12,18 +12,16 @@
         <Menu x:Name="MainMenu" DockPanel.Dock="Top">
             <MenuItem x:Name="MENU_Connection" Header="_Connection">
                 <MenuItem x:Name="MNU_Reconnect"      Header="_Connect"/>
-                <MenuItem x:Name="MNU_RefreshDisplay" Header="Re_fresh Display"/>
                 <Separator/>
-                <MenuItem x:Name="MNU_Disconnect" Header="_Disconnect" IsEnabled="False"/>
-                <Separator/>
-                <MenuItem x:Name="MNU_FileManager"    Header="File _Manager…"/>
-                <MenuItem x:Name="MNU_FtpCredentials"      Header="FTP _Credentials…"/>
-                <MenuItem x:Name="MNU_ClearFtpCredentials" Header="C_lear FTP Credentials"/>
-                <Separator/>
+
                 <MenuItem x:Name="MENU_RecentHosts" Header="_Recent Connections">
                     <MenuItem x:Name="MNU_NoRecentHosts" Header="(none)" IsEnabled="False"/>
                 </MenuItem>
                 <MenuItem x:Name="MNU_CopyIP" Header="Copy _IP Address"/>
+                <Separator/>
+                <MenuItem x:Name="MNU_FileManager"    Header="File _Manager…"/>
+                <Separator/>
+                <MenuItem x:Name="MNU_Disconnect" Header="_Disconnect" IsEnabled="False"/>
                 <Separator/>
                 <MenuItem x:Name="MNU_Quit"       Header="_Quit"/>
             </MenuItem>
@@ -34,6 +32,7 @@
                 <MenuItem x:Name="MNU_Fullscreen"    Header="_Fullscreen"                          InputGestureText="F"/>
                 <MenuItem x:Name="MNU_HideControls"  Header="_Hide Controls"   IsCheckable="True"/>
                 <MenuItem x:Name="MNU_AlwaysOnTop"   Header="Always on _Top"   IsCheckable="True"/>
+                <MenuItem x:Name="MNU_RefreshDisplay" Header="Re_fresh Display"/>
                 <Separator/>
                 <MenuItem x:Name="MENU_LayoutPreset" Header="Layout _Preset">
                     <MenuItem x:Name="MNU_PresetFull"    Header="_Full"    IsCheckable="True"
@@ -59,6 +58,7 @@
                     <MenuItem x:Name="MNU_CalGrid4" Header="_4×4" IsCheckable="True"/>
                     <MenuItem x:Name="MNU_CalGrid5" Header="_5×5" IsCheckable="True"/>
                 </MenuItem>
+                <MenuItem x:Name="MNU_TestMode" Header="Enter Kronos _Test Mode"/>
                 <Separator/>
                 <MenuItem x:Name="MNU_Screenshot"  Header="Save _Screenshot…"     InputGestureText="Ctrl+S"/>
                 <MenuItem x:Name="MNU_QuickSave"   Header="_Quick Save Screenshot"/>
@@ -273,11 +273,51 @@
             </StatusBarItem>
         </StatusBar>
 
-        <Grid x:Name="RootGrid" Background="Black">
+        <Grid x:Name="OuterGrid" Background="Black">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="LeftPanelColumn" Width="282*"/>
+                <ColumnDefinition x:Name="MainAreaColumn" Width="1600*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- ── Left value-slider panel (column 0) ─────────────────────── -->
+            <Viewbox x:Name="LeftPanelViewbox" Grid.Column="0" Stretch="Uniform">
+                <Grid Width="282" Height="600" ClipToBounds="True">
+                    <Image Source="/Resources/Images/KronosLeftSide2EMPTY.png"
+                           Stretch="Fill"
+                           RenderOptions.BitmapScalingMode="HighQuality"
+                           SnapsToDevicePixels="False"
+                           IsHitTestVisible="False" Margin="-33,-113,-34,0"/>
+
+                    <local:KronosButton x:Name="BTN_Inc"
+                        Margin="114,72,118,504"
+                        ToolTip="Increment value"
+                        UnlitSource="/Resources/Images/UnlitThinButton.png"
+                        ButtonMode="None"/>
+                    <local:KronosButton x:Name="BTN_Dec"
+                        Margin="114,146,118,430"
+                        ToolTip="Decrement value"
+                        UnlitSource="/Resources/Images/UnlitThinButton.png"
+                        ButtonMode="None"/>
+
+                    <Canvas x:Name="ValueSliderCanvas"
+                            Margin="87,300,87,30"
+                            Background="Transparent"
+                            Cursor="Hand">
+                        <Image x:Name="ValueSliderThumb"
+                               Width="72" Height="42"
+                               Source="/Resources/Images/Slider.png"
+                               RenderOptions.BitmapScalingMode="HighQuality"
+                               Canvas.Left="17" Canvas.Top="228"
+                               IsHitTestVisible="False"/>
+                    </Canvas>
+                </Grid>
+            </Viewbox>
+
+        <Grid x:Name="RootGrid" Grid.Column="1">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="173*"/>
                 <ColumnDefinition Width="627*"/>
-                <ColumnDefinition Width="800*"/>
+                <ColumnDefinition x:Name="ControlsColumn" Width="800*"/>
             </Grid.ColumnDefinitions>
 
             <!-- ── Screen area (columns 0+1) ──────────────────────────────── -->
@@ -484,7 +524,7 @@
                 <!-- Focused-mode rail: click to restore Full preset -->
                 <Border x:Name="ControlRail"
                         Width="28"
-                        HorizontalAlignment="Left"
+                        HorizontalAlignment="Right"
                         Background="#FF1A1A1A"
                         BorderThickness="1 0 0 0"
                         BorderBrush="#FF333333"
@@ -503,6 +543,7 @@
                     </Button>
                 </Border>
             </Grid>
+        </Grid>
         </Grid>
     </DockPanel>
 </Window>

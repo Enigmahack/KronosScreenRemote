@@ -151,19 +151,30 @@ public partial class HelpWindow : Window
         Add(Body("5.  If the Kronos IP changes or the connection drops, use Connection → Connect to reconnect.\n" +
                  "    The app does not auto-reconnect after a network interruption."));
 
+        // ── Value Slider (left panel) ─────────────────────────────────────────
+        Add(SectionHead("Value Slider  (left panel)"));
+        Add(Body("The left panel mirrors the Kronos front-panel VALUE slider and increment/decrement buttons."));
+        var vs = ShortcutTable();
+        Row(vs, "INC / DEC buttons", "Send a single increment or decrement step to the Kronos.");
+        Row(vs, "Slider thumb",      "Drag up or down to send a continuous value (0–127).\n" +
+                                     "Top = 127, bottom = 0. The command is sent only when the value changes.");
+        Add(vs);
+        Add(Note("The left panel is visible in the Full layout when controls are shown. It hides automatically\n" +
+                 "in Focused layout or when controls are hidden via View → Hide Controls."));
+
         // ── Screen Panel ──────────────────────────────────────────────────────
-        Add(SectionHead("Screen Panel  (left side)"));
+        Add(SectionHead("Screen Panel  (centre)"));
         Add(Body("The screen panel streams the Kronos touchscreen display. The image is scaled to fill the panel " +
                  "while optionally preserving the original 4∶3 aspect ratio (A key or View → Aspect Lock)."));
         var sp = ShortcutTable();
         Row(sp, "Click",            "Send a tap to the Kronos touchscreen at that position.");
         Row(sp, "Click and drag",   "Send a swipe gesture. Drag must exceed 8 Kronos screen pixels before the touch-down is sent.");
         Row(sp, "Mouse scroll",     "Turn the data wheel  (works from anywhere in the window, not just the screen panel).");
-        Row(sp, "Right Click",      "Access the menu for quick actions. ");
+        Row(sp, "Right Click",      "Access the context menu for quick actions.");
         Add(sp);
 
         // ── Control Surface ───────────────────────────────────────────────────
-        Add(SectionHead("Control Surface  (right side)"));
+        Add(SectionHead("Control Surface  (right panel)"));
         Add(Body("The right panel mirrors the physical Kronos front panel. Clicking any button sends the " +
                  "corresponding hardware button press to the Kronos."));
         var cs = ShortcutTable(160);
@@ -228,16 +239,15 @@ public partial class HelpWindow : Window
         // ── Layout Presets ────────────────────────────────────────────────────
         Add(SectionHead("Layout Presets  (View → Layout Preset)"));
         var lp = ShortcutTable(100);
-        Row(lp, "Full",     "Screen and control surface side by side (default).");
+        Row(lp, "Full",     "Value slider, screen panel, and control surface side by side (default).");
         Row(lp, "Focused",  "Screen fills the window. A narrow › rail on the right edge can be clicked\n" +
-                            "to temporarily overlay the control surface.");
-        Row(lp, "Detached", "Screen panel only. The control surface opens as a separate floating window.");
+                            "to temporarily overlay the control surface. The value slider is hidden.");
         Add(lp);
 
         // ── Window Size ───────────────────────────────────────────────────────
         Add(SectionHead("Window Size  (View → Window Size  or  Ctrl+1–5)"));
-        Add(Body("Scales the entire window to 75%, 100%, 125%, 150%, or 200% " +
-                 "The screen panel and control surface scale together. Fullscreen overrides this setting."));
+        Add(Body("Scales the entire window to 75%, 100%, 125%, 150%, or 200%. " +
+                 "The value slider, screen panel, and control surface all scale together. Fullscreen overrides this setting."));
         Add(Note("View → Always on Top keeps the window in front of all other applications."));
 
         // ── Fullscreen ────────────────────────────────────────────────────────
@@ -282,6 +292,14 @@ public partial class HelpWindow : Window
         Add(Note("Grid size (3×3, 4×4, 5×5) can be changed in Tools → Calibration Grid Size. " +
                  "Changing the grid size clears existing calibration data."));
 
+        // ── Test Mode ─────────────────────────────────────────────────────────
+        Add(SectionHead("Test Mode  (Tools → Enter Kronos Test Mode)"));
+        Add(Body("Sends the Kronos into its built-in hardware test mode. A confirmation dialog warns\n" +
+                 "before proceeding — all unsaved changes on the Kronos will be lost, and the Kronos\n" +
+                 "must be restarted after testing is complete."));
+        Add(Note("Only use this if you understand the risk. This feature is intended for diagnostics\n" +
+                 "and hardware verification."));
+
         // ── VGA Mirror ────────────────────────────────────────────────────────
         Add(SectionHead($"VGA Mirror  ({K("Mirror", "M")}  or  Settings → Settings…)"));
         Add(Body("Toggles VGA output mirroring on the Kronos. When enabled, the Kronos display is duplicated " +
@@ -295,7 +313,7 @@ public partial class HelpWindow : Window
         Add(Note("Bank select shortcuts are unassigned by default. Bind them in Settings → Settings… → Keybindings."));
 
         // ── File Manager ──────────────────────────────────────────────────────
-        Add(SectionHead("File Manager  (Tools → File Manager)"));
+        Add(SectionHead("File Manager  (Connection → File Manager)"));
         Add(Body("A dual-pane file browser for transferring files between your PC and the Kronos over FTP.\n" +
                  "Uses the same credentials as the screen stream."));
         var fm = ShortcutTable(200);

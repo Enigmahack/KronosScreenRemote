@@ -82,6 +82,19 @@ public partial class MainWindow
 
     void OnClosing(object? s, System.ComponentModel.CancelEventArgs e)
     {
+        if (_settings.PromptBeforeQuitting)
+        {
+            string msg = _connState == ConnState.Connected
+                ? "Disconnect from Kronos and quit?"
+                : "Quit Kronos ScreenRemote?";
+            if (MessageBox.Show(msg, "Quit", MessageBoxButton.YesNo, MessageBoxImage.Question)
+                != MessageBoxResult.Yes)
+            {
+                e.Cancel = true;
+                return;
+            }
+        }
+
         AppLog.Info("[shutdown] main window closing");
         if (_calDirty)
         {

@@ -66,11 +66,11 @@ public partial class SettingsWindow : Window
             Keybinds             = new Dictionary<string, Keybind>(settings.Keybinds),
             ZoomDefaultLevel     = settings.ZoomDefaultLevel,
             ZoomWindowSize       = settings.ZoomWindowSize,
-            // Pass-through fields not exposed in the settings UI — must be preserved
-            // exactly, or they are silently reset to defaults when the dialog closes.
             FtpUsername     = settings.FtpUsername,
             FtpPassword     = settings.FtpPassword,
             FtpPort         = settings.FtpPort,
+            // Pass-through fields not exposed in the settings UI — must be preserved
+            // exactly, or they are silently reset to defaults when the dialog closes.
             VuDeviceId      = settings.VuDeviceId,
             WindowLeft      = settings.WindowLeft,
             WindowTop       = settings.WindowTop,
@@ -85,6 +85,9 @@ public partial class SettingsWindow : Window
         TxtHost.Text       = Result.KronosHost;
         TxtStreamPort.Text = Result.StreamPort.ToString();
         TxtCtrlPort.Text   = Result.CtrlPort.ToString();
+        TxtFtpUser.Text    = Result.FtpUsername;
+        TxtFtpPass.Password = Result.FtpPassword;
+        TxtFtpPort.Text    = Result.FtpPort.ToString();
 
         // Streaming
         RbChange.IsChecked = !Result.PullMode;
@@ -236,6 +239,10 @@ public partial class SettingsWindow : Window
             Result.StreamPort = sp;
         if (int.TryParse(TxtCtrlPort.Text, out int cp) && cp is > 0 and <= 65535)
             Result.CtrlPort = cp;
+        Result.FtpUsername = TxtFtpUser.Text.Trim();
+        Result.FtpPassword = TxtFtpPass.Password;
+        if (int.TryParse(TxtFtpPort.Text, out int fp) && fp is > 0 and <= 65535)
+            Result.FtpPort = fp;
 
         // Streaming
         Result.PullMode = RbPull.IsChecked == true;
@@ -557,6 +564,14 @@ public partial class SettingsWindow : Window
         _rawEditListening    = false;
         _rawEditOriginal     = null;
         RawEditor.Visibility = Visibility.Collapsed;
+    }
+
+    // ── FTP credentials ─────────────────────────────────────────────────────
+
+    void OnClearFtpCredentials(object s, RoutedEventArgs e)
+    {
+        TxtFtpUser.Text     = "";
+        TxtFtpPass.Password = "";
     }
 
     // ── Screenshot directory ──────────────────────────────────────────────────

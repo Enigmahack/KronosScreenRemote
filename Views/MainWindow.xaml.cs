@@ -72,6 +72,12 @@ public partial class MainWindow : Window
     const int WheelAnimIdleMs     = 400;
     static readonly double[] WheelAngles = { 0.0, 10.0, -10.0 };
 
+    // ── Value slider state ────────────────────────────────────────────────────
+    bool   _vsliderDragActive = false;
+    int    _vsliderValue      = 0;
+    const double VSliderTravel    = 228.0;
+    const double VSliderThumbHalf = 21.0;
+
     // ── Drag / touch state ────────────────────────────────────────────────────
     const int DragStartThresh = 8;
     const int DragMoveThresh  = 3;
@@ -254,6 +260,7 @@ public partial class MainWindow : Window
 
         WireButtons();
         InitWheelDrag();
+        InitValueSlider();
 
         _combiProgramFlashTimer.Interval = TimeSpan.FromMilliseconds(420);
         _combiProgramFlashTimer.Tick += (sender, e) =>
@@ -318,6 +325,10 @@ public partial class MainWindow : Window
         // Exit / Enter
         BTN_Exit.Click  += (sender, e) => Ctrl("BUTTON EXIT");
         BTN_Enter.Click += (sender, e) => Ctrl("BUTTON ENTER");
+
+        // Value Inc / Dec
+        BTN_Inc.Click += (sender, e) => Ctrl("BUTTON INC");
+        BTN_Dec.Click += (sender, e) => Ctrl("BUTTON DEC");
 
         // Right-click context menus on mode and toggle buttons
         foreach (var btn in new KronosButton[] { BTN_Setlist, BTN_Combi, BTN_Program, BTN_Sequence,
@@ -417,6 +428,50 @@ public partial class MainWindow : Window
         WheelRotate.Angle = angle;
     }
 
+    void InitValueSlider()
+    {
+        ValueSliderCanvas.MouseDown        += OnVSliderMouseDown;
+        ValueSliderCanvas.MouseMove        += OnVSliderMouseMove;
+        ValueSliderCanvas.MouseUp          += OnVSliderMouseUp;
+        ValueSliderCanvas.LostMouseCapture += (_, _) => _vsliderDragActive = false;
+    }
+
+    void OnVSliderMouseDown(object s, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return;
+        _vsliderDragActive = true;
+        ValueSliderCanvas.CaptureMouse();
+        UpdateVSliderFromMouse(e.GetPosition(ValueSliderCanvas).Y);
+        e.Handled = true;
+    }
+
+    void OnVSliderMouseMove(object s, MouseEventArgs e)
+    {
+        if (!_vsliderDragActive) return;
+        UpdateVSliderFromMouse(e.GetPosition(ValueSliderCanvas).Y);
+        e.Handled = true;
+    }
+
+    void OnVSliderMouseUp(object s, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Left) return;
+        _vsliderDragActive = false;
+        ValueSliderCanvas.ReleaseMouseCapture();
+        e.Handled = true;
+    }
+
+    void UpdateVSliderFromMouse(double mouseY)
+    {
+        double thumbTop = Math.Clamp(mouseY - VSliderThumbHalf, 0, VSliderTravel);
+        System.Windows.Controls.Canvas.SetTop(ValueSliderThumb, thumbTop);
+        int newVal = (int)Math.Round(127.0 * (VSliderTravel - thumbTop) / VSliderTravel);
+        if (newVal != _vsliderValue)
+        {
+            _vsliderValue = newVal;
+            Ctrl($"VSLIDER {_vsliderValue}");
+        }
+    }
+
     void WireMenu()
     {
         MENU_Connection.SubmenuOpened += (sender, e) =>
@@ -509,15 +564,6 @@ public partial class MainWindow : Window
         MNU_SettingsDlg.Click += (sender, e) => OpenSettingsDialog();
 
         MNU_FileManager.Click    += (_, _) => OpenFileManagerWindow();
-        MNU_FtpCredentials.Click      += (_, _) => ShowFtpCredentialsDialog();
-        MNU_ClearFtpCredentials.Click += (_, _) =>
-        {
-            _settings.FtpUsername = "";
-            _settings.FtpPassword = "";
-            _ftpAuthenticated = false;
-            Storage.SaveSettings(_settings);
-            SetNotification("FTP credentials cleared.", isError: false);
-        };
 
         MNU_ShowHelp.Click       += (sender, e) => OpenHelpWindow();
         MNU_CommandPalette.Click += (sender, e) => OpenCommandPalette();
@@ -588,6 +634,22 @@ public partial class MainWindow : Window
         MNU_CalGrid3.Click += (sender, e) => SetCalGridSize(3);
         MNU_CalGrid4.Click += (sender, e) => SetCalGridSize(4);
         MNU_CalGrid5.Click += (sender, e) => SetCalGridSize(5);
+
+        MNU_TestMode.Click += async (sender, e) =>
+        {
+            var result = MessageBox.Show(
+                "This will place you into the Kronos Test Mode. All unsaved changes will be lost, " +
+                "and your Kronos will need to be restarted after complete. Also, this is potentially " +
+                "a dangerous operation and should only be performed if you are aware of the risk.\n\n" +
+                "Do you wish to continue?",
+                "Kronos Test Mode",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+            if (result != MessageBoxResult.Yes) return;
+            Ctrl("BUTTON PROGRAM");
+            await Task.Delay(500);
+            Ctrl("CHORD 500 MIX_KNOBS RESET ENTER NUM5");
+        };
 
         // Screenshot and frame operations
         MNU_Screenshot.Click            += (sender, e) => SaveScreenshot();
@@ -1159,9 +1221,10 @@ public partial class MainWindow : Window
                 _focusedExpanded          = false;
                 ControlRail.Visibility    = Visibility.Collapsed;
                 ControlViewbox.Visibility = Visibility.Visible;
-                RootGrid.ColumnDefinitions[2].Width = _hideControls
-                    ? new GridLength(0)
+                ControlsColumn.Width = _hideControls
+                    ? new GridLength(0, GridUnitType.Star)
                     : new GridLength(800, GridUnitType.Star);
+                ShowLeftPanel(!_hideControls);
                 break;
 
             case LayoutPreset.Focused:
@@ -1170,7 +1233,8 @@ public partial class MainWindow : Window
                 ((TextBlock)BtnRailExpand.Content).Text = "›";
                 BtnRailExpand.ToolTip     = "Expand controls";
                 ControlViewbox.Visibility = Visibility.Collapsed;
-                RootGrid.ColumnDefinitions[2].Width = new GridLength(28);
+                ControlsColumn.Width = new GridLength(28);
+                ShowLeftPanel(false);
                 break;
 
         }
@@ -1189,9 +1253,10 @@ public partial class MainWindow : Window
         ControlViewbox.Visibility = _focusedExpanded ? Visibility.Visible : Visibility.Collapsed;
         ((TextBlock)BtnRailExpand.Content).Text = _focusedExpanded ? "‹" : "›";
         BtnRailExpand.ToolTip = _focusedExpanded ? "Collapse controls" : "Expand controls";
-        RootGrid.ColumnDefinitions[2].Width = _focusedExpanded
+        ControlsColumn.Width = _focusedExpanded
             ? new GridLength(800, GridUnitType.Star)
             : new GridLength(28);
+        ShowLeftPanel(_focusedExpanded);
         ResizeAndRefresh();
     }
 
@@ -1246,9 +1311,9 @@ public partial class MainWindow : Window
         double menuH   = dp.ActualHeight - RootGrid.ActualHeight;
         double targetW = _layoutPreset switch
         {
-            LayoutPreset.Focused  => _focusedExpanded ? 1600.0 : 828.0,
+            LayoutPreset.Focused  => _focusedExpanded ? 1882.0 : 828.0,
             LayoutPreset.Detached => 800.0,
-            _                     => _hideControls ? 800.0 : 1600.0
+            _                     => _hideControls ? 800.0 : 1882.0
         };
         Width  = targetW * scale + chromeW;
         Height = 600.0   * scale + menuH + chromeH;
@@ -1263,14 +1328,29 @@ public partial class MainWindow : Window
         Dispatcher.InvokeAsync(RefreshFrameRect, DispatcherPriority.Loaded);
     }
 
+    void ShowLeftPanel(bool show)
+    {
+        if (show)
+        {
+            LeftPanelColumn.Width    = new GridLength(282, GridUnitType.Star);
+            LeftPanelColumn.MaxWidth = double.PositiveInfinity;
+        }
+        else
+        {
+            LeftPanelColumn.Width    = new GridLength(0);
+            LeftPanelColumn.MaxWidth = 0;
+        }
+        LeftPanelViewbox.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     void ApplyHideControls()
     {
-        // HideControls only affects column width in Full preset; other presets own the column.
         if (_layoutPreset == LayoutPreset.Full)
         {
-            RootGrid.ColumnDefinitions[2].Width = _hideControls
-                ? new System.Windows.GridLength(0)
-                : new System.Windows.GridLength(800, System.Windows.GridUnitType.Star);
+            ControlsColumn.Width = _hideControls
+                ? new GridLength(0, GridUnitType.Star)
+                : new GridLength(800, GridUnitType.Star);
+            ShowLeftPanel(!_hideControls);
         }
         ResizeAndRefresh();
     }
@@ -1284,18 +1364,7 @@ public partial class MainWindow : Window
         MNU_HideControls.IsChecked = _hideControls;
     }
 
-    void TryQuit()
-    {
-        if (_settings.PromptBeforeQuitting)
-        {
-            string msg = _connState == ConnState.Connected
-                ? "Disconnect from Kronos and quit?"
-                : "Quit Kronos ScreenRemote?";
-            var res = MessageBox.Show(msg, "Quit", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (res != MessageBoxResult.Yes) return;
-        }
-        Close();
-    }
+    void TryQuit() => Close();
 
     // ── System tray ───────────────────────────────────────────────────────────
 
