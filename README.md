@@ -15,32 +15,24 @@ A Windows desktop application for remotely viewing and controlling a **Korg Kron
 ## Features
 
 - **Live Screen Streaming** — 800×600 8-bit indexed color at up to 15 FPS via TCP; supports full-frame (pull) and change-only modes for bandwidth efficiency
-<img width="1202" height="504" alt="image" src="https://github.com/user-attachments/assets/255cdc73-ed24-4f39-a707-297bca95fdd5" />
-
 - **Value Slider** — Left-panel INC/DEC buttons and draggable 0–127 value slider mirroring the Kronos front-panel VALUE control; double-click to snap to center (64)
 - **Remote Control** — Virtual button panel (mode keys, number pad, data wheel, bank selects) with drag, scroll, and keyboard-shortcut support
-<img width="1202" height="504" alt="image" src="https://github.com/user-attachments/assets/2c867bcd-60e4-423c-86d5-fe062720e055" />
-
-- **Touch Calibration** — 3x3 - 5x5 warp mesh with bilinear interpolation for accurate touch-to-screen mapping
-<img width="1202" height="504" alt="image" src="https://github.com/user-attachments/assets/103f3f42-e299-420c-b968-6a1d47f543e8" />
-
 - **Mode Detection** — Reference-image OCR to identify the active Kronos operating mode automatically
 - **Audio VU Meter** — WASAPI real-time level monitoring (L/R peak + RMS) with device selection
-<img width="1202" height="504" alt="image" src="https://github.com/user-attachments/assets/659cabac-e044-4663-9431-724142d6ef14" />
+<img width="1414" height="508" alt="2026-06-19 17_44_49-Kronos ValueSlider — 192 168 100 15" src="https://github.com/user-attachments/assets/fa7ad681-8056-489f-99e8-32f90af12e98" />
+
+- **Touch Calibration** — 3x3 - 5x5 warp mesh with bilinear interpolation for accurate touch-to-screen mapping
+<img width="1414" height="508" alt="2026-06-19 17_39_29-Kronos ScreenRemote — 192 168 100 15" src="https://github.com/user-attachments/assets/ebe0858e-67c6-4a45-a5fa-85590d2bbdba" />
 
 - **FTP File Manager** — Browse, upload, and download files on the Kronos SD card with conflict resolution
-<img width="1203" height="505" alt="image" src="https://github.com/user-attachments/assets/86ef3f27-5bc0-4741-b285-72347d6a063e" />
-
-- **Command Palette** — Searchable keyboard-driven command interface (Ctrl+K)
-<img width="1203" height="505" alt="image" src="https://github.com/user-attachments/assets/8a416c12-6568-46d2-aa94-d4178634830f" />
+<img width="1414" height="508" alt="2026-06-19 17_40_35-File Manager — Kronos" src="https://github.com/user-attachments/assets/82fc2864-1e3e-4553-a1de-4708fd746a75" />
 
 - **Test Mode** — Enter the Kronos built-in hardware test mode for diagnostics (Tools menu)
 - **Zoom & Layout Presets** — Configurable window sizes (75–200%), fullscreen, always-on-top; data input (right) and value input (left) panels can be independently hidden in Full mode or expanded/collapsed via dedicated rails in Focused mode, with panel state remembered across sessions
-<img width="1203" height="505" alt="image" src="https://github.com/user-attachments/assets/58331f2a-2183-4721-aa0f-d89767f6b6bf" />
+<img width="904" height="508" alt="2026-06-19 17_45_52-_VariousViews" src="https://github.com/user-attachments/assets/92c41123-f285-46db-a83f-30e131370ec3" />
 
 - **Hardware Stats Monitoring** — Monitor hard drive space, CPU core usage, Fan speed, CPU temperatures, and more.
-<img width="1202" height="504" alt="image" src="https://github.com/user-attachments/assets/1bc59ac4-2149-4535-8d2f-ee75af76dcee" />
-
+<img width="1414" height="508" alt="2026-06-19 17_47_52-Kronos ScreenRemote Keyboard Info — 192 168 100 15" src="https://github.com/user-attachments/assets/13a83afc-056a-4189-87b5-ea05dd181d3a" />
 
 ---
 
