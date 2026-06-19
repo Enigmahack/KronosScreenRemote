@@ -856,6 +856,8 @@ public partial class MainWindow : Window
 
     void OpenSettingsDialog(SettingsTab tab = SettingsTab.General)
     {
+        var priorState = WindowState;
+
         var dlg = new SettingsWindow(_settings, m => _ = RunUserMacroAsync(m),
             showInputTester: () => new InputTesterWindow(_ctrl) { Owner = this }.Show(),
             initialTab: tab)
@@ -863,13 +865,16 @@ public partial class MainWindow : Window
         bool ok = dlg.ShowDialog() == true;
 
         // WPF/OS can reset the owner's WindowState from Maximized to Normal while a modal
-        // dialog is open over a WindowStyle.None fullscreen window. Re-apply if needed so
-        // closing settings never silently drops fullscreen — regardless of OK or Cancel.
+        // dialog is open. Re-apply so closing settings never silently drops the window state.
         if (_isFullscreen && WindowState != WindowState.Maximized)
         {
             WindowState = WindowState.Normal;
             WindowState = WindowState.Maximized;
             Dispatcher.InvokeAsync(RefreshFrameRect, DispatcherPriority.Loaded);
+        }
+        else if (!_isFullscreen && priorState == WindowState.Maximized && WindowState != WindowState.Maximized)
+        {
+            WindowState = WindowState.Maximized;
         }
 
         if (!ok) return;

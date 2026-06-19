@@ -1324,7 +1324,6 @@ public partial class FileManagerWindow : Window
     {
         _suppressDriveChange = true;
         LocalDriveCombo.Items.Clear();
-        DriveItem? cDrive = null;
         foreach (var drive in DriveInfo.GetDrives())
         {
             string prefix = drive.DriveType switch
@@ -1340,16 +1339,9 @@ public partial class FileManagerWindow : Window
             string display = string.IsNullOrWhiteSpace(label)
                 ? $"{prefix}{name}"
                 : $"{prefix}{name}  {label}";
-            var item = new DriveItem(drive.Name, display);
-            LocalDriveCombo.Items.Add(item);
-            if (drive.Name.StartsWith("C", StringComparison.OrdinalIgnoreCase))
-                cDrive = item;
+            LocalDriveCombo.Items.Add(new DriveItem(drive.Name, display));
         }
-        // Prefer C:\ as default; fall back to the drive matching the current path
-        if (cDrive != null && LocalDriveCombo.SelectedItem == null)
-            LocalDriveCombo.SelectedItem = cDrive;
-        else
-            SyncDriveComboCore();
+        SyncDriveComboCore();
         _suppressDriveChange = false;
     }
 
@@ -1371,7 +1363,13 @@ public partial class FileManagerWindow : Window
         }
     }
 
-    void OnLocalDriveDropDownOpened(object s, EventArgs e) => PopulateLocalDrives();
+    void OnLocalDriveDropDownOpened(object s, EventArgs e)
+    {
+        PopulateLocalDrives();
+        _suppressDriveChange = true;
+        LocalDriveCombo.SelectedIndex = -1;
+        _suppressDriveChange = false;
+    }
 
     void OnLocalDriveChanged(object s, SelectionChangedEventArgs e)
     {
