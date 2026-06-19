@@ -12,13 +12,19 @@ public class AppSettings
     public int  MaxFps   { get; set; } = 15;
 
     public bool   PromptBeforeQuitting { get; set; } = true;
-    public bool   HideControls         { get; set; } = false;
+    public bool   HideDataInput        { get; set; } = false;
+    public bool   HideValueInput       { get; set; } = false;
     public string ScreenshotDirectory  { get; set; } = "";
 
     public bool VgaMirrorEnabled   { get; set; } = false;
     public int  ScreensaverTimeout { get; set; } = 300;
 
     public LayoutPreset LayoutPreset { get; set; } = LayoutPreset.Full;
+    public bool FocusedDataExpanded  { get; set; } = false;
+    public bool FocusedValueExpanded { get; set; } = false;
+
+    public int  BootScreenThreshold { get; set; } = 60;
+    public bool DisableBootScreen   { get; set; } = false;
 
     public bool DebugLogging { get; set; } = false;
 
@@ -56,7 +62,8 @@ public class AppSettings
         ("Mirror",        "Toggle VGA Mirror",       Key.M),
         ("Help",          "Toggle Help",             Key.F1),
         ("Calibrate",     "Toggle Calibration Mode", Key.C),
-        ("HideControls",  "Hide/Show Controls",      Key.None),
+        ("HideDataInput",  "Hide/Show Data Input",    Key.None),
+        ("HideValueInput", "Hide/Show Value Input",   Key.None),
         // Mode select
         ("Mode Setlist",  "Mode: Setlist",           Key.F2),
         ("Mode Combi",    "Mode: Combi",             Key.F3),

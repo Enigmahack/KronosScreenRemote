@@ -53,8 +53,10 @@ public partial class MainWindow : Window
     bool   _helpOpen     = false;
     bool   _zoomOn       = false;
     double _zoomLevel    = 2.5;
-    bool   _hideControls    = false;
-    bool   _focusedExpanded = false;
+    bool   _hideDataInput       = false;
+    bool   _hideValueInput      = false;
+    bool   _focusedDataExpanded  = false;
+    bool   _focusedValueExpanded = false;
     double _currentScale    = 1.0;
     Rect   _frameRect;           // screen rect of displayed frame
 
@@ -228,7 +230,8 @@ public partial class MainWindow : Window
         NotifyBubble.MouseLeftButtonDown += (_, _) => OnNotifyBubbleClick();
         KbdInfoBtn.MouseLeftButtonDown   += (_, _) => OpenKeyboardInfoWindow();
 
-        _hideControls = _settings.HideControls;
+        _hideDataInput  = _settings.HideDataInput;
+        _hideValueInput = _settings.HideValueInput;
         _overrides    = Storage.LoadOverrides();
         _locked       = Storage.LoadLocks();
         (_calMesh, _calBiasDots) = Storage.LoadCal();
@@ -439,6 +442,13 @@ public partial class MainWindow : Window
     void OnVSliderMouseDown(object s, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left) return;
+        if (e.ClickCount == 2)
+        {
+            double centerY = VSliderTravel * (127 - 64) / 127.0 + VSliderThumbHalf;
+            UpdateVSliderFromMouse(centerY);
+            e.Handled = true;
+            return;
+        }
         _vsliderDragActive = true;
         ValueSliderCanvas.CaptureMouse();
         UpdateVSliderFromMouse(e.GetPosition(ValueSliderCanvas).Y);
@@ -459,6 +469,7 @@ public partial class MainWindow : Window
         ValueSliderCanvas.ReleaseMouseCapture();
         e.Handled = true;
     }
+
 
     void UpdateVSliderFromMouse(double mouseY)
     {
@@ -524,7 +535,8 @@ public partial class MainWindow : Window
         {
             MNU_AspectLock.IsChecked   = _aspectLock;
             MNU_Zoom.IsChecked         = _zoomOn;
-            MNU_HideControls.IsChecked = _hideControls;
+            MNU_HideDataInput.IsChecked  = _hideDataInput;
+            MNU_HideValueInput.IsChecked = _hideValueInput;
             MNU_AlwaysOnTop.IsChecked  = _settings.AlwaysOnTop;
         };
         MNU_AlwaysOnTop.Click += (sender, e) =>
@@ -536,7 +548,8 @@ public partial class MainWindow : Window
         MNU_AspectLock.Click   += (sender, e) => { _aspectLock = MNU_AspectLock.IsChecked; RefreshFrameRect(); };
         MNU_Zoom.Click         += (sender, e) => { _zoomOn = MNU_Zoom.IsChecked; OverlayLayer.InvalidateVisual(); };
         MNU_Fullscreen.Click   += (sender, e) => ToggleFullscreen();
-        MNU_HideControls.Click += (sender, e) => ToggleHideControls();
+        MNU_HideDataInput.Click  += (sender, e) => ToggleHideDataInput();
+        MNU_HideValueInput.Click += (sender, e) => ToggleHideValueInput();
 
         MENU_WinSize.SubmenuOpened += (sender, e) =>
         {
@@ -574,7 +587,8 @@ public partial class MainWindow : Window
         {
             MNU_PresetFull.IsChecked    = _layoutPreset == LayoutPreset.Full;
             MNU_PresetFocused.IsChecked = _layoutPreset == LayoutPreset.Focused;
-            MNU_HideControls.IsEnabled  = _layoutPreset == LayoutPreset.Full;
+            MNU_HideDataInput.IsEnabled  = _layoutPreset == LayoutPreset.Full;
+            MNU_HideValueInput.IsEnabled = _layoutPreset == LayoutPreset.Full;
         };
         MNU_PresetFull.Click    += (sender, e) => ApplyLayoutPreset(LayoutPreset.Full);
         MNU_PresetFocused.Click += (sender, e) => ApplyLayoutPreset(LayoutPreset.Focused);
@@ -725,7 +739,8 @@ public partial class MainWindow : Window
         CTX_OpenLogFile.Click       += (sender, e) => OnNotifyBubbleClick();
         CTX_ClearNotification.Click += (sender, e) => ClearNotification();
 
-        MNU_HideControls.IsChecked = _hideControls;
+        MNU_HideDataInput.IsChecked  = _hideDataInput;
+        MNU_HideValueInput.IsChecked = _hideValueInput;
     }
 
     string EffectiveScreenshotDir
@@ -871,11 +886,31 @@ public partial class MainWindow : Window
         _ctrlPort = _settings.CtrlPort;
         _pullMode = _settings.PullMode;
         _fps      = _settings.MaxFps;
-        _hideControls = _settings.HideControls;
+        _hideDataInput  = _settings.HideDataInput;
+        _hideValueInput = _settings.HideValueInput;
         _ctrl = new CtrlClientAdapter(_host, _ctrlPort);
         Storage.SaveSettings(_settings);
-        ApplyHideControls();
-        MNU_HideControls.IsChecked = _hideControls;
+
+        if (_rawFrame != null && _lut != null)
+        {
+            bool meetsThreshold = IsFrameMostlyBlack(_rawFrame, _lut, _settings.BootScreenThreshold / 100.0);
+            if (_bootPhase && !meetsThreshold)
+            {
+                _bootPhase      = false;
+                _detectedModeEver = true;
+            }
+            else if (!_bootPhase && meetsThreshold && !_detectedModeEver && _connState == ConnState.Connected)
+            {
+                _bootPhase         = true;
+                _bootPhaseStart    = DateTime.Now;
+                _preloadTimerStart = DateTime.Now;
+                BuildPreloadSchedule();
+            }
+            Ctrl("REFRESH");
+        }
+        ApplyHideInputPanels();
+        MNU_HideDataInput.IsChecked  = _hideDataInput;
+        MNU_HideValueInput.IsChecked = _hideValueInput;
 
         if (dlg.WasReset)
         {
@@ -1150,7 +1185,8 @@ public partial class MainWindow : Window
             new("Window Size: Large (125%)",        "Ctrl+3",           () => SetWindowSize(1.25)),
             new("Window Size: Extra Large (150%)",  "Ctrl+4",           () => SetWindowSize(1.50)),
             new("Window Size: Huge (200%)",         "Ctrl+5",           () => SetWindowSize(2.00)),
-            new("Hide/Show Controls",               K("HideControls"),  () => ToggleHideControls()),
+            new("Hide/Show Data Input",              K("HideDataInput"),  () => ToggleHideDataInput()),
+            new("Hide/Show Value Input",             K("HideValueInput"), () => ToggleHideValueInput()),
             new("Layout: Full",    "", () => ApplyLayoutPreset(LayoutPreset.Full)),
             new("Layout: Focused", "", () => ApplyLayoutPreset(LayoutPreset.Focused)),
             // ── Tools
@@ -1218,45 +1254,67 @@ public partial class MainWindow : Window
         switch (preset)
         {
             case LayoutPreset.Full:
-                _focusedExpanded          = false;
+                _focusedDataExpanded  = false;
+                _focusedValueExpanded = false;
                 ControlRail.Visibility    = Visibility.Collapsed;
+                ValueRail.Visibility      = Visibility.Collapsed;
                 ControlViewbox.Visibility = Visibility.Visible;
-                ControlsColumn.Width = _hideControls
+                ControlsColumn.Width = _hideDataInput
                     ? new GridLength(0, GridUnitType.Star)
                     : new GridLength(800, GridUnitType.Star);
-                ShowLeftPanel(!_hideControls);
+                ShowLeftPanel(!_hideValueInput);
                 break;
 
             case LayoutPreset.Focused:
-                _focusedExpanded          = false;
+                _focusedDataExpanded  = _settings.FocusedDataExpanded;
+                _focusedValueExpanded = _settings.FocusedValueExpanded;
                 ControlRail.Visibility    = Visibility.Visible;
-                ((TextBlock)BtnRailExpand.Content).Text = "›";
-                BtnRailExpand.ToolTip     = "Expand controls";
-                ControlViewbox.Visibility = Visibility.Collapsed;
-                ControlsColumn.Width = new GridLength(28);
-                ShowLeftPanel(false);
+                ValueRail.Visibility      = Visibility.Visible;
+                ControlViewbox.Visibility = _focusedDataExpanded ? Visibility.Visible : Visibility.Collapsed;
+                ((TextBlock)BtnRailExpand.Content).Text = _focusedDataExpanded ? "‹" : "›";
+                BtnRailExpand.ToolTip = _focusedDataExpanded ? "Collapse data input" : "Expand data input";
+                ((TextBlock)BtnValueRailExpand.Content).Text = _focusedValueExpanded ? "›" : "‹";
+                BtnValueRailExpand.ToolTip = _focusedValueExpanded ? "Collapse value input" : "Expand value input";
+                ControlsColumn.Width = _focusedDataExpanded
+                    ? new GridLength(800, GridUnitType.Star)
+                    : new GridLength(28);
+                ShowLeftPanel(_focusedValueExpanded, showRail: true);
                 break;
 
         }
 
         ResizeAndRefresh();
 
-        MNU_PresetFull.IsChecked    = preset == LayoutPreset.Full;
-        MNU_PresetFocused.IsChecked = preset == LayoutPreset.Focused;
-        MNU_HideControls.IsEnabled  = preset == LayoutPreset.Full;
+        MNU_PresetFull.IsChecked     = preset == LayoutPreset.Full;
+        MNU_PresetFocused.IsChecked  = preset == LayoutPreset.Focused;
+        MNU_HideDataInput.IsEnabled  = preset == LayoutPreset.Full;
+        MNU_HideValueInput.IsEnabled = preset == LayoutPreset.Full;
     }
 
-    void ToggleFocusedExpand()
+    void ToggleFocusedDataExpand()
     {
         if (_layoutPreset != LayoutPreset.Focused) return;
-        _focusedExpanded = !_focusedExpanded;
-        ControlViewbox.Visibility = _focusedExpanded ? Visibility.Visible : Visibility.Collapsed;
-        ((TextBlock)BtnRailExpand.Content).Text = _focusedExpanded ? "‹" : "›";
-        BtnRailExpand.ToolTip = _focusedExpanded ? "Collapse controls" : "Expand controls";
-        ControlsColumn.Width = _focusedExpanded
+        _focusedDataExpanded = !_focusedDataExpanded;
+        _settings.FocusedDataExpanded = _focusedDataExpanded;
+        Storage.SaveSettings(_settings);
+        ControlViewbox.Visibility = _focusedDataExpanded ? Visibility.Visible : Visibility.Collapsed;
+        ((TextBlock)BtnRailExpand.Content).Text = _focusedDataExpanded ? "‹" : "›";
+        BtnRailExpand.ToolTip = _focusedDataExpanded ? "Collapse data input" : "Expand data input";
+        ControlsColumn.Width = _focusedDataExpanded
             ? new GridLength(800, GridUnitType.Star)
             : new GridLength(28);
-        ShowLeftPanel(_focusedExpanded);
+        ResizeAndRefresh();
+    }
+
+    void ToggleFocusedValueExpand()
+    {
+        if (_layoutPreset != LayoutPreset.Focused) return;
+        _focusedValueExpanded = !_focusedValueExpanded;
+        _settings.FocusedValueExpanded = _focusedValueExpanded;
+        Storage.SaveSettings(_settings);
+        ((TextBlock)BtnValueRailExpand.Content).Text = _focusedValueExpanded ? "›" : "‹";
+        BtnValueRailExpand.ToolTip = _focusedValueExpanded ? "Collapse value input" : "Expand value input";
+        ShowLeftPanel(_focusedValueExpanded, showRail: true);
         ResizeAndRefresh();
     }
 
@@ -1311,9 +1369,13 @@ public partial class MainWindow : Window
         double menuH   = dp.ActualHeight - RootGrid.ActualHeight;
         double targetW = _layoutPreset switch
         {
-            LayoutPreset.Focused  => _focusedExpanded ? 1882.0 : 828.0,
+            LayoutPreset.Focused  => 800.0
+                                     + (_focusedValueExpanded ? 282.0 : 28.0)
+                                     + (_focusedDataExpanded  ? 800.0 : 28.0),
             LayoutPreset.Detached => 800.0,
-            _                     => _hideControls ? 800.0 : 1882.0
+            _                     => 800.0
+                                     + (_hideValueInput ? 0.0 : 282.0)
+                                     + (_hideDataInput  ? 0.0 : 800.0)
         };
         Width  = targetW * scale + chromeW;
         Height = 600.0   * scale + menuH + chromeH;
@@ -1322,18 +1384,29 @@ public partial class MainWindow : Window
     void ResizeAndRefresh()
     {
         if (!IsLoaded) return;
+        SyncMainAreaColumn();
         SetWindowSize(_currentScale);
         // In fullscreen, SetWindowSize is a no-op (window already maximized),
         // so SizeChanged never fires. Always defer a layout refresh explicitly.
         Dispatcher.InvokeAsync(RefreshFrameRect, DispatcherPriority.Loaded);
     }
 
-    void ShowLeftPanel(bool show)
+    void SyncMainAreaColumn()
+    {
+        MainAreaColumn.Width = new GridLength(800 + ControlsColumn.Width.Value, GridUnitType.Star);
+    }
+
+    void ShowLeftPanel(bool show, bool showRail = false)
     {
         if (show)
         {
             LeftPanelColumn.Width    = new GridLength(282, GridUnitType.Star);
             LeftPanelColumn.MaxWidth = double.PositiveInfinity;
+        }
+        else if (showRail)
+        {
+            LeftPanelColumn.Width    = new GridLength(28);
+            LeftPanelColumn.MaxWidth = 28;
         }
         else
         {
@@ -1343,25 +1416,34 @@ public partial class MainWindow : Window
         LeftPanelViewbox.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
     }
 
-    void ApplyHideControls()
+    void ApplyHideInputPanels()
     {
         if (_layoutPreset == LayoutPreset.Full)
         {
-            ControlsColumn.Width = _hideControls
+            ControlsColumn.Width = _hideDataInput
                 ? new GridLength(0, GridUnitType.Star)
                 : new GridLength(800, GridUnitType.Star);
-            ShowLeftPanel(!_hideControls);
+            ShowLeftPanel(!_hideValueInput);
         }
         ResizeAndRefresh();
     }
 
-    void ToggleHideControls()
+    void ToggleHideDataInput()
     {
-        _hideControls = !_hideControls;
-        _settings.HideControls = _hideControls;
+        _hideDataInput = !_hideDataInput;
+        _settings.HideDataInput = _hideDataInput;
         Storage.SaveSettings(_settings);
-        ApplyHideControls();
-        MNU_HideControls.IsChecked = _hideControls;
+        ApplyHideInputPanels();
+        MNU_HideDataInput.IsChecked = _hideDataInput;
+    }
+
+    void ToggleHideValueInput()
+    {
+        _hideValueInput = !_hideValueInput;
+        _settings.HideValueInput = _hideValueInput;
+        Storage.SaveSettings(_settings);
+        ApplyHideInputPanels();
+        MNU_HideValueInput.IsChecked = _hideValueInput;
     }
 
     void TryQuit() => Close();

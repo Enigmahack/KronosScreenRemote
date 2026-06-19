@@ -205,7 +205,8 @@ public partial class HelpWindow : Window
         Row(ks, K("Fullscreen",    "F"),      "Toggle fullscreen.");
         Row(ks, K("Mirror",        "M"),      "Toggle VGA output mirroring on the Kronos.");
         Row(ks, K("Zoom Window",   "Z"),      "Toggle zoom tool over the screen panel.");
-        Row(ks, K("HideControls",  "—"),      "Hide / show the control surface panel  (Full layout only).");
+        Row(ks, K("HideDataInput",  "—"),     "Hide / show the data input panel  (Full layout only).");
+        Row(ks, K("HideValueInput", "—"),     "Hide / show the value input panel  (Full layout only).");
         Row(ks, K("Quit",          "Q"),      "Quit the application.");
         Row(ks, "+  /  −",                    "Zoom in / zoom out  (enables zoom automatically if off).");
         Row(ks, "Esc",                        "Send EXIT to Kronos  (also dismisses overlays and exits fullscreen).");

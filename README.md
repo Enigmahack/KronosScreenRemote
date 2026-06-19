@@ -17,7 +17,7 @@ A Windows desktop application for remotely viewing and controlling a **Korg Kron
 - **Live Screen Streaming** — 800×600 8-bit indexed color at up to 15 FPS via TCP; supports full-frame (pull) and change-only modes for bandwidth efficiency
 <img width="1202" height="504" alt="image" src="https://github.com/user-attachments/assets/255cdc73-ed24-4f39-a707-297bca95fdd5" />
 
-- **Value Slider** — Left-panel INC/DEC buttons and draggable 0–127 value slider mirroring the Kronos front-panel VALUE control
+- **Value Slider** — Left-panel INC/DEC buttons and draggable 0–127 value slider mirroring the Kronos front-panel VALUE control; double-click to snap to center (64)
 - **Remote Control** — Virtual button panel (mode keys, number pad, data wheel, bank selects) with drag, scroll, and keyboard-shortcut support
 <img width="1202" height="504" alt="image" src="https://github.com/user-attachments/assets/2c867bcd-60e4-423c-86d5-fe062720e055" />
 
@@ -35,7 +35,7 @@ A Windows desktop application for remotely viewing and controlling a **Korg Kron
 <img width="1203" height="505" alt="image" src="https://github.com/user-attachments/assets/8a416c12-6568-46d2-aa94-d4178634830f" />
 
 - **Test Mode** — Enter the Kronos built-in hardware test mode for diagnostics (Tools menu)
-- **Zoom & Layout Presets** — Configurable window sizes (75–200%), fullscreen, always-on-top, and collapsible control rail
+- **Zoom & Layout Presets** — Configurable window sizes (75–200%), fullscreen, always-on-top; data input (right) and value input (left) panels can be independently hidden in Full mode or expanded/collapsed via dedicated rails in Focused mode, with panel state remembered across sessions
 <img width="1203" height="505" alt="image" src="https://github.com/user-attachments/assets/58331f2a-2183-4721-aa0f-d89767f6b6bf" />
 
 - **Hardware Stats Monitoring** — Monitor hard drive space, CPU core usage, Fan speed, CPU temperatures, and more.

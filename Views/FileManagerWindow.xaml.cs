@@ -277,6 +277,10 @@ public partial class FileManagerWindow : Window
 
     void OnClosing(object? s, System.ComponentModel.CancelEventArgs e)
     {
+        // Break the Owner link before closing so WPF doesn't minimize the parent
+        // when this window had focus (known WPF owner-activation bug).
+        Owner = null;
+
         // Hand the client off to a background thread so the UI thread isn't blocked.
         // Send QUIT first so BusyBox ftpd cleanly removes the session — without it the
         // server holds the session open until its own timeout, accumulating ghost sessions.

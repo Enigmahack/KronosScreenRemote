@@ -30,7 +30,8 @@ public partial class MainWindow
         WireMenu();
         InitAudio();
         InitTrayIcon();
-        BtnRailExpand.Click += (_, _) => ToggleFocusedExpand();
+        BtnRailExpand.Click      += (_, _) => ToggleFocusedDataExpand();
+        BtnValueRailExpand.Click += (_, _) => ToggleFocusedValueExpand();
         _layoutPreset = _settings.LayoutPreset == LayoutPreset.Detached
             ? LayoutPreset.Full
             : _settings.LayoutPreset;
@@ -327,8 +328,8 @@ public partial class MainWindow
 
         if (IsAction("Fullscreen", e))   { ToggleFullscreen(); return; }
 
-        // HideControls shortcut (palette editor is disabled so no key conflict)
-        if (IsAction("HideControls", e)) { ToggleHideControls(); return; }
+        if (IsAction("HideDataInput",  e)) { ToggleHideDataInput();  return; }
+        if (IsAction("HideValueInput", e)) { ToggleHideValueInput(); return; }
 
         if (e.Key == Key.Return && !_edOpen)
         {
@@ -535,7 +536,10 @@ public partial class MainWindow
             if (_calDraggingNode.HasValue)
             {
                 var (col, row) = _calDraggingNode.Value;
-                var (nx, ny)   = ScreenToKronosNode(pos);
+                var clamped = new Point(
+                    Math.Clamp(pos.X, 0, RootGrid.ActualWidth),
+                    Math.Clamp(pos.Y, 0, RootGrid.ActualHeight));
+                var (nx, ny)   = ScreenToKronosNode(clamped);
                 _calMesh.SetOffset(col, row,
                     nx - _calMesh.NatX(col, _frameW),
                     ny - _calMesh.NatY(row, _frameH));

@@ -354,7 +354,7 @@ public partial class MainWindow
             _rawFrame = raw;
             ApplyLut();
             _frameIsMostlyBlack      = IsFrameMostlyBlack(raw, _lut);        // 90% — suppresses mode detection
-            _frameIsLikelyBootScreen = IsFrameMostlyBlack(raw, _lut, 0.60);  // 60% — gates splash display
+            _frameIsLikelyBootScreen = IsFrameMostlyBlack(raw, _lut, _settings.BootScreenThreshold / 100.0);
 
             // Top-left 140×55 changed — update mode and help state independently.
             // Rows 0–26 = mode banner; rows 27–55 = help banner; never overlap.

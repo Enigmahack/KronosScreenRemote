@@ -30,7 +30,8 @@
                 <MenuItem x:Name="MNU_Zoom"          Header="_Zoom Window"      IsCheckable="True" InputGestureText="Z"/>
                 <Separator/>
                 <MenuItem x:Name="MNU_Fullscreen"    Header="_Fullscreen"                          InputGestureText="F"/>
-                <MenuItem x:Name="MNU_HideControls"  Header="_Hide Controls"   IsCheckable="True"/>
+                <MenuItem x:Name="MNU_HideDataInput"  Header="Hide _Data Input"   IsCheckable="True"/>
+                <MenuItem x:Name="MNU_HideValueInput" Header="Hide _Value Input"  IsCheckable="True"/>
                 <MenuItem x:Name="MNU_AlwaysOnTop"   Header="Always on _Top"   IsCheckable="True"/>
                 <MenuItem x:Name="MNU_RefreshDisplay" Header="Re_fresh Display"/>
                 <Separator/>
@@ -280,38 +281,62 @@
             </Grid.ColumnDefinitions>
 
             <!-- ── Left value-slider panel (column 0) ─────────────────────── -->
-            <Viewbox x:Name="LeftPanelViewbox" Grid.Column="0" Stretch="Uniform">
-                <Grid Width="282" Height="600" ClipToBounds="True">
-                    <Image Source="/Resources/Images/KronosLeftSide2EMPTY.png"
-                           Stretch="Fill"
-                           RenderOptions.BitmapScalingMode="HighQuality"
-                           SnapsToDevicePixels="False"
-                           IsHitTestVisible="False" Margin="-33,-113,-34,0"/>
-
-                    <local:KronosButton x:Name="BTN_Inc"
-                        Margin="114,72,118,504"
-                        ToolTip="Increment value"
-                        UnlitSource="/Resources/Images/UnlitThinButton.png"
-                        ButtonMode="None"/>
-                    <local:KronosButton x:Name="BTN_Dec"
-                        Margin="114,146,118,430"
-                        ToolTip="Decrement value"
-                        UnlitSource="/Resources/Images/UnlitThinButton.png"
-                        ButtonMode="None"/>
-
-                    <Canvas x:Name="ValueSliderCanvas"
-                            Margin="87,300,87,30"
-                            Background="Transparent"
-                            Cursor="Hand">
-                        <Image x:Name="ValueSliderThumb"
-                               Width="72" Height="42"
-                               Source="/Resources/Images/Slider.png"
+            <Grid Grid.Column="0">
+                <Viewbox x:Name="LeftPanelViewbox" Stretch="Uniform">
+                    <Grid Width="282" Height="600" ClipToBounds="True">
+                        <Image Source="/Resources/Images/KronosLeftSide2EMPTY.png"
+                               Stretch="Fill"
                                RenderOptions.BitmapScalingMode="HighQuality"
-                               Canvas.Left="17" Canvas.Top="228"
-                               IsHitTestVisible="False"/>
-                    </Canvas>
-                </Grid>
-            </Viewbox>
+                               SnapsToDevicePixels="False"
+                               IsHitTestVisible="False" Margin="-33,-113,-34,0"/>
+
+                        <local:KronosButton x:Name="BTN_Inc"
+                            Margin="114,72,118,504"
+                            ToolTip="Increment value"
+                            UnlitSource="/Resources/Images/UnlitThinButton.png"
+                            ButtonMode="None"/>
+                        <local:KronosButton x:Name="BTN_Dec"
+                            Margin="114,146,118,430"
+                            ToolTip="Decrement value"
+                            UnlitSource="/Resources/Images/UnlitThinButton.png"
+                            ButtonMode="None"/>
+
+                        <Canvas x:Name="ValueSliderCanvas"
+                                Margin="87,300,87,30"
+                                Background="Transparent"
+                                Cursor="Hand">
+                            <Image x:Name="ValueSliderThumb"
+                                   Width="72" Height="42"
+                                   Source="/Resources/Images/Slider.png"
+                                   RenderOptions.BitmapScalingMode="HighQuality"
+                                   Canvas.Left="17" Canvas.Top="228"
+                                   IsHitTestVisible="False"/>
+                        </Canvas>
+                    </Grid>
+                </Viewbox>
+
+                <!-- Focused-mode rail: click to expand/collapse value panel -->
+                <Border x:Name="ValueRail"
+                        Width="28"
+                        HorizontalAlignment="Left"
+                        Background="#FF1A1A1A"
+                        BorderThickness="0 0 1 0"
+                        BorderBrush="#FF333333"
+                        Visibility="Collapsed">
+                    <Button x:Name="BtnValueRailExpand"
+                            Background="Transparent"
+                            Foreground="#FF88DD88"
+                            BorderThickness="0"
+                            FontSize="16"
+                            Focusable="False"
+                            VerticalContentAlignment="Center"
+                            HorizontalContentAlignment="Center"
+                            FocusVisualStyle="{x:Null}"
+                            ToolTip="Expand value input">
+                        <TextBlock Text="‹" FontSize="16"/>
+                    </Button>
+                </Border>
+            </Grid>
 
         <Grid x:Name="RootGrid" Grid.Column="1">
             <Grid.ColumnDefinitions>
@@ -538,7 +563,7 @@
                             VerticalContentAlignment="Center"
                             HorizontalContentAlignment="Center"
                             FocusVisualStyle="{x:Null}"
-                            ToolTip="Expand controls">
+                            ToolTip="Expand data input">
                         <TextBlock Text="›" FontSize="16"/>
                     </Button>
                 </Border>

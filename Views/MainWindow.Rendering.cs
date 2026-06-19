@@ -60,7 +60,7 @@ public partial class MainWindow
         // _frameIsLikelyBootScreen (≥60% black) prevents the splash from overlaying real UI content
         // when mode detection fails due to a popup (e.g. Category/Program select) covering the
         // mode indicator, which can happen during reconnect or streaming-mode changes.
-        if (_bootPhase && _frameRect.Width > 0 && _connState == ConnState.Connected && _frameIsLikelyBootScreen)
+        if (_bootPhase && !_settings.DisableBootScreen && _frameRect.Width > 0 && _connState == ConnState.Connected && _frameIsLikelyBootScreen)
         {
             var splash = GetBootSplash();
             if (splash != null)

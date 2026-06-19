@@ -163,8 +163,10 @@
                 <StackPanel Margin="0 4 0 0">
                     <CheckBox x:Name="ChkPromptQuit"   Content="Prompt before quitting"    Margin="0 0 0 10"
                               ToolTip="Shows a confirmation dialog before the app closes."/>
-                    <CheckBox x:Name="ChkHideControls" Content="Hide the controls panel on startup" Margin="0 0 0 18"
-                              ToolTip="Hides the right-hand button panel at launch. Toggle it any time from View → Hide/Show Controls."/>
+                    <CheckBox x:Name="ChkHideDataInput"  Content="Hide data input panel on startup"  Margin="0 0 0 10"
+                              ToolTip="Hides the right-hand button panel at launch. Toggle from View → Hide Data Input."/>
+                    <CheckBox x:Name="ChkHideValueInput" Content="Hide value input panel on startup" Margin="0 0 0 18"
+                              ToolTip="Hides the left-hand slider panel at launch. Toggle from View → Hide Value Input."/>
 
                     <TextBlock Text="Screenshots" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 0 0 8"/>
                     <Grid Margin="0 0 0 4">
@@ -317,6 +319,24 @@
                     </DockPanel>
                     <TextBlock Margin="0 6 0 0" Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
                                Text="Change-driven mode consumes no CPU when the Kronos screen is idle. Pull mode may help if frames are occasionally missed. Streaming changes take effect on the next connect."/>
+
+                    <Border Background="#FF444444" Margin="0 18 0 12" Height="1"/>
+                    <CheckBox x:Name="ChkDisableBootScreen" Content="Disable boot screen graphics" Margin="0 0 0 6"
+                              ToolTip="Suppresses the animated splash overlay shown while the Kronos is booting. The raw boot frames are still displayed — only the decorative overlay is removed."/>
+                    <TextBlock Margin="0 0 0 0" Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
+                               Text="When enabled, the animated boot splash overlay is not drawn. You will still see the raw Kronos boot frames as they stream in."/>
+
+                    <TextBlock Text="Boot screen detection" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 18 0 8"/>
+                    <DockPanel LastChildFill="True">
+                        <TextBlock x:Name="TxtBootThreshLabel" DockPanel.Dock="Right" Width="50"
+                                   VerticalAlignment="Center" TextAlignment="Right"/>
+                        <Slider x:Name="SlBootThresh" Minimum="10" Maximum="95"
+                                TickFrequency="5" IsSnapToTickEnabled="True"
+                                ValueChanged="SlBootThresh_ValueChanged"
+                                ToolTip="Percentage of black pixels required before the boot splash animation is shown. Raise this if the boot screen appears during normal use (e.g. calibration mode)."/>
+                    </DockPanel>
+                    <TextBlock Margin="0 6 0 0" Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
+                               Text="Percentage of the frame that must be black before the boot splash overlay is displayed. Raise this value if the splash appears during normal use (e.g. Kronos calibration mode with a dark screen). Default: 60%."/>
                 </StackPanel>
             </TabItem>
 

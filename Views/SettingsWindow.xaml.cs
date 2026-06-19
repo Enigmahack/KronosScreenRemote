@@ -57,11 +57,14 @@ public partial class SettingsWindow : Window
             PullMode             = settings.PullMode,
             MaxFps               = settings.MaxFps,
             PromptBeforeQuitting = settings.PromptBeforeQuitting,
-            HideControls         = settings.HideControls,
+            HideDataInput        = settings.HideDataInput,
+            HideValueInput       = settings.HideValueInput,
             ScreenshotDirectory  = settings.ScreenshotDirectory,
             VgaMirrorEnabled     = settings.VgaMirrorEnabled,
             ScreensaverTimeout   = settings.ScreensaverTimeout,
             LayoutPreset         = settings.LayoutPreset,
+            BootScreenThreshold  = settings.BootScreenThreshold,
+            DisableBootScreen    = settings.DisableBootScreen,
             DebugLogging         = settings.DebugLogging,
             Keybinds             = new Dictionary<string, Keybind>(settings.Keybinds),
             ZoomDefaultLevel     = settings.ZoomDefaultLevel,
@@ -90,13 +93,16 @@ public partial class SettingsWindow : Window
         TxtFtpPort.Text    = Result.FtpPort.ToString();
 
         // Streaming
-        RbChange.IsChecked = !Result.PullMode;
-        RbPull.IsChecked   = Result.PullMode;
-        SlFps.Value        = Result.MaxFps;
+        RbChange.IsChecked  = !Result.PullMode;
+        RbPull.IsChecked    = Result.PullMode;
+        SlFps.Value         = Result.MaxFps;
+        SlBootThresh.Value  = Result.BootScreenThreshold;
+        ChkDisableBootScreen.IsChecked = Result.DisableBootScreen;
 
         // General
         ChkPromptQuit.IsChecked   = Result.PromptBeforeQuitting;
-        ChkHideControls.IsChecked = Result.HideControls;
+        ChkHideDataInput.IsChecked  = Result.HideDataInput;
+        ChkHideValueInput.IsChecked = Result.HideValueInput;
         TxtScreenshotDir.Text     = Result.ScreenshotDirectory;
 
         // VGA output
@@ -141,6 +147,12 @@ public partial class SettingsWindow : Window
     {
         if (TxtFpsLabel != null)
             TxtFpsLabel.Text = $"{(int)SlFps.Value} fps";
+    }
+
+    void SlBootThresh_ValueChanged(object s, RoutedPropertyChangedEventArgs<double> e)
+    {
+        if (TxtBootThreshLabel != null)
+            TxtBootThreshLabel.Text = $"{(int)SlBootThresh.Value}%";
     }
 
     void SlZoomLevel_ValueChanged(object s, RoutedPropertyChangedEventArgs<double> e)
@@ -245,12 +257,15 @@ public partial class SettingsWindow : Window
             Result.FtpPort = fp;
 
         // Streaming
-        Result.PullMode = RbPull.IsChecked == true;
-        Result.MaxFps   = (int)SlFps.Value;
+        Result.PullMode             = RbPull.IsChecked == true;
+        Result.MaxFps               = (int)SlFps.Value;
+        Result.BootScreenThreshold  = (int)SlBootThresh.Value;
+        Result.DisableBootScreen    = ChkDisableBootScreen.IsChecked == true;
 
         // General
         Result.PromptBeforeQuitting = ChkPromptQuit.IsChecked == true;
-        Result.HideControls         = ChkHideControls.IsChecked == true;
+        Result.HideDataInput         = ChkHideDataInput.IsChecked  == true;
+        Result.HideValueInput        = ChkHideValueInput.IsChecked == true;
         Result.ScreenshotDirectory  = TxtScreenshotDir.Text.Trim();
 
         // VGA output

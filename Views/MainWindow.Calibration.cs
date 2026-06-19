@@ -67,8 +67,8 @@ public partial class MainWindow
     {
         double fx = _frameRect.X, fy = _frameRect.Y,
                fw = _frameRect.Width, fh = _frameRect.Height;
-        int nx = Math.Clamp((int)((screen.X - fx) / fw * _frameW), 0, _frameW - 1);
-        int ny = Math.Clamp((int)((screen.Y - fy) / fh * _frameH), 0, _frameH - 1);
+        int nx = Math.Clamp((int)Math.Round((screen.X - fx) / fw * (_frameW - 1)), 0, _frameW - 1);
+        int ny = Math.Clamp((int)Math.Round((screen.Y - fy) / fh * (_frameH - 1)), 0, _frameH - 1);
         return (nx, ny);
     }
 
@@ -81,8 +81,8 @@ public partial class MainWindow
         _calMesh.InverseApply(nx, ny, _frameW, _frameH);
 
     Point KronosToScreen(int kx, int ky) =>
-        new(_frameRect.X + kx * _frameRect.Width  / _frameW,
-            _frameRect.Y + ky * _frameRect.Height / _frameH);
+        new(_frameRect.X + kx * _frameRect.Width  / (_frameW - 1),
+            _frameRect.Y + ky * _frameRect.Height / (_frameH - 1));
 
     (int col, int row)? FindNearestCalNode(Point screenPos)
     {
