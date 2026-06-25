@@ -17,3 +17,5 @@ codesign.pfx
 
 # Publish output
 publish/
+/Documentation/MIDI implementation
+/Documentation/api.md
