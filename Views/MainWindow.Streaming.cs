@@ -81,7 +81,8 @@ public partial class MainWindow
                                                 PixelFormats.Bgr32, null);
                     FrameImage.Source = _wb;
                 });
-                await Dispatcher.InvokeAsync(RefreshFrameRect, DispatcherPriority.Background);
+                await Dispatcher.InvokeAsync(RefreshFrameRect, DispatcherPriority.Background)
+                    .Task.ConfigureAwait(false);
 
                 // Push saved VGA mirror + screensaver settings to the daemon on every connect
                 _mirrorState = _settings.VgaMirrorEnabled;
@@ -92,6 +93,8 @@ public partial class MainWindow
                 _modePollCts = new CancellationTokenSource();
                 TopLeftOcr.Reset();   // ensure first frame fires an immediate STATE query
                 _ = ModePollLoop(_modePollCts.Token);
+
+                _sysExService.Start(_host, _ctrlPort);
             }
             catch (UnauthorizedAccessException ex)
             {
@@ -205,6 +208,7 @@ public partial class MainWindow
         _modePollCts?.Cancel();
         TopLeftOcr.Reset();
         _ctrl.Reset();
+        _sysExService.Reset();
         SetConnectionStatus(ConnState.Disconnected);
         Dispatcher.InvokeAsync(() =>
         {
@@ -218,30 +222,29 @@ public partial class MainWindow
 
     async Task ModePollLoop(CancellationToken ct)
     {
-        // STATE polling is only useful when no reference PNGs are loaded.
-        // When ModeDetector.HasAny() is true, framebuffer detection handles all
-        // mode updates; letting the STATE response override them causes reversion
-        // to whatever mode the server last saw from a client BUTTON command.
         while (!ct.IsCancellationRequested)
         {
             if (!ModeDetector.HasAny())
             {
-                var resp = await _ctrl.QueryAsync("STATE");
+                var resp = await _ctrl.QueryAsync("STATE").ConfigureAwait(false);
                 if (resp != null && resp.StartsWith("MODE=", StringComparison.Ordinal) &&
                     int.TryParse(resp[5..], out int mode) && mode > 0 &&
                     (DateTime.Now - _lastUserModeChange).TotalSeconds > 1.5)
-                    await Dispatcher.InvokeAsync(() => SetModeButton(mode));
+                    await Dispatcher.InvokeAsync(() => SetModeButton(mode))
+                        .Task.ConfigureAwait(false);
             }
-            try { await Task.Delay(1000, ct); } catch (OperationCanceledException) { break; }
+            try { await Task.Delay(1000, ct).ConfigureAwait(false); }
+            catch (OperationCanceledException) { break; }
         }
     }
 
     async Task QueryModeAsync()
     {
-        var resp = await _ctrl.QueryAsync("STATE");
+        var resp = await _ctrl.QueryAsync("STATE").ConfigureAwait(false);
         if (resp != null && resp.StartsWith("MODE=", StringComparison.Ordinal) &&
             int.TryParse(resp[5..], out int mode))
-            await Dispatcher.InvokeAsync(() => SetModeButton(mode));
+            await Dispatcher.InvokeAsync(() => SetModeButton(mode))
+                .Task.ConfigureAwait(false);
     }
 
     void SetModeButton(int mode)
@@ -285,6 +288,9 @@ public partial class MainWindow
             AppLog.Debug($"[mode] {modeName}");
             ModeText.Text = $"Mode: {modeName}";
             _controlPaletteWin?.SetMode(mode);
+
+            if (mode != _prevMode)
+                _sysExService.RefreshNow();
         }
     }
 
@@ -342,13 +348,17 @@ public partial class MainWindow
         {
             _fpsFrameCount++;
             var now = DateTime.Now;
-            if (_fpsLastCheck == DateTime.MinValue) _fpsLastCheck = now;
+            if (_fpsLastCheck == DateTime.MinValue) 
+            {
+                FpsText.Text = "0.0 fps";
+                _fpsLastCheck = now;
+            }
             else if ((now - _fpsLastCheck).TotalSeconds >= 1.0)
             {
-                _measuredFps   = _fpsFrameCount / (now - _fpsLastCheck).TotalSeconds;
+                _measuredFps = _fpsFrameCount / (now - _fpsLastCheck).TotalSeconds;
                 _fpsFrameCount = 0;
-                _fpsLastCheck  = now;
-                FpsText.Text   = $"{_measuredFps:F1} fps";
+                _fpsLastCheck = now;
+                FpsText.Text = $"{_measuredFps:F1} fps";
             }
 
             _rawFrame = raw;

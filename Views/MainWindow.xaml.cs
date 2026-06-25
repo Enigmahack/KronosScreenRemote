@@ -110,6 +110,15 @@ public partial class MainWindow : Window
     DateTime _pendingModeDeadline = DateTime.MinValue;
     const double PendingModeTimeoutSec = 3.0;
 
+    // ── SysEx service ────────────────────────────────────────────────────────
+    ISysExService _sysExService = null!;
+
+    // ── SysEx status-bar indicators ───────────────────────────────────────────
+    DateTime _sysExRxLastAt = DateTime.MinValue;
+    DateTime _sysExTxLastAt = DateTime.MinValue;
+    readonly DispatcherTimer _sysExDimTimer = new() { Interval = TimeSpan.FromMilliseconds(50) };
+    const double SysExDwellMs = 350;
+
     // ── Mode history (for transition detection) ───────────────────────────────
     int _currentMode = 0;   // last mode applied by SetModeButton
     int _prevMode    = 0;   // mode before the current one; survives across frames
@@ -129,6 +138,7 @@ public partial class MainWindow : Window
     // ── Help window ──────────────────────────────────────────────────────────
     HelpWindow?          _helpWin;
     KeyboardInfoWindow?  _kbdInfoWin;
+    SysExToolWindow?     _sysExToolWin;
 
     // ── Misc ──────────────────────────────────────────────────────────────────
     System.Windows.Forms.NotifyIcon? _trayIcon;
@@ -218,6 +228,11 @@ public partial class MainWindow : Window
         ParseArgs();  // CLI args still win
 
         _ctrl = new CtrlClientAdapter(_host, _ctrlPort);
+        _sysExService = new SysExService(Dispatcher);
+        _sysExService.InitialModeDetected += SetModeButton;
+        _sysExService.SysExTraffic += OnSysExTraffic;
+        PerfStatusBarItem.DataContext = _sysExService;
+        _sysExDimTimer.Tick += (_, _) => UpdateSysExDots();
 
         // Log daemon-side ERR responses and surface them in the notification bubble.
         // Fires on a background thread; SetNotification handles its own dispatch.
@@ -282,6 +297,7 @@ public partial class MainWindow : Window
         _pendingMode         = mode;
         _pendingModeDeadline = DateTime.Now.AddSeconds(PendingModeTimeoutSec);
         _lastUserModeChange  = DateTime.Now;
+        _sysExService.NotifyUserActivity();
     }
 
     void SendMode(int mode)
@@ -602,6 +618,7 @@ public partial class MainWindow : Window
             OverlayLayer.InvalidateVisual();
         };
         MNU_InputTester.Click  += (sender, e) => new InputTesterWindow(_ctrl) { Owner = this }.Show();
+        MNU_SysExTool.Click    += (sender, e) => OpenSysExToolWindow();
         MNU_KeyboardInfo.Click += (sender, e) => OpenKeyboardInfoWindow();
         CTX_KeyboardInfo.Click += (sender, e) => OpenKeyboardInfoWindow();
         MNU_KbdWarp.Visibility = Visibility.Collapsed;
@@ -854,28 +871,55 @@ public partial class MainWindow : Window
         return bind.Key == k && Keyboard.Modifiers == bind.Modifiers;
     }
 
+    // WPF saves and restores owner window geometry when a modal dialog is dismissed.
+    // This undoes any maximized or manually-resized state the user had. Call this
+    // wrapper instead of ShowDialog() directly to preserve the owner's geometry.
+    bool ShowDialogPreservingGeometry(Window dialog)
+    {
+        var  priorState = WindowState;
+        double priorW = Width, priorH = Height, priorL = Left, priorT = Top;
+
+        bool result = dialog.ShowDialog() == true;
+
+        bool stateChanged = WindowState != priorState;
+        bool sizeChanged  = Math.Abs(Width - priorW) > 0.5 || Math.Abs(Height - priorH) > 0.5;
+        bool posChanged   = Math.Abs(Left  - priorL) > 0.5 || Math.Abs(Top    - priorT) > 0.5;
+
+        if (!stateChanged && !sizeChanged && !posChanged) return result;
+
+        if (_isFullscreen)
+        {
+            // Fullscreen is always Maximized+borderless; re-apply to recalculate bounds.
+            WindowState = WindowState.Normal;
+            WindowState = WindowState.Maximized;
+        }
+        else
+        {
+            if (priorState == WindowState.Maximized)
+            {
+                WindowState = WindowState.Normal;
+                WindowState = WindowState.Maximized;
+            }
+            else
+            {
+                WindowState = priorState;
+                Width  = priorW;
+                Height = priorH;
+                Left   = priorL;
+                Top    = priorT;
+            }
+        }
+        Dispatcher.InvokeAsync(RefreshFrameRect, DispatcherPriority.Loaded);
+        return result;
+    }
+
     void OpenSettingsDialog(SettingsTab tab = SettingsTab.General)
     {
-        var priorState = WindowState;
-
         var dlg = new SettingsWindow(_settings, m => _ = RunUserMacroAsync(m),
             showInputTester: () => new InputTesterWindow(_ctrl) { Owner = this }.Show(),
             initialTab: tab)
             { Owner = this };
-        bool ok = dlg.ShowDialog() == true;
-
-        // WPF/OS can reset the owner's WindowState from Maximized to Normal while a modal
-        // dialog is open. Re-apply so closing settings never silently drops the window state.
-        if (_isFullscreen && WindowState != WindowState.Maximized)
-        {
-            WindowState = WindowState.Normal;
-            WindowState = WindowState.Maximized;
-            Dispatcher.InvokeAsync(RefreshFrameRect, DispatcherPriority.Loaded);
-        }
-        else if (!_isFullscreen && priorState == WindowState.Maximized && WindowState != WindowState.Maximized)
-        {
-            WindowState = WindowState.Maximized;
-        }
+        bool ok = ShowDialogPreservingGeometry(dlg);
 
         if (!ok) return;
 
@@ -979,7 +1023,7 @@ public partial class MainWindow : Window
         var dlg = new LoginDialog(_host, _settings.FtpPort,
                                   _settings.FtpUsername, _settings.FtpPassword)
                   { Owner = this };
-        if (dlg.ShowDialog() == true)
+        if (ShowDialogPreservingGeometry(dlg))
         {
             _settings.FtpUsername = dlg.Username;
             _settings.FtpPassword = dlg.Password;
@@ -991,7 +1035,7 @@ public partial class MainWindow : Window
     {
         if (!string.IsNullOrEmpty(_settings.FtpUsername)) return true;
         var dlg = new LoginDialog(_host, _settings.FtpPort) { Owner = this };
-        if (dlg.ShowDialog() != true) return false;
+        if (!ShowDialogPreservingGeometry(dlg)) return false;
         _settings.FtpUsername = dlg.Username;
         _settings.FtpPassword = dlg.Password;
         if (dlg.SavePassword) Storage.SaveSettings(_settings);
@@ -1003,6 +1047,7 @@ public partial class MainWindow : Window
     void Ctrl(string cmd)
     {
         AppLog.Debug($"[ctrl] {cmd}");
+        _sysExService.NotifyUserActivity();
         _ctrl.Send(cmd);
     }
 
@@ -1117,6 +1162,7 @@ public partial class MainWindow : Window
             }
             if (state == ConnState.Disconnected)
             {
+                _sysExService.Reset();
                 if (_combiProgramEditActive) { _combiProgramEditActive = false; _combiProgramFlashTimer.Stop(); }
                 _combiEditIndicatorGoneAt = DateTime.MinValue;
                 _currentMode = 0;
@@ -1147,7 +1193,54 @@ public partial class MainWindow : Window
     void OpenAboutWindow()
     {
         string? host = string.IsNullOrEmpty(_host) ? null : _host;
-        new AboutWindow(host, _ctrlPort) { Owner = this }.ShowDialog();
+        ShowDialogPreservingGeometry(new AboutWindow(host, _ctrlPort) { Owner = this });
+    }
+
+    void OnSysExTraffic(SysExTrafficEntry entry)
+    {
+        if (entry.IsSend) _sysExTxLastAt = DateTime.Now;
+        else              _sysExRxLastAt = DateTime.Now;
+
+        Dispatcher.InvokeAsync(() =>
+        {
+            UpdateSysExDots();
+            if (!_sysExDimTimer.IsEnabled) _sysExDimTimer.Start();
+        });
+    }
+
+    static readonly System.Windows.Media.SolidColorBrush SysExRxActiveBrush =
+        new(System.Windows.Media.Color.FromRgb(0x4C, 0xAF, 0x50));
+    static readonly System.Windows.Media.SolidColorBrush SysExTxActiveBrush =
+        new(System.Windows.Media.Color.FromRgb(0xAF, 0x4C, 0x50));
+    static readonly System.Windows.Media.SolidColorBrush SysExRxDimBrush =
+        new(System.Windows.Media.Color.FromRgb(0x2A, 0x3A, 0x2A));
+    static readonly System.Windows.Media.SolidColorBrush SysExTxDimBrush =
+        new(System.Windows.Media.Color.FromRgb(0x3A, 0x2A, 0x2A));
+
+    void UpdateSysExDots()
+    {
+        var now = DateTime.Now;
+        bool rxActive = (now - _sysExRxLastAt).TotalMilliseconds < SysExDwellMs;
+        bool txActive = (now - _sysExTxLastAt).TotalMilliseconds < SysExDwellMs;
+
+        SysExRxDot.Fill   = rxActive ? SysExRxActiveBrush : SysExRxDimBrush;
+        SysExRxArrow.Foreground = rxActive ? SysExRxActiveBrush : SysExRxDimBrush;
+        SysExTxDot.Fill   = txActive ? SysExTxActiveBrush : SysExTxDimBrush;
+        SysExTxArrow.Foreground = txActive ? SysExTxActiveBrush : SysExTxDimBrush;
+
+        if (!rxActive && !txActive) _sysExDimTimer.Stop();
+    }
+
+    void OpenSysExToolWindow()
+    {
+        if (_sysExToolWin != null && _sysExToolWin.IsLoaded)
+        {
+            _sysExToolWin.Activate();
+            _sysExToolWin.Focus();
+            return;
+        }
+        _sysExToolWin = new SysExToolWindow(_sysExService) { Owner = this };
+        _sysExToolWin.Show();
     }
 
     void OpenKeyboardInfoWindow()
@@ -1390,9 +1483,13 @@ public partial class MainWindow : Window
     {
         if (!IsLoaded) return;
         SyncMainAreaColumn();
-        SetWindowSize(_currentScale);
-        // In fullscreen, SetWindowSize is a no-op (window already maximized),
-        // so SizeChanged never fires. Always defer a layout refresh explicitly.
+        // Skip SetWindowSize when already maximized (non-fullscreen): the window fills
+        // the screen and there is nothing to resize. SetWindowSize would force it back
+        // to Normal, which is exactly the bug we are avoiding here.
+        if (!_isFullscreen && WindowState != WindowState.Maximized)
+            SetWindowSize(_currentScale);
+        // SizeChanged may not fire (fullscreen, or maximized with no size change),
+        // so always defer an explicit layout refresh.
         Dispatcher.InvokeAsync(RefreshFrameRect, DispatcherPriority.Loaded);
     }
 

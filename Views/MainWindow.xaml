@@ -67,6 +67,7 @@
                 <MenuItem x:Name="MNU_OpenScreenshotsFolder" Header="Open Screenshots _Folder"/>
                 <MenuItem x:Name="MNU_OpenLog"     Header="Open _Log File"/>
                 <Separator/>
+                <MenuItem x:Name="MNU_SysExTool"    Header="Open _SysEx Tool…"/>
                 <MenuItem x:Name="MNU_KeyboardInfo" Header="_Keyboard Info…"/>
                 <MenuItem x:Name="MNU_InputTester"  Header="_Input Tester…" Visibility="Collapsed"/>
                 <MenuItem x:Name="MNU_DisableKbd"   Header="_Disable Keyboard Send" IsCheckable="True"/>
@@ -188,7 +189,7 @@
                             <MenuItem x:Name="CTX_StatusCopyIP"     Header="Copy _IP Address"/>
                         </ContextMenu>
                     </StackPanel.ContextMenu>
-                    <Ellipse x:Name="StatusDot" Width="8" Height="8" Margin="0 0 6 0"
+                    <Ellipse x:Name="StatusDot" Width="12" Height="12" Margin="0 0 6 0"
                              VerticalAlignment="Center" Fill="#FF444444"/>
                     <TextBlock x:Name="StatusText" Foreground="#FF888888" FontSize="11"
                                VerticalAlignment="Center" Text="Not connected"/>
@@ -233,6 +234,26 @@
                            ToolTip="Round-trip network latency to Kronos"/>
             </StatusBarItem>
             <Separator Margin="2 4" Background="#FF444444" Width="1"/>
+            <StatusBarItem Padding="3 0" VerticalContentAlignment="Center">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                            ToolTip="SysEx in/out. Green is received by client, Blue is transmitted from client.">
+                    <!-- RX: down-arrow + green dot -->
+                    <TextBlock x:Name="SysExRxArrow" Text="↓" FontSize="16"
+                               Foreground="#FF2A3A2A" VerticalAlignment="Center"
+                               Margin="0 0 1 0" FontFamily="Segoe UI"/>
+                    <Ellipse x:Name="SysExRxDot" Width="12" Height="12"
+                             Fill="#FF2A3A2A" VerticalAlignment="Center"
+                             Margin="0 0 4 0"/>
+                    <!-- TX: Red dot + up-arrow -->
+                    <Ellipse x:Name="SysExTxDot" Width="12" Height="12"
+                             Fill="#FF3A2A2A" VerticalAlignment="Center"
+                             Margin="0 0 1 0"/>
+                    <TextBlock x:Name="SysExTxArrow" Text="↑" FontSize="16"
+                               Foreground="#FF3A2A2A" VerticalAlignment="Center"
+                               FontFamily="Segoe UI"/>
+                </StackPanel>
+            </StatusBarItem>
+            <Separator Margin="2 4" Background="#FF444444" Width="1"/>
             <StatusBarItem Padding="2 0" VerticalContentAlignment="Center">
                 <!-- Notification bubble: faded gray at rest, red on error.
                      Border with Transparent background keeps the hit area solid. -->
@@ -268,9 +289,16 @@
                                FontFamily="Segoe UI Symbol"
                                FontSize="18"
                                Foreground="#FF3A3A3A"
-                               VerticalAlignment="Center" 
+                               VerticalAlignment="Center"
                                HorizontalAlignment="Center"/>
                 </Border>
+            </StatusBarItem>
+            <Separator Margin="2 4" Background="#FF444444" Width="1"/>
+            <StatusBarItem x:Name="PerfStatusBarItem" Padding="4 0">
+                <TextBlock Foreground="#FF88AADD" FontSize="11"
+                           VerticalAlignment="Center"
+                           Text="{Binding PerformanceDisplay}"
+                           ToolTip="Current performance — bank, number, and name (via SysEx)"/>
             </StatusBarItem>
         </StatusBar>
 
