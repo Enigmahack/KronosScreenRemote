@@ -11,6 +11,7 @@ sealed class SysExService : ISysExService
     readonly Dispatcher _dispatcher;
 
     KronosSysEx? _transport;
+    MidiStreamMonitor? _midiMonitor;
     CancellationTokenSource? _cts;
     CancellationTokenSource? _perfPollDelayCts;
     DateTime _lastUserActivity = DateTime.MinValue;
@@ -55,6 +56,14 @@ sealed class SysExService : ISysExService
 
         _transport = new KronosSysEx(host, ctrlPort);
         _transport.Traffic += OnTransportTraffic;
+
+        if (_midiMonitor != null)
+            _midiMonitor.Traffic -= OnTransportTraffic;
+        _midiMonitor?.Stop();
+        _midiMonitor = new MidiStreamMonitor(host);
+        _midiMonitor.Traffic += OnTransportTraffic;
+        _midiMonitor.Start();
+
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
 
@@ -68,6 +77,10 @@ sealed class SysExService : ISysExService
         if (_transport != null)
             _transport.Traffic -= OnTransportTraffic;
         _transport = null;
+        if (_midiMonitor != null)
+            _midiMonitor.Traffic -= OnTransportTraffic;
+        _midiMonitor?.Stop();
+        _midiMonitor = null;
         IsAvailable = false;
         PerformanceDisplay = "";
     }
@@ -169,7 +182,7 @@ sealed class SysExService : ISysExService
             {
                 using var delayCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 _perfPollDelayCts = delayCts;
-                await Task.Delay(10_000, delayCts.Token).ConfigureAwait(false);
+                await Task.Delay(60_000, delayCts.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
@@ -184,13 +197,15 @@ sealed class SysExService : ISysExService
 
     public async Task<bool> SendMidiAsync(string hexBytes)
     {
-        SysExTraffic?.Invoke(new SysExTrafficEntry(DateTime.Now, true, $"MIDI {hexBytes}"));
+        var decoded = MidiStreamMonitor.DecodeHex(hexBytes);
+        SysExTraffic?.Invoke(new SysExTrafficEntry(DateTime.Now, true, decoded, IsMidi: true));
 
         var resp = await CtrlClient.QueryAsync(_host, _ctrlPort, $"MIDI_SEND {hexBytes}", timeoutMs: 2000)
             .ConfigureAwait(false);
 
         bool ok = resp?.TrimEnd() == "OK";
-        SysExTraffic?.Invoke(new SysExTrafficEntry(DateTime.Now, false, ok ? "OK" : (resp?.Trim() ?? "ERR")));
+        if (!ok)
+            SysExTraffic?.Invoke(new SysExTrafficEntry(DateTime.Now, false, resp?.Trim() ?? "ERR", IsMidi: true));
         return ok;
     }
 

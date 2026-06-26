@@ -275,9 +275,9 @@ public partial class MainWindow
 
         if (btn != null && !_combiProgramEditActive)
             btn.Activate();
-        // mode=0 (server doesn't know yet) — leave current state rather than blanking
 
-        var modeName = mode switch
+        // mode=0 (server doesn't know yet) — leave current state rather than blanking
+                var modeName = mode switch
         {
             1 => "Setlist", 2 => "Combi",    3 => "Program",
             4 => "Sequence",5 => "Sampling", 6 => "Global",

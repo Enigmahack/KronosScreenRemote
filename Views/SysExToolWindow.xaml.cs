@@ -1,10 +1,16 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 
 namespace KronosScreenRemote;
+
+enum FilterState { On, Filter, Off }
+
+enum MidiMsgType { Note, CC, ProgramChange, PitchBend, AfterTouch, SysEx, Transport, Other }
 
 partial class SysExToolWindow : Window
 {
@@ -12,9 +18,9 @@ partial class SysExToolWindow : Window
 
     // White key stride in px; keys are this wide minus a 1 px gap.
     const double WW = 28;
-    const double WH = 148; // white key height = canvas height
-    const double BW = 16;  // black key width
-    const double BH = 92;  // black key height
+    const double WH = 148;
+    const double BW = 16;
+    const double BH = 92;
 
     static readonly Brush WhiteNormal  = Frozen(0xDC, 0xDC, 0xDC);
     static readonly Brush WhiteHover   = Frozen(0xF0, 0xF0, 0xF0);
@@ -24,8 +30,28 @@ partial class SysExToolWindow : Window
     static readonly Brush BlackPressed = Frozen(0x18, 0x38, 0x68);
     static readonly Brush KeyBorder    = Frozen(0x44, 0x44, 0x44);
 
+    // Filter button color sets: (background, border, foreground)
+    static readonly (Brush Bg, Brush Border, Brush Fg) StyleOn =
+        (Frozen(0x1B, 0x3A, 0x1B), Frozen(0x3A, 0x7A, 0x3A), Frozen(0x7D, 0xC9, 0x7D));
+    static readonly (Brush Bg, Brush Border, Brush Fg) StyleFilter =
+        (Frozen(0x3A, 0x30, 0x00), Frozen(0x7A, 0x64, 0x00), Frozen(0xCC, 0xAA, 0x33));
+    static readonly (Brush Bg, Brush Border, Brush Fg) StyleOff =
+        (Frozen(0x2A, 0x15, 0x15), Frozen(0x6E, 0x2E, 0x2E), Frozen(0xCC, 0x66, 0x66));
+
     readonly ISysExService _sysEx;
-    readonly ObservableCollection<SysExMessageItem> _items = new();
+    readonly ObservableCollection<SysExMessageItem> _allItems = new();
+    ICollectionView _view = null!;
+
+    readonly Dictionary<MidiMsgType, FilterState> _filterStates = new()
+    {
+        [MidiMsgType.Note]          = FilterState.On,
+        [MidiMsgType.CC]            = FilterState.On,
+        [MidiMsgType.ProgramChange] = FilterState.On,
+        [MidiMsgType.PitchBend]     = FilterState.On,
+        [MidiMsgType.AfterTouch]    = FilterState.On,
+        [MidiMsgType.SysEx]         = FilterState.On,
+        [MidiMsgType.Transport]     = FilterState.On,
+    };
 
     Border? _pressedKey;
     int     _pressedNote = -1;
@@ -36,8 +62,19 @@ partial class SysExToolWindow : Window
         InitializeComponent();
         WindowTheme.ApplyDarkCaption(this);
 
-        LB_Messages.ItemsSource = _items;
+        _view = CollectionViewSource.GetDefaultView(_allItems);
+        _view.Filter = FilterMessage;
+        LB_All.ItemsSource = _view;
+
         BTN_Clear.Click += (_, _) => Clear();
+
+        InitFilterButton(BTN_Filter_Notes,      MidiMsgType.Note);
+        InitFilterButton(BTN_Filter_CC,         MidiMsgType.CC);
+        InitFilterButton(BTN_Filter_Prog,       MidiMsgType.ProgramChange);
+        InitFilterButton(BTN_Filter_SysEx,      MidiMsgType.SysEx);
+        InitFilterButton(BTN_Filter_Bend,       MidiMsgType.PitchBend);
+        InitFilterButton(BTN_Filter_AfterTouch, MidiMsgType.AfterTouch);
+        InitFilterButton(BTN_Filter_Transport,  MidiMsgType.Transport);
 
         _sysEx.SysExTraffic += OnTraffic;
         Closed += (_, _) =>
@@ -49,27 +86,66 @@ partial class SysExToolWindow : Window
         Loaded += (_, _) => BuildPiano();
     }
 
+    // ── Filter buttons ───────────────────────────────────────────────────────
+
+    void InitFilterButton(Button btn, MidiMsgType type)
+    {
+        ApplyFilterStyle(btn, _filterStates[type]);
+        btn.Click += (_, _) => CycleFilter(type, btn);
+    }
+
+    void CycleFilter(MidiMsgType type, Button btn)
+    {
+        _filterStates[type] = _filterStates[type] switch
+        {
+            FilterState.On     => FilterState.Filter,
+            FilterState.Filter => FilterState.Off,
+            _                  => FilterState.On,
+        };
+        ApplyFilterStyle(btn, _filterStates[type]);
+        _view.Refresh();
+    }
+
+    static void ApplyFilterStyle(Button btn, FilterState state)
+    {
+        var (bg, border, fg) = state switch
+        {
+            FilterState.On     => StyleOn,
+            FilterState.Filter => StyleFilter,
+            _                  => StyleOff,
+        };
+        btn.Background  = bg;
+        btn.BorderBrush = border;
+        btn.Foreground  = fg;
+    }
+
+    bool FilterMessage(object obj)
+    {
+        if (obj is not SysExMessageItem item) return false;
+
+        bool anySolo = _filterStates.Values.Any(s => s == FilterState.Filter);
+        if (anySolo)
+            return _filterStates.TryGetValue(item.MsgType, out var fs) && fs == FilterState.Filter;
+
+        return !_filterStates.TryGetValue(item.MsgType, out var s) || s != FilterState.Off;
+    }
+
     // ── Piano ────────────────────────────────────────────────────────────────
 
     void BuildPiano()
     {
         PianoCanvas.Height = WH;
 
-        // Seven octaves: A0 (21) through A7 (93)
-        const int startNote = 21;
-        const int startOffset = 3; // 0 = C, 1 = B, 2 = Bb, 3 = A, etc. 
-
-        // Semitone offsets of white keys within one octave (C=0)
         int[] whiteSemitones = [0, 2, 4, 5, 7, 9, 11];
-
-        // For each black key: left-white-key index within octave + semitone
         (int leftWhite, int semitone)[] blackKeys =
             [(0, 1), (1, 3), (3, 6), (4, 8), (5, 10)];
 
         var whites = new List<(double x, int midi)>();
         var blacks = new List<(double x, int midi)>();
 
-        // Add the A, Bb and B keys before doing the rest. 
+        const int startNote   = 21;
+        const int startOffset = 3;
+
         whites.Add((0, 21));
         blacks.Add((18, 22));
         whites.Add((28, 23));
@@ -80,21 +156,18 @@ partial class SysExToolWindow : Window
             int mBase = oct * 12;
 
             for (int i = 0; i < whiteSemitones.Length; i++)
-                whites.Add(((wBase + i + 1 + (startOffset / 2)) * WW, startNote + startOffset + mBase + whiteSemitones[i]));
+                whites.Add(((wBase + i + 1 + (startOffset / 2)) * WW,
+                             startNote + startOffset + mBase + whiteSemitones[i]));
 
             foreach (var (lw, st) in blackKeys)
-                blacks.Add(((wBase + lw + 2 + (startOffset / 2)) * WW - BW / 2.0, startNote + startOffset + mBase + st));
+                blacks.Add(((wBase + lw + 2 + (startOffset / 2)) * WW - BW / 2.0,
+                             startNote + startOffset + mBase + st));
         }
 
-        // Add the last C
         whites.Add((1428, 108));
 
-        // White keys first so black keys render on top
-        foreach (var (x, midi) in whites)
-            AddKey(x, WW - 1, WH, false, midi);
-
-        foreach (var (x, midi) in blacks)
-            AddKey(x, BW, BH, true, midi);
+        foreach (var (x, midi) in whites) AddKey(x, WW - 1, WH, false, midi);
+        foreach (var (x, midi) in blacks) AddKey(x, BW, BH, true, midi);
     }
 
     void AddKey(double x, double w, double h, bool isBlack, int midi)
@@ -127,8 +200,7 @@ partial class SysExToolWindow : Window
     {
         var key = (Border)sender;
         var (midi, isBlack) = ((int, bool))key.Tag!;
-        if (key != _pressedKey)
-            key.Background = isBlack ? BlackHover : WhiteHover;
+        if (key != _pressedKey) key.Background = isBlack ? BlackHover : WhiteHover;
         TXT_NoteLabel.Text = NoteName(midi);
     }
 
@@ -136,8 +208,7 @@ partial class SysExToolWindow : Window
     {
         var key = (Border)sender;
         var (midi, isBlack) = ((int, bool))key.Tag!;
-        if (key != _pressedKey)
-            key.Background = isBlack ? BlackNormal : WhiteNormal;
+        if (key != _pressedKey) key.Background = isBlack ? BlackNormal : WhiteNormal;
         if (TXT_NoteLabel.Text == NoteName(midi) && _pressedNote < 0)
             TXT_NoteLabel.Text = "";
     }
@@ -198,21 +269,21 @@ partial class SysExToolWindow : Window
 
     static SolidColorBrush Frozen(byte r, byte g, byte b)
     {
-        var b2 = new SolidColorBrush(Color.FromRgb(r, g, b));
-        b2.Freeze();
-        return b2;
+        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
     }
 
-    // ── SysEx traffic ────────────────────────────────────────────────────────
+    // ── Traffic routing ──────────────────────────────────────────────────────
 
     void OnTraffic(SysExTrafficEntry entry)
     {
         Dispatcher.InvokeAsync(() =>
         {
-            while (_items.Count >= MaxEntries)
-                _items.RemoveAt(0);
+            while (_allItems.Count >= MaxEntries)
+                _allItems.RemoveAt(0);
 
-            _items.Add(new SysExMessageItem(entry));
+            _allItems.Add(new SysExMessageItem(entry));
             UpdateCount();
 
             if (CHK_AutoScroll.IsChecked == true)
@@ -222,23 +293,77 @@ partial class SysExToolWindow : Window
 
     void Clear()
     {
-        _items.Clear();
+        _allItems.Clear();
         UpdateCount();
     }
 
-    void UpdateCount() => TXT_Count.Text = $"{_items.Count} message{(_items.Count == 1 ? "" : "s")}";
+    void UpdateCount()
+    {
+        int sysExCount = _allItems.Count(i => i.MsgType == MidiMsgType.SysEx);
+        TXT_SysExCount.Text = $"SysEx: {sysExCount}";
+        TXT_MidiCount.Text  = $"MIDI: {_allItems.Count - sysExCount}";
+    }
 
     void ScrollToBottom()
     {
-        if (_items.Count == 0) return;
-        LB_Messages.ScrollIntoView(_items[^1]);
+        if (_allItems.Count > 0)
+            LB_All.ScrollIntoView(_allItems[^1]);
     }
 }
 
 class SysExMessageItem(SysExTrafficEntry entry)
 {
-    public string Time   { get; } = entry.Timestamp.ToString("HH:mm:ss.fff");
-    public string Dir    { get; } = entry.IsSend ? "TX" : "RX";
-    public bool   IsSend { get; } = entry.IsSend;
-    public string Hex    { get; } = entry.Hex;
+    static readonly SolidColorBrush ColorNote      = MakeBrush(0x88, 0xBB, 0xFF); // blue-ish
+    static readonly SolidColorBrush ColorCC        = MakeBrush(0xFF, 0xCC, 0x66); // amber
+    static readonly SolidColorBrush ColorProg      = MakeBrush(0xCC, 0x88, 0xFF); // purple
+    static readonly SolidColorBrush ColorSysEx     = MakeBrush(0x77, 0xDD, 0x99); // green
+    static readonly SolidColorBrush ColorBend      = MakeBrush(0xFF, 0x99, 0x66); // orange
+    static readonly SolidColorBrush ColorAfterTouch= MakeBrush(0xFF, 0x77, 0xAA); // pink
+    static readonly SolidColorBrush ColorTransport = MakeBrush(0xAA, 0xDD, 0xFF); // light blue
+    static readonly SolidColorBrush ColorOther     = MakeBrush(0xCC, 0xCC, 0xCC); // default
+
+    public string      Time      { get; } = entry.Timestamp.ToString("HH:mm:ss.fff");
+    public string      Dir       { get; } = entry.IsSend ? "TX" : "RX";
+    public bool        IsSend    { get; } = entry.IsSend;
+    public string      Hex       { get; } = entry.Hex;
+    public MidiMsgType MsgType   { get; } = Classify(entry);
+    public Brush       TypeColor { get; } = TypeToBrush(Classify(entry));
+
+    static MidiMsgType Classify(SysExTrafficEntry e)
+    {
+        if (!e.IsMidi) return MidiMsgType.SysEx;
+        var h = e.Hex;
+        if (h.StartsWith("NoteOn",    StringComparison.Ordinal) ||
+            h.StartsWith("NoteOff",   StringComparison.Ordinal)) return MidiMsgType.Note;
+        if (h.StartsWith("CC#",       StringComparison.Ordinal)) return MidiMsgType.CC;
+        if (h.StartsWith("PC",        StringComparison.Ordinal)) return MidiMsgType.ProgramChange;
+        if (h.StartsWith("Bend",      StringComparison.Ordinal)) return MidiMsgType.PitchBend;
+        if (h.StartsWith("ChPres",    StringComparison.Ordinal) ||
+            h.StartsWith("PolyPres",  StringComparison.Ordinal)) return MidiMsgType.AfterTouch;
+        if (h.StartsWith("SysEx",     StringComparison.Ordinal)) return MidiMsgType.SysEx;
+        if (h.StartsWith("Start",     StringComparison.Ordinal) ||
+            h.StartsWith("Stop",      StringComparison.Ordinal) ||
+            h.StartsWith("Continue",  StringComparison.Ordinal) ||
+            h.StartsWith("Reset",     StringComparison.Ordinal)) return MidiMsgType.Transport;
+        return MidiMsgType.Other;
+    }
+
+    static Brush TypeToBrush(MidiMsgType t) => t switch
+    {
+        MidiMsgType.Note          => ColorNote,
+        MidiMsgType.CC            => ColorCC,
+        MidiMsgType.ProgramChange => ColorProg,
+        MidiMsgType.SysEx         => ColorSysEx,
+        MidiMsgType.PitchBend     => ColorBend,
+        MidiMsgType.AfterTouch    => ColorAfterTouch,
+        MidiMsgType.Transport     => ColorTransport,
+        _                         => ColorOther,
+    };
+
+    static SolidColorBrush MakeBrush(byte r, byte g, byte b)
+    {
+        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
+        brush.Freeze();
+        return brush;
+    }
 }

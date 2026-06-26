@@ -2,7 +2,7 @@ namespace KronosScreenRemote;
 
 using System.Text;
 
-readonly record struct SysExTrafficEntry(DateTime Timestamp, bool IsSend, string Hex);
+readonly record struct SysExTrafficEntry(DateTime Timestamp, bool IsSend, string Hex, bool IsMidi = false);
 
 // Korg SysEx Mode Data (func 0x42) — mode numbering from KRONOS_MIDI_SysEx.txt *5.
 readonly record struct SysExModeData(int Mode, int Option, int Setup1, int Setup2)
