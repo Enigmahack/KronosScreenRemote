@@ -682,7 +682,7 @@
                         <TextBlock Grid.Column="0" Text="Poll interval" VerticalAlignment="Center"
                                    Foreground="#FF888888" FontSize="11"/>
                         <ComboBox Grid.Column="1" x:Name="CMB_PollInterval"
-                                  Background="#FF2A2A2A" Foreground="White" BorderBrush="#FF555555"
+                                  BorderBrush="#FF555555"
                                   Width="120" IsEnabled="False">
                             <ComboBoxItem Content="30 seconds"/>
                             <ComboBoxItem Content="45 seconds"/>

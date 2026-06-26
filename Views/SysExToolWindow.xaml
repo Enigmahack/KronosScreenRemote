@@ -95,8 +95,6 @@
                                HorizontalAlignment="Center"
                                Margin="0 10 0 2"/>
                     <ComboBox x:Name="CMB_OutChannel"
-                              Background="#FF1E1E1E"
-                              Foreground="#FFCCCCCC"
                               BorderBrush="#FF444444"
                               FontFamily="Consolas"
                               FontSize="11"
