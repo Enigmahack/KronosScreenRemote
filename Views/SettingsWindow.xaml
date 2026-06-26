@@ -651,6 +651,48 @@
                 </Grid>
             </TabItem>
 
+            <!-- ── MIDI / SysEx ──────────────────────────────────────────────── -->
+            <TabItem Header="MIDI/SysEx">
+                <StackPanel Margin="0 4 0 0">
+                    <CheckBox x:Name="ChkMidiMonitor" Content="Monitor MIDI" Margin="0 0 0 6"
+                              ToolTip="When disabled, all incoming MIDI and SysEx messages are ignored and the MIDI Monitor window is unavailable."/>
+                    <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap" Margin="0 0 0 16"
+                               Text="When disabled, the MIDI/SysEx Monitor option is faded in the menu and no incoming MIDI data is processed."/>
+
+                    <Border Background="#FF444444" Margin="0 0 0 14" Height="1"/>
+
+                    <CheckBox x:Name="ChkSysExPollOnChanges" Content="SysEx Poll on Changes" Margin="0 0 0 6"
+                              ToolTip="Triggers a SysEx check-in when the Kronos sends a Program Change or Bank Select message. Requires Monitor MIDI to be enabled."/>
+                    <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap" Margin="0 0 0 16"
+                               Text="Automatically updates the current performance display when a Program Change or Bank Select is received from the Kronos."/>
+
+                    <Border Background="#FF444444" Margin="0 0 0 14" Height="1"/>
+
+                    <CheckBox x:Name="ChkProactivePoll" Content="Proactive SysEx Polling" Margin="0 0 0 6"
+                              ToolTip="Enabling this can cause the Kronos to slow down during the check-in. Only enable if you require it."
+                              Checked="OnProactivePollChanged" Unchecked="OnProactivePollChanged"/>
+                    <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap" Margin="0 0 0 12"
+                               Text="Periodically queries the Kronos for the current performance name on a fixed schedule, regardless of MIDI activity."/>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="110"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Poll interval" VerticalAlignment="Center"
+                                   Foreground="#FF888888" FontSize="11"/>
+                        <ComboBox Grid.Column="1" x:Name="CMB_PollInterval"
+                                  Background="#FF2A2A2A" Foreground="White" BorderBrush="#FF555555"
+                                  Width="120" IsEnabled="False">
+                            <ComboBoxItem Content="30 seconds"/>
+                            <ComboBoxItem Content="45 seconds"/>
+                            <ComboBoxItem Content="60 seconds"/>
+                            <ComboBoxItem Content="120 seconds"/>
+                        </ComboBox>
+                    </Grid>
+                </StackPanel>
+            </TabItem>
+
         </TabControl>
 
         <!-- Bottom row: Import/Export left, OK/Cancel right -->

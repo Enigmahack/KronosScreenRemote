@@ -28,6 +28,13 @@ public class AppSettings
 
     public bool DebugLogging { get; set; } = false;
 
+    // MIDI / SysEx
+    public bool MidiMonitorEnabled    { get; set; } = true;
+    public bool ProactiveSysExPolling { get; set; } = false;
+    public int  SysExPollIntervalSec  { get; set; } = 60;
+    public bool SysExPollOnChanges    { get; set; } = true;
+    public int  MidiOutputChannel     { get; set; } = 1;
+
     // Window geometry — -1 means "not yet saved; use defaults"
     public double WindowLeft     { get; set; } = -1;
     public double WindowTop      { get; set; } = -1;

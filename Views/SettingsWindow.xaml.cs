@@ -72,6 +72,12 @@ public partial class SettingsWindow : Window
             FtpUsername     = settings.FtpUsername,
             FtpPassword     = settings.FtpPassword,
             FtpPort         = settings.FtpPort,
+            // MIDI / SysEx
+            MidiMonitorEnabled    = settings.MidiMonitorEnabled,
+            ProactiveSysExPolling = settings.ProactiveSysExPolling,
+            SysExPollIntervalSec  = settings.SysExPollIntervalSec,
+            SysExPollOnChanges    = settings.SysExPollOnChanges,
+            MidiOutputChannel     = settings.MidiOutputChannel,
             // Pass-through fields not exposed in the settings UI — must be preserved
             // exactly, or they are silently reset to defaults when the dialog closes.
             VuDeviceId      = settings.VuDeviceId,
@@ -111,6 +117,15 @@ public partial class SettingsWindow : Window
 
         // Debug
         ChkDebugLogging.IsChecked = Result.DebugLogging;
+
+        // MIDI / SysEx
+        ChkMidiMonitor.IsChecked        = Result.MidiMonitorEnabled;
+        ChkSysExPollOnChanges.IsChecked = Result.SysExPollOnChanges;
+        ChkProactivePoll.IsChecked      = Result.ProactiveSysExPolling;
+        int[] pollIntervals = { 30, 45, 60, 120 };
+        int pollIdx = Array.IndexOf(pollIntervals, Result.SysExPollIntervalSec);
+        CMB_PollInterval.SelectedIndex = pollIdx >= 0 ? pollIdx : 2;
+        CMB_PollInterval.IsEnabled     = Result.ProactiveSysExPolling;
 
         // View
         SlZoomLevel.Value      = Result.ZoomDefaultLevel;
@@ -275,6 +290,15 @@ public partial class SettingsWindow : Window
 
         // Debug
         Result.DebugLogging = ChkDebugLogging.IsChecked == true;
+
+        // MIDI / SysEx
+        Result.MidiMonitorEnabled    = ChkMidiMonitor.IsChecked == true;
+        Result.SysExPollOnChanges    = ChkSysExPollOnChanges.IsChecked == true;
+        Result.ProactiveSysExPolling = ChkProactivePoll.IsChecked == true;
+        int[] pollIntervals = { 30, 45, 60, 120 };
+        Result.SysExPollIntervalSec  = CMB_PollInterval.SelectedIndex >= 0
+            ? pollIntervals[Math.Min(CMB_PollInterval.SelectedIndex, pollIntervals.Length - 1)]
+            : 60;
 
         // View
         Result.ZoomDefaultLevel = SlZoomLevel.Value;
@@ -581,6 +605,11 @@ public partial class SettingsWindow : Window
         RawEditor.Visibility = Visibility.Collapsed;
     }
 
+    // ── MIDI / SysEx tab ─────────────────────────────────────────────────────
+
+    void OnProactivePollChanged(object s, RoutedEventArgs e)
+        => CMB_PollInterval.IsEnabled = ChkProactivePoll.IsChecked == true;
+
     // ── FTP credentials ─────────────────────────────────────────────────────
 
     void OnClearFtpCredentials(object s, RoutedEventArgs e)
@@ -749,4 +778,5 @@ public enum SettingsTab
     KeyBindings = 4,
     Macros     = 5,
     Debug      = 6,
+    MidiSysEx  = 7,
 }

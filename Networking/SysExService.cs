@@ -18,6 +18,11 @@ sealed class SysExService : ISysExService
     string _host = "";
     int    _ctrlPort = CtrlClient.CtrlPort;
 
+    bool _midiMonitorEnabled = true;
+    bool _proactivePoll       = false;
+    int  _pollIntervalSec     = 60;
+    bool _pollOnChanges       = true;
+
     string _performanceDisplay = "";
     bool _isAvailable;
 
@@ -60,9 +65,13 @@ sealed class SysExService : ISysExService
         if (_midiMonitor != null)
             _midiMonitor.Traffic -= OnTransportTraffic;
         _midiMonitor?.Stop();
-        _midiMonitor = new MidiStreamMonitor(host);
-        _midiMonitor.Traffic += OnTransportTraffic;
-        _midiMonitor.Start();
+        _midiMonitor = null;
+        if (_midiMonitorEnabled)
+        {
+            _midiMonitor = new MidiStreamMonitor(host);
+            _midiMonitor.Traffic += OnTransportTraffic;
+            _midiMonitor.Start();
+        }
 
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
@@ -85,7 +94,53 @@ sealed class SysExService : ISysExService
         PerformanceDisplay = "";
     }
 
-    void OnTransportTraffic(SysExTrafficEntry entry) => SysExTraffic?.Invoke(entry);
+    void OnTransportTraffic(SysExTrafficEntry entry)
+    {
+        SysExTraffic?.Invoke(entry);
+        if (_pollOnChanges && !entry.IsSend && entry.IsMidi)
+        {
+            var h = entry.Hex;
+            if (h.StartsWith("PC",     StringComparison.Ordinal) ||
+                h.StartsWith("CC#0 ",  StringComparison.Ordinal) ||
+                h.StartsWith("CC#32 ", StringComparison.Ordinal))
+            {
+                _ = DeferredRefreshAsync();
+            }
+        }
+    }
+
+    public void ApplyMidiSettings(bool midiMonitorEnabled, bool proactivePoll, int pollIntervalSec, bool pollOnChanges)
+    {
+        _proactivePoll   = proactivePoll;
+        _pollIntervalSec = pollIntervalSec;
+        _pollOnChanges   = pollOnChanges;
+
+        bool monitorChanged = _midiMonitorEnabled != midiMonitorEnabled;
+        _midiMonitorEnabled = midiMonitorEnabled;
+
+        if (monitorChanged && _transport != null)
+        {
+            if (midiMonitorEnabled)
+            {
+                _midiMonitor = new MidiStreamMonitor(_host);
+                _midiMonitor.Traffic += OnTransportTraffic;
+                _midiMonitor.Start();
+            }
+            else
+            {
+                if (_midiMonitor != null)
+                    _midiMonitor.Traffic -= OnTransportTraffic;
+                _midiMonitor?.Stop();
+                _midiMonitor = null;
+            }
+        }
+
+        // Wake up the polling loop if proactive was just enabled
+        if (proactivePoll)
+        {
+            try { _perfPollDelayCts?.Cancel(); } catch { }
+        }
+    }
 
     public void RefreshNow()
     {
@@ -144,9 +199,14 @@ sealed class SysExService : ISysExService
             catch (OperationCanceledException) { return; }
         }
 
+        bool firstPoll = true;
+
         while (!ct.IsCancellationRequested)
         {
-            if ((DateTime.Now - _lastUserActivity).TotalSeconds >= SysExDeferralSec)
+            bool shouldPoll = firstPoll || (DateTime.Now - _lastUserActivity).TotalSeconds >= SysExDeferralSec;
+            firstPoll = false;
+
+            if (shouldPoll)
             {
                 var transport = _transport;
                 if (transport != null && _isAvailable)
@@ -178,11 +238,13 @@ sealed class SysExService : ISysExService
                 }
             }
 
+            // Proactive: repeat on fixed interval; otherwise park until DeferredRefreshAsync wakes us.
+            int delayMs = _proactivePoll ? _pollIntervalSec * 1000 : Timeout.Infinite;
             try
             {
                 using var delayCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 _perfPollDelayCts = delayCts;
-                await Task.Delay(60_000, delayCts.Token).ConfigureAwait(false);
+                await Task.Delay(delayMs, delayCts.Token).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {

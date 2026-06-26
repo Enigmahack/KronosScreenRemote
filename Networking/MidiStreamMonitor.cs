@@ -81,7 +81,7 @@ sealed class MidiStreamMonitor
 
     void OnMessage(byte[] msg)
     {
-        var entry = new SysExTrafficEntry(DateTime.Now, false, DecodeMidi(msg), IsMidi: true);
+        var entry = new SysExTrafficEntry(DateTime.Now, false, DecodeMidi(msg), IsMidi: true, RawBytes: msg);
         Traffic?.Invoke(entry);
     }
 

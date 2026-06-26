@@ -63,6 +63,7 @@ public partial class MainWindow
             if (e.ClickCount == 2 && _isFullscreen) { ToggleFullscreen(); e.Handled = true; }
         };
 
+        ApplyMidiMonitorMenuState();
         Dispatcher.InvokeAsync(RefreshFrameRect, DispatcherPriority.Background);
         Task.Run(ConnectAsync);
     }

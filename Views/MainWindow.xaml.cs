@@ -961,6 +961,11 @@ public partial class MainWindow : Window
         MNU_HideDataInput.IsChecked  = _hideDataInput;
         MNU_HideValueInput.IsChecked = _hideValueInput;
 
+        _sysExService.ApplyMidiSettings(
+            _settings.MidiMonitorEnabled, _settings.ProactiveSysExPolling,
+            _settings.SysExPollIntervalSec, _settings.SysExPollOnChanges);
+        ApplyMidiMonitorMenuState();
+
         if (dlg.WasReset)
         {
             if (_receiver != null) TriggerReconnect();
@@ -1231,6 +1236,13 @@ public partial class MainWindow : Window
         if (!rxActive && !txActive) _sysExDimTimer.Stop();
     }
 
+    void ApplyMidiMonitorMenuState()
+    {
+        bool enabled = _settings.MidiMonitorEnabled;
+        MNU_SysExTool.IsEnabled = enabled;
+        MNU_SysExTool.Opacity   = enabled ? 1.0 : 0.4;
+    }
+
     void OpenSysExToolWindow()
     {
         if (_sysExToolWin != null && _sysExToolWin.IsLoaded)
@@ -1239,7 +1251,12 @@ public partial class MainWindow : Window
             _sysExToolWin.Focus();
             return;
         }
-        _sysExToolWin = new SysExToolWindow(_sysExService) { Owner = this };
+        _sysExToolWin = new SysExToolWindow(_sysExService, _settings.MidiOutputChannel) { Owner = this };
+        _sysExToolWin.Closed += (_, _) =>
+        {
+            _settings.MidiOutputChannel = _sysExToolWin.SelectedChannel;
+            Storage.SaveSettings(_settings);
+        };
         _sysExToolWin.Show();
     }
 

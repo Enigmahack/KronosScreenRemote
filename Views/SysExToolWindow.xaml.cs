@@ -56,7 +56,14 @@ partial class SysExToolWindow : Window
     Border? _pressedKey;
     int     _pressedNote = -1;
 
-    public SysExToolWindow(ISysExService sysEx)
+    // MIDI-lit keys: notes currently lit by incoming NoteOn from the Kronos.
+    readonly HashSet<int> _midiLitNotes = new();
+    // Map from MIDI note to its piano key Border, for O(1) lighting updates.
+    readonly Dictionary<int, Border> _keyByMidi = new();
+
+    public int SelectedChannel => CMB_OutChannel.SelectedIndex >= 0 ? CMB_OutChannel.SelectedIndex + 1 : 1;
+
+    public SysExToolWindow(ISysExService sysEx, int initialChannel = 1)
     {
         _sysEx = sysEx;
         InitializeComponent();
@@ -76,14 +83,33 @@ partial class SysExToolWindow : Window
         InitFilterButton(BTN_Filter_AfterTouch, MidiMsgType.AfterTouch);
         InitFilterButton(BTN_Filter_Transport,  MidiMsgType.Transport);
 
+        for (int ch = 1; ch <= 16; ch++)
+            CMB_OutChannel.Items.Add($"CH {ch}");
+        CMB_OutChannel.SelectedIndex = Math.Clamp(initialChannel - 1, 0, 15);
+        CMB_OutChannel.SelectionChanged += (_, _) => ClearMidiLitKeys();
+
         _sysEx.SysExTraffic += OnTraffic;
         Closed += (_, _) =>
         {
             _sysEx.SysExTraffic -= OnTraffic;
             ReleaseNote();
+            ClearMidiLitKeys();
         };
 
         Loaded += (_, _) => BuildPiano();
+    }
+
+    void ClearMidiLitKeys()
+    {
+        foreach (int note in _midiLitNotes)
+        {
+            if (_keyByMidi.TryGetValue(note, out var key) && note != _pressedNote)
+            {
+                var (_, isBlack) = ((int, bool))key.Tag!;
+                key.Background = isBlack ? BlackNormal : WhiteNormal;
+            }
+        }
+        _midiLitNotes.Clear();
     }
 
     // ── Filter buttons ───────────────────────────────────────────────────────
@@ -194,6 +220,7 @@ partial class SysExToolWindow : Window
         key.MouseUp    += OnKeyUp;
 
         PianoCanvas.Children.Add(key);
+        _keyByMidi[midi] = key;
     }
 
     void OnKeyEnter(object sender, MouseEventArgs e)
@@ -208,7 +235,8 @@ partial class SysExToolWindow : Window
     {
         var key = (Border)sender;
         var (midi, isBlack) = ((int, bool))key.Tag!;
-        if (key != _pressedKey) key.Background = isBlack ? BlackNormal : WhiteNormal;
+        if (key != _pressedKey && !_midiLitNotes.Contains(midi))
+            key.Background = isBlack ? BlackNormal : WhiteNormal;
         if (TXT_NoteLabel.Text == NoteName(midi) && _pressedNote < 0)
             TXT_NoteLabel.Text = "";
     }
@@ -227,7 +255,8 @@ partial class SysExToolWindow : Window
         key.Background = isBlack ? BlackPressed : WhitePressed;
         key.CaptureMouse();
 
-        _ = _sysEx.SendMidiAsync($"90 {midi:X2} 64");
+        int ch = SelectedChannel - 1;
+        _ = _sysEx.SendMidiAsync($"{0x90 | ch:X2} {midi:X2} 64");
         TXT_NoteLabel.Text = NoteName(midi);
         e.Handled = true;
     }
@@ -237,12 +266,15 @@ partial class SysExToolWindow : Window
         var key = (Border)sender;
         key.ReleaseMouseCapture();
 
+        var (midi, isBlack) = ((int, bool))key.Tag!;
         ReleaseNote();
 
-        var (_, isBlack) = ((int, bool))key.Tag!;
-        key.Background = Mouse.DirectlyOver == key
-            ? (isBlack ? BlackHover : WhiteHover)
-            : (isBlack ? BlackNormal : WhiteNormal);
+        if (!_midiLitNotes.Contains(midi))
+        {
+            key.Background = Mouse.DirectlyOver == key
+                ? (isBlack ? BlackHover : WhiteHover)
+                : (isBlack ? BlackNormal : WhiteNormal);
+        }
 
         e.Handled = true;
     }
@@ -250,13 +282,16 @@ partial class SysExToolWindow : Window
     void ReleaseNote()
     {
         if (_pressedNote < 0) return;
-        _ = _sysEx.SendMidiAsync($"80 {_pressedNote:X2} 00");
+        int ch = SelectedChannel - 1;
+        _ = _sysEx.SendMidiAsync($"{0x80 | ch:X2} {_pressedNote:X2} 00");
+        int released = _pressedNote;
         _pressedNote = -1;
 
         if (_pressedKey != null)
         {
             var (_, isBlack) = ((int, bool))_pressedKey.Tag!;
-            _pressedKey.Background = isBlack ? BlackNormal : WhiteNormal;
+            if (!_midiLitNotes.Contains(released))
+                _pressedKey.Background = isBlack ? BlackNormal : WhiteNormal;
             _pressedKey = null;
         }
     }
@@ -288,6 +323,39 @@ partial class SysExToolWindow : Window
 
             if (CHK_AutoScroll.IsChecked == true)
                 ScrollToBottom();
+
+            // Light / un-light piano keys on incoming NoteOn / NoteOff from Kronos.
+            if (entry.IsMidi && !entry.IsSend && entry.RawBytes is { Length: >= 2 } raw)
+            {
+                byte status = raw[0];
+                int inCh = (status & 0x0F) + 1;
+                if (inCh == SelectedChannel)
+                {
+                    int type = status & 0xF0;
+                    int note = raw[1];
+                    bool isNoteOn  = type == 0x90 && raw.Length >= 3 && raw[2] > 0;
+                    bool isNoteOff = type == 0x80 || (type == 0x90 && raw.Length >= 3 && raw[2] == 0);
+
+                    if (isNoteOn && _keyByMidi.TryGetValue(note, out var keyOn))
+                    {
+                        _midiLitNotes.Add(note);
+                        if (note != _pressedNote)
+                        {
+                            var (_, isBlack) = ((int, bool))keyOn.Tag!;
+                            keyOn.Background = isBlack ? BlackPressed : WhitePressed;
+                        }
+                    }
+                    else if (isNoteOff && _keyByMidi.TryGetValue(note, out var keyOff))
+                    {
+                        _midiLitNotes.Remove(note);
+                        if (note != _pressedNote)
+                        {
+                            var (_, isBlack) = ((int, bool))keyOff.Tag!;
+                            keyOff.Background = isBlack ? BlackNormal : WhiteNormal;
+                        }
+                    }
+                }
+            }
         });
     }
 

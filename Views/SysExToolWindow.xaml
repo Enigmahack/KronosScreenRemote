@@ -79,7 +79,7 @@
                 Padding="10 11 10 11">
             <DockPanel>
                 <StackPanel DockPanel.Dock="Right" VerticalAlignment="Center"
-                            Width="84" Margin="12 0 0 0">
+                            Width="104" Margin="12 0 0 0">
                     <TextBlock x:Name="TXT_NoteLabel"
                                FontFamily="Consolas" FontSize="13" FontWeight="Bold"
                                Foreground="#FF88AADD"
@@ -89,6 +89,18 @@
                                Foreground="#FF444444"
                                HorizontalAlignment="Center"
                                Margin="0 5 0 0"/>
+                    <TextBlock Text="OUT CH"
+                               FontFamily="Consolas" FontSize="9"
+                               Foreground="#FF555555"
+                               HorizontalAlignment="Center"
+                               Margin="0 10 0 2"/>
+                    <ComboBox x:Name="CMB_OutChannel"
+                              Background="#FF1E1E1E"
+                              Foreground="#FFCCCCCC"
+                              BorderBrush="#FF444444"
+                              FontFamily="Consolas"
+                              FontSize="11"
+                              HorizontalAlignment="Stretch"/>
                 </StackPanel>
                 <Canvas x:Name="PianoCanvas" ClipToBounds="True"/>
             </DockPanel>

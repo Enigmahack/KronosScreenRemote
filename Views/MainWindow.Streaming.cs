@@ -94,6 +94,9 @@ public partial class MainWindow
                 TopLeftOcr.Reset();   // ensure first frame fires an immediate STATE query
                 _ = ModePollLoop(_modePollCts.Token);
 
+                _sysExService.ApplyMidiSettings(
+                    _settings.MidiMonitorEnabled, _settings.ProactiveSysExPolling,
+                    _settings.SysExPollIntervalSec, _settings.SysExPollOnChanges);
                 _sysExService.Start(_host, _ctrlPort);
             }
             catch (UnauthorizedAccessException ex)
