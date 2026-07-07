@@ -23,7 +23,7 @@ public partial class MainWindow
             {
                 _audioEngine ??= new AudioEngine();
                 _settings.VuDeviceId = item.Device.Id;
-                if (_connState == ConnState.Connected)
+                if (IsConnected)
                     _audioEngine.Start(item.Device.Id);
             }
             else

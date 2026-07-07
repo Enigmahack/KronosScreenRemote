@@ -386,6 +386,119 @@
                 </StackPanel>
             </TabItem>
 
+            <!-- ── Image ─────────────────────────────────────────────────── -->
+            <TabItem Header="Image">
+                <StackPanel Margin="0 4 0 0">
+                    <TextBlock Text="Upscaling filter" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 0 0 8"/>
+                    <RadioButton x:Name="RbScaleSharp" GroupName="ScalingMode" Margin="0 0 0 5"
+                                 Content="Sharp — crisp, blocky pixels (nearest-neighbor)"
+                                 ToolTip="No interpolation. Razor-sharp edges, but visible pixel blocks when enlarged."/>
+                    <RadioButton x:Name="RbScaleSmooth" GroupName="ScalingMode" Margin="0 0 0 5"
+                                 Content="Smooth — soft, fast (bilinear)"
+                                 ToolTip="Bilinear filtering. Soft and inexpensive."/>
+                    <RadioButton x:Name="RbScaleHQ" GroupName="ScalingMode"
+                                 Content="High Quality — best resample (Fant)"
+                                 ToolTip="Fant resampling. Best quality; the default."/>
+                    <TextBlock Margin="0 8 0 0" Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
+                               Text="Controls how the 800×600 Kronos screen is scaled up to fill the window. Also available from View → Scaling Quality and the frame right-click menu."/>
+
+                    <Border Background="#FF444444" Margin="0 16 0 12" Height="1"/>
+                    <TextBlock Text="Adjustments" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 0 0 8"/>
+
+                    <!-- Brightness -->
+                    <Grid Margin="0 0 0 8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="90"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="50"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Brightness" VerticalAlignment="Center"
+                                   ToolTip="Lighten or darken the whole image. 0 = no change."/>
+                        <Slider    Grid.Column="1" x:Name="SlBrightness" Minimum="-100" Maximum="100"
+                                   TickFrequency="1" IsSnapToTickEnabled="True"
+                                   ValueChanged="SlBrightness_ValueChanged"
+                                   ToolTip="Lighten or darken the whole image. 0 = no change."/>
+                        <TextBlock Grid.Column="2" x:Name="TxtBrightnessLabel"
+                                   VerticalAlignment="Center" Margin="6 0 0 0" TextAlignment="Right"/>
+                    </Grid>
+
+                    <!-- Contrast -->
+                    <Grid Margin="0 0 0 8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="90"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="50"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Contrast" VerticalAlignment="Center"
+                                   ToolTip="Spread or compress tones around mid-grey. 0 = no change."/>
+                        <Slider    Grid.Column="1" x:Name="SlContrast" Minimum="-100" Maximum="100"
+                                   TickFrequency="1" IsSnapToTickEnabled="True"
+                                   ValueChanged="SlContrast_ValueChanged"
+                                   ToolTip="Spread or compress tones around mid-grey. 0 = no change."/>
+                        <TextBlock Grid.Column="2" x:Name="TxtContrastLabel"
+                                   VerticalAlignment="Center" Margin="6 0 0 0" TextAlignment="Right"/>
+                    </Grid>
+
+                    <!-- Gamma -->
+                    <Grid Margin="0 0 0 8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="90"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="50"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Gamma" VerticalAlignment="Center"
+                                   ToolTip="Non-linear midtone correction. 1.00 = no change; higher brightens midtones."/>
+                        <Slider    Grid.Column="1" x:Name="SlGamma" Minimum="0.4" Maximum="2.5"
+                                   SmallChange="0.05" LargeChange="0.1"
+                                   ValueChanged="SlGamma_ValueChanged"
+                                   ToolTip="Non-linear midtone correction. 1.00 = no change; higher brightens midtones, useful for the dark Kronos UI."/>
+                        <TextBlock Grid.Column="2" x:Name="TxtGammaLabel"
+                                   VerticalAlignment="Center" Margin="6 0 0 0" TextAlignment="Right"/>
+                    </Grid>
+
+                    <!-- Saturation -->
+                    <Grid Margin="0 0 0 8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="90"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="50"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Saturation" VerticalAlignment="Center"
+                                   ToolTip="Color vividness. 0 = no change; -100 = greyscale."/>
+                        <Slider    Grid.Column="1" x:Name="SlSaturation" Minimum="-100" Maximum="100"
+                                   TickFrequency="1" IsSnapToTickEnabled="True"
+                                   ValueChanged="SlSaturation_ValueChanged"
+                                   ToolTip="Color vividness. 0 = no change; -100 = greyscale; +100 = double."/>
+                        <TextBlock Grid.Column="2" x:Name="TxtSaturationLabel"
+                                   VerticalAlignment="Center" Margin="6 0 0 0" TextAlignment="Right"/>
+                    </Grid>
+
+                    <!-- Sharpen -->
+                    <Grid Margin="0 0 0 4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="90"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="50"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Sharpen" VerticalAlignment="Center"
+                                   ToolTip="Unsharp-mask edge enhancement. 0 = off. Recovers crispness lost to smooth/HQ scaling."/>
+                        <Slider    Grid.Column="1" x:Name="SlSharpen" Minimum="0" Maximum="100"
+                                   TickFrequency="1" IsSnapToTickEnabled="True"
+                                   ValueChanged="SlSharpen_ValueChanged"
+                                   ToolTip="Unsharp-mask edge enhancement. 0 = off. Adds a light per-frame sharpening pass; recovers crispness lost to smooth/HQ upscaling."/>
+                        <TextBlock Grid.Column="2" x:Name="TxtSharpenLabel"
+                                   VerticalAlignment="Center" Margin="6 0 0 0" TextAlignment="Right"/>
+                    </Grid>
+
+                    <Button x:Name="BtnResetImage" Content="Reset Adjustments"
+                            Width="150" HorizontalAlignment="Left" Margin="0 10 0 0"
+                            Click="OnResetImageAdjust"
+                            ToolTip="Reset brightness, contrast, gamma, saturation, and sharpen to their defaults."/>
+                    <TextBlock Margin="0 8 0 0" Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
+                               Text="Brightness, contrast, gamma, and saturation are applied for free through the palette; sharpen adds a light per-frame pass. All adjustments are baked into screenshots and clipboard copies."/>
+                </StackPanel>
+            </TabItem>
+
             <!-- ── Key Bindings ──────────────────────────────────────────── -->
             <TabItem Header="Key Bindings">
                 <Grid>
@@ -690,6 +803,22 @@
                             <ComboBoxItem Content="120 seconds"/>
                         </ComboBox>
                     </Grid>
+
+                    <Border Background="#FF444444" Margin="0 14 0 14" Height="1"/>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="110"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Value slider CC#" VerticalAlignment="Center"
+                                   Foreground="#FF888888" FontSize="11"/>
+                        <TextBox Grid.Column="1" x:Name="TXT_ValueSliderCc"
+                                 BorderBrush="#FF555555" Width="60" MaxLength="3"
+                                 ToolTip="MIDI CC# the Kronos VALUE slider transmits (default 18). The UI value slider follows this controller. Change it if your Kronos assigns the value slider to a different CC."/>
+                    </Grid>
+                    <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap" Margin="0 6 0 0"
+                               Text="Keeps the on-screen value slider in sync with physical VALUE slider moves on the Kronos. Requires Monitor MIDI and SysEx transmit enabled on the Kronos."/>
                 </StackPanel>
             </TabItem>
 

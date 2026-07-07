@@ -21,17 +21,22 @@ sealed class StreamReceiver : IStreamReceiver
     Socket?  _sock;
     Thread?  _thread;
     volatile bool _stop;
-    byte[][]? _frameBufs;   // ring buffer slots passed to MainWindow — stable snapshots
-    int       _frameBufIdx;
     byte[]?   _masterFrame; // persistent reconstructed frame; dirty rects accumulate here
     byte[]?   _rleBuf;      // scratch for receiving RLE-encoded dirty rect payload
+
+    // Latest fully-decoded frame, published under _frameLock.  The render thread copies it out via
+    // TryCopyLatestFrame under the same lock, so the receive thread and the UI thread never touch
+    // the same buffer at once (the old 3-slot ring had no such guard and could tear a frame under
+    // a UI stall).
+    readonly object _frameLock = new();
+    byte[]? _latest;
+    bool    _hasFrame;
 
     public int  Width   { get; private set; }
     public int  Height  { get; private set; }
     public PaletteEntry[] Palette { get; private set; } = Array.Empty<PaletteEntry>();
 
-    public event Action<byte[]>? FrameReceived;
-    public event Action?         Disconnected;
+    public event Action? Disconnected;
 
     public StreamReceiver(string host, int port, bool pullMode, int fps, string user, string pass)
     {
@@ -139,14 +144,13 @@ sealed class StreamReceiver : IStreamReceiver
 
         Console.WriteLine($"[stream] handshake OK — {Width}×{Height}");
 
-        // Pre-allocate 3 ring slots (passed to MainWindow) + a persistent master frame.
-        // _masterFrame accumulates all updates; ring slots carry stable snapshots to the
-        // render thread so dirty-rect accumulation and rendering never share the same buffer.
+        // Pre-allocate the persistent master frame + the published snapshot buffer.  _masterFrame
+        // accumulates all updates; _latest is a stable snapshot the render thread copies out under
+        // _frameLock, so dirty-rect accumulation and rendering never share the same buffer.
         int frameSize = Width * Height;
         _masterFrame = new byte[frameSize];
         _rleBuf      = new byte[frameSize];   // worst-case RLE size is < frame_bytes (daemon guards)
-        _frameBufs   = new[] { new byte[frameSize], new byte[frameSize], new byte[frameSize] };
-        _frameBufIdx = 0;
+        _latest      = new byte[frameSize];
 
         _stop   = false;
         _thread = new Thread(RecvLoop) { IsBackground = true, Name = "StreamReceiver" };
@@ -185,17 +189,15 @@ sealed class StreamReceiver : IStreamReceiver
                 if (!RecvAllInto(_sock!, hdrBuf, 4)) break;
                 int len = hdrBuf[0] | (hdrBuf[1] << 8) | (hdrBuf[2] << 16) | (hdrBuf[3] << 24);
 
-                byte[] data;
                 int frameSize = _masterFrame!.Length;
                 if (len == frameSize)
                 {
                     if (!RecvAllInto(_sock!, _masterFrame, 0, frameSize)) break;
-                    data = _frameBufs![_frameBufIdx++ % _frameBufs.Length];
-                    Buffer.BlockCopy(_masterFrame, 0, data, 0, frameSize);
+                    PublishFrame(frameSize);
                 }
                 else if (len > 4 && len < frameSize)
                 {
-                    // Dirty rect with PackBits RLE — decode into _masterFrame, snapshot to ring slot.
+                    // Dirty rect with PackBits RLE — decode into _masterFrame, then publish snapshot.
                     var subHdr = new byte[4];
                     if (!RecvAllInto(_sock!, subHdr, 0, 4)) break;
                     int firstRow = subHdr[0] | (subHdr[1] << 8);
@@ -206,18 +208,18 @@ sealed class StreamReceiver : IStreamReceiver
                         rleBytes > _rleBuf!.Length) break;
                     if (!RecvAllInto(_sock!, _rleBuf, 0, rleBytes)) break;
                     if (PackbitsExpand(_rleBuf, rleBytes, _masterFrame!, firstRow * Width, rawBytes) != rawBytes) break;
-                    data = _frameBufs![_frameBufIdx++ % _frameBufs.Length];
-                    Buffer.BlockCopy(_masterFrame, 0, data, 0, frameSize);
+                    PublishFrame(frameSize);
                 }
                 else
                 {
-                    // Unknown packet size — drain and skip.
-                    var d = RecvAll(_sock!, len);
-                    if (d == null) break;
-                    data = d;
+                    // Length matches neither a full frame nor a valid dirty rect (4 < len < frameSize):
+                    // the stream is desynced or the payload is malformed.  Delivering a wrong-sized
+                    // buffer here would cause an out-of-bounds read when MainWindow.ApplyLut reads
+                    // frameSize bytes from it, so treat any other length as a fatal protocol error.
+                    Console.Error.WriteLine(
+                        $"[stream] invalid packet length {len} (frame={frameSize}) — dropping connection");
+                    break;
                 }
-
-                FrameReceived?.Invoke(data);
 
                 if (_mode == ModePull && interval > 0)
                     Thread.Sleep((int)interval);
@@ -230,16 +232,35 @@ sealed class StreamReceiver : IStreamReceiver
         }
     }
 
+    // Copy the freshly reconstructed master frame into the published snapshot.  Held for exactly
+    // one memcpy so the receive loop is never blocked on the render thread.
+    void PublishFrame(int frameSize)
+    {
+        lock (_frameLock)
+        {
+            Buffer.BlockCopy(_masterFrame!, 0, _latest!, 0, frameSize);
+            _hasFrame = true;
+        }
+    }
+
+    // Render-thread entry point: copy the latest frame into dst if one has arrived since the last
+    // call, returning false (dst untouched) when there is nothing new or dst is too small.  The
+    // lock serializes this against PublishFrame so a frame can never be read half-written.
+    public bool TryCopyLatestFrame(byte[] dst)
+    {
+        lock (_frameLock)
+        {
+            if (!_hasFrame || _latest == null || dst.Length < _latest.Length) return false;
+            Buffer.BlockCopy(_latest, 0, dst, 0, _latest.Length);
+            _hasFrame = false;
+            return true;
+        }
+    }
+
     bool Poll(int timeoutMs)
     {
         try { return _sock!.Poll(timeoutMs * 1000, SelectMode.SelectRead); }
         catch { return false; }
-    }
-
-    static byte[]? RecvAll(Socket sock, int n)
-    {
-        var buf = new byte[n];
-        return RecvAllInto(sock, buf, n) ? buf : null;
     }
 
     static bool RecvAllInto(Socket sock, byte[] buf, int n) =>

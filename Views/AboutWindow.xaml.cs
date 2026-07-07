@@ -23,28 +23,38 @@ public partial class AboutWindow : Window
 
     async System.Threading.Tasks.Task FetchDaemonVersionAsync(string host, int port)
     {
-        var resp = await CtrlClient.QueryAsync(host, port, "VERSION", timeoutMs: 2000);
-
-        await Dispatcher.InvokeAsync(() =>
+        try
         {
-            if (resp is null || !resp.StartsWith("VER="))
-            {
-                SetDaemonLabel("not reachable");
-                return;
-            }
+            var resp = await CtrlClient.QueryAsync(host, port, "VERSION", timeoutMs: 2000);
 
-            // "VER=1.1.0 BUILD=abc1234"
-            string ver   = "?";
-            string build = "?";
-            foreach (var part in resp.Split(' '))
+            await Dispatcher.InvokeAsync(() =>
             {
-                if (part.StartsWith("VER="))   ver   = part[4..];
-                if (part.StartsWith("BUILD=")) build = part[6..];
-            }
+                if (resp is null || !resp.StartsWith("VER="))
+                {
+                    SetDaemonLabel("not reachable");
+                    return;
+                }
 
-            TXT_DaemonVer.Text   = ver;
-            TXT_DaemonBuild.Text = build;
-        });
+                // "VER=1.1.0 BUILD=abc1234"
+                string ver   = "?";
+                string build = "?";
+                foreach (var part in resp.Split(' '))
+                {
+                    if (part.StartsWith("VER="))   ver   = part[4..];
+                    if (part.StartsWith("BUILD=")) build = part[6..];
+                }
+
+                TXT_DaemonVer.Text   = ver;
+                TXT_DaemonBuild.Text = build;
+            });
+        }
+        catch (Exception ex)
+        {
+            // Fire-and-forget task — swallow so it can't become an UnobservedTaskException,
+            // and leave the labels in a sensible state instead of a stale "…".
+            AppLog.Debug($"[about] daemon version fetch failed: {ex.Message}");
+            await Dispatcher.InvokeAsync(() => SetDaemonLabel("not reachable"));
+        }
     }
 
     void SetDaemonLabel(string msg)

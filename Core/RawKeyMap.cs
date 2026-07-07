@@ -37,6 +37,23 @@ static class RawKeyMap
 
     public static void Remove(RawMapping m) { Entries.Remove(m); Save(); }
 
+    // Snapshot / Restore let a dialog offer an undo of raw-map edits made during its session
+    // (Entries is a live global, also edited by the Input Tester, so restoring is the caller's
+    // responsibility to gate on "no external editor touched it").
+    public static List<RawMapping> Snapshot() =>
+        Entries.Select(e => new RawMapping
+        {
+            HostKey = e.HostKey, HostShift = e.HostShift,
+            RawCode = e.RawCode, RawShift = e.RawShift, Label = e.Label,
+        }).ToList();
+
+    public static void Restore(IReadOnlyList<RawMapping> snapshot)
+    {
+        Entries.Clear();
+        foreach (var m in snapshot) Entries.Add(m);
+        Save();
+    }
+
     static ObservableCollection<RawMapping> Load()
     {
         var list = new ObservableCollection<RawMapping>();

@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.IO;
 using System.Windows;
 using Microsoft.Win32;
@@ -23,11 +22,11 @@ public partial class MainWindow : Window
     int             _frameW = 800;
     int             _frameH = 600;
     PaletteEntry[]  _basePal  = new PaletteEntry[256];
-    byte[]?         _rawFrame = null;
+    byte[]?         _rawFrame = null;   // == _frameBuf once the first frame arrives; null before
+    byte[]?         _frameBuf = null;   // UI-owned copy target for StreamReceiver.TryCopyLatestFrame
     int[]           _lut      = new int[256];
 
     WriteableBitmap? _wb;
-    readonly ConcurrentQueue<byte[]> _frameQ = new();
 
     // ── Editor state ──────────────────────────────────────────────────────────
     bool   _edOpen   = false;
@@ -61,18 +60,7 @@ public partial class MainWindow : Window
     Rect   _frameRect;           // screen rect of displayed frame
 
     // ── Data wheel drag / animation ──────────────────────────────────────────
-    bool            _wheelDragActive    = false;
-    double          _wheelDragStartY    = 0;
-    int             _wheelDragSteps     = 0;
-    const double    WheelPxPerStep      = 12;       // design-space px per step
-
-    readonly DispatcherTimer _wheelAnimTimer = new();
-    int                      _wheelAnimState = 0;
-    int                      _wheelAnimDir   = 1;
-    DateTime                 _wheelLastActivity = DateTime.MinValue;
-    const int WheelAnimIntervalMs = 100;
-    const int WheelAnimIdleMs     = 400;
-    static readonly double[] WheelAngles = { 0.0, 10.0, -10.0 };
+    readonly WheelState _wheel = new();
 
     // ── Value slider state ────────────────────────────────────────────────────
     bool   _vsliderDragActive = false;
@@ -80,27 +68,11 @@ public partial class MainWindow : Window
     const double VSliderTravel    = 228.0;
     const double VSliderThumbHalf = 21.0;
 
-    // ── Drag / touch state ────────────────────────────────────────────────────
-    const int DragStartThresh = 8;
-    const int DragMoveThresh  = 3;
-    bool  _dragPending    = false;
-    (int x, int y) _dragPendingPos;
-    bool  _dragActive     = false;
-    (int x, int y) _dragLast;
+    // ── Drag / touch state (incl. the fading touch marker) ─────────────────────
+    readonly DragState _drag = new();
 
-    // ── Calibration state ─────────────────────────────────────────────────────
-    bool   _calMode    = false;   // C: unified calibration — drag nodes, touch pass-through, keyboard stays local
-    bool   _calDirty   = false;   // mesh has changes not yet written to disk
-    CalMesh _calMesh   = new();
-    List<CalBiasDot> _calBiasDots = new();
-    (int col, int row)? _calDraggingNode = null;
-    (int col, int row)? _calHoverNode    = null;
-
-    const double CalNodeHitRadius = 18.0;
-    const double CalDotHitRadius  = 12.0;
-
-    // ── Touch marker ──────────────────────────────────────────────────────────
-    (Point pos, DateTime t)? _touchMarker = null;
+    // ── Calibration state (mesh, bias dots, drag/hover, undo stack) ────────────
+    readonly CalibrationState _cal = new();
 
     // ── Mode polling ──────────────────────────────────────────────────────────
     CancellationTokenSource? _modePollCts;
@@ -123,17 +95,15 @@ public partial class MainWindow : Window
     int _currentMode = 0;   // last mode applied by SetModeButton
     int _prevMode    = 0;   // mode before the current one; survives across frames
 
-    // ── Combi program-edit state ──────────────────────────────────────────────
-    bool     _combiProgramEditActive   = false;
-    bool     _combiProgramFlashState   = false;
-    DateTime _combiEditIndicatorGoneAt = DateTime.MinValue; // for holdoff on indicator-absence exit
-    readonly DispatcherTimer _combiProgramFlashTimer = new();
-    const double CombiEditExitDelaySec = 1.5; // indicator must be absent this long before exiting
+    // SysEx is the primary mode source. Once a live Mode Change (func 0x4E) is
+    // seen — proving the Kronos actually transmits realtime SysEx — screen
+    // detection is demoted to fallback and never drives mode again this session.
+    // Until then (and if transmit is off, forever) screen detection stays active,
+    // so a Kronos with SysEx transmit disabled degrades gracefully.
+    bool _sysExModeProven = false;
 
-    // ── Cal undo ──────────────────────────────────────────────────────────────
-    List<CalHistEntry> _calHistory = new();
-    int  _calHistPos = -1;
-    (int offX, int offY) _calDragStartOffset;
+    // ── Combi program-edit state ──────────────────────────────────────────────
+    readonly CombiEditState _combi = new();
 
     // ── Help window ──────────────────────────────────────────────────────────
     HelpWindow?          _helpWin;
@@ -143,12 +113,14 @@ public partial class MainWindow : Window
     // ── Misc ──────────────────────────────────────────────────────────────────
     System.Windows.Forms.NotifyIcon? _trayIcon;
 
-    int              _connecting  = 0;   // Interlocked guard — 1 while ConnectAsync runs
+    // Cancels an in-flight connect when a newer connect/disconnect supersedes it, so a reconnect
+    // issued while a prior attempt is stuck (FTP verify / 10 s TCP watchdog) is no longer swallowed.
+    CancellationTokenSource? _connectCts;
     IStreamReceiver? _receiver;
     ICtrlClient      _ctrl        = null!;
     double           _pixPerDip   = 1.0;
     bool             _shiftHeld   = false;
-    bool             _isFullscreen = false;
+    readonly FullscreenState _fs = new();
     bool             _kbdCapture      = false;
     bool             _extendedKey     = false;   // set by LLKeyboardProc; true = numpad/extended key
     LowLevelKbProc?  _llKbProc        = null;    // field keeps delegate alive so GC won't collect it
@@ -156,53 +128,34 @@ public partial class MainWindow : Window
     bool             _kbdSendEnabled  = true;   // false = capture active but nothing forwarded to Kronos
     HashSet<Key>     _instantKeys     = new();  // shifted overrides sent as press+release pair
     HashSet<Key>     _capsShiftedKeys = new();  // letters whose KEY 42 was injected for CapsLock mode
+    // Raw mapping actually emitted on key-down, released verbatim on key-up.  Keyed by host Key
+    // so a Shift change mid-hold can't make key-up release a different code than key-down pressed
+    // (which used to leave the pressed code stuck down + its repeat timer running).
+    Dictionary<Key, RawMapping> _activeRawKeys = new();
 
     // ── Key repeat ────────────────────────────────────────────────────────────
     readonly DispatcherTimer _repeatTimer = new();
     bool _repeatPhase = false;
     int  _repeatCode  = 0;
-    WindowState      _savedState   = WindowState.Normal;
-    WindowStyle      _savedStyle   = WindowStyle.SingleBorderWindow;
-    ResizeMode       _savedResize  = ResizeMode.CanResize;
     AppSettings      _settings     = new();
 
     enum ConnState { Disconnected, Connecting, Connected }
     ConnState _connState     = ConnState.Disconnected;
-    int       _fpsFrameCount = 0;
-    DateTime  _fpsLastCheck  = DateTime.MinValue;
-    double    _measuredFps   = 0;
 
-    // ── Boot splash state ────────────────────────────────────────────────────
-    BitmapSource?            _bootSplash          = null;
-    bool                     _bootPhase           = false;
-    bool                     _detectedModeEver    = false;
-    bool                     _frameIsMostlyBlack      = false;
-    bool                     _frameIsLikelyBootScreen = false;  // ≥60% black — gates splash display
-    DateTime                 _bootFirstFrame      = DateTime.MinValue;
-    DateTime                 _bootPhaseStart      = DateTime.MinValue;
+    // Single source of truth for "a live stream is connected".  _connState is authoritative;
+    // _receiver can briefly outlive the Connected state after a silent drop (OnDisconnected sets
+    // Disconnected without nulling _receiver), so gate connected-only behaviour on this, never on
+    // _receiver != null.
+    bool IsConnected => _connState == ConnState.Connected;
+    readonly FpsCounter _fpsCounter = new();
 
-    // Load-phase tracking — updated by BootPhaseDetector during _bootPhase
-    BootPhaseDetector.Phase  _bootLoadPhase       = BootPhaseDetector.Phase.None;
-    DateTime                 _preloadTimerStart   = DateTime.MinValue; // latched at boot entry
-    DateTime                 _bankDataDetectedAt  = DateTime.MinValue;
-    double                   _finishingFillFrac   = BootBarF_StaticEnd; // snapshotted on Finishing detect
+    // ── Boot splash / load-phase state ────────────────────────────────────────
+    readonly BootState _boot = new();
 
-    // Preload schedule: (wallEnd, progressEnd) pairs for each active/pause segment.
-    // Active segments advance progress linearly; pause segments hold progress constant.
-    // Built once at boot phase entry; null until then.
-    (double WallEnd, double ProgressEnd)[]? _preloadSchedule;
-
-    // Show overlay only after 0.5 s with no mode detected; exits the instant a mode is confirmed.
-    // The buffer prevents a flash during quick reconnects/stream-mode changes where the mode
-    // banner is already visible and detection fires within a frame or two.
-    const double BootEntryDelaySec = 0.5;
-
-    // Bar fill fractions (0..1, left=BootBarFx0, right=BootBarFx1) — resolution-independent
-    const double BootBarF_StaticEnd  = 724.0  / 1302;  // px 864  in 1600-wide image
-    const double BootBarF_PreloadEnd = 1190.0 / 1302;  // px 1330
-    const double BootBarF_BankStart  = 1190.0 / 1302;  // px 1330
-    const double BootBarF_BankEnd    = 1.0;             // px 1442 = right edge
-    const double BootBarF_End        = 1.0;             // px 1442 = right edge
+    // Cross-cutting frame classification — read by mode + combi detection, not only boot.
+    bool _detectedModeEver        = false;  // set by SetModeButton; boot exits once a mode is confirmed
+    bool _frameIsMostlyBlack      = false;  // ≥90% black — suppresses mode/combi detection
+    bool _frameIsLikelyBootScreen = false;  // ≥60% black — gates splash display
 
     // ── Layout preset ─────────────────────────────────────────────────────────
     LayoutPreset           _layoutPreset      = LayoutPreset.Full;
@@ -229,7 +182,10 @@ public partial class MainWindow : Window
 
         _ctrl = new CtrlClientAdapter(_host, _ctrlPort);
         _sysExService = new SysExService(Dispatcher);
-        _sysExService.InitialModeDetected += SetModeButton;
+        _sysExService.ValueSliderCc = _settings.ValueSliderCc;
+        _sysExService.InitialModeDetected += OnSysExInitialMode;
+        _sysExService.ModeChanged += OnSysExModeChange;
+        _sysExService.ValueSliderChanged += OnValueSliderSync;
         _sysExService.SysExTraffic += OnSysExTraffic;
         PerfStatusBarItem.DataContext = _sysExService;
         _sysExDimTimer.Tick += (_, _) => UpdateSysExDots();
@@ -249,9 +205,9 @@ public partial class MainWindow : Window
         _hideValueInput = _settings.HideValueInput;
         _overrides    = Storage.LoadOverrides();
         _locked       = Storage.LoadLocks();
-        (_calMesh, _calBiasDots) = Storage.LoadCal();
-        if (!_calMesh.IsIdentity() || _calBiasDots.Count > 0)
-            Console.WriteLine($"[cal] mesh loaded, {_calBiasDots.Count} bias dot(s)");
+        (_cal.Mesh, _cal.BiasDots) = Storage.LoadCal();
+        if (!_cal.Mesh.IsIdentity() || _cal.BiasDots.Count > 0)
+            Console.WriteLine($"[cal] mesh loaded, {_cal.BiasDots.Count} bias dot(s)");
 
         Loaded      += OnLoaded;
         Closing     += OnClosing;
@@ -260,8 +216,9 @@ public partial class MainWindow : Window
             _kbdCapture = false;
             _instantKeys.Clear();
             StopRepeat();
+            ReleaseActiveRawKeys();
             if (_capsShiftedKeys.Count > 0) { Ctrl("KEY 42 0"); _capsShiftedKeys.Clear(); }
-            _calDraggingNode = null;
+            _cal.DraggingNode = null;
             UpdateKbdStatus();
             OverlayLayer.InvalidateVisual();
         };
@@ -280,12 +237,12 @@ public partial class MainWindow : Window
         InitWheelDrag();
         InitValueSlider();
 
-        _combiProgramFlashTimer.Interval = TimeSpan.FromMilliseconds(420);
-        _combiProgramFlashTimer.Tick += (sender, e) =>
+        _combi.FlashTimer.Interval = TimeSpan.FromMilliseconds(420);
+        _combi.FlashTimer.Tick += (sender, e) =>
         {
-            if (!_combiProgramEditActive) { _combiProgramFlashTimer.Stop(); return; }
-            _combiProgramFlashState = !_combiProgramFlashState;
-            BTN_Program.IsActive = _combiProgramFlashState;
+            if (!_combi.Active) { _combi.FlashTimer.Stop(); return; }
+            _combi.FlashState = !_combi.FlashState;
+            BTN_Program.IsActive = _combi.FlashState;
         };
     }
 
@@ -379,66 +336,66 @@ public partial class MainWindow : Window
         Data_Wheel.MouseDown        += OnWheelMouseDown;
         Data_Wheel.MouseMove        += OnWheelMouseMove;
         Data_Wheel.MouseUp          += OnWheelMouseUp;
-        Data_Wheel.LostMouseCapture += (sender, e) => _wheelDragActive = false;
+        Data_Wheel.LostMouseCapture += (sender, e) => _wheel.DragActive = false;
 
-        _wheelAnimTimer.Interval = TimeSpan.FromMilliseconds(WheelAnimIntervalMs);
-        _wheelAnimTimer.Tick    += (sender, e) => AdvanceWheelAnim();
+        _wheel.AnimTimer.Interval = TimeSpan.FromMilliseconds(WheelState.AnimIntervalMs);
+        _wheel.AnimTimer.Tick    += (sender, e) => AdvanceWheelAnim();
     }
 
     void OnWheelMouseDown(object s, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left) return;
-        _wheelDragActive = true;
-        _wheelDragStartY = e.GetPosition(Data_Wheel).Y;
-        _wheelDragSteps  = 0;
+        _wheel.DragActive = true;
+        _wheel.DragStartY = e.GetPosition(Data_Wheel).Y;
+        _wheel.DragSteps  = 0;
         Data_Wheel.CaptureMouse();
         e.Handled = true;
     }
 
     void OnWheelMouseMove(object s, MouseEventArgs e)
     {
-        if (!_wheelDragActive) return;
-        double dy    = _wheelDragStartY - e.GetPosition(Data_Wheel).Y; // +ve = up = CW
-        int    steps = (int)(dy / WheelPxPerStep);
-        int    diff  = steps - _wheelDragSteps;
+        if (!_wheel.DragActive) return;
+        double dy    = _wheel.DragStartY - e.GetPosition(Data_Wheel).Y; // +ve = up = CW
+        int    steps = (int)(dy / WheelState.PxPerStep);
+        int    diff  = steps - _wheel.DragSteps;
 
         if (diff > 0)
             for (int i = 0; i < diff;  i++) { Ctrl("WHEEL CW");  TriggerWheelAnim(1);  }
         else if (diff < 0)
             for (int i = 0; i < -diff; i++) { Ctrl("WHEEL CCW"); TriggerWheelAnim(-1); }
 
-        if (diff != 0) _wheelDragSteps = steps;
+        if (diff != 0) _wheel.DragSteps = steps;
         e.Handled = true;
     }
 
     void OnWheelMouseUp(object s, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left) return;
-        _wheelDragActive = false;
+        _wheel.DragActive = false;
         Data_Wheel.ReleaseMouseCapture();
         e.Handled = true;
     }
 
     void TriggerWheelAnim(int dir)
     {
-        _wheelAnimDir      = dir;
-        _wheelLastActivity = DateTime.Now;
-        if (!_wheelAnimTimer.IsEnabled)
+        _wheel.AnimDir      = dir;
+        _wheel.LastActivity = DateTime.Now;
+        if (!_wheel.AnimTimer.IsEnabled)
         {
-            _wheelAnimTimer.Start();
+            _wheel.AnimTimer.Start();
             AdvanceWheelAnim();     // jump to next state immediately on first trigger
         }
     }
 
     void AdvanceWheelAnim()
     {
-        if ((DateTime.Now - _wheelLastActivity).TotalMilliseconds > WheelAnimIdleMs)
+        if ((DateTime.Now - _wheel.LastActivity).TotalMilliseconds > WheelState.AnimIdleMs)
         {
-            _wheelAnimTimer.Stop();
+            _wheel.AnimTimer.Stop();
             return;                 // hold current state — no snap-back
         }
-        _wheelAnimState = (_wheelAnimState + _wheelAnimDir + 3) % 3;
-        SetWheelAngle(WheelAngles[_wheelAnimState]);
+        _wheel.AnimState = (_wheel.AnimState + _wheel.AnimDir + 3) % 3;
+        SetWheelAngle(WheelState.Angles[_wheel.AnimState]);
     }
 
     void SetWheelAngle(double angle)
@@ -499,24 +456,49 @@ public partial class MainWindow : Window
         }
     }
 
+    // Move the thumb to a 0-127 value WITHOUT sending VSLIDER back to the Kronos.
+    // Inverse of the mouse mapping above.
+    void SetVSliderValue(int val)
+    {
+        val = Math.Clamp(val, 0, 127);
+        double thumbTop = VSliderTravel * (127 - val) / 127.0;
+        System.Windows.Controls.Canvas.SetTop(ValueSliderThumb, thumbTop);
+        _vsliderValue = val;
+    }
+
+    // ── SysEx-driven UI sync (runs on the UI thread — events are marshaled
+    //    by SysExService before they reach here) ────────────────────────────────
+
+    // Initial mode from the SysEx probe (func 0x42). Sets the mode but does NOT
+    // prove realtime transmit, so screen detection stays active as a fallback.
+    void OnSysExInitialMode(int mode) => SetModeButton(mode);
+
+    // Live mode change (func 0x4E). Proves the Kronos transmits realtime SysEx,
+    // so screen-based mode detection is demoted to fallback from here on.
+    void OnSysExModeChange(int mode)
+    {
+        _sysExModeProven = true;
+        SetModeButton(mode);
+    }
+
+    // Follow the hardware VALUE slider (incoming CC#ValueSliderCc). Ignore while
+    // the user is dragging the UI slider so an echo can't fight the drag.
+    void OnValueSliderSync(int val)
+    {
+        if (_vsliderDragActive) return;
+        SetVSliderValue(val);
+    }
+
     void WireMenu()
     {
         MENU_Connection.SubmenuOpened += (sender, e) =>
         {
-            MNU_Disconnect.IsEnabled     = _receiver != null;
-            MNU_RefreshDisplay.IsEnabled = _receiver != null;
+            MNU_Disconnect.IsEnabled     = _connState != ConnState.Disconnected;  // allow aborting a hanging connect
+            MNU_RefreshDisplay.IsEnabled = IsConnected;                           // REFRESH needs a live stream
         };
         MNU_Reconnect.Click  += (sender, e) => UserInitiatedReconnect();
         MNU_RefreshDisplay.Click += (sender, e) => Ctrl("REFRESH");
-        MNU_Disconnect.Click += (sender, e) =>
-        {
-            ResetBootState();
-            _receiver?.Dispose();
-            _receiver = null;
-            _ctrl.Reset();
-            SetConnectionStatus(ConnState.Disconnected);
-            UpdateTitle("Not Connected");
-        };
+        MNU_Disconnect.Click += (sender, e) => Disconnect();
 
         MENU_RecentHosts.SubmenuOpened += (sender, e) =>
         {
@@ -554,7 +536,14 @@ public partial class MainWindow : Window
             MNU_HideDataInput.IsChecked  = _hideDataInput;
             MNU_HideValueInput.IsChecked = _hideValueInput;
             MNU_AlwaysOnTop.IsChecked  = _settings.AlwaysOnTop;
+            MNU_ScaleSharp.IsChecked   = _settings.ImageScalingMode == ScalingQuality.Sharp;
+            MNU_ScaleSmooth.IsChecked  = _settings.ImageScalingMode == ScalingQuality.Smooth;
+            MNU_ScaleHQ.IsChecked      = _settings.ImageScalingMode == ScalingQuality.HighQuality;
         };
+        MNU_ScaleSharp.Click  += (sender, e) => SetScalingMode(ScalingQuality.Sharp);
+        MNU_ScaleSmooth.Click += (sender, e) => SetScalingMode(ScalingQuality.Smooth);
+        MNU_ScaleHQ.Click     += (sender, e) => SetScalingMode(ScalingQuality.HighQuality);
+        MNU_ImageAdjust.Click += (sender, e) => OpenSettingsDialog(SettingsTab.Image);
         MNU_AlwaysOnTop.Click += (sender, e) =>
         {
             _settings.AlwaysOnTop = MNU_AlwaysOnTop.IsChecked;
@@ -583,12 +572,12 @@ public partial class MainWindow : Window
 
         MENU_Tools.SubmenuOpened += (sender, e) =>
         {
-            MNU_CalMode.IsChecked    = _calMode;
+            MNU_CalMode.IsChecked    = _cal.Mode;
             MNU_DisableKbd.IsChecked = !_kbdSendEnabled;
         };
         // Palette editor is disabled — collapse the menu item so it is not accessible
         MNU_PaletteEd.Visibility = Visibility.Collapsed;
-        MNU_CalMode.Click   += (sender, e) => { _calMode = MNU_CalMode.IsChecked; if (_calMode) EnterCalMode(); else ExitCalMode(); OverlayLayer.InvalidateVisual(); };
+        MNU_CalMode.Click   += (sender, e) => { _cal.Mode = MNU_CalMode.IsChecked; if (_cal.Mode) EnterCalMode(); else ExitCalMode(); OverlayLayer.InvalidateVisual(); };
 
         MNU_SettingsDlg.Click += (sender, e) => OpenSettingsDialog();
 
@@ -658,9 +647,9 @@ public partial class MainWindow : Window
         // Calibration grid size
         MENU_CalGrid.SubmenuOpened += (sender, e) =>
         {
-            MNU_CalGrid3.IsChecked = _calMesh.Cols == 3;
-            MNU_CalGrid4.IsChecked = _calMesh.Cols == 4;
-            MNU_CalGrid5.IsChecked = _calMesh.Cols == 5;
+            MNU_CalGrid3.IsChecked = _cal.Mesh.Cols == 3;
+            MNU_CalGrid4.IsChecked = _cal.Mesh.Cols == 4;
+            MNU_CalGrid5.IsChecked = _cal.Mesh.Cols == 5;
         };
         MNU_CalGrid3.Click += (sender, e) => SetCalGridSize(3);
         MNU_CalGrid4.Click += (sender, e) => SetCalGridSize(4);
@@ -709,42 +698,35 @@ public partial class MainWindow : Window
         CTX_ZoomReset.Click      += (sender, e) => { _zoomLevel = _settings.ZoomDefaultLevel; _zoomOn = false; OverlayLayer.InvalidateVisual(); };
         CTX_AspectLock.Click     += (sender, e) => { _aspectLock = CTX_AspectLock.IsChecked; RefreshFrameRect(); };
         CTX_Fullscreen.Click     += (sender, e) => ToggleFullscreen();
+        CTX_ScaleSharp.Click     += (sender, e) => SetScalingMode(ScalingQuality.Sharp);
+        CTX_ScaleSmooth.Click    += (sender, e) => SetScalingMode(ScalingQuality.Smooth);
+        CTX_ScaleHQ.Click        += (sender, e) => SetScalingMode(ScalingQuality.HighQuality);
+        CTX_ImageAdjust.Click    += (sender, e) => OpenSettingsDialog(SettingsTab.Image);
         CTX_Reconnect.Click      += (sender, e) => UserInitiatedReconnect();
-        CTX_Disconnect.Click     += (sender, e) =>
-        {
-            ResetBootState();
-            _receiver?.Dispose(); _receiver = null;
-            _ctrl.Reset();
-            SetConnectionStatus(ConnState.Disconnected);
-            UpdateTitle("Not Connected");
-        };
+        CTX_Disconnect.Click     += (sender, e) => Disconnect();
         FrameImage.ContextMenuOpening += (s, e) =>
         {
-            if (_calMode) { e.Handled = true; return; }
+            if (_cal.Mode) { e.Handled = true; return; }
             CTX_AspectLock.IsChecked = _aspectLock;
-            CTX_Fullscreen.IsChecked = _isFullscreen;
-            CTX_Disconnect.IsEnabled = _receiver != null;
+            CTX_Fullscreen.IsChecked = _fs.Active;
+            CTX_Disconnect.IsEnabled = _connState != ConnState.Disconnected;
             CTX_ZoomOut.IsEnabled    = _zoomOn && _zoomLevel > _settings.ZoomDefaultLevel;
             CTX_ZoomReset.IsEnabled  = _zoomOn;
+            CTX_ScaleSharp.IsChecked  = _settings.ImageScalingMode == ScalingQuality.Sharp;
+            CTX_ScaleSmooth.IsChecked = _settings.ImageScalingMode == ScalingQuality.Smooth;
+            CTX_ScaleHQ.IsChecked     = _settings.ImageScalingMode == ScalingQuality.HighQuality;
         };
 
         // Wheel context menu
         CTX_WheelSensitivity.Click += (sender, e) => OpenSettingsDialog(SettingsTab.View);
-        CTX_WheelReset.Click       += (sender, e) => { SetWheelAngle(0); _wheelAnimState = 0; };
+        CTX_WheelReset.Click       += (sender, e) => { SetWheelAngle(0); _wheel.AnimState = 0; };
 
         // Status bar context menus
         CTX_StatusReconnect.Click  += (sender, e) => UserInitiatedReconnect();
-        CTX_StatusDisconnect.Click += (sender, e) =>
-        {
-            ResetBootState();
-            _receiver?.Dispose(); _receiver = null;
-            _ctrl.Reset();
-            SetConnectionStatus(ConnState.Disconnected);
-            UpdateTitle("Not Connected");
-        };
+        CTX_StatusDisconnect.Click += (sender, e) => Disconnect();
         CTX_StatusCopyIP.Click      += (sender, e) => { if (!string.IsNullOrEmpty(_host)) Clipboard.SetText(_host); };
         CTX_KbdEnable.Click         += (sender, e) => { _kbdSendEnabled = true;  _instantKeys.Clear(); StopRepeat(); UpdateKbdStatus(); OverlayLayer.InvalidateVisual(); };
-        CTX_KbdDisable.Click        += (sender, e) => { _kbdSendEnabled = false; _instantKeys.Clear(); StopRepeat(); UpdateKbdStatus(); OverlayLayer.InvalidateVisual(); };
+        CTX_KbdDisable.Click        += (sender, e) => { _kbdSendEnabled = false; _instantKeys.Clear(); StopRepeat(); ReleaseActiveRawKeys(); UpdateKbdStatus(); OverlayLayer.InvalidateVisual(); };
         CTX_SetMaxFps.Click         += (sender, e) => OpenSettingsDialog(SettingsTab.Streaming);
         CTX_Mode_Setlist.Click      += (sender, e) => SendMode(1);
         CTX_Mode_Combi.Click        += (sender, e) => SendMode(2);
@@ -758,6 +740,15 @@ public partial class MainWindow : Window
 
         MNU_HideDataInput.IsChecked  = _hideDataInput;
         MNU_HideValueInput.IsChecked = _hideValueInput;
+    }
+
+    // Change the upscale filter from the View / context menus.  Persist and apply immediately —
+    // FrameImage repaints the current bitmap with the new filter without needing a fresh frame.
+    void SetScalingMode(ScalingQuality mode)
+    {
+        _settings.ImageScalingMode = mode;
+        Storage.SaveSettings(_settings);
+        ApplyScalingMode();
     }
 
     string EffectiveScreenshotDir
@@ -887,7 +878,7 @@ public partial class MainWindow : Window
 
         if (!stateChanged && !sizeChanged && !posChanged) return result;
 
-        if (_isFullscreen)
+        if (_fs.Active)
         {
             // Fullscreen is always Maximized+borderless; re-apply to recalculate bounds.
             WindowState = WindowState.Normal;
@@ -940,19 +931,25 @@ public partial class MainWindow : Window
         _ctrl = new CtrlClientAdapter(_host, _ctrlPort);
         Storage.SaveSettings(_settings);
 
+        // Apply image-quality settings immediately: scaling filter, then re-bake the tone LUT and
+        // re-render the current frame so brightness/contrast/gamma/saturation/sharpen take effect
+        // now (even while disconnected, if a frame is still shown).
+        ApplyScalingMode();
+        RebuildLut();
+        if (_wb != null && _rawFrame != null) ApplyLut();
+
         if (_rawFrame != null && _lut != null)
         {
             bool meetsThreshold = IsFrameMostlyBlack(_rawFrame, _lut, _settings.BootScreenThreshold / 100.0);
-            if (_bootPhase && !meetsThreshold)
+            if (_boot.Phase && !meetsThreshold)
             {
-                _bootPhase      = false;
+                _boot.Phase      = false;
                 _detectedModeEver = true;
             }
-            else if (!_bootPhase && meetsThreshold && !_detectedModeEver && _connState == ConnState.Connected)
+            else if (!_boot.Phase && meetsThreshold && !_detectedModeEver && IsConnected)
             {
-                _bootPhase         = true;
-                _bootPhaseStart    = DateTime.Now;
-                _preloadTimerStart = DateTime.Now;
+                _boot.Phase         = true;
+                _boot.PreloadTimerStart = DateTime.Now;
                 BuildPreloadSchedule();
             }
             Ctrl("REFRESH");
@@ -961,6 +958,7 @@ public partial class MainWindow : Window
         MNU_HideDataInput.IsChecked  = _hideDataInput;
         MNU_HideValueInput.IsChecked = _hideValueInput;
 
+        _sysExService.ValueSliderCc = _settings.ValueSliderCc;
         _sysExService.ApplyMidiSettings(
             _settings.MidiMonitorEnabled, _settings.ProactiveSysExPolling,
             _settings.SysExPollIntervalSec, _settings.SysExPollOnChanges);
@@ -968,19 +966,19 @@ public partial class MainWindow : Window
 
         if (dlg.WasReset)
         {
-            if (_receiver != null) TriggerReconnect();
+            if (IsConnected) TriggerReconnect();
             MessageBox.Show(
                 "All settings have been reset to defaults.\n\nCalibration data will fully take effect on the next launch.",
                 "Settings Reset", MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
-        if (_receiver != null && streamChanged)
+        if (IsConnected && streamChanged)
         {
             // Streaming parameters changed — reconnect so new mode/fps take effect now.
             TriggerReconnect();
         }
-        else if (_receiver != null)
+        else if (IsConnected)
         {
             // Push VGA mirror + screensaver to daemon immediately if connected
             _mirrorState = _settings.VgaMirrorEnabled;
@@ -1008,7 +1006,7 @@ public partial class MainWindow : Window
             _fileManagerWin.Activate();
             return;
         }
-        if (_connState != ConnState.Connected)
+        if (!IsConnected)
         {
             MessageBox.Show("Not connected to Kronos.\n\nConnect to Kronos first, then open the File Manager.",
                 "File Manager", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -1155,29 +1153,29 @@ public partial class MainWindow : Window
             ConnModeText.Text = state == ConnState.Connected
                 ? (_pullMode ? "Pull" : "Change")
                 : "";
-            if (state != ConnState.Connected) { FpsText.Text = ""; PingText.Text = ""; _fpsLastCheck = DateTime.MinValue; _fpsFrameCount = 0; }
+            if (state != ConnState.Connected) { FpsText.Text = ""; PingText.Text = ""; _fpsCounter.Reset(); }
             if (state == ConnState.Connected) StartPing(); else StopPing();
             if (state == ConnState.Connected) StartAudioCapture(); else StopAudioCapture();
             if (state != ConnState.Connected)
             {
                 _rawFrame = null;
-                while (_frameQ.TryDequeue(out _)) {}
+                _frameBuf = null;
                 _wb = null;
                 FrameImage.Source = null;
             }
             if (state == ConnState.Disconnected)
             {
                 _sysExService.Reset();
-                if (_combiProgramEditActive) { _combiProgramEditActive = false; _combiProgramFlashTimer.Stop(); }
-                _combiEditIndicatorGoneAt = DateTime.MinValue;
+                if (_combi.Active) { _combi.Active = false; _combi.FlashTimer.Stop(); }
+                _combi.IndicatorGoneAt = DateTime.MinValue;
                 _currentMode = 0;
                 _prevMode    = 0;
                 ClearModeButtons();
                 OverlayLayer.InvalidateVisual();
             }
             // Start boot overlay immediately on connect so it shows while waiting for first frame
-            if (state == ConnState.Connected && _bootFirstFrame == DateTime.MinValue)
-                _bootFirstFrame = DateTime.Now;
+            if (state == ConnState.Connected && _boot.FirstFrame == DateTime.MinValue)
+                _boot.FirstFrame = DateTime.Now;
         });
     }
 
@@ -1289,7 +1287,7 @@ public partial class MainWindow : Window
             // ── Connection
             new("Reconnect",                        "",              () => TriggerReconnect()),
             new("Refresh Display",                  "",              () => Ctrl("REFRESH")),
-            new("Disconnect",                       "",              () => { _receiver?.Dispose(); _receiver = null; _ctrl.Reset(); SetConnectionStatus(ConnState.Disconnected); UpdateTitle("Not Connected"); }),
+            new("Disconnect",                       "",              () => Disconnect()),
             new("Settings…",                        "",              () => OpenSettingsDialog()),
             // ── View
             new("Toggle Fullscreen",                K("Fullscreen"),    () => ToggleFullscreen()),
@@ -1307,9 +1305,9 @@ public partial class MainWindow : Window
             // ── Tools
             new("Keyboard Info",                    "",              () => OpenKeyboardInfoWindow()),
             new("Toggle VGA Mirror",                K("Mirror"),        () => { _mirrorState = !_mirrorState; Ctrl(_mirrorState ? "MIRROR_ON" : "MIRROR_OFF"); }),
-            new("Toggle Calibration Mode",          K("Calibrate"),     () => { _calMode = !_calMode; if (_calMode) EnterCalMode(); else ExitCalMode(); OverlayLayer.InvalidateVisual(); }),
+            new("Toggle Calibration Mode",          K("Calibrate"),     () => { _cal.Mode = !_cal.Mode; if (_cal.Mode) EnterCalMode(); else ExitCalMode(); OverlayLayer.InvalidateVisual(); }),
             new("Save Screenshot…",                 "",              () => SaveScreenshot()),
-            new("Toggle Keyboard Send",             "",              () => { _kbdSendEnabled = !_kbdSendEnabled; _instantKeys.Clear(); UpdateKbdStatus(); OverlayLayer.InvalidateVisual(); }),
+            new("Toggle Keyboard Send",             "",              () => { _kbdSendEnabled = !_kbdSendEnabled; _instantKeys.Clear(); StopRepeat(); ReleaseActiveRawKeys(); UpdateKbdStatus(); OverlayLayer.InvalidateVisual(); }),
             // ── Mode select
             new("Mode: Setlist",  K("Mode Setlist"),  () => SendMode(1)),
             new("Mode: Combi",    K("Mode Combi"),    () => SendMode(2)),
@@ -1436,27 +1434,25 @@ public partial class MainWindow : Window
     void OnControlPaletteWindowClosed(object? s, EventArgs e)
     {
         _controlPaletteWin = null;
-        if (_layoutPreset == LayoutPreset.Detached)
-            ApplyLayoutPreset(LayoutPreset.Full);
     }
 
     // ── Fullscreen ────────────────────────────────────────────────────────────
 
     void ToggleFullscreen()
     {
-        if (_isFullscreen)
+        if (_fs.Active)
         {
-            WindowStyle   = _savedStyle;
-            WindowState   = _savedState;
-            ResizeMode    = _savedResize;
+            WindowStyle   = _fs.SavedStyle;
+            WindowState   = _fs.SavedState;
+            ResizeMode    = _fs.SavedResize;
             MainMenu.Visibility = Visibility.Visible;
-            _isFullscreen = false;
+            _fs.Active = false;
         }
         else
         {
-            _savedState   = WindowState;
-            _savedStyle   = WindowStyle;
-            _savedResize  = ResizeMode;
+            _fs.SavedState   = WindowState;
+            _fs.SavedStyle   = WindowStyle;
+            _fs.SavedResize  = ResizeMode;
             WindowStyle   = WindowStyle.None;
             ResizeMode    = ResizeMode.NoResize;
             // Must pass through Normal so WPF recalculates maximized bounds for the
@@ -1465,7 +1461,7 @@ public partial class MainWindow : Window
             WindowState   = WindowState.Normal;
             WindowState   = WindowState.Maximized;
             MainMenu.Visibility = Visibility.Collapsed;
-            _isFullscreen = true;
+            _fs.Active = true;
         }
         // SizeChanged fires for the WindowState change but not for the menu
         // visibility change, so explicitly refresh after layout settles.
@@ -1475,7 +1471,7 @@ public partial class MainWindow : Window
     void SetWindowSize(double scale)
     {
         if (!IsLoaded) return;
-        if (_isFullscreen) return;
+        if (_fs.Active) return;
         if (WindowState == WindowState.Maximized) WindowState = WindowState.Normal;
         _currentScale  = scale;
         var dp         = (FrameworkElement)Content;
@@ -1487,7 +1483,6 @@ public partial class MainWindow : Window
             LayoutPreset.Focused  => 800.0
                                      + (_focusedValueExpanded ? 282.0 : 28.0)
                                      + (_focusedDataExpanded  ? 800.0 : 28.0),
-            LayoutPreset.Detached => 800.0,
             _                     => 800.0
                                      + (_hideValueInput ? 0.0 : 282.0)
                                      + (_hideDataInput  ? 0.0 : 800.0)
@@ -1503,7 +1498,7 @@ public partial class MainWindow : Window
         // Skip SetWindowSize when already maximized (non-fullscreen): the window fills
         // the screen and there is nothing to resize. SetWindowSize would force it back
         // to Normal, which is exactly the bug we are avoiding here.
-        if (!_isFullscreen && WindowState != WindowState.Maximized)
+        if (!_fs.Active && WindowState != WindowState.Maximized)
             SetWindowSize(_currentScale);
         // SizeChanged may not fire (fullscreen, or maximized with no size change),
         // so always defer an explicit layout refresh.
@@ -1586,13 +1581,7 @@ public partial class MainWindow : Window
         menu.Items.Add("Show", null, (_, _) => RestoreFromTray());
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         menu.Items.Add("Reconnect",  null, (_, _) => { RestoreFromTray(); TriggerReconnect(); });
-        menu.Items.Add("Disconnect", null, (_, _) =>
-        {
-            _receiver?.Dispose(); _receiver = null;
-            _ctrl.Reset();
-            SetConnectionStatus(ConnState.Disconnected);
-            UpdateTitle("Not Connected");
-        });
+        menu.Items.Add("Disconnect", null, (_, _) => Disconnect());
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         menu.Items.Add("Quit", null, (_, _) => { RestoreFromTray(); TryQuit(); });
 
@@ -1620,7 +1609,7 @@ public partial class MainWindow : Window
         if (_trayIcon != null) _trayIcon.Visible = false;
         Show();
         if (WindowState == WindowState.Minimized)
-            WindowState = _savedState == WindowState.Minimized ? WindowState.Normal : _savedState;
+            WindowState = _fs.SavedState == WindowState.Minimized ? WindowState.Normal : _fs.SavedState;
         Activate();
     }
 }

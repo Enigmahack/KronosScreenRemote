@@ -35,6 +35,18 @@
                 <MenuItem x:Name="MNU_AlwaysOnTop"   Header="Always on _Top"   IsCheckable="True"/>
                 <MenuItem x:Name="MNU_RefreshDisplay" Header="Re_fresh Display"/>
                 <Separator/>
+                <MenuItem x:Name="MENU_ScalingMode" Header="Scaling _Quality"
+                          ToolTip="How the 800×600 screen is scaled up to the window.">
+                    <MenuItem x:Name="MNU_ScaleSharp"  Header="_Sharp (crisp pixels)"   IsCheckable="True"
+                              ToolTip="Nearest-neighbor — blocky but razor-sharp; no interpolation."/>
+                    <MenuItem x:Name="MNU_ScaleSmooth" Header="S_mooth (bilinear)"      IsCheckable="True"
+                              ToolTip="Bilinear — soft and fast."/>
+                    <MenuItem x:Name="MNU_ScaleHQ"     Header="_High Quality (default)" IsCheckable="True"
+                              ToolTip="Fant resampling — best quality (default)."/>
+                </MenuItem>
+                <MenuItem x:Name="MNU_ImageAdjust" Header="_Image Adjustments…"
+                          ToolTip="Brightness, contrast, gamma, saturation, and sharpening."/>
+                <Separator/>
                 <MenuItem x:Name="MENU_LayoutPreset" Header="Layout _Preset">
                     <MenuItem x:Name="MNU_PresetFull"    Header="_Full"    IsCheckable="True"
                               ToolTip="Frame + full controls panel (default)"/>
@@ -376,7 +388,6 @@
             <!-- ── Screen area (columns 0+1) ──────────────────────────────── -->
             <Image x:Name="FrameImage"
                Stretch="Fill"
-               RenderOptions.BitmapScalingMode="HighQuality"
                SnapsToDevicePixels="False"
                Grid.ColumnSpan="2">
                 <Image.ContextMenu>
@@ -392,6 +403,13 @@
                         <Separator/>
                         <MenuItem x:Name="CTX_AspectLock"      Header="_Aspect Lock"  IsCheckable="True"/>
                         <MenuItem x:Name="CTX_Fullscreen"      Header="_Fullscreen"  IsCheckable="True"/>
+                        <Separator/>
+                        <MenuItem x:Name="CTX_ScalingMode" Header="Scaling _Quality">
+                            <MenuItem x:Name="CTX_ScaleSharp"  Header="_Sharp (crisp pixels)" IsCheckable="True"/>
+                            <MenuItem x:Name="CTX_ScaleSmooth" Header="S_mooth (bilinear)"    IsCheckable="True"/>
+                            <MenuItem x:Name="CTX_ScaleHQ"     Header="_High Quality"         IsCheckable="True"/>
+                        </MenuItem>
+                        <MenuItem x:Name="CTX_ImageAdjust"     Header="_Image Adjustments…"/>
                         <Separator/>
                         <MenuItem x:Name="CTX_KeyboardInfo"    Header="_Keyboard Info…"/>
                         <Separator/>

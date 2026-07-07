@@ -10,13 +10,21 @@ sealed class SysExService : ISysExService
 
     readonly Dispatcher _dispatcher;
 
+    // Coalescing window for perf-metadata refresh after a Program/Bank change.
+    // A Bank Select is CC0 + CC32 + PC in a burst; debounce collapses them into
+    // one query and makes external program changes feel instant.
+    const int PerfRefreshDebounceMs = 300;
+
     KronosSysEx? _transport;
     MidiStreamMonitor? _midiMonitor;
     CancellationTokenSource? _cts;
     CancellationTokenSource? _perfPollDelayCts;
+    CancellationTokenSource? _refreshDebounceCts;
     DateTime _lastUserActivity = DateTime.MinValue;
     string _host = "";
     int    _ctrlPort = CtrlClient.CtrlPort;
+
+    public int ValueSliderCc { get; set; } = 18;
 
     bool _midiMonitorEnabled = true;
     bool _proactivePoll       = false;
@@ -28,6 +36,8 @@ sealed class SysExService : ISysExService
 
     public event PropertyChangedEventHandler? PropertyChanged;
     public event Action<int>? InitialModeDetected;
+    public event Action<int>? ModeChanged;
+    public event Action<int>? ValueSliderChanged;
     public event Action<SysExTrafficEntry>? SysExTraffic;
 
     public string PerformanceDisplay
@@ -50,6 +60,7 @@ sealed class SysExService : ISysExService
     public void Start(string host, int ctrlPort)
     {
         _cts?.Cancel();
+        _cts?.Dispose();
 
         _host     = host;
         _ctrlPort = ctrlPort;
@@ -83,6 +94,10 @@ sealed class SysExService : ISysExService
     public void Reset()
     {
         _cts?.Cancel();
+        _cts?.Dispose();
+        _cts = null;
+        try { _refreshDebounceCts?.Cancel(); _refreshDebounceCts?.Dispose(); } catch { }
+        _refreshDebounceCts = null;
         if (_transport != null)
             _transport.Traffic -= OnTransportTraffic;
         _transport = null;
@@ -97,16 +112,66 @@ sealed class SysExService : ISysExService
     void OnTransportTraffic(SysExTrafficEntry entry)
     {
         SysExTraffic?.Invoke(entry);
-        if (_pollOnChanges && !entry.IsSend && entry.IsMidi)
+
+        // Only interpret messages the Kronos actually transmitted on the live
+        // stream (IsMidi + not our own send + raw bytes present).
+        if (entry.IsSend || !entry.IsMidi || entry.RawBytes is not { Length: > 0 } raw)
+            return;
+
+        ParseIncoming(raw);
+    }
+
+    // Decode signals the Kronos pushes unsolicited on the MIDI-out stream.
+    // Every recognised message is logged so an absent signal (transmit disabled
+    // in the Kronos Global/MIDI settings) is distinguishable from a parse bug.
+    void ParseIncoming(byte[] raw)
+    {
+        byte status = raw[0];
+
+        // Mode Change (SysEx func 0x4E): F0 42 3g 68 4E 0m F7 — authoritative,
+        // event-driven mode follow. See KRONOS_MIDI_SysEx.txt func 4E.
+        if (status == 0xF0 && raw.Length >= 7 &&
+            raw[1] == 0x42 && (raw[2] & 0xF0) == 0x30 && raw[3] == 0x68 && raw[4] == 0x4E)
         {
-            var h = entry.Hex;
-            if (h.StartsWith("PC",     StringComparison.Ordinal) ||
-                h.StartsWith("CC#0 ",  StringComparison.Ordinal) ||
-                h.StartsWith("CC#32 ", StringComparison.Ordinal))
+            var md = new SysExModeData(raw[5] & 0x0F, 0, 0, 0);
+            int stateMode = md.ToStateMode();
+            if (stateMode > 0)
             {
-                _ = DeferredRefreshAsync();
+                AppLog.Info($"[sysex] mode-change 0x4E -> {md.ModeName} (state={stateMode})");
+                _dispatcher.InvokeAsync(() => ModeChanged?.Invoke(stateMode));
             }
+            return;
         }
+
+        // Channel messages.
+        int hi = status & 0xF0;
+
+        // Control Change: value-slider follow (CC# = ValueSliderCc) and
+        // Program/Bank-change perf refresh (Bank Select CC0/CC32).
+        if (hi == 0xB0 && raw.Length >= 3)
+        {
+            int cc  = raw[1] & 0x7F;
+            int val = raw[2] & 0x7F;
+
+            // Bank Select (MSB/LSB) always takes priority — a misconfigured
+            // ValueSliderCc must never shadow program-change follow.
+            if (cc == 0 || cc == 32)
+            {
+                if (_pollOnChanges) _ = DeferredRefreshAsync();
+                return;
+            }
+
+            if (cc == ValueSliderCc)
+            {
+                AppLog.Debug($"[sysex] value-slider CC#{cc} = {val}");   // Debug: fires rapidly on a sweep
+                _dispatcher.InvokeAsync(() => ValueSliderChanged?.Invoke(val));
+            }
+            return;
+        }
+
+        // Program Change: refresh current performance metadata.
+        if (hi == 0xC0 && _pollOnChanges)
+            _ = DeferredRefreshAsync();
     }
 
     public void ApplyMidiSettings(bool midiMonitorEnabled, bool proactivePoll, int pollIntervalSec, bool pollOnChanges)
@@ -147,9 +212,23 @@ sealed class SysExService : ISysExService
         _ = DeferredRefreshAsync();
     }
 
+    // Coalescing debounce: each Program/Bank message restarts a short timer, so
+    // a CC0+CC32+PC burst fires a single refresh ~PerfRefreshDebounceMs later.
+    // The user-activity guard still skips refreshes during active app-driven
+    // interaction (which would otherwise freeze the video stream mid-drag);
+    // external changes on the Kronos have no app activity, so they follow fast.
     async Task DeferredRefreshAsync()
     {
-        await Task.Delay(3000).ConfigureAwait(false);
+        var cts  = new CancellationTokenSource();
+        var prev = Interlocked.Exchange(ref _refreshDebounceCts, cts);
+        try { prev?.Cancel(); prev?.Dispose(); } catch { }
+
+        try { await Task.Delay(PerfRefreshDebounceMs, cts.Token).ConfigureAwait(false); }
+        catch (OperationCanceledException) { return; }
+
+        Interlocked.CompareExchange(ref _refreshDebounceCts, null, cts);
+        cts.Dispose();
+
         if ((DateTime.Now - _lastUserActivity).TotalSeconds < SysExDeferralSec)
             return;
         try { _perfPollDelayCts?.Cancel(); } catch { }
@@ -224,7 +303,10 @@ sealed class SysExService : ISysExService
                             if (ct.IsCancellationRequested) return;
 
                             var perf = name != null ? info.Value with { Name = name } : info.Value;
-                            PerformanceDisplay = perf.ToDisplayString();
+                            var display = perf.ToDisplayString();
+                            if (display != PerformanceDisplay)
+                                AppLog.Info($"[sysex] current performance: {display}");
+                            PerformanceDisplay = display;
                         }
                         else
                         {

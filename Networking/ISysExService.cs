@@ -8,6 +8,11 @@ interface ISysExService : INotifyPropertyChanged
 
     bool IsAvailable { get; }
 
+    // CC# the Kronos VALUE slider transmits (default 18). Incoming CCs with this
+    // controller number drive ValueSliderChanged so the UI slider can follow the
+    // hardware. Assignment-dependent on the Kronos; settable to match.
+    int ValueSliderCc { get; set; }
+
     void Start(string host, int ctrlPort);
 
     void Reset();
@@ -17,6 +22,16 @@ interface ISysExService : INotifyPropertyChanged
     void NotifyUserActivity();
 
     event Action<int>? InitialModeDetected;
+
+    // Fired (on the UI thread) when the Kronos transmits a Mode Change (SysEx
+    // func 0x4E) over the live MIDI stream. Argument is the STATE-equivalent
+    // mode (1-7). This is the authoritative, event-driven mode source; screen
+    // detection is only a fallback.
+    event Action<int>? ModeChanged;
+
+    // Fired (on the UI thread) when an incoming CC matching ValueSliderCc is
+    // seen on the live MIDI stream. Argument is the 0-127 controller value.
+    event Action<int>? ValueSliderChanged;
 
     event Action<SysExTrafficEntry>? SysExTraffic;
 

@@ -47,7 +47,21 @@ public partial class LoginDialog : Window
         ErrorText.Visibility = Visibility.Collapsed;
 
         var pass = PwdBox.Password;
-        var (ok, error) = await Task.Run(() => KronosFtpSession.VerifyAsync(_host, _port, user, pass));
+        bool ok; string error;
+        try
+        {
+            (ok, error) = await Task.Run(() => KronosFtpSession.VerifyAsync(_host, _port, user, pass));
+        }
+        catch (Exception ex)
+        {
+            // Never let an exception escape this async void handler (would crash the app) or
+            // leave the dialog stuck on "Verifying…" with both buttons disabled.
+            BtnOk.IsEnabled     = true;
+            BtnCancel.IsEnabled = true;
+            BtnOk.Content       = "OK";
+            ShowError($"Login failed: {ex.Message}");
+            return;
+        }
 
         if (ok)
         {

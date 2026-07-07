@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Windows.Input;
 
 namespace KronosScreenRemote;
@@ -34,6 +35,10 @@ public class AppSettings
     public int  SysExPollIntervalSec  { get; set; } = 60;
     public bool SysExPollOnChanges    { get; set; } = true;
     public int  MidiOutputChannel     { get; set; } = 1;
+    // CC# the Kronos VALUE slider transmits (default 18). Used to sync the UI
+    // value slider to physical slider moves. The actual CC can vary with the
+    // selected parameter/page; 18 is the Kronos default.
+    public int  ValueSliderCc         { get; set; } = 18;
 
     // Window geometry — -1 means "not yet saved; use defaults"
     public double WindowLeft     { get; set; } = -1;
@@ -45,6 +50,16 @@ public class AppSettings
     public bool   AlwaysOnTop     { get; set; } = false;
     public double ZoomDefaultLevel { get; set; } = 2.5;
     public double ZoomWindowSize   { get; set; } = 1.0;
+
+    // Image quality / adjustments — applied to the streamed frame before display.
+    // ScalingMode selects WPF's upscale filter; the rest fold into the palette LUT (brightness/
+    // contrast/gamma/saturation) or a per-frame unsharp-mask pass (sharpen).  See ImageAdjust.
+    public ScalingQuality ImageScalingMode { get; set; } = ScalingQuality.HighQuality;
+    public int    ImageBrightness { get; set; } = 0;    // -100..100  (0 = none)
+    public int    ImageContrast   { get; set; } = 0;    // -100..100  (0 = none)
+    public double ImageGamma      { get; set; } = 1.0;  // 0.4..2.5   (1.0 = none)
+    public int    ImageSaturation { get; set; } = 0;    // -100..100  (0 = none)
+    public int    ImageSharpen    { get; set; } = 0;    // 0..100     (0 = off)
 
     public List<string> RecentHosts { get; set; } = new();
 
@@ -112,4 +127,27 @@ public class AppSettings
     }
 
     public string GetKeyName(string action) => GetKeybind(action).ToDisplayString();
+
+    // Deep copy of every setting.  Reflection over all read/write properties means a newly
+    // added setting is copied automatically — no more silently-dropped pass-through fields
+    // (FocusedDataExpanded/FocusedValueExpanded were lost this way before Settings used Clone()).
+    // Mutable collections are copied by value so edits to the clone never mutate the original.
+    public AppSettings Clone()
+    {
+        var copy = new AppSettings();
+        foreach (var p in typeof(AppSettings).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+            if (p.CanRead && p.CanWrite)
+                p.SetValue(copy, p.GetValue(this));
+
+        copy.RecentHosts = new List<string>(RecentHosts);
+        copy.Keybinds    = new Dictionary<string, Keybind>(Keybinds);
+        copy.Macros      = Macros.Select(m => new MacroDefinition
+        {
+            Description = m.Description,
+            Trigger     = m.Trigger,
+            StepDelayMs = m.StepDelayMs,
+            Steps       = m.Steps.Select(x => new MacroStep { Code = x.Code, Down = x.Down }).ToList(),
+        }).ToList();
+        return copy;
+    }
 }

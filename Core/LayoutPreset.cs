@@ -1,3 +1,3 @@
 namespace KronosScreenRemote;
 
-public enum LayoutPreset { Full, Focused, Detached }
+public enum LayoutPreset { Full, Focused }

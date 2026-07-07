@@ -10,6 +10,7 @@ public sealed class AudioEngine : IDisposable
     const double MinDb = -80.0;
 
     WasapiCapture? _capture;
+    MMDevice?      _device;   // backs _capture; must outlive it, disposed in Stop()
     readonly object _lock = new();
     double _levelL = MinDb;
     double _levelR = MinDb;
@@ -33,8 +34,8 @@ public sealed class AudioEngine : IDisposable
         try
         {
             using var enumerator = new MMDeviceEnumerator();
-            var device = enumerator.GetDevice(deviceId);
-            _capture = new WasapiCapture(device);
+            _device = enumerator.GetDevice(deviceId);
+            _capture = new WasapiCapture(_device);
             _capture.DataAvailable += OnData;
             _capture.StartRecording();
         }
@@ -42,6 +43,8 @@ public sealed class AudioEngine : IDisposable
         {
             _capture?.Dispose();
             _capture = null;
+            _device?.Dispose();
+            _device = null;
         }
     }
 
@@ -52,6 +55,8 @@ public sealed class AudioEngine : IDisposable
         _capture.DataAvailable -= OnData;
         _capture.Dispose();
         _capture = null;
+        _device?.Dispose();
+        _device = null;
         lock (_lock) { _levelL = MinDb; _levelR = MinDb; }
     }
 
@@ -105,8 +110,8 @@ public sealed class AudioEngine : IDisposable
         }
     }
 
-    static double ToDb(double rms)
-        => rms < 1e-10 ? MinDb : Math.Max(MinDb, 20.0 * Math.Log10(rms));
+    static double ToDb(double peak)
+        => peak < 1e-10 ? MinDb : Math.Max(MinDb, 20.0 * Math.Log10(peak));
 
     public void Dispose() => Stop();
 }

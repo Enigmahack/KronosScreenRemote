@@ -8,7 +8,7 @@ public partial class MainWindow
 
     BitmapSource? GetBootSplash()
     {
-        if (_bootSplash != null) return _bootSplash;
+        if (_boot.Splash != null) return _boot.Splash;
         try
         {
             var bmp = new BitmapImage();
@@ -17,17 +17,17 @@ public partial class MainWindow
             bmp.CacheOption = BitmapCacheOption.OnLoad;
             bmp.EndInit();
             bmp.Freeze();
-            _bootSplash = bmp;
+            _boot.Splash = bmp;
         }
         catch { /* missing resource — overlay won't show */ }
-        return _bootSplash;
+        return _boot.Splash;
     }
 
     // Returns true when more than `threshold` of frame pixels are near-black (all channels ≤20).
     // Default 0.90 (90%) is used to suppress mode detection during boot — only palette index 0
     // (0,0,2) qualifies, preventing false positives against dark reference pixels.
     // The 0.60 variant gates boot-splash display: if real UI content is visible (>40% non-black)
-    // the splash is suppressed even when _bootPhase is true, avoiding false overlay during popups.
+    // the splash is suppressed even when _boot.Phase is true, avoiding false overlay during popups.
     static bool IsFrameMostlyBlack(byte[] frame, int[] lut, double threshold = 0.90)
     {
         int black = 0;
@@ -44,19 +44,18 @@ public partial class MainWindow
 
     void ResetBootState()
     {
-        _bootPhase          = false;
+        _boot.Phase          = false;
         _detectedModeEver   = false;
         _frameIsMostlyBlack = false;
-        _bootFirstFrame     = DateTime.MinValue;
-        _bootPhaseStart     = DateTime.MinValue;
-        _bootLoadPhase      = BootPhaseDetector.Phase.None;
-        _preloadTimerStart  = DateTime.MinValue;
-        _bankDataDetectedAt = DateTime.MinValue;
-        _finishingFillFrac  = BootBarF_StaticEnd;
-        _preloadSchedule    = null;
+        _boot.FirstFrame     = DateTime.MinValue;
+        _boot.LoadPhase      = BootPhaseDetector.Phase.None;
+        _boot.PreloadTimerStart  = DateTime.MinValue;
+        _boot.BankDataDetectedAt = DateTime.MinValue;
+        _boot.FinishingFillFrac  = BootState.BarStaticEnd;
+        _boot.PreloadSchedule    = null;
     }
 
-    // Builds _preloadSchedule: 25 one-second pauses randomly distributed across 20 s of
+    // Builds _boot.PreloadSchedule: 25 one-second pauses randomly distributed across 20 s of
     // active movement = 45 s total wall time.  Called once when boot phase enters.
     void BuildPreloadSchedule()
     {
@@ -83,16 +82,16 @@ public partial class MainWindow
         double tail = activeTotal - prog;
         if (tail > 1e-9) { wall += tail; prog = activeTotal; segs.Add((wall, prog)); }
 
-        _preloadSchedule = segs.ToArray();
+        _boot.PreloadSchedule = segs.ToArray();
     }
 
     // Maps wall-clock elapsed seconds to effective preload progress (0..1).
     double GetPreloadProgress(double elapsed)
     {
-        if (_preloadSchedule == null) return Math.Clamp(elapsed / 20.0, 0, 1);
+        if (_boot.PreloadSchedule == null) return Math.Clamp(elapsed / 20.0, 0, 1);
 
         double prevWall = 0, prevProg = 0;
-        foreach (var (wallEnd, progEnd) in _preloadSchedule)
+        foreach (var (wallEnd, progEnd) in _boot.PreloadSchedule)
         {
             if (elapsed <= wallEnd)
             {
@@ -112,28 +111,28 @@ public partial class MainWindow
     // Result is snapped to 1% increments so the bar advances in discrete steps.
     double ComputeBootFillFraction()
     {
-        if (_bootLoadPhase == BootPhaseDetector.Phase.Finishing)
-            return _finishingFillFrac;
+        if (_boot.LoadPhase == BootPhaseDetector.Phase.Finishing)
+            return _boot.FinishingFillFrac;
 
         double raw;
-        if (_bootLoadPhase == BootPhaseDetector.Phase.BankData && _bankDataDetectedAt != DateTime.MinValue)
+        if (_boot.LoadPhase == BootPhaseDetector.Phase.BankData && _boot.BankDataDetectedAt != DateTime.MinValue)
         {
-            double t = Math.Clamp((DateTime.Now - _bankDataDetectedAt).TotalSeconds / 5.0, 0, 1);
-            raw = BootBarF_BankStart + (BootBarF_BankEnd - BootBarF_BankStart) * t;
+            double t = Math.Clamp((DateTime.Now - _boot.BankDataDetectedAt).TotalSeconds / 5.0, 0, 1);
+            raw = BootState.BarBankStart + (BootState.BarBankEnd - BootState.BarBankStart) * t;
         }
-        else if (_preloadTimerStart != DateTime.MinValue)
+        else if (_boot.PreloadTimerStart != DateTime.MinValue)
         {
-            double elapsed = (DateTime.Now - _preloadTimerStart).TotalSeconds;
+            double elapsed = (DateTime.Now - _boot.PreloadTimerStart).TotalSeconds;
             double t = Math.Clamp(GetPreloadProgress(elapsed), 0, 1);
-            raw = BootBarF_StaticEnd + (BootBarF_PreloadEnd - BootBarF_StaticEnd) * t;
+            raw = BootState.BarStaticEnd + (BootState.BarPreloadEnd - BootState.BarStaticEnd) * t;
         }
         else
         {
-            raw = BootBarF_StaticEnd;
+            raw = BootState.BarStaticEnd;
         }
 
         // Snap to 1% steps of bar range
         double snapped = Math.Floor(raw / 0.01) * 0.01;
-        return Math.Max(snapped, BootBarF_StaticEnd);
+        return Math.Max(snapped, BootState.BarStaticEnd);
     }
 }

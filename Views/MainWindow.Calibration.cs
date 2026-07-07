@@ -9,9 +9,9 @@ public partial class MainWindow
 
     void SetCalGridSize(int size)
     {
-        if (_calMesh.Cols == size) return;
+        if (_cal.Mesh.Cols == size) return;
 
-        if (!_calMesh.IsIdentity() || _calBiasDots.Count > 0)
+        if (!_cal.Mesh.IsIdentity() || _cal.BiasDots.Count > 0)
         {
             var result = MessageBox.Show(
                 $"Changing grid size to {size}×{size} will clear existing calibration data.\nProceed?",
@@ -21,13 +21,13 @@ public partial class MainWindow
             if (result != MessageBoxResult.Yes) return;
         }
 
-        _calMesh = new CalMesh(size, size);
-        _calBiasDots.Clear();
-        _calDirty = false;
-        _calDraggingNode = null;
-        _calHoverNode    = null;
-        _calHistory.Clear(); _calHistPos = -1;
-        Storage.SaveCal(_calMesh, _calBiasDots);
+        _cal.Mesh = new CalMesh(size, size);
+        _cal.BiasDots.Clear();
+        _cal.Dirty = false;
+        _cal.DraggingNode = null;
+        _cal.HoverNode    = null;
+        _cal.History.Clear(); _cal.HistPos = -1;
+        Storage.SaveCal(_cal.Mesh, _cal.BiasDots);
         Console.WriteLine($"[cal] grid size changed to {size}×{size}");
         OverlayLayer.InvalidateVisual();
     }
@@ -43,8 +43,8 @@ public partial class MainWindow
 
     void ExitCalMode()
     {
-        _calDraggingNode = null;
-        _calHoverNode    = null;
+        _cal.DraggingNode = null;
+        _cal.HoverNode    = null;
         FrameImage.Margin = new Thickness(0);
         var r = _frameRect;
         r.Inflate(CalPad, CalPad);
@@ -55,7 +55,7 @@ public partial class MainWindow
     // Returns the hit-test rect for cal mode: expanded back to the original frame area
     // so that nodes dragged into the 20px margin can still be grabbed.
     Rect CalHitRect { get {
-        if (!_calMode) return _frameRect;
+        if (!_cal.Mode) return _frameRect;
         var r = _frameRect;
         r.Inflate(CalPad, CalPad);
         return r;
@@ -78,7 +78,7 @@ public partial class MainWindow
          (int)((screen.Y - _frameRect.Y) / _frameRect.Height * _frameH));
 
     (int cx, int cy) ApplyCal(int nx, int ny) =>
-        _calMesh.InverseApply(nx, ny, _frameW, _frameH);
+        _cal.Mesh.InverseApply(nx, ny, _frameW, _frameH);
 
     Point KronosToScreen(int kx, int ky) =>
         new(_frameRect.X + kx * _frameRect.Width  / (_frameW - 1),
@@ -86,12 +86,12 @@ public partial class MainWindow
 
     (int col, int row)? FindNearestCalNode(Point screenPos)
     {
-        double bestDist = CalNodeHitRadius;
+        double bestDist = CalibrationState.NodeHitRadius;
         (int col, int row)? best = null;
-        for (int c = 0; c < _calMesh.Cols; c++)
-            for (int r = 0; r < _calMesh.Rows; r++)
+        for (int c = 0; c < _cal.Mesh.Cols; c++)
+            for (int r = 0; r < _cal.Mesh.Rows; r++)
             {
-                var (kx, ky) = _calMesh.NodeDst(c, r, _frameW, _frameH);
+                var (kx, ky) = _cal.Mesh.NodeDst(c, r, _frameW, _frameH);
                 var sp = KronosToScreen(kx, ky);
                 double dx = sp.X - screenPos.X, dy = sp.Y - screenPos.Y;
                 double dist = Math.Sqrt(dx * dx + dy * dy);
@@ -102,12 +102,12 @@ public partial class MainWindow
 
     int? FindNearestBiasDot(Point screenPos)
     {
-        double bestDist = CalDotHitRadius;
+        double bestDist = CalibrationState.DotHitRadius;
         int? best = null;
-        for (int i = 0; i < _calBiasDots.Count; i++)
+        for (int i = 0; i < _cal.BiasDots.Count; i++)
         {
-            var dot = _calBiasDots[i];
-            var (kx, ky) = _calMesh.Apply(dot.Nx, dot.Ny, _frameW, _frameH);
+            var dot = _cal.BiasDots[i];
+            var (kx, ky) = _cal.Mesh.Apply(dot.Nx, dot.Ny, _frameW, _frameH);
             var sp = KronosToScreen(kx, ky);
             double dx = sp.X - screenPos.X, dy = sp.Y - screenPos.Y;
             double dist = Math.Sqrt(dx * dx + dy * dy);
@@ -120,55 +120,55 @@ public partial class MainWindow
 
     void CalHistTruncateFuture()
     {
-        if (_calHistPos < _calHistory.Count - 1)
-            _calHistory.RemoveRange(_calHistPos + 1, _calHistory.Count - _calHistPos - 1);
+        if (_cal.HistPos < _cal.History.Count - 1)
+            _cal.History.RemoveRange(_cal.HistPos + 1, _cal.History.Count - _cal.HistPos - 1);
     }
 
     void CalHistPush(CalHistEntry entry)
     {
         CalHistTruncateFuture();
-        _calHistory.Add(entry);
-        _calHistPos = _calHistory.Count - 1;
+        _cal.History.Add(entry);
+        _cal.HistPos = _cal.History.Count - 1;
     }
 
     void CalHistUndo()
     {
-        if (_calHistPos < 0) return;
-        var e = _calHistory[_calHistPos--];
+        if (_cal.HistPos < 0) return;
+        var e = _cal.History[_cal.HistPos--];
         switch (e.Kind)
         {
             case CalHistKind.NodeMove:
-                _calMesh.SetOffset(e.Col, e.Row, e.OldOffX, e.OldOffY);
-                _calDirty = true;
+                _cal.Mesh.SetOffset(e.Col, e.Row, e.OldOffX, e.OldOffY);
+                _cal.Dirty = true;
                 break;
             case CalHistKind.DotAdded:
-                _calBiasDots.RemoveAt(e.DotIdx);
-                Storage.SaveCal(_calMesh, _calBiasDots);
+                _cal.BiasDots.RemoveAt(e.DotIdx);
+                Storage.SaveCal(_cal.Mesh, _cal.BiasDots);
                 break;
             case CalHistKind.DotRemoved:
-                _calBiasDots.Insert(e.DotIdx, e.Dot);
-                Storage.SaveCal(_calMesh, _calBiasDots);
+                _cal.BiasDots.Insert(e.DotIdx, e.Dot);
+                Storage.SaveCal(_cal.Mesh, _cal.BiasDots);
                 break;
         }
     }
 
     void CalHistRedo()
     {
-        if (_calHistPos >= _calHistory.Count - 1) return;
-        var e = _calHistory[++_calHistPos];
+        if (_cal.HistPos >= _cal.History.Count - 1) return;
+        var e = _cal.History[++_cal.HistPos];
         switch (e.Kind)
         {
             case CalHistKind.NodeMove:
-                _calMesh.SetOffset(e.Col, e.Row, e.NewOffX, e.NewOffY);
-                _calDirty = true;
+                _cal.Mesh.SetOffset(e.Col, e.Row, e.NewOffX, e.NewOffY);
+                _cal.Dirty = true;
                 break;
             case CalHistKind.DotAdded:
-                _calBiasDots.Insert(e.DotIdx, e.Dot);
-                Storage.SaveCal(_calMesh, _calBiasDots);
+                _cal.BiasDots.Insert(e.DotIdx, e.Dot);
+                Storage.SaveCal(_cal.Mesh, _cal.BiasDots);
                 break;
             case CalHistKind.DotRemoved:
-                _calBiasDots.RemoveAt(e.DotIdx);
-                Storage.SaveCal(_calMesh, _calBiasDots);
+                _cal.BiasDots.RemoveAt(e.DotIdx);
+                Storage.SaveCal(_cal.Mesh, _cal.BiasDots);
                 break;
         }
     }

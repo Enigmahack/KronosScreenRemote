@@ -329,10 +329,27 @@ sealed class KronosSysEx
     }
 
     // Parse Current Performance Id (func 0x33).
-    //   F0 42 3g 68 33 type bank numberMSB numberLSB F7
+    //
+    // Two on-wire payload layouts are seen in the field. In BOTH, the first
+    // payload byte is the performance type and the final three payload bytes
+    // are bank, number(MSB), number(LSB):
+    //
+    //   Documented (KRONOS_MIDI_SysEx.txt func 33):
+    //       F0 42 3g 68 33  type bank numMSB numLSB  F7                       (4-byte payload)
+    //
+    //   Extended (Kronos OS 3.x hardware, verified 2026-07):
+    //       F0 42 3g 68 33  type 68 33 type bank numMSB numLSB bank numMSB numLSB  F7
+    //                                                                         (10-byte payload)
+    //     e.g. Program I-B:043 → F0 42 30 68 33 01 68 33 01 01 00 2B 01 00 2B F7.
+    //     The old code read bank from payload[1] (0x68=104) and number from
+    //     payload[2..3] (0x33,type → 6529), rendering garbage like "?104:6529".
+    //
+    // Parsed fields are range-checked (IsValidPerformance) so a spurious header
+    // match or an unknown layout yields null (display hidden) rather than junk.
     public static PerformanceInfo? ParsePerformanceId(byte[] bytes)
     {
-        for (int i = 0; i <= bytes.Length - 9; i++)
+        bool sawRejectedHeader = false;
+        for (int i = 0; i + 4 < bytes.Length; i++)
         {
             if (bytes[i]     != 0xF0) continue;
             if (bytes[i + 1] != 0x42) continue;
@@ -340,19 +357,38 @@ sealed class KronosSysEx
             if (bytes[i + 3] != 0x68) continue;
             if (bytes[i + 4] != 0x33) continue;
 
-            int type   = bytes[i + 5] & 0x7F;
-            int bank   = bytes[i + 6] & 0x7F;
-            int number = ((bytes[i + 7] & 0x7F) << 7) | (bytes[i + 8] & 0x7F);
+            // Payload spans i+5 up to the next F7 (or end of buffer).
+            int end = Array.IndexOf(bytes, (byte)0xF7, i + 5);
+            if (end < 0) end = bytes.Length;
+            if (end - (i + 5) < 4) { sawRejectedHeader = true; continue; }
 
-            if (type > 2) return null;
+            int type   =  bytes[i + 5]   & 0x7F;
+            int bank   =  bytes[end - 3] & 0x7F;
+            int number = ((bytes[end - 2] & 0x7F) << 7) | (bytes[end - 1] & 0x7F);
+
+            if (!IsValidPerformance(type, bank, number)) { sawRejectedHeader = true; continue; }
 
             return new PerformanceInfo(
                 type, bank, number,
                 ResolveBankLabel(type, bank),
                 type switch { 0 => "Combi", 1 => "Program", 2 => "Song", _ => "Unknown" });
         }
+
+        if (sawRejectedHeader)
+            AppLog.Debug($"[sysex] perf-id header found but fields out of range: {BytesToHex(bytes)}");
         return null;
     }
+
+    // Range-check a parsed performance against the documented bank/number
+    // ranges (func 33 spec). Rejects spurious header matches and unknown
+    // payload layouts that would otherwise surface as "?<bank>:<number>".
+    static bool IsValidPerformance(int type, int bank, int number) => type switch
+    {
+        0 => bank < CombiBanks.Length   && number <= 127,   // combi
+        1 => bank < ProgramBanks.Length && number <= 127,   // program
+        2 => number <= 199,                                 // song (no bank)
+        _ => false,
+    };
 
     // Parse Current Object Dump (func 0x75) for a name-only object.
     // Name is 24 bytes of ASCII at offset 0 in the decoded binary data.

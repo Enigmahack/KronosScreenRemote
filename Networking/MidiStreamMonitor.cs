@@ -23,6 +23,7 @@ sealed class MidiStreamMonitor
     public void Start()
     {
         _cts?.Cancel();
+        _cts?.Dispose();
         _cts = new CancellationTokenSource();
         _ = RunLoopAsync(_cts.Token);
     }
@@ -30,6 +31,7 @@ sealed class MidiStreamMonitor
     public void Stop()
     {
         _cts?.Cancel();
+        _cts?.Dispose();
         _cts = null;
     }
 

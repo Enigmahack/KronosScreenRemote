@@ -108,6 +108,12 @@ public partial class KeyboardInfoWindow : Window
             SetStatus(true);
             ApplyInfo(info);
         }
+        catch (Exception ex)
+        {
+            // Async-void timer tick — an escaped exception here would crash the app.
+            AppLog.Debug($"[kbdinfo] poll error: {ex.Message}");
+            SetStatus(false);
+        }
         finally { _polling = false; }
     }
 

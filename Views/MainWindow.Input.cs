@@ -32,10 +32,11 @@ public partial class MainWindow
         InitTrayIcon();
         BtnRailExpand.Click      += (_, _) => ToggleFocusedDataExpand();
         BtnValueRailExpand.Click += (_, _) => ToggleFocusedValueExpand();
-        _layoutPreset = _settings.LayoutPreset == LayoutPreset.Detached
-            ? LayoutPreset.Full
-            : _settings.LayoutPreset;
+        _layoutPreset = _settings.LayoutPreset;
         ApplyLayoutPreset(_layoutPreset, saveSettings: false);
+
+        // The XAML no longer hard-codes FrameImage's scaling filter — apply the saved one now.
+        ApplyScalingMode();
 
         Topmost = _settings.AlwaysOnTop;
 
@@ -60,12 +61,12 @@ public partial class MainWindow
         // second TOUCH_DOWN that would otherwise be sent to Kronos on click 2.
         FrameImage.PreviewMouseLeftButtonDown += (_, e) =>
         {
-            if (e.ClickCount == 2 && _isFullscreen) { ToggleFullscreen(); e.Handled = true; }
+            if (e.ClickCount == 2 && _fs.Active) { ToggleFullscreen(); e.Handled = true; }
         };
 
         ApplyMidiMonitorMenuState();
         Dispatcher.InvokeAsync(RefreshFrameRect, DispatcherPriority.Background);
-        Task.Run(ConnectAsync);
+        BeginConnect();
     }
 
     IntPtr LLKeyboardProc(int code, IntPtr wParam, IntPtr lParam)
@@ -86,7 +87,7 @@ public partial class MainWindow
     {
         if (_settings.PromptBeforeQuitting)
         {
-            string msg = _connState == ConnState.Connected
+            string msg = IsConnected
                 ? "Disconnect from Kronos and quit?"
                 : "Quit Kronos ScreenRemote?";
             if (MessageBox.Show(msg, "Quit", MessageBoxButton.YesNo, MessageBoxImage.Question)
@@ -98,7 +99,7 @@ public partial class MainWindow
         }
 
         AppLog.Info("[shutdown] main window closing");
-        if (_calDirty)
+        if (_cal.Dirty)
         {
             var result = MessageBox.Show(
                 "You have unsaved calibration changes.\nSave before exiting?",
@@ -113,12 +114,12 @@ public partial class MainWindow
             }
             if (result == MessageBoxResult.Yes)
             {
-                Storage.SaveCal(_calMesh, _calBiasDots);
-                _calDirty = false;
+                Storage.SaveCal(_cal.Mesh, _cal.BiasDots);
+                _cal.Dirty = false;
             }
         }
 
-        if (!_isFullscreen)
+        if (!_fs.Active)
         {
             _settings.WindowMaximized = WindowState == WindowState.Maximized;
             if (WindowState == WindowState.Normal)
@@ -134,8 +135,12 @@ public partial class MainWindow
         _trayIcon?.Dispose();
         CompositionTarget.Rendering -= RenderTick;
         CleanupAudio();
+        _connectCts?.Cancel();
+        _connectCts?.Dispose();
         _pingCts?.Cancel();
+        _pingCts?.Dispose();
         _modePollCts?.Cancel();
+        _modePollCts?.Dispose();
         _receiver?.Dispose();
         if (_llKbHook != IntPtr.Zero) { UnhookWindowsHookEx(_llKbHook); _llKbHook = IntPtr.Zero; }
     }
@@ -147,13 +152,13 @@ public partial class MainWindow
 
         if (ctrl && e.Key == Key.Z)
         {
-            if (_calMode) { if (_shiftHeld) CalHistRedo(); else CalHistUndo(); }
+            if (_cal.Mode) { if (_shiftHeld) CalHistRedo(); else CalHistUndo(); }
             else          { if (_shiftHeld) HistRedo();    else HistUndo();    }
             OverlayLayer.InvalidateVisual(); return;
         }
         if (ctrl && e.Key == Key.Y)
         {
-            if (_calMode) CalHistRedo(); else HistRedo();
+            if (_cal.Mode) CalHistRedo(); else HistRedo();
             OverlayLayer.InvalidateVisual(); return;
         }
         if (ctrl && e.Key == Key.K) { OpenCommandPalette(); e.Handled = true; return; }
@@ -187,10 +192,10 @@ public partial class MainWindow
         if (ctrl && e.Key == Key.D3) { SetWindowSize(1.25); return; }
         if (ctrl && e.Key == Key.D4) { SetWindowSize(1.50); return; }
         if (ctrl && e.Key == Key.D5) { SetWindowSize(2.00); return; }
-        if (ctrl && e.Key == Key.S && !_edOpen && !_calMode) { SaveScreenshot(); e.Handled = true; return; }
+        if (ctrl && e.Key == Key.S && !_edOpen && !_cal.Mode) { SaveScreenshot(); e.Handled = true; return; }
 
         // ── Fullscreen shortcuts (intercept before capture so they work even when forwarding) ──
-        if (_isFullscreen && !ctrl && !e.IsRepeat)
+        if (_fs.Active && !ctrl && !e.IsRepeat)
         {
             if (e.Key == Key.OemTilde)
             {
@@ -202,7 +207,7 @@ public partial class MainWindow
         }
 
         // ── Numpad Enter → Kronos when capture is active ─────────────────────
-        if (_kbdCapture && _kbdSendEnabled && !ctrl && !e.IsRepeat && !_calMode && e.Key == Key.Return && _extendedKey)
+        if (_kbdCapture && _kbdSendEnabled && !ctrl && !e.IsRepeat && !_cal.Mode && e.Key == Key.Return && _extendedKey)
         {
             _instantKeys.Add(Key.Return);   // suppress KEY-up so KEY 28 0 is never sent to vkbd
             BTN_Enter.FlashDepress();
@@ -211,7 +216,7 @@ public partial class MainWindow
         }
 
         // ── Macros (user-defined first, then built-ins) — requires modifier key ─
-        if (!e.IsRepeat && _kbdCapture && _kbdSendEnabled && !_edOpen && !_calMode
+        if (!e.IsRepeat && _kbdCapture && _kbdSendEnabled && !_edOpen && !_cal.Mode
             && Keyboard.Modifiers != ModifierKeys.None)
         {
             var baseKey = e.Key == Key.System ? e.SystemKey : e.Key;
@@ -221,7 +226,7 @@ public partial class MainWindow
         }
 
         // ── Numpad 0–9 / − / · : always forward when capture active ──────────
-        if (_kbdCapture && _kbdSendEnabled && !_edOpen && !ctrl && !e.IsRepeat && !_calMode)
+        if (_kbdCapture && _kbdSendEnabled && !_edOpen && !ctrl && !e.IsRepeat && !_cal.Mode)
         {
             int? numBtn = e.Key switch
             {
@@ -236,7 +241,7 @@ public partial class MainWindow
 
         // ── Keyboard capture: forward before any local shortcut ──────────────
         // F1–F12 fall through to the IsAction checks below (mode select, help, etc.).
-        if (_kbdCapture && _kbdSendEnabled && !_edOpen && !ctrl && !e.IsRepeat && !_calMode
+        if (_kbdCapture && _kbdSendEnabled && !_edOpen && !ctrl && !e.IsRepeat && !_cal.Mode
             && (e.Key < Key.F1 || e.Key > Key.F12))
         {
             // Shifted override: Kronos needs a different keycode or Shift handling
@@ -258,6 +263,7 @@ public partial class MainWindow
                 AppLog.Debug($"[kbd] raw-map {rawMap.HostKeyDisplay} → KEY {rawMap.RawCode}");
                 if (rawMap.RawShift) Ctrl("KEY 42 1");
                 Ctrl($"KEY {rawMap.RawCode} 1");
+                _activeRawKeys[e.Key] = rawMap;   // release exactly this code on key-up
                 StartRepeat(rawMap.RawCode);
                 e.Handled = true; return;
             }
@@ -288,14 +294,14 @@ public partial class MainWindow
 
         if (e.Key == Key.Escape)
         {
-            if (_isFullscreen)               { ToggleFullscreen(); return; }
+            if (_fs.Active)               { ToggleFullscreen(); return; }
             if (_helpOpen)                   { _helpOpen = false; OverlayLayer.InvalidateVisual(); return; }
             if (_edOpen && _edTyped != null) { _edTyped  = null;  OverlayLayer.InvalidateVisual(); return; }
             if (_edOpen)                     { _edOpen   = false; OverlayLayer.InvalidateVisual(); return; }
-            if (_dragPending || _dragActive)
+            if (_drag.Pending || _drag.Active)
             {
-                var cancelPos = _dragActive ? _dragLast : _dragPendingPos;
-                _dragPending = false; _dragActive = false;
+                var cancelPos = _drag.Active ? _drag.Last : _drag.PendingPos;
+                _drag.Pending = false; _drag.Active = false;
                 FrameImage.ReleaseMouseCapture();
                 Ctrl($"TOUCH_UP {cancelPos.x} {cancelPos.y}");
                 OverlayLayer.InvalidateVisual(); return;
@@ -356,34 +362,34 @@ public partial class MainWindow
 
         if (IsAction("Calibrate", e))
         {
-            _calMode = !_calMode;
-            if (_calMode) EnterCalMode(); else ExitCalMode();
-            Console.WriteLine($"[cal] calibrate mode {(_calMode ? "ON" : "OFF")}");
+            _cal.Mode = !_cal.Mode;
+            if (_cal.Mode) EnterCalMode(); else ExitCalMode();
+            Console.WriteLine($"[cal] calibrate mode {(_cal.Mode ? "ON" : "OFF")}");
             OverlayLayer.InvalidateVisual(); return;
         }
 
-        if (_calMode && e.Key == Key.R)
+        if (_cal.Mode && e.Key == Key.R)
         {
-            _calMesh.Reset();
-            _calDirty = true;
-            _calHistory.Clear(); _calHistPos = -1;
+            _cal.Mesh.Reset();
+            _cal.Dirty = true;
+            _cal.History.Clear(); _cal.HistPos = -1;
             Console.WriteLine("[cal] mesh reset to identity (unsaved)");
             OverlayLayer.InvalidateVisual(); return;
         }
 
-        if (_calMode && e.Key == Key.X)
+        if (_cal.Mode && e.Key == Key.X)
         {
-            _calBiasDots.Clear();
-            _calHistory.Clear(); _calHistPos = -1;
-            Storage.SaveCal(_calMesh, _calBiasDots);
+            _cal.BiasDots.Clear();
+            _cal.History.Clear(); _cal.HistPos = -1;
+            Storage.SaveCal(_cal.Mesh, _cal.BiasDots);
             Console.WriteLine("[cal] bias dots cleared");
             OverlayLayer.InvalidateVisual(); return;
         }
 
-        if (_calMode && e.Key == Key.S)
+        if (_cal.Mode && e.Key == Key.S)
         {
-            Storage.SaveCal(_calMesh, _calBiasDots);
-            _calDirty = false;
+            Storage.SaveCal(_cal.Mesh, _cal.BiasDots);
+            _cal.Dirty = false;
             Console.WriteLine("[cal] mesh saved");
             OverlayLayer.InvalidateVisual(); return;
         }
@@ -479,12 +485,13 @@ public partial class MainWindow
                 return;
 
             if (_instantKeys.Remove(e.Key)) { e.Handled = true; return; }
-            var rawMapUp = RawKeyMap.Get(e.Key, _shiftHeld) ?? RawKeyMap.Get(e.Key, !_shiftHeld);
-            if (rawMapUp != null)
+            // Release the exact code recorded at key-down — NOT a re-resolution by the current
+            // Shift state, which diverges if Shift was toggled while the key was held.
+            if (_activeRawKeys.Remove(e.Key, out var sentRaw))
             {
-                if (_repeatCode == rawMapUp.RawCode) StopRepeat();
-                if (rawMapUp.RawShift) Ctrl("KEY 42 0");
-                Ctrl($"KEY {rawMapUp.RawCode} 0");
+                if (_repeatCode == sentRaw.RawCode) StopRepeat();
+                Ctrl($"KEY {sentRaw.RawCode} 0");
+                if (sentRaw.RawShift) Ctrl("KEY 42 0");
                 e.Handled = true; return;
             }
             int? lkc = KeyMap.ToLinux(e.Key);
@@ -497,6 +504,23 @@ public partial class MainWindow
                 e.Handled = true;
             }
         }
+    }
+
+    // Release any keys sent via the raw keymap that are still held down.  Key-up normally
+    // drains _activeRawKeys one key at a time, but on capture loss (focus lost, click-out,
+    // keyboard-send disabled) the key-up never reaches us, so a held key would stick on the
+    // Kronos.  Mirror the key-up release path (KEY <code> 0, plus KEY 42 0 if it used Shift).
+    void ReleaseActiveRawKeys()
+    {
+        if (_activeRawKeys.Count == 0) return;
+        bool releasedShift = false;
+        foreach (var raw in _activeRawKeys.Values)
+        {
+            Ctrl($"KEY {raw.RawCode} 0");
+            if (raw.RawShift) releasedShift = true;
+        }
+        _activeRawKeys.Clear();
+        if (releasedShift) Ctrl("KEY 42 0");
     }
 
     void OnMouseWheel(object s, MouseWheelEventArgs e)
@@ -530,21 +554,21 @@ public partial class MainWindow
     {
         var pos = e.GetPosition(RootGrid);
 
-        if (_calMode)
+        if (_cal.Mode)
         {
-            _calHoverNode = FindNearestCalNode(pos);
+            _cal.HoverNode = FindNearestCalNode(pos);
 
-            if (_calDraggingNode.HasValue)
+            if (_cal.DraggingNode.HasValue)
             {
-                var (col, row) = _calDraggingNode.Value;
+                var (col, row) = _cal.DraggingNode.Value;
                 var clamped = new Point(
                     Math.Clamp(pos.X, 0, RootGrid.ActualWidth),
                     Math.Clamp(pos.Y, 0, RootGrid.ActualHeight));
                 var (nx, ny)   = ScreenToKronosNode(clamped);
-                _calMesh.SetOffset(col, row,
-                    nx - _calMesh.NatX(col, _frameW),
-                    ny - _calMesh.NatY(row, _frameH));
-                _calDirty = true;
+                _cal.Mesh.SetOffset(col, row,
+                    nx - _cal.Mesh.NatX(col, _frameW),
+                    ny - _cal.Mesh.NatY(row, _frameH));
+                _cal.Dirty = true;
                 OverlayLayer.InvalidateVisual();
                 return;
             }
@@ -553,29 +577,29 @@ public partial class MainWindow
 
         OverlayLayer.InvalidateVisual();
 
-        if (_dragPending || _dragActive)
+        if (_drag.Pending || _drag.Active)
         {
             var (nx, ny) = ScreenToKronos(pos);
             var (cnx, cny) = ApplyCal(nx, ny);
 
-            if (_dragPending)
+            if (_drag.Pending)
             {
-                int dist = Math.Abs(cnx - _dragPendingPos.x) + Math.Abs(cny - _dragPendingPos.y);
-                if (dist >= DragStartThresh)
+                int dist = Math.Abs(cnx - _drag.PendingPos.x) + Math.Abs(cny - _drag.PendingPos.y);
+                if (dist >= DragState.StartThresh)
                 {
-                    _dragPending = false;
-                    _dragActive  = true;
-                    _dragLast    = (cnx, cny);
+                    _drag.Pending = false;
+                    _drag.Active  = true;
+                    _drag.Last    = (cnx, cny);
                 }
             }
-            if (_dragActive)
+            if (_drag.Active)
             {
-                int dist = Math.Abs(cnx - _dragLast.x) + Math.Abs(cny - _dragLast.y);
-                if (dist >= DragMoveThresh)
+                int dist = Math.Abs(cnx - _drag.Last.x) + Math.Abs(cny - _drag.Last.y);
+                if (dist >= DragState.MoveThresh)
                 {
-                    _dragLast = (cnx, cny);
+                    _drag.Last = (cnx, cny);
                     Ctrl($"TOUCH_MOVE {cnx} {cny}");
-                    _touchMarker = (pos, DateTime.Now);
+                    _drag.Marker = (pos, DateTime.Now);
                 }
             }
         }
@@ -594,6 +618,7 @@ public partial class MainWindow
         {
             _instantKeys.Clear();
             StopRepeat();
+            ReleaseActiveRawKeys();
             if (_capsShiftedKeys.Count > 0) { Ctrl("KEY 42 0"); _capsShiftedKeys.Clear(); }
         }
         if (_kbdCapture != prevCapture) UpdateKbdStatus();
@@ -602,7 +627,7 @@ public partial class MainWindow
 
         // Calibration mode: right-click → dot add/remove; left-click near node → drag it;
         // left-click with no nearby node → fall through to TOUCH_DOWN below
-        if (_calMode && CalHitRect.Contains(pos))
+        if (_cal.Mode && CalHitRect.Contains(pos))
         {
             if (e.ChangedButton == MouseButton.Right)
             {
@@ -610,8 +635,8 @@ public partial class MainWindow
                 if (dotIdx.HasValue)
                 {
                     CalHistPush(new CalHistEntry(CalHistKind.DotRemoved,
-                        DotIdx: dotIdx.Value, Dot: _calBiasDots[dotIdx.Value]));
-                    _calBiasDots.RemoveAt(dotIdx.Value);
+                        DotIdx: dotIdx.Value, Dot: _cal.BiasDots[dotIdx.Value]));
+                    _cal.BiasDots.RemoveAt(dotIdx.Value);
                     Console.WriteLine($"[cal] bias dot {dotIdx.Value} removed");
                 }
                 else
@@ -619,14 +644,14 @@ public partial class MainWindow
                     // Store InverseApply(click) so Apply(stored) == click position now,
                     // and the dot moves naturally with any subsequent mesh changes.
                     var (nx, ny) = ScreenToKronos(pos);
-                    var (sx, sy) = _calMesh.InverseApply(nx, ny, _frameW, _frameH);
+                    var (sx, sy) = _cal.Mesh.InverseApply(nx, ny, _frameW, _frameH);
                     var dot = new CalBiasDot(sx, sy);
-                    _calBiasDots.Add(dot);
+                    _cal.BiasDots.Add(dot);
                     CalHistPush(new CalHistEntry(CalHistKind.DotAdded,
-                        DotIdx: _calBiasDots.Count - 1, Dot: dot));
+                        DotIdx: _cal.BiasDots.Count - 1, Dot: dot));
                     Console.WriteLine($"[cal] bias dot → ({nx}, {ny}) stored as ({sx}, {sy})");
                 }
-                Storage.SaveCal(_calMesh, _calBiasDots);
+                Storage.SaveCal(_cal.Mesh, _cal.BiasDots);
                 OverlayLayer.InvalidateVisual();
                 return;
             }
@@ -636,8 +661,8 @@ public partial class MainWindow
                 if (node.HasValue)
                 {
                     var (col, row) = node.Value;
-                    _calDragStartOffset = _calMesh.GetOffset(col, row);
-                    _calDraggingNode = node;
+                    _cal.DragStartOffset = _cal.Mesh.GetOffset(col, row);
+                    _cal.DraggingNode = node;
                     return;
                 }
                 // no nearby node — fall through to TOUCH_DOWN below
@@ -677,11 +702,11 @@ public partial class MainWindow
             {
                 var (nx, ny) = ScreenToKronos(pos);
                 var (cnx, cny) = ApplyCal(nx, ny);
-                _dragPendingPos = (cnx, cny);
-                _dragLast       = (cnx, cny);  // valid fallback for leave/capture-loss
-                _dragPending    = true;
+                _drag.PendingPos = (cnx, cny);
+                _drag.Last       = (cnx, cny);  // valid fallback for leave/capture-loss
+                _drag.Pending    = true;
                 Ctrl($"TOUCH_DOWN {cnx} {cny}");  // send immediately, not deferred to first move
-                _touchMarker = (pos, DateTime.Now);
+                _drag.Marker = (pos, DateTime.Now);
                 FrameImage.CaptureMouse();
                 OverlayLayer.InvalidateVisual();
             }
@@ -693,35 +718,35 @@ public partial class MainWindow
         if (e.ChangedButton != MouseButton.Left) return;
         var pos = e.GetPosition(RootGrid);
 
-        if (_calDraggingNode.HasValue)
+        if (_cal.DraggingNode.HasValue)
         {
-            var (col, row) = _calDraggingNode.Value;
-            var (newOffX, newOffY) = _calMesh.GetOffset(col, row);
-            var (oldOffX, oldOffY) = _calDragStartOffset;
+            var (col, row) = _cal.DraggingNode.Value;
+            var (newOffX, newOffY) = _cal.Mesh.GetOffset(col, row);
+            var (oldOffX, oldOffY) = _cal.DragStartOffset;
             if (oldOffX != newOffX || oldOffY != newOffY)
                 CalHistPush(new CalHistEntry(CalHistKind.NodeMove,
                     col, row, oldOffX, oldOffY, newOffX, newOffY));
-            _calDraggingNode = null;
+            _cal.DraggingNode = null;
             OverlayLayer.InvalidateVisual();
             return;
         }
 
-        if (_dragPending)
+        if (_drag.Pending)
         {
-            _dragPending = false;
+            _drag.Pending = false;
             FrameImage.ReleaseMouseCapture();
-            Ctrl($"TOUCH_UP {_dragPendingPos.x} {_dragPendingPos.y}");
-            _touchMarker = (pos, DateTime.Now);
+            Ctrl($"TOUCH_UP {_drag.PendingPos.x} {_drag.PendingPos.y}");
+            _drag.Marker = (pos, DateTime.Now);
             OverlayLayer.InvalidateVisual();
         }
-        else if (_dragActive)
+        else if (_drag.Active)
         {
             var (nx, ny) = ScreenToKronos(pos);
             var (cnx, cny) = ApplyCal(nx, ny);
-            _dragActive = false;
+            _drag.Active = false;
             FrameImage.ReleaseMouseCapture();
             Ctrl($"TOUCH_UP {cnx} {cny}");
-            _touchMarker = (pos, DateTime.Now);
+            _drag.Marker = (pos, DateTime.Now);
             OverlayLayer.InvalidateVisual();
         }
     }
@@ -730,14 +755,14 @@ public partial class MainWindow
     {
         // Release any in-progress touch drag when the cursor exits the window so the
         // Kronos doesn't get stuck in a "touch held" state when there's no mouse-up.
-        if (_calDraggingNode.HasValue)
+        if (_cal.DraggingNode.HasValue)
         {
-            _calDraggingNode = null;
+            _cal.DraggingNode = null;
             OverlayLayer.InvalidateVisual();
         }
 
-        if (_dragActive)
-            Console.WriteLine($"[touch] drag ended by mouse-leave at ({_dragLast.x}, {_dragLast.y})");
+        if (_drag.Active)
+            Console.WriteLine($"[touch] drag ended by mouse-leave at ({_drag.Last.x}, {_drag.Last.y})");
         CancelDrag();
     }
 
@@ -790,18 +815,18 @@ public partial class MainWindow
 
     void CancelDrag()
     {
-        if (_dragActive)
+        if (_drag.Active)
         {
-            _dragActive  = false;
-            Ctrl($"TOUCH_UP {_dragLast.x} {_dragLast.y}");
-            _touchMarker = null;
+            _drag.Active  = false;
+            Ctrl($"TOUCH_UP {_drag.Last.x} {_drag.Last.y}");
+            _drag.Marker = null;
             OverlayLayer.InvalidateVisual();
         }
-        else if (_dragPending)
+        else if (_drag.Pending)
         {
-            _dragPending = false;
-            Ctrl($"TOUCH_UP {_dragPendingPos.x} {_dragPendingPos.y}");
-            _touchMarker = null;
+            _drag.Pending = false;
+            Ctrl($"TOUCH_UP {_drag.PendingPos.x} {_drag.PendingPos.y}");
+            _drag.Marker = null;
             OverlayLayer.InvalidateVisual();
         }
     }

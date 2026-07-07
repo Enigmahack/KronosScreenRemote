@@ -26,6 +26,12 @@ public partial class SettingsWindow : Window
     // Raw key map edit state
     RawMapping? _rawEditOriginal;
     bool        _rawEditListening;
+    // Raw-map edits apply to a live global (shared with the Input Tester).  Snapshot on open so
+    // Cancel can undo edits made in *this* dialog — but only when the Input Tester wasn't opened
+    // this session, since its edits to the same global must not be reverted out from under it.
+    readonly List<RawMapping> _rawSnapshot = RawKeyMap.Snapshot();
+    bool        _rawEdited;
+    bool        _inputTesterOpened;
     string      _rawEditPrevBtn = "(none)";
     Key         _rawEditCapturedKey   = Key.None;
     bool        _rawEditCapturedShift;
@@ -49,46 +55,10 @@ public partial class SettingsWindow : Window
         _showInputTester = showInputTester;
         BtnInputTester.IsEnabled = showInputTester != null;
 
-        Result = new AppSettings
-        {
-            KronosHost           = settings.KronosHost,
-            StreamPort           = settings.StreamPort,
-            CtrlPort             = settings.CtrlPort,
-            PullMode             = settings.PullMode,
-            MaxFps               = settings.MaxFps,
-            PromptBeforeQuitting = settings.PromptBeforeQuitting,
-            HideDataInput        = settings.HideDataInput,
-            HideValueInput       = settings.HideValueInput,
-            ScreenshotDirectory  = settings.ScreenshotDirectory,
-            VgaMirrorEnabled     = settings.VgaMirrorEnabled,
-            ScreensaverTimeout   = settings.ScreensaverTimeout,
-            LayoutPreset         = settings.LayoutPreset,
-            BootScreenThreshold  = settings.BootScreenThreshold,
-            DisableBootScreen    = settings.DisableBootScreen,
-            DebugLogging         = settings.DebugLogging,
-            Keybinds             = new Dictionary<string, Keybind>(settings.Keybinds),
-            ZoomDefaultLevel     = settings.ZoomDefaultLevel,
-            ZoomWindowSize       = settings.ZoomWindowSize,
-            FtpUsername     = settings.FtpUsername,
-            FtpPassword     = settings.FtpPassword,
-            FtpPort         = settings.FtpPort,
-            // MIDI / SysEx
-            MidiMonitorEnabled    = settings.MidiMonitorEnabled,
-            ProactiveSysExPolling = settings.ProactiveSysExPolling,
-            SysExPollIntervalSec  = settings.SysExPollIntervalSec,
-            SysExPollOnChanges    = settings.SysExPollOnChanges,
-            MidiOutputChannel     = settings.MidiOutputChannel,
-            // Pass-through fields not exposed in the settings UI — must be preserved
-            // exactly, or they are silently reset to defaults when the dialog closes.
-            VuDeviceId      = settings.VuDeviceId,
-            WindowLeft      = settings.WindowLeft,
-            WindowTop       = settings.WindowTop,
-            WindowWidth     = settings.WindowWidth,
-            WindowHeight    = settings.WindowHeight,
-            WindowMaximized = settings.WindowMaximized,
-            AlwaysOnTop     = settings.AlwaysOnTop,
-            RecentHosts     = settings.RecentHosts,
-        };
+        // Full deep copy — Clone() carries every field (including pass-through fields not exposed
+        // in this dialog, e.g. FocusedDataExpanded/FocusedValueExpanded, which the old hand-written
+        // copy silently dropped).  BtnOK_Click overwrites the UI-bound fields from the controls.
+        Result = settings.Clone();
 
         // Connection
         TxtHost.Text       = Result.KronosHost;
@@ -126,10 +96,22 @@ public partial class SettingsWindow : Window
         int pollIdx = Array.IndexOf(pollIntervals, Result.SysExPollIntervalSec);
         CMB_PollInterval.SelectedIndex = pollIdx >= 0 ? pollIdx : 2;
         CMB_PollInterval.IsEnabled     = Result.ProactiveSysExPolling;
+        TXT_ValueSliderCc.Text         = Result.ValueSliderCc.ToString();
 
         // View
         SlZoomLevel.Value      = Result.ZoomDefaultLevel;
         SlZoomWindowSize.Value = Result.ZoomWindowSize;
+
+        // Image
+        RbScaleSharp.IsChecked  = Result.ImageScalingMode == ScalingQuality.Sharp;
+        RbScaleSmooth.IsChecked = Result.ImageScalingMode == ScalingQuality.Smooth;
+        RbScaleHQ.IsChecked     = Result.ImageScalingMode == ScalingQuality.HighQuality;
+        SlBrightness.Value = Result.ImageBrightness;
+        SlContrast.Value   = Result.ImageContrast;
+        SlGamma.Value      = Result.ImageGamma;
+        SlSaturation.Value = Result.ImageSaturation;
+        SlSharpen.Value    = Result.ImageSharpen;
+        UpdateImageLabels();
 
         // Key bindings
         foreach (var (action, label, _) in AppSettings.Rebindable)
@@ -196,6 +178,44 @@ public partial class SettingsWindow : Window
         }
         if (TxtZoomWindowSizeLabel != null)
             TxtZoomWindowSizeLabel.Text = $"{v:F1}×";
+    }
+
+    // ── Image tab ─────────────────────────────────────────────────────────────
+
+    void SlBrightness_ValueChanged(object s, RoutedPropertyChangedEventArgs<double> e)
+    { if (TxtBrightnessLabel != null) TxtBrightnessLabel.Text = ((int)SlBrightness.Value).ToString("+0;-0;0"); }
+
+    void SlContrast_ValueChanged(object s, RoutedPropertyChangedEventArgs<double> e)
+    { if (TxtContrastLabel != null) TxtContrastLabel.Text = ((int)SlContrast.Value).ToString("+0;-0;0"); }
+
+    void SlGamma_ValueChanged(object s, RoutedPropertyChangedEventArgs<double> e)
+    { if (TxtGammaLabel != null) TxtGammaLabel.Text = SlGamma.Value.ToString("F2"); }
+
+    void SlSaturation_ValueChanged(object s, RoutedPropertyChangedEventArgs<double> e)
+    { if (TxtSaturationLabel != null) TxtSaturationLabel.Text = ((int)SlSaturation.Value).ToString("+0;-0;0"); }
+
+    void SlSharpen_ValueChanged(object s, RoutedPropertyChangedEventArgs<double> e)
+    { if (TxtSharpenLabel != null) TxtSharpenLabel.Text = ((int)SlSharpen.Value).ToString(); }
+
+    void UpdateImageLabels()
+    {
+        if (TxtBrightnessLabel == null) return;   // controls not built yet
+        TxtBrightnessLabel.Text = ((int)SlBrightness.Value).ToString("+0;-0;0");
+        TxtContrastLabel.Text   = ((int)SlContrast.Value).ToString("+0;-0;0");
+        TxtGammaLabel.Text      = SlGamma.Value.ToString("F2");
+        TxtSaturationLabel.Text = ((int)SlSaturation.Value).ToString("+0;-0;0");
+        TxtSharpenLabel.Text    = ((int)SlSharpen.Value).ToString();
+    }
+
+    // Resets the adjustment sliders only — leaves the upscaling-filter choice untouched.
+    void OnResetImageAdjust(object s, RoutedEventArgs e)
+    {
+        SlBrightness.Value = 0;
+        SlContrast.Value   = 0;
+        SlGamma.Value      = 1.0;
+        SlSaturation.Value = 0;
+        SlSharpen.Value    = 0;
+        UpdateImageLabels();
     }
 
     void OnKeyListDoubleClick(object s, MouseButtonEventArgs e)
@@ -299,10 +319,26 @@ public partial class SettingsWindow : Window
         Result.SysExPollIntervalSec  = CMB_PollInterval.SelectedIndex >= 0
             ? pollIntervals[Math.Min(CMB_PollInterval.SelectedIndex, pollIntervals.Length - 1)]
             : 60;
+        // Value slider CC# — valid MIDI controller (0-119), excluding 0 and 32
+        // which are Bank Select MSB/LSB and drive program-change follow. Falls
+        // back to the Kronos default (18) on unparseable/out-of-range input.
+        Result.ValueSliderCc = int.TryParse(TXT_ValueSliderCc.Text, out int vsCc)
+            && vsCc is >= 0 and <= 119 && vsCc != 0 && vsCc != 32
+            ? vsCc : 18;
 
         // View
         Result.ZoomDefaultLevel = SlZoomLevel.Value;
         Result.ZoomWindowSize   = SlZoomWindowSize.Value;
+
+        // Image
+        Result.ImageScalingMode = RbScaleSharp.IsChecked  == true ? ScalingQuality.Sharp
+                                : RbScaleSmooth.IsChecked == true ? ScalingQuality.Smooth
+                                : ScalingQuality.HighQuality;
+        Result.ImageBrightness = (int)SlBrightness.Value;
+        Result.ImageContrast   = (int)SlContrast.Value;
+        Result.ImageGamma      = SlGamma.Value;
+        Result.ImageSaturation = (int)SlSaturation.Value;
+        Result.ImageSharpen    = (int)SlSharpen.Value;
 
         // Key bindings
         foreach (var row in _rows)
@@ -314,7 +350,13 @@ public partial class SettingsWindow : Window
         DialogResult = true;
     }
 
-    void BtnCancel_Click(object s, RoutedEventArgs e) => DialogResult = false;
+    void BtnCancel_Click(object s, RoutedEventArgs e)
+    {
+        // Undo raw-map edits made in this dialog (they persist to the live global immediately),
+        // unless the Input Tester was opened — its concurrent edits to the same global must stand.
+        if (_rawEdited && !_inputTesterOpened) RawKeyMap.Restore(_rawSnapshot);
+        DialogResult = false;
+    }
 
     // ── Macro tab ─────────────────────────────────────────────────────────────
 
@@ -527,7 +569,13 @@ public partial class SettingsWindow : Window
 
     // ── Raw Key Map tab ───────────────────────────────────────────────────────
 
-    void OnInputTesterClick(object s, RoutedEventArgs e) => _showInputTester?.Invoke();
+    void OnInputTesterClick(object s, RoutedEventArgs e)
+    {
+        // The Input Tester edits the same live RawKeyMap; once it's open we must not revert
+        // raw-map changes on Cancel, or we'd clobber edits made over there.
+        _inputTesterOpened = true;
+        _showInputTester?.Invoke();
+    }
 
     void OnRawSelectionChanged(object s, SelectionChangedEventArgs e)
         => BtnRawRemove.IsEnabled = RawList.SelectedItem != null;
@@ -540,7 +588,7 @@ public partial class SettingsWindow : Window
     void OnRawAdd(object s, RoutedEventArgs e)    => BeginRawEdit(null);
     void OnRawRemove(object s, RoutedEventArgs e)
     {
-        if (RawList.SelectedItem is RawMapping rm) RawKeyMap.Remove(rm);
+        if (RawList.SelectedItem is RawMapping rm) { RawKeyMap.Remove(rm); _rawEdited = true; }
     }
 
     void BeginRawEdit(RawMapping? existing)
@@ -593,6 +641,7 @@ public partial class SettingsWindow : Window
             RawShift  = ChkRawShift.IsChecked == true,
             Label     = TxtRawLabel.Text.Trim(),
         });
+        _rawEdited = true;
         CloseRawEditor();
     }
 
@@ -775,8 +824,9 @@ public enum SettingsTab
     Connection = 1,
     Streaming  = 2,
     View       = 3,
-    KeyBindings = 4,
-    Macros     = 5,
-    Debug      = 6,
-    MidiSysEx  = 7,
+    Image      = 4,
+    KeyBindings = 5,
+    Macros     = 6,
+    Debug      = 7,
+    MidiSysEx  = 8,
 }

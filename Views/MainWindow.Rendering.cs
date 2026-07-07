@@ -42,25 +42,25 @@ public partial class MainWindow
                 _basePal, _overrides, _zoomLevel,
                 Math.Clamp(_settings.ZoomWindowSize, 1.0, 3.5), winSize, _pixPerDip);
 
-        if (_calMode)
-            OverlayRenderer.DrawCalOverlay(dc, _calMesh, _calBiasDots,
-                _calHoverNode, _calDraggingNode, _calDirty, _frameRect,
+        if (_cal.Mode)
+            OverlayRenderer.DrawCalOverlay(dc, _cal.Mesh, _cal.BiasDots,
+                _cal.HoverNode, _cal.DraggingNode, _cal.Dirty, _frameRect,
                 _frameW, _frameH, winSize, _pixPerDip);
 
-        if (_touchMarker.HasValue && (_dragActive || _dragPending ||
-            (DateTime.Now - _touchMarker.Value.t).TotalSeconds < 0.4))
+        if (_drag.Marker.HasValue && (_drag.Active || _drag.Pending ||
+            (DateTime.Now - _drag.Marker.Value.t).TotalSeconds < 0.4))
         {
-            bool persistent = _dragActive || _dragPending;
+            bool persistent = _drag.Active || _drag.Pending;
             double t = persistent ? 0.0
-                : Math.Clamp((DateTime.Now - _touchMarker.Value.t).TotalSeconds / 0.6, 0, 1.0);
-            OverlayRenderer.DrawTouchMarker(dc, _touchMarker.Value.pos, t);
+                : Math.Clamp((DateTime.Now - _drag.Marker.Value.t).TotalSeconds / 0.6, 0, 1.0);
+            OverlayRenderer.DrawTouchMarker(dc, _drag.Marker.Value.pos, t);
         }
 
         // Boot splash — shown during boot/update; dismissed immediately when a mode is confirmed.
         // _frameIsLikelyBootScreen (≥60% black) prevents the splash from overlaying real UI content
         // when mode detection fails due to a popup (e.g. Category/Program select) covering the
         // mode indicator, which can happen during reconnect or streaming-mode changes.
-        if (_bootPhase && !_settings.DisableBootScreen && _frameRect.Width > 0 && _connState == ConnState.Connected && _frameIsLikelyBootScreen)
+        if (_boot.Phase && !_settings.DisableBootScreen && _frameRect.Width > 0 && IsConnected && _frameIsLikelyBootScreen)
         {
             var splash = GetBootSplash();
             if (splash != null)

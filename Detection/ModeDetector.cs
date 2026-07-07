@@ -48,7 +48,7 @@ static class ModeDetector
     {
         EnsureLoaded();
         int    bestMode  = 0;
-        double bestScore = ModeThreshold - double.Epsilon;
+        double bestScore = ModeThreshold;   // a mode must exceed the threshold to win
         for (int m = 1; m <= 7; m++)
         {
             double s = Score(_modeRefs[m], frame8bpp, frameW, lut);

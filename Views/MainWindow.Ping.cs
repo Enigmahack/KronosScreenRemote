@@ -11,6 +11,7 @@ public partial class MainWindow
     void StartPing()
     {
         _pingCts?.Cancel();
+        _pingCts?.Dispose();
         _pingCts = new CancellationTokenSource();
         _ = PingLoopAsync(_host, _pingCts.Token);
     }
@@ -18,6 +19,7 @@ public partial class MainWindow
     void StopPing()
     {
         _pingCts?.Cancel();
+        _pingCts?.Dispose();
         _pingCts = null;
         if (Dispatcher.CheckAccess())
             PingText.Text = "";

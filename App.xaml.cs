@@ -9,7 +9,8 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
-        var logPath = Path.Combine(AppContext.BaseDirectory, "screenremote.log");
+        // Single source of truth for the app directory (settings, palette, cal, log all colocate).
+        var logPath = Path.Combine(Storage.DataDir, "screenremote.log");
         AppLog.Init(logPath);
 
         DispatcherUnhandledException += (_, ex) =>

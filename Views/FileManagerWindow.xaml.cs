@@ -35,6 +35,27 @@ public partial class FileManagerWindow : Window
     enum SortColumn     { Name, Size, Modified }
     record ConflictResult(ConflictAction Action, string Name, bool ApplyToAll);
 
+    // Per-pane state (Local vs Kronos): item list, sortable column refs, and current sort.
+    // Replaces the former twin _local*/_remote* fields and lets the identical sort/header/column
+    // logic be written once, parameterized by pane.  The divergent I/O (synchronous local FS vs
+    // async FTP) deliberately stays in separate methods that read this shared state.
+    sealed class Pane(bool isRemote, string nameHeader, string dir)
+    {
+        public readonly bool   IsRemote   = isRemote;
+        public readonly string NameHeader = nameHeader;   // "Name (Local)" / "Name (Kronos)"
+        public readonly ObservableCollection<FileEntry> Items = new();
+
+        public string        Dir = dir;                   // current directory shown in this pane
+        public ScrollViewer? ScrollViewer;                // cached in OnLoaded for drag-scroll
+
+        public GridViewColumn NameCol = null!;
+        public GridViewColumn SizeCol = null!;
+        public GridViewColumn DateCol = null!;
+
+        public SortColumn SortCol = SortColumn.Name;
+        public bool       SortAsc = true;
+    }
+
     // ── Conflict dialog (Rename / Overwrite / Skip / Cancel) ─────────────────
     sealed class ConflictDialog : Window
     {
@@ -154,14 +175,20 @@ public partial class FileManagerWindow : Window
     readonly string _pass;
 
     AsyncFtpClient? _ftp;
-    string _remotePath = "/";
-    string _localPath  = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
 
-    readonly ObservableCollection<FileEntry> _remoteItems = new();
-    readonly ObservableCollection<FileEntry> _localItems  = new();
+    readonly Pane _local  = new(isRemote: false, nameHeader: "Name (Local)",
+                                dir: Environment.GetFolderPath(Environment.SpecialFolder.Desktop));
+    readonly Pane _remote = new(isRemote: true,  nameHeader: "Name (Kronos)", dir: "/");
 
     bool _busy;
     bool _suppressDriveChange;
+
+    // FluentFTP's control connection cannot run two commands concurrently.  Every FTP-initiating
+    // action goes through this gate so operations run one at a time.  RULE: only the outermost
+    // entry points (async void handlers, keyboard/menu worker calls) acquire it via RunExclusive;
+    // the async Task worker methods (RefreshRemoteAsync, Upload/Download/Move/Copy, DoPasteAsync,
+    // EnsureConnectedAsync) must NEVER acquire it, or they'd deadlock when called from a worker.
+    readonly SemaphoreSlim _ftpGate = new(1, 1);
 
     // Clipboard (cut/copy/paste)
     ClipboardPayload? _clipboard;
@@ -188,20 +215,7 @@ public partial class FileManagerWindow : Window
     readonly DispatcherTimer _dragScrollTimer  = new();
     ScrollViewer?            _dragScrollViewer;
     double                   _dragScrollDelta;
-    ScrollViewer?            _localScrollViewer;
-    ScrollViewer?            _remoteScrollViewer;
 
-    // Column sort
-    SortColumn     _localSortCol  = SortColumn.Name;
-    bool           _localSortAsc  = true;
-    SortColumn     _remoteSortCol = SortColumn.Name;
-    bool           _remoteSortAsc = true;
-    GridViewColumn _localNameCol  = null!;
-    GridViewColumn _localSizeCol  = null!;
-    GridViewColumn _localDateCol  = null!;
-    GridViewColumn _remoteNameCol = null!;
-    GridViewColumn _remoteSizeCol = null!;
-    GridViewColumn _remoteDateCol = null!;
 
     // ── Constructor ───────────────────────────────────────────────────────────
     public FileManagerWindow(string host, int ftpPort, string user, string pass)
@@ -212,8 +226,8 @@ public partial class FileManagerWindow : Window
         _pass    = pass;
         InitializeComponent();
         WindowTheme.ApplyDarkCaption(this);
-        LocalList.ItemsSource  = _localItems;
-        RemoteList.ItemsSource = _remoteItems;
+        LocalList.ItemsSource  = _local.Items;
+        RemoteList.ItemsSource = _remote.Items;
 
         foreach (var lv in new[] { LocalList, RemoteList })
         {
@@ -234,18 +248,18 @@ public partial class FileManagerWindow : Window
         // Column sort — cache GridViewColumn refs and stamp initial ▲ on Name header
         var lg = (GridView)LocalList.View;
         var rg = (GridView)RemoteList.View;
-        _localNameCol  = lg.Columns[0];
-        _localSizeCol  = lg.Columns[1];
-        _localDateCol  = lg.Columns[2];
-        _remoteNameCol = rg.Columns[0];
-        _remoteSizeCol = rg.Columns[1];
-        _remoteDateCol = rg.Columns[2];
-        UpdateLocalHeaders();
-        UpdateRemoteHeaders();
+        _local.NameCol  = lg.Columns[0];
+        _local.SizeCol  = lg.Columns[1];
+        _local.DateCol  = lg.Columns[2];
+        _remote.NameCol = rg.Columns[0];
+        _remote.SizeCol = rg.Columns[1];
+        _remote.DateCol = rg.Columns[2];
+        UpdateHeaders(_local);
+        UpdateHeaders(_remote);
         LocalList.AddHandler(GridViewColumnHeader.ClickEvent,
-            new RoutedEventHandler(OnLocalColumnHeaderClick));
+            new RoutedEventHandler((s, e) => OnColumnHeaderClick(_local, e)));
         RemoteList.AddHandler(GridViewColumnHeader.ClickEvent,
-            new RoutedEventHandler(OnRemoteColumnHeaderClick));
+            new RoutedEventHandler((s, e) => OnColumnHeaderClick(_remote, e)));
 
         // Drag-scroll timer
         _dragScrollTimer.Interval = TimeSpan.FromMilliseconds(50);
@@ -258,16 +272,19 @@ public partial class FileManagerWindow : Window
     // ── Lifecycle ─────────────────────────────────────────────────────────────
     async void OnLoaded(object s, RoutedEventArgs e)
     {
-        _localScrollViewer  = GetScrollViewer(LocalList);
-        _remoteScrollViewer = GetScrollViewer(RemoteList);
+        _local.ScrollViewer  = GetScrollViewer(LocalList);
+        _remote.ScrollViewer = GetScrollViewer(RemoteList);
         PopulateLocalDrives();
         _ftp = KronosFtpSession.CreateClient(_host, _ftpPort, _user, _pass);
         try
         {
             SetStatus("Connecting to Kronos FTP…");
-            await Task.Run(() => _ftp.Connect(CancellationToken.None));
-            SetStatus("Connected.");
-            await RefreshBothAsync();
+            await RunExclusive(async () =>
+            {
+                await Task.Run(() => _ftp.Connect(CancellationToken.None));
+                SetStatus("Connected.");
+                await RefreshBothAsync();
+            });
         }
         catch (Exception ex)
         {
@@ -298,72 +315,92 @@ public partial class FileManagerWindow : Window
     async void OnRemoteDoubleClick(object s, MouseButtonEventArgs e)
     {
         if (RemoteList.SelectedItem is not FileEntry item || !item.IsDirectory) return;
-        _remotePath = item.FullPath;
-        await RefreshRemoteAsync();
+        await NavigateRemoteAsync(item.FullPath);
     }
 
     void OnLocalDoubleClick(object s, MouseButtonEventArgs e)
     {
         if (LocalList.SelectedItem is not FileEntry item || !item.IsDirectory) return;
-        _localPath = item.FullPath;
+        _local.Dir = item.FullPath;
         RefreshLocal();
     }
 
     async void OnRemoteUp(object s, RoutedEventArgs e)
     {
-        var parent = GetFtpParent(_remotePath);
-        if (parent == _remotePath) return;
-        _remotePath = parent;
-        await RefreshRemoteAsync();
+        var parent = GetFtpParent(_remote.Dir);
+        if (parent == _remote.Dir) return;
+        await NavigateRemoteAsync(parent);
     }
 
     void OnLocalUp(object s, RoutedEventArgs e)
     {
-        var parent = Directory.GetParent(_localPath)?.FullName;
+        var parent = Directory.GetParent(_local.Dir)?.FullName;
         if (parent == null) return;
-        _localPath = parent;
+        _local.Dir = parent;
         RefreshLocal();
     }
 
     // ── Refresh ───────────────────────────────────────────────────────────────
-    async void OnRemoteRefresh(object s, RoutedEventArgs e) => await RefreshRemoteAsync();
+    async void OnRemoteRefresh(object s, RoutedEventArgs e) => await RunExclusive(() => RefreshRemoteAsync());
     void       OnLocalRefresh (object s, RoutedEventArgs e) => RefreshLocal();
 
     async Task RefreshBothAsync() { await RefreshRemoteAsync(); RefreshLocal(); }
 
-    async Task RefreshRemoteAsync()
+    // Serializes an FTP-initiating action so it never overlaps another (see _ftpGate).
+    async Task RunExclusive(Func<Task> op)
     {
-        if (!await EnsureConnectedAsync()) return;
-        RemotePathBox.Text = _remotePath;
-        SetStatus($"Loading {_remotePath}…");
+        await _ftpGate.WaitAsync();
+        try { await op(); }
+        finally { _ftpGate.Release(); }
+    }
+
+    // Navigate the remote pane to a folder, rolling the path back if the listing fails so the
+    // path box and the shown contents never disagree (B10).  The path swap happens INSIDE the gate
+    // so two rapid navigations can't clobber each other's target/rollback.
+    async Task NavigateRemoteAsync(string path)
+    {
+        await RunExclusive(async () =>
+        {
+            var prev = _remote.Dir;
+            _remote.Dir = path;
+            if (!await RefreshRemoteAsync()) _remote.Dir = prev;
+        });
+    }
+
+    async Task<bool> RefreshRemoteAsync()
+    {
+        if (!await EnsureConnectedAsync()) return false;
+        SetStatus($"Loading {_remote.Dir}…");
         try
         {
-            var listing = await _ftp!.GetListing(_remotePath);
+            var listing = await _ftp!.GetListing(_remote.Dir);
             var entries = listing
                 .Select(i => new FileEntry(i.Name, i.FullName,
                     i.Type == FtpObjectType.Directory, i.Size, i.Modified))
                 .ToList();
-            _remoteItems.Clear();
-            foreach (var entry in entries) _remoteItems.Add(entry);
-            ApplySort(_remoteItems, _remoteSortCol, _remoteSortAsc);
-            SetStatus($"{entries.Count} item(s) in {_remotePath}");
+            _remote.Items.Clear();
+            foreach (var entry in entries) _remote.Items.Add(entry);
+            ApplySort(_remote.Items, _remote.SortCol, _remote.SortAsc);
+            RemotePathBox.Text = _remote.Dir;   // reflect only after a successful listing
+            SetStatus($"{entries.Count} item(s) in {_remote.Dir}");
+            return true;
         }
-        catch (Exception ex) { SetStatus($"Error listing remote: {ex.Message}"); }
+        catch (Exception ex) { SetStatus($"Error listing remote: {ex.Message}"); return false; }
     }
 
     void RefreshLocal()
     {
-        LocalPathBox.Text = _localPath;
+        LocalPathBox.Text = _local.Dir;
         SyncDriveCombo();
         try
         {
-            _localItems.Clear();
-            foreach (var d in Directory.GetDirectories(_localPath).Select(p => new DirectoryInfo(p)))
-                _localItems.Add(new FileEntry(d.Name, d.FullName, true, 0, d.LastWriteTime));
-            foreach (var f in Directory.GetFiles(_localPath).Select(p => new FileInfo(p)))
-                _localItems.Add(new FileEntry(f.Name, f.FullName, false, f.Length, f.LastWriteTime));
-            ApplySort(_localItems, _localSortCol, _localSortAsc);
-            SetStatus($"{_localItems.Count} item(s) in {_localPath}");
+            _local.Items.Clear();
+            foreach (var d in Directory.GetDirectories(_local.Dir).Select(p => new DirectoryInfo(p)))
+                _local.Items.Add(new FileEntry(d.Name, d.FullName, true, 0, d.LastWriteTime));
+            foreach (var f in Directory.GetFiles(_local.Dir).Select(p => new FileInfo(p)))
+                _local.Items.Add(new FileEntry(f.Name, f.FullName, false, f.Length, f.LastWriteTime));
+            ApplySort(_local.Items, _local.SortCol, _local.SortAsc);
+            SetStatus($"{_local.Items.Count} item(s) in {_local.Dir}");
         }
         catch (Exception ex) { SetStatus($"Error listing local: {ex.Message}"); }
     }
@@ -373,37 +410,27 @@ public partial class FileManagerWindow : Window
     {
         var items = LocalList.SelectedItems.Cast<FileEntry>().Where(f => !f.IsDirectory).ToList();
         if (items.Count == 0) { SetStatus("Select one or more local files to upload."); return; }
-        await UploadItemsAsync(items);
+        await RunExclusive(() => UploadItemsAsync(items));
     }
 
     async Task UploadItemsAsync(IList<FileEntry> items)
     {
         if (!await EnsureConnectedAsync()) return;
-        var remoteNames = _remoteItems.Where(f => !f.IsDirectory)
+        var remoteNames = _remote.Items.Where(f => !f.IsDirectory)
             .Select(f => f.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         SetBusy(true, $"Uploading {items.Count} file(s)…");
         int done = 0;
-        ConflictResult? remembered = null;
-        ConflictResult Resolve(string fn)
-        {
-            if (remembered != null)
-                return remembered.Action == ConflictAction.Rename
-                    ? remembered with { Name = ConflictDialog.SuggestName(fn) }
-                    : remembered;
-            var r = AskConflict(fn);
-            if (r.ApplyToAll) remembered = r;
-            return r;
-        }
+        var resolve = MakeConflictResolver();
         foreach (var (local, idx) in items.Select((x, i) => (x, i)))
         {
             var fileName = Path.GetFileName(local.FullPath);
-            var dest     = $"{_remotePath.TrimEnd('/')}/{fileName}";
+            var dest     = $"{_remote.Dir.TrimEnd('/')}/{fileName}";
             if (remoteNames.Contains(fileName))
             {
-                var r = Resolve(fileName);
+                var r = resolve(fileName);
                 if (r.Action == ConflictAction.Cancel) break;
                 if (r.Action == ConflictAction.Skip)   continue;
-                if (r.Action == ConflictAction.Rename) { fileName = r.Name; dest = $"{_remotePath.TrimEnd('/')}/{fileName}"; }
+                if (r.Action == ConflictAction.Rename) { fileName = r.Name; dest = $"{_remote.Dir.TrimEnd('/')}/{fileName}"; }
             }
             try
             {
@@ -419,7 +446,7 @@ public partial class FileManagerWindow : Window
             catch (Exception ex) { SetStatus($"Failed {local.Name}: {ex.Message}"); }
         }
         await RefreshRemoteAsync();
-        SetStatus($"Uploaded {done}/{items.Count} file(s) → {_remotePath}");
+        SetStatus($"Uploaded {done}/{items.Count} file(s) → {_remote.Dir}");
         SetBusy(false);
     }
 
@@ -428,7 +455,7 @@ public partial class FileManagerWindow : Window
     {
         var items = RemoteList.SelectedItems.Cast<FileEntry>().Where(f => !f.IsDirectory).ToList();
         if (items.Count == 0) { SetStatus("Select one or more Kronos files to download."); return; }
-        await DownloadItemsAsync(items);
+        await RunExclusive(() => DownloadItemsAsync(items));
     }
 
     async Task DownloadItemsAsync(IList<FileEntry> items)
@@ -436,27 +463,17 @@ public partial class FileManagerWindow : Window
         if (!await EnsureConnectedAsync()) return;
         SetBusy(true, $"Downloading {items.Count} file(s)…");
         int done = 0;
-        ConflictResult? remembered = null;
-        ConflictResult Resolve(string fn)
-        {
-            if (remembered != null)
-                return remembered.Action == ConflictAction.Rename
-                    ? remembered with { Name = ConflictDialog.SuggestName(fn) }
-                    : remembered;
-            var r = AskConflict(fn);
-            if (r.ApplyToAll) remembered = r;
-            return r;
-        }
+        var resolve = MakeConflictResolver();
         foreach (var (remote, idx) in items.Select((x, i) => (x, i)))
         {
             var fileName = Path.GetFileName(remote.FullPath);
-            var dest     = Path.Combine(_localPath, fileName);
+            var dest     = Path.Combine(_local.Dir, fileName);
             if (File.Exists(dest))
             {
-                var r = Resolve(fileName);
+                var r = resolve(fileName);
                 if (r.Action == ConflictAction.Cancel) break;
                 if (r.Action == ConflictAction.Skip)   continue;
-                if (r.Action == ConflictAction.Rename) { fileName = r.Name; dest = Path.Combine(_localPath, fileName); }
+                if (r.Action == ConflictAction.Rename) { fileName = r.Name; dest = Path.Combine(_local.Dir, fileName); }
             }
             try
             {
@@ -472,7 +489,7 @@ public partial class FileManagerWindow : Window
             catch (Exception ex) { SetStatus($"Failed {remote.Name}: {ex.Message}"); }
         }
         RefreshLocal();
-        SetStatus($"Downloaded {done}/{items.Count} file(s) → {_localPath}");
+        SetStatus($"Downloaded {done}/{items.Count} file(s) → {_local.Dir}");
         SetBusy(false);
     }
 
@@ -481,17 +498,20 @@ public partial class FileManagerWindow : Window
     {
         var name = PromptInput("New folder name:", "NewFolder");
         if (string.IsNullOrWhiteSpace(name)) return;
-        if (!await EnsureConnectedAsync()) return;
-        var path = $"{_remotePath.TrimEnd('/')}/{name}";
-        try { await _ftp!.CreateDirectory(path); await RefreshRemoteAsync(); SetStatus($"Created {path}"); }
-        catch (Exception ex) { SetStatus($"Failed: {ex.Message}"); }
+        await RunExclusive(async () =>
+        {
+            if (!await EnsureConnectedAsync()) return;
+            var path = $"{_remote.Dir.TrimEnd('/')}/{name}";
+            try { await _ftp!.CreateDirectory(path); await RefreshRemoteAsync(); SetStatus($"Created {path}"); }
+            catch (Exception ex) { SetStatus($"Failed: {ex.Message}"); }
+        });
     }
 
     void OnLocalNewFolder(object s, RoutedEventArgs e)
     {
         var name = PromptInput("New folder name:", "NewFolder");
         if (string.IsNullOrWhiteSpace(name)) return;
-        var path = Path.Combine(_localPath, name);
+        var path = Path.Combine(_local.Dir, name);
         try { Directory.CreateDirectory(path); RefreshLocal(); SetStatus($"Created {path}"); }
         catch (Exception ex) { SetStatus($"Failed: {ex.Message}"); }
     }
@@ -503,20 +523,23 @@ public partial class FileManagerWindow : Window
         if (items.Count == 0) { SetStatus("Select items to delete."); return; }
         if (MessageBox.Show($"Delete {items.Count} item(s) from Kronos?", "Delete",
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
-        if (!await EnsureConnectedAsync()) return;
-        int done = 0;
-        foreach (var item in items)
+        await RunExclusive(async () =>
         {
-            try
+            if (!await EnsureConnectedAsync()) return;
+            int done = 0;
+            foreach (var item in items)
             {
-                if (item.IsDirectory) await _ftp!.DeleteDirectory(item.FullPath);
-                else                  await _ftp!.DeleteFile(item.FullPath);
-                done++;
+                try
+                {
+                    if (item.IsDirectory) await _ftp!.DeleteDirectory(item.FullPath);
+                    else                  await _ftp!.DeleteFile(item.FullPath);
+                    done++;
+                }
+                catch (Exception ex) { SetStatus($"Failed {item.Name}: {ex.Message}"); }
             }
-            catch (Exception ex) { SetStatus($"Failed {item.Name}: {ex.Message}"); }
-        }
-        await RefreshRemoteAsync();
-        SetStatus($"Deleted {done}/{items.Count} item(s).");
+            await RefreshRemoteAsync();
+            SetStatus($"Deleted {done}/{items.Count} item(s).");
+        });
     }
 
     void OnLocalDelete(object s, RoutedEventArgs e)
@@ -547,10 +570,13 @@ public partial class FileManagerWindow : Window
         var item    = (FileEntry)RemoteList.SelectedItem!;
         var newName = PromptInput("New name:", item.Name);
         if (string.IsNullOrWhiteSpace(newName) || newName == item.Name) return;
-        if (!await EnsureConnectedAsync()) return;
-        var newPath = $"{GetFtpParent(item.FullPath).TrimEnd('/')}/{newName}";
-        try { await _ftp!.Rename(item.FullPath, newPath); await RefreshRemoteAsync(); SetStatus($"Renamed → {newName}"); }
-        catch (Exception ex) { SetStatus($"Rename failed: {ex.Message}"); }
+        await RunExclusive(async () =>
+        {
+            if (!await EnsureConnectedAsync()) return;
+            var newPath = $"{GetFtpParent(item.FullPath).TrimEnd('/')}/{newName}";
+            try { await _ftp!.Rename(item.FullPath, newPath); await RefreshRemoteAsync(); SetStatus($"Renamed → {newName}"); }
+            catch (Exception ex) { SetStatus($"Rename failed: {ex.Message}"); }
+        });
     }
 
     void OnLocalRename(object s, RoutedEventArgs e)
@@ -559,7 +585,7 @@ public partial class FileManagerWindow : Window
         var item    = (FileEntry)LocalList.SelectedItem!;
         var newName = PromptInput("New name:", item.Name);
         if (string.IsNullOrWhiteSpace(newName) || newName == item.Name) return;
-        var newPath = Path.Combine(Path.GetDirectoryName(item.FullPath) ?? _localPath, newName);
+        var newPath = Path.Combine(Path.GetDirectoryName(item.FullPath) ?? _local.Dir, newName);
         try
         {
             if (item.IsDirectory) Directory.Move(item.FullPath, newPath);
@@ -697,7 +723,7 @@ public partial class FileManagerWindow : Window
                     DoCut(lv!, isRemote);  e.Handled = true; break;
 
                 case Key.V when anyPane:
-                    _ = DoPasteAsync(isRemote); e.Handled = true; break;
+                    _ = RunExclusive(() => DoPasteAsync(isRemote)); e.Handled = true; break;
 
                 case Key.A when anyPane:
                     lv!.SelectAll(); e.Handled = true; break;
@@ -720,9 +746,9 @@ public partial class FileManagerWindow : Window
                 e.Handled = true; break;
 
             case Key.F5:
-                if      (remoteHas) _ = RefreshRemoteAsync();
+                if      (remoteHas) _ = RunExclusive(() => RefreshRemoteAsync());
                 else if (localHas)  RefreshLocal();
-                else                { _ = RefreshRemoteAsync(); RefreshLocal(); }
+                else                { _ = RunExclusive(() => RefreshRemoteAsync()); RefreshLocal(); }
                 e.Handled = true; break;
 
             case Key.Back when anyPane:
@@ -734,8 +760,8 @@ public partial class FileManagerWindow : Window
                 // Navigate into the selected folder (mirrors double-click)
                 if (lv!.SelectedItem is FileEntry { IsDirectory: true } dir)
                 {
-                    if (isRemote) { _remotePath = dir.FullPath; _ = RefreshRemoteAsync(); }
-                    else          { _localPath  = dir.FullPath; RefreshLocal(); }
+                    if (isRemote) _ = NavigateRemoteAsync(dir.FullPath);
+                    else          { _local.Dir  = dir.FullPath; RefreshLocal(); }
                 }
                 e.Handled = true; break;
         }
@@ -811,7 +837,7 @@ public partial class FileManagerWindow : Window
 
         // Drag-scroll: auto-scroll when mouse is near the top or bottom edge
         var pos = e.GetPosition(lv);
-        var sv  = lv == LocalList ? _localScrollViewer : _remoteScrollViewer;
+        var sv  = lv == LocalList ? _local.ScrollViewer : _remote.ScrollViewer;
         double h = lv.ActualHeight;
         if (sv != null && pos.Y >= 0 && pos.Y < DragScrollHotzone)
         {
@@ -864,22 +890,25 @@ public partial class FileManagerWindow : Window
 
         if (btn == BtnRemoteUp && payload.FromRemote)
         {
-            var parent = GetFtpParent(_remotePath);
-            if (parent == _remotePath) return; // already at root
-            _remotePath = parent;
-            await RefreshRemoteAsync();
-            var items = payload.Items.Where(f => GetFtpParent(f.FullPath) != _remotePath).ToList();
-            if (items.Count > 0) await MoveRemoteItemsAsync(items, _remotePath);
+            var parent = GetFtpParent(_remote.Dir);
+            if (parent == _remote.Dir) return; // already at root
+            await RunExclusive(async () =>
+            {
+                _remote.Dir = parent;
+                await RefreshRemoteAsync();
+                var items = payload.Items.Where(f => GetFtpParent(f.FullPath) != _remote.Dir).ToList();
+                if (items.Count > 0) await MoveRemoteItemsAsync(items, _remote.Dir);
+            });
         }
         else if (btn == BtnLocalUp && !payload.FromRemote)
         {
-            var parent = Directory.GetParent(_localPath)?.FullName;
+            var parent = Directory.GetParent(_local.Dir)?.FullName;
             if (parent == null) return;
-            _localPath = parent;
+            _local.Dir = parent;
             RefreshLocal();
             var items = payload.Items
-                .Where(f => (Path.GetDirectoryName(f.FullPath) ?? "") != _localPath).ToList();
-            if (items.Count > 0) await MoveLocalItemsAsync(items, _localPath);
+                .Where(f => (Path.GetDirectoryName(f.FullPath) ?? "") != _local.Dir).ToList();
+            if (items.Count > 0) await MoveLocalItemsAsync(items, _local.Dir);
         }
     }
 
@@ -904,20 +933,20 @@ public partial class FileManagerWindow : Window
 
         if (target is FileEntry folder && folder.IsDirectory)
         {
-            if (lv == RemoteList) { _remotePath = folder.FullPath; await RefreshRemoteAsync(); }
-            else                  { _localPath  = folder.FullPath; RefreshLocal(); }
+            if (lv == RemoteList) await NavigateRemoteAsync(folder.FullPath);
+            else                  { _local.Dir  = folder.FullPath; RefreshLocal(); }
         }
         else if (target is Button btn)
         {
             if (btn == BtnRemoteUp)
             {
-                var parent = GetFtpParent(_remotePath);
-                if (parent != _remotePath) { _remotePath = parent; await RefreshRemoteAsync(); }
+                var parent = GetFtpParent(_remote.Dir);
+                if (parent != _remote.Dir) await NavigateRemoteAsync(parent);
             }
             else
             {
-                var parent = Directory.GetParent(_localPath)?.FullName;
-                if (parent != null) { _localPath = parent; RefreshLocal(); }
+                var parent = Directory.GetParent(_local.Dir)?.FullName;
+                if (parent != null) { _local.Dir = parent; RefreshLocal(); }
             }
         }
     }
@@ -948,14 +977,14 @@ public partial class FileManagerWindow : Window
         {
             // Same-pane drop on empty space: move to current directory if we navigated here
             var sourcePath = items.Count > 0
-                ? Path.GetDirectoryName(items[0].FullPath) ?? _localPath
-                : _localPath;
-            if (_localPath != sourcePath)
-                await MoveLocalItemsAsync(items, _localPath);
+                ? Path.GetDirectoryName(items[0].FullPath) ?? _local.Dir
+                : _local.Dir;
+            if (_local.Dir != sourcePath)
+                await MoveLocalItemsAsync(items, _local.Dir);
             return;
         }
 
-        await DownloadItemsAsync(items);
+        await RunExclusive(() => DownloadItemsAsync(items));
     }
 
     async void OnRemoteDrop(object s, DragEventArgs e)
@@ -968,34 +997,68 @@ public partial class FileManagerWindow : Window
         var targetFolder = GetEntryAt(RemoteList, e.GetPosition(RemoteList));
         if (payload.FromRemote && targetFolder is { IsDirectory: true })
         {
-            await MoveRemoteItemsAsync(items, targetFolder.FullPath);
+            await RunExclusive(() => MoveRemoteItemsAsync(items, targetFolder.FullPath));
             return;
         }
 
         if (payload.FromRemote)
         {
             // Same-pane drop on empty space: move to current directory if we navigated here
-            var sourcePath = items.Count > 0 ? GetFtpParent(items[0].FullPath) : _remotePath;
-            if (_remotePath != sourcePath)
-                await MoveRemoteItemsAsync(items, _remotePath);
+            var sourcePath = items.Count > 0 ? GetFtpParent(items[0].FullPath) : _remote.Dir;
+            if (_remote.Dir != sourcePath)
+                await RunExclusive(() => MoveRemoteItemsAsync(items, _remote.Dir));
             return;
         }
 
-        await UploadItemsAsync(items);
+        await RunExclusive(() => UploadItemsAsync(items));
     }
 
     async Task MoveLocalItemsAsync(IList<FileEntry> items, string destFolder)
     {
-        SetBusy(true, $"Moving {items.Count} file(s)…");
+        SetBusy(true, $"Moving {items.Count} item(s)…");
         int done = 0;
+        var resolve = MakeConflictResolver();
         foreach (var item in items)
         {
-            var dest = Path.Combine(destFolder, item.Name);
-            try { File.Move(item.FullPath, dest, overwrite: true); done++; }
+            var fileName = item.Name;
+            var dest     = Path.Combine(destFolder, fileName);
+
+            // A no-op move onto itself would throw ("source and destination are the same").
+            if (string.Equals(Path.GetFullPath(item.FullPath), Path.GetFullPath(dest),
+                              StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            bool exists    = item.IsDirectory ? Directory.Exists(dest) : File.Exists(dest);
+            bool overwrite = false;
+            if (exists)
+            {
+                var r = resolve(fileName);
+                if (r.Action == ConflictAction.Cancel) break;
+                if (r.Action == ConflictAction.Skip)   continue;
+                if (r.Action == ConflictAction.Rename) { fileName = r.Name; dest = Path.Combine(destFolder, fileName); }
+                else                                   overwrite = true;  // replace existing
+            }
+            try
+            {
+                // Off the UI thread — a large folder move would otherwise freeze the window.
+                await Task.Run(() =>
+                {
+                    if (item.IsDirectory)
+                    {
+                        if (overwrite && Directory.Exists(dest)) Directory.Delete(dest, recursive: true);
+                        Directory.Move(item.FullPath, dest);   // File.Move does NOT work on directories
+                    }
+                    else
+                    {
+                        File.Move(item.FullPath, dest, overwrite);
+                    }
+                });
+                done++;
+            }
             catch (Exception ex) { SetStatus($"Failed {item.Name}: {ex.Message}"); }
         }
         RefreshLocal();
-        SetStatus($"Moved {done}/{items.Count} file(s) → {destFolder}");
+        SetStatus($"Moved {done}/{items.Count} item(s) → {destFolder}");
         SetBusy(false);
     }
 
@@ -1045,6 +1108,24 @@ public partial class FileManagerWindow : Window
         return new ConflictResult(dlg.Action, dlg.ResultName, dlg.ApplyToAll);
     }
 
+    // Per-transfer conflict resolver: prompts once per name, but remembers an "apply to all"
+    // choice (re-suggesting a fresh name each time for a remembered Rename).  One implementation
+    // shared by every transfer loop instead of the same closure copy-pasted five times.
+    Func<string, ConflictResult> MakeConflictResolver()
+    {
+        ConflictResult? remembered = null;
+        return fn =>
+        {
+            if (remembered != null)
+                return remembered.Action == ConflictAction.Rename
+                    ? remembered with { Name = ConflictDialog.SuggestName(fn) }
+                    : remembered;
+            var r = AskConflict(fn);
+            if (r.ApplyToAll) remembered = r;
+            return r;
+        };
+    }
+
     static FileEntry? GetEntryAt(ListView lv, Point pt)
     {
         var hit = lv.InputHitTest(pt) as DependencyObject;
@@ -1080,8 +1161,8 @@ public partial class FileManagerWindow : Window
         {
             cm.Items.Add(MakeItem("Open", true, async (_, _) =>
             {
-                if (isRemote) { _remotePath = entry!.FullPath; await RefreshRemoteAsync(); }
-                else          { _localPath  = entry!.FullPath; RefreshLocal(); }
+                if (isRemote) await NavigateRemoteAsync(entry!.FullPath);
+                else          { _local.Dir  = entry!.FullPath; RefreshLocal(); }
             }));
         }
         else
@@ -1095,7 +1176,7 @@ public partial class FileManagerWindow : Window
         cm.Items.Add(MakeItem("Cut",   hasSelection, (_, _) => DoCut(lv, isRemote)));
         cm.Items.Add(MakeItem("Copy",  hasSelection, (_, _) => DoCopy(lv, isRemote)));
         cm.Items.Add(MakeItem("Paste", _clipboard != null && !_busy,
-                              async (_, _) => await DoPasteAsync(isRemote)));
+                              async (_, _) => await RunExclusive(() => DoPasteAsync(isRemote))));
         cm.Items.Add(new Separator());
         cm.Items.Add(MakeItem("Rename", isSingle && entry != null,
                      isRemote ? (RoutedEventHandler)OnRemoteRename : OnLocalRename));
@@ -1143,15 +1224,15 @@ public partial class FileManagerWindow : Window
         if (!cb.FromRemote && !toRemote)
         {
             // Local → Local
-            if (cb.IsCut) await MoveLocalItemsAsync(items, _localPath);
-            else          await CopyLocalItemsAsync(items, _localPath);
+            if (cb.IsCut) await MoveLocalItemsAsync(items, _local.Dir);
+            else          await CopyLocalItemsAsync(items, _local.Dir);
             if (cb.IsCut) _clipboard = null;
         }
         else if (cb.FromRemote && toRemote)
         {
             // Remote → Remote
-            if (cb.IsCut) await MoveRemoteItemsAsync(items, _remotePath);
-            else          await CopyRemoteItemsAsync(items, _remotePath);
+            if (cb.IsCut) await MoveRemoteItemsAsync(items, _remote.Dir);
+            else          await CopyRemoteItemsAsync(items, _remote.Dir);
             if (cb.IsCut) _clipboard = null;
         }
         else if (!cb.FromRemote)
@@ -1165,15 +1246,15 @@ public partial class FileManagerWindow : Window
                 foreach (var dir in dirs)
                 {
                     SetStatus($"Uploading folder {dir.Name}…");
-                    try { await _ftp!.UploadDirectory(dir.FullPath, $"{_remotePath.TrimEnd('/')}/{dir.Name}", FtpFolderSyncMode.Update); }
+                    try { await _ftp!.UploadDirectory(dir.FullPath, $"{_remote.Dir.TrimEnd('/')}/{dir.Name}", FtpFolderSyncMode.Update); }
                     catch (Exception ex) { SetStatus($"Failed {dir.Name}: {ex.Message}"); }
                 }
                 await RefreshRemoteAsync();
             }
             if (cb.IsCut)
             {
-                foreach (var f in files) try { File.Delete(f.FullPath); }            catch { }
-                foreach (var d in dirs)  try { Directory.Delete(d.FullPath, true); } catch { }
+                foreach (var f in files) try { File.Delete(f.FullPath); }            catch (Exception ex) { AppLog.Debug($"[fm] cut cleanup {f.Name}: {ex.Message}"); }
+                foreach (var d in dirs)  try { Directory.Delete(d.FullPath, true); } catch (Exception ex) { AppLog.Debug($"[fm] cut cleanup {d.Name}: {ex.Message}"); }
                 RefreshLocal();
                 _clipboard = null;
             }
@@ -1189,7 +1270,7 @@ public partial class FileManagerWindow : Window
                 foreach (var dir in dirs)
                 {
                     SetStatus($"Downloading folder {dir.Name}…");
-                    try { await _ftp!.DownloadDirectory(Path.Combine(_localPath, dir.Name), dir.FullPath, FtpFolderSyncMode.Update); }
+                    try { await _ftp!.DownloadDirectory(Path.Combine(_local.Dir, dir.Name), dir.FullPath, FtpFolderSyncMode.Update); }
                     catch (Exception ex) { SetStatus($"Failed {dir.Name}: {ex.Message}"); }
                 }
                 RefreshLocal();
@@ -1198,8 +1279,8 @@ public partial class FileManagerWindow : Window
             {
                 if (await EnsureConnectedAsync())
                 {
-                    foreach (var f in files) try { await _ftp!.DeleteFile(f.FullPath); }      catch { }
-                    foreach (var d in dirs)  try { await _ftp!.DeleteDirectory(d.FullPath); } catch { }
+                    foreach (var f in files) try { await _ftp!.DeleteFile(f.FullPath); }      catch (Exception ex) { AppLog.Debug($"[fm] cut cleanup {f.Name}: {ex.Message}"); }
+                    foreach (var d in dirs)  try { await _ftp!.DeleteDirectory(d.FullPath); } catch (Exception ex) { AppLog.Debug($"[fm] cut cleanup {d.Name}: {ex.Message}"); }
                     await RefreshRemoteAsync();
                 }
                 _clipboard = null;
@@ -1207,21 +1288,11 @@ public partial class FileManagerWindow : Window
         }
     }
 
-    Task CopyLocalItemsAsync(IList<FileEntry> items, string destFolder)
+    async Task CopyLocalItemsAsync(IList<FileEntry> items, string destFolder)
     {
         SetBusy(true, $"Copying {items.Count} item(s)…");
         int done = 0;
-        ConflictResult? remembered = null;
-        ConflictResult Resolve(string fn)
-        {
-            if (remembered != null)
-                return remembered.Action == ConflictAction.Rename
-                    ? remembered with { Name = ConflictDialog.SuggestName(fn) }
-                    : remembered;
-            var r = AskConflict(fn);
-            if (r.ApplyToAll) remembered = r;
-            return r;
-        }
+        var resolve = MakeConflictResolver();
         foreach (var item in items)
         {
             var fileName = item.Name;
@@ -1229,17 +1300,19 @@ public partial class FileManagerWindow : Window
             bool exists  = item.IsDirectory ? Directory.Exists(dest) : File.Exists(dest);
             if (exists)
             {
-                var r = Resolve(fileName);
+                var r = resolve(fileName);
                 if (r.Action == ConflictAction.Cancel) break;
                 if (r.Action == ConflictAction.Skip)   continue;
                 if (r.Action == ConflictAction.Rename) { fileName = r.Name; dest = Path.Combine(destFolder, fileName); }
             }
             try
             {
-                if (item.IsDirectory)
-                    CopyDirectoryRecursive(item.FullPath, dest);
-                else
-                    File.Copy(item.FullPath, dest, overwrite: true);
+                // Off the UI thread — a large recursive copy would otherwise freeze the window.
+                await Task.Run(() =>
+                {
+                    if (item.IsDirectory) CopyDirectoryRecursive(item.FullPath, dest);
+                    else                  File.Copy(item.FullPath, dest, overwrite: true);
+                });
                 done++;
             }
             catch (Exception ex) { SetStatus($"Failed {item.Name}: {ex.Message}"); }
@@ -1247,7 +1320,6 @@ public partial class FileManagerWindow : Window
         RefreshLocal();
         SetStatus($"Copied {done}/{items.Count} item(s) → {destFolder}");
         SetBusy(false);
-        return Task.CompletedTask;
     }
 
     static void CopyDirectoryRecursive(string src, string dest)
@@ -1266,17 +1338,7 @@ public partial class FileManagerWindow : Window
         int done    = 0;
         var tempDir = Path.Combine(Path.GetTempPath(), "KronosCopy_" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(tempDir);
-        ConflictResult? remembered = null;
-        ConflictResult Resolve(string fn)
-        {
-            if (remembered != null)
-                return remembered.Action == ConflictAction.Rename
-                    ? remembered with { Name = ConflictDialog.SuggestName(fn) }
-                    : remembered;
-            var r = AskConflict(fn);
-            if (r.ApplyToAll) remembered = r;
-            return r;
-        }
+        var resolve = MakeConflictResolver();
         try
         {
             foreach (var item in items)
@@ -1288,7 +1350,7 @@ public partial class FileManagerWindow : Window
                     : await _ftp!.FileExists(dest);
                 if (exists)
                 {
-                    var r = Resolve(fileName);
+                    var r = resolve(fileName);
                     if (r.Action == ConflictAction.Cancel) break;
                     if (r.Action == ConflictAction.Skip)   continue;
                     if (r.Action == ConflictAction.Rename) { fileName = r.Name; dest = $"{destFolder.TrimEnd('/')}/{fileName}"; }
@@ -1355,7 +1417,7 @@ public partial class FileManagerWindow : Window
 
     void SyncDriveComboCore()
     {
-        var root = Path.GetPathRoot(_localPath);
+        var root = Path.GetPathRoot(_local.Dir);
         foreach (DriveItem item in LocalDriveCombo.Items)
         {
             if (string.Equals(item.RootPath, root, StringComparison.OrdinalIgnoreCase))
@@ -1375,7 +1437,7 @@ public partial class FileManagerWindow : Window
     {
         if (_suppressDriveChange) return;
         if (LocalDriveCombo.SelectedItem is not DriveItem drive) return;
-        _localPath = drive.RootPath;
+        _local.Dir = drive.RootPath;
         RefreshLocal();
     }
 
@@ -1405,40 +1467,23 @@ public partial class FileManagerWindow : Window
     }
 
     // ── Column sort ───────────────────────────────────────────────────────────
-    void OnLocalColumnHeaderClick(object s, RoutedEventArgs e)
+    void OnColumnHeaderClick(Pane pane, RoutedEventArgs e)
     {
         if (e.OriginalSource is not GridViewColumnHeader h ||
             h.Column == null || h.Role != GridViewColumnHeaderRole.Normal) return;
-        var col = MapColumn(h.Column, isRemote: false);
+        var col = MapColumn(pane, h.Column);
         if (col == null) return;
-        if (col == _localSortCol) _localSortAsc = !_localSortAsc;
-        else { _localSortCol = col.Value; _localSortAsc = true; }
-        ApplySort(_localItems, _localSortCol, _localSortAsc);
-        UpdateLocalHeaders();
+        if (col == pane.SortCol) pane.SortAsc = !pane.SortAsc;
+        else { pane.SortCol = col.Value; pane.SortAsc = true; }
+        ApplySort(pane.Items, pane.SortCol, pane.SortAsc);
+        UpdateHeaders(pane);
     }
 
-    void OnRemoteColumnHeaderClick(object s, RoutedEventArgs e)
-    {
-        if (e.OriginalSource is not GridViewColumnHeader h ||
-            h.Column == null || h.Role != GridViewColumnHeaderRole.Normal) return;
-        var col = MapColumn(h.Column, isRemote: true);
-        if (col == null) return;
-        if (col == _remoteSortCol) _remoteSortAsc = !_remoteSortAsc;
-        else { _remoteSortCol = col.Value; _remoteSortAsc = true; }
-        ApplySort(_remoteItems, _remoteSortCol, _remoteSortAsc);
-        UpdateRemoteHeaders();
-    }
-
-    SortColumn? MapColumn(GridViewColumn col, bool isRemote)
-        => isRemote
-            ? (col == _remoteNameCol ? SortColumn.Name
-             : col == _remoteSizeCol ? SortColumn.Size
-             : col == _remoteDateCol ? SortColumn.Modified
-             : (SortColumn?)null)
-            : (col == _localNameCol ? SortColumn.Name
-             : col == _localSizeCol ? SortColumn.Size
-             : col == _localDateCol ? SortColumn.Modified
-             : (SortColumn?)null);
+    static SortColumn? MapColumn(Pane pane, GridViewColumn col)
+        => col == pane.NameCol ? SortColumn.Name
+         : col == pane.SizeCol ? SortColumn.Size
+         : col == pane.DateCol ? SortColumn.Modified
+         : (SortColumn?)null;
 
     static IEnumerable<FileEntry> SortEntries(IEnumerable<FileEntry> src, SortColumn col, bool asc)
         => col switch
@@ -1461,18 +1506,11 @@ public partial class FileManagerWindow : Window
         foreach (var e in sorted) items.Add(e);
     }
 
-    void UpdateLocalHeaders()
+    void UpdateHeaders(Pane pane)
     {
-        _localNameCol.Header = "Name (Local)" + Ind(_localSortCol,  _localSortAsc,  SortColumn.Name);
-        _localSizeCol.Header = "Size"         + Ind(_localSortCol,  _localSortAsc,  SortColumn.Size);
-        _localDateCol.Header = "Modified"     + Ind(_localSortCol,  _localSortAsc,  SortColumn.Modified);
-    }
-
-    void UpdateRemoteHeaders()
-    {
-        _remoteNameCol.Header = "Name (Kronos)" + Ind(_remoteSortCol, _remoteSortAsc, SortColumn.Name);
-        _remoteSizeCol.Header = "Size"          + Ind(_remoteSortCol, _remoteSortAsc, SortColumn.Size);
-        _remoteDateCol.Header = "Modified"      + Ind(_remoteSortCol, _remoteSortAsc, SortColumn.Modified);
+        pane.NameCol.Header = pane.NameHeader + Ind(pane.SortCol, pane.SortAsc, SortColumn.Name);
+        pane.SizeCol.Header = "Size"          + Ind(pane.SortCol, pane.SortAsc, SortColumn.Size);
+        pane.DateCol.Header = "Modified"      + Ind(pane.SortCol, pane.SortAsc, SortColumn.Modified);
     }
 
     static string Ind(SortColumn active, bool asc, SortColumn target)
