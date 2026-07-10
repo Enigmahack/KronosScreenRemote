@@ -1,6 +1,6 @@
 # KronosScreenRemote for Windows
 
-A Windows desktop application for remotely viewing and controlling a **Korg Kronos** synthesizer over Ethernet. It streams the Kronos display in real time, forwards touch/button input back to the device, and provides supplementary tools for audio monitoring, file management, and display calibration.
+A Windows desktop application for remotely viewing and controlling a **Korg Kronos** synthesizer over Ethernet. It streams the Kronos display in real time, forwards touch/button input back to the device, and provides supplementary tools for MIDI/SysEx integration, audio monitoring, file management, and display calibration.
 
 > **Note:** This application requires the companion daemon running on the Kronos hardware.
 > See [KronosScreenRemoteDaemon](https://github.com/Enigmahack/KronosScreenRemoteDaemon) for setup instructions.
@@ -17,7 +17,9 @@ A Windows desktop application for remotely viewing and controlling a **Korg Kron
 - **Live Screen Streaming** — 800×600 8-bit indexed color at up to 15 FPS via TCP; supports full-frame (pull) and change-only modes for bandwidth efficiency
 - **Value Slider** — Left-panel INC/DEC buttons and draggable 0–127 value slider mirroring the Kronos front-panel VALUE control; double-click to snap to center (64)
 - **Remote Control** — Virtual button panel (mode keys, number pad, data wheel, bank selects) with drag, scroll, and keyboard-shortcut support
-- **Mode Detection** — Reference-image OCR to identify the active Kronos operating mode automatically
+- **Mode Detection** — Automatic operating-mode tracking from live SysEx mode-change messages, with reference-image screen matching as a fallback
+- **MIDI / SysEx Integration** — Live MIDI-out monitoring with a SysEx/MIDI traffic window and on-screen keyboard; automatic mode-follow, program-change follow, and VALUE-slider mirroring from the hardware. Runs over the daemon's TCP MIDI bridge or a direct USB-MIDI link (selectable in Settings → MIDI/SysEx)
+- **Set List & Name Tools** — Dump and browse Kronos Set Lists, and sync program/combi names into a local cache for flash-free program-change display ("Sync All" collects both)
 - **Audio VU Meter** — WASAPI real-time level monitoring (L/R peak + RMS) with device selection
 <img width="1414" height="508" alt="2026-06-19 17_44_49-Kronos ValueSlider — 192 168 100 15" src="https://github.com/user-attachments/assets/fa7ad681-8056-489f-99e8-32f90af12e98" />
 
@@ -28,6 +30,7 @@ A Windows desktop application for remotely viewing and controlling a **Korg Kron
 <img width="1414" height="508" alt="2026-06-19 17_40_35-File Manager — Kronos" src="https://github.com/user-attachments/assets/82fc2864-1e3e-4553-a1de-4708fd746a75" />
 
 - **Test Mode** — Enter the Kronos built-in hardware test mode for diagnostics (Tools menu)
+- **Portable Settings** — Preferences, key bindings, and macros persist as JSON; export or import your full configuration via **File → Export/Import Settings…**
 - **Zoom & Layout Presets** — Configurable window sizes (75–200%), fullscreen, always-on-top; data input (right) and value input (left) panels can be independently hidden in Full mode or expanded/collapsed via dedicated rails in Focused mode, with panel state remembered across sessions
 <img width="904" height="508" alt="2026-06-19 17_45_52-_VariousViews" src="https://github.com/user-attachments/assets/92c41123-f285-46db-a83f-30e131370ec3" />
 
@@ -102,8 +105,8 @@ A PowerShell helper script is included for self-signed or CA-signed code signing
 KronosScreenRemote/
 ├── Audio/          # WASAPI audio capture and VU meter engine
 ├── Core/           # Logging, settings, models, and JSON persistence
-├── Detection/      # OCR-based mode detection and boot phase tracking
-├── Networking/     # TCP stream receiver, control client, FTP layer
+├── Detection/      # Reference-image mode detection and boot phase tracking
+├── Networking/     # Stream receiver, control client, FTP, MIDI/SysEx transports
 ├── Rendering/      # Overlay, palette, and button rendering helpers
 ├── Views/          # WPF windows and XAML (MainWindow, FileManager, dialogs)
 ├── Resources/      # Icons, button images, calibration reference data
@@ -120,7 +123,7 @@ KronosScreenRemote/
 
 1. Ensure the Kronos is connected to your local network and its **Global > Ethernet** settings have a valid IP address.
 2. Launch **KronosScreenRemote** and enter the Kronos IP in the connection bar.
-3. The application connects on **TCP 7373** (screen stream) and **TCP 7374** (control commands).
+3. The application connects on **TCP 7373** (screen stream) and **TCP 7374** (control commands). MIDI/SysEx monitoring uses the daemon's internal bridge on **TCP 9875**, or a direct USB-MIDI connection.
 4. FTP access (file manager) uses the standard FTP port **21** with the credentials configured on the Kronos.
 
 ---
@@ -132,7 +135,7 @@ KronosScreenRemote/
 | F1 | Open help window |
 | F2–F8 | Switch Kronos operating mode (Setlist through Disk) |
 | A | Toggle aspect lock |
-| C | Toggle calibration grid overlay |
+| C | Toggle calibration mode |
 | F | Toggle fullscreen |
 | M | Toggle VGA mirror |
 | Q | Quit |
@@ -141,7 +144,7 @@ KronosScreenRemote/
 | Ctrl+K | Open command palette |
 | Ctrl+S | Save screenshot |
 
-Shortcuts are rebindable via **Settings → Settings… → Keybindings**.
+Shortcuts are rebindable via **File → Settings… → Key Bindings**.
 
 ---
 
