@@ -12,6 +12,7 @@ public partial class KeyboardInfoWindow : Window
 
     readonly string         _host;
     readonly int            _port;
+    readonly Func<bool>?    _isParentConnected;   // null = always poll (legacy callers)
     readonly DispatcherTimer _timer = new();
 
     readonly double[] _cpuHistory = new double[HistLen];
@@ -33,10 +34,11 @@ public partial class KeyboardInfoWindow : Window
     static readonly string[] ModeNames =
         ["Init", "Setlist", "Combi", "Program", "Sequence", "Sampling", "Global", "Disk"];
 
-    public KeyboardInfoWindow(string host, int ctrlPort)
+    public KeyboardInfoWindow(string host, int ctrlPort, Func<bool>? isParentConnected = null)
     {
         _host = host;
         _port = ctrlPort;
+        _isParentConnected = isParentConnected;
 
         InitializeComponent();
         WindowTheme.ApplyDarkCaption(this);
@@ -95,7 +97,14 @@ public partial class KeyboardInfoWindow : Window
 
     async Task PollAndUpdateAsync()
     {
-        if (_polling || string.IsNullOrEmpty(_host)) { SetStatus(false); return; }
+        // Never open a socket to the daemon while the parent window isn't connected —
+        // the on-Kronos daemon is fragile and must not be probed during boot/offline.
+        // The timer keeps ticking so the panel auto-resumes once the parent reconnects.
+        if (_polling || string.IsNullOrEmpty(_host) || _isParentConnected?.Invoke() == false)
+        {
+            SetStatus(false);
+            return;
+        }
         _polling = true;
         try
         {

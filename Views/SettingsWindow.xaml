@@ -524,6 +524,108 @@
                 </Grid>
             </TabItem>
 
+            <!-- ── Input Mapping (host key → Kronos raw keycode) ───────────── -->
+            <TabItem Header="Input Mapping">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*" MinHeight="60"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <DockPanel Grid.Row="0" Margin="0 4 0 0">
+                        <TextBlock DockPanel.Dock="Top"
+                                   Text="Keyboard Input Mapping"
+                                   FontWeight="Bold" Foreground="#FF88AADD"
+                                   Margin="0 0 0 8"/>
+                        <DockPanel DockPanel.Dock="Top" LastChildFill="False" Margin="0 0 0 5">
+                            <Button x:Name="BtnRawAdd"        Content="Add"         Margin="0 0 4 0"
+                                    DockPanel.Dock="Left"  Click="OnRawAdd"
+                                    ToolTip="Add a custom mapping from a host key to a Kronos raw keycode."/>
+                            <Button x:Name="BtnRawRemove"     Content="Remove"      IsEnabled="False"
+                                    DockPanel.Dock="Left"  Click="OnRawRemove"
+                                    ToolTip="Remove the selected raw key mapping."/>
+                            <Button x:Name="BtnInputTester"   Content="Test Inputs" IsEnabled="False" Visibility="Hidden"
+                                    DockPanel.Dock="Right" Click="OnInputTesterClick"/>
+                        </DockPanel>
+                        <TextBlock DockPanel.Dock="Bottom" Margin="0 6 0 0"
+                                   Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
+                                   Text="Custom mappings override the default key map and take effect immediately. Double-click a row to edit it."/>
+                        <ListView x:Name="RawList" SelectionMode="Single"
+                                  SelectionChanged="OnRawSelectionChanged"
+                                  MouseDoubleClick="OnRawDoubleClick"
+                                  ToolTip="Custom host-key → Kronos keycode mappings. These override the default key map and apply immediately. Double-click a row to edit it.">
+                            <ListView.View>
+                                <GridView>
+                                    <GridViewColumn Header="Host Key" Width="100" DisplayMemberBinding="{Binding HostKeyDisplay}"/>
+                                    <GridViewColumn Header="→ Sends"  Width="110" DisplayMemberBinding="{Binding RawDisplay}"/>
+                                    <GridViewColumn Header="Label"    Width="210" DisplayMemberBinding="{Binding Label}"/>
+                                </GridView>
+                            </ListView.View>
+                        </ListView>
+                    </DockPanel>
+
+                    <!-- Inline edit panel (collapsed until Add or double-click) -->
+                    <Grid Grid.Row="1" x:Name="RawEditor" Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="1"/>
+                            <RowDefinition Height="8"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="6"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="6"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="8"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <Border Grid.Row="0" Background="#FF444444"/>
+
+                        <!-- Label -->
+                        <Grid Grid.Row="2">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="76"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Label:" VerticalAlignment="Center"/>
+                            <TextBox   Grid.Column="1" x:Name="TxtRawLabel"/>
+                        </Grid>
+
+                        <!-- Host key capture -->
+                        <Grid Grid.Row="4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="76"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Host key:" VerticalAlignment="Center"/>
+                            <Button    Grid.Column="1" x:Name="BtnRawCaptureKey" Content="(none)"
+                                       HorizontalContentAlignment="Left"
+                                       Click="OnRawCaptureKey"/>
+                        </Grid>
+
+                        <!-- Raw code + shift -->
+                        <Grid Grid.Row="6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="76"/>
+                                <ColumnDefinition Width="60"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="Raw code:" VerticalAlignment="Center"/>
+                            <TextBox   Grid.Column="1" x:Name="TxtRawCode" Width="55" HorizontalAlignment="Left"/>
+                            <CheckBox  Grid.Column="2" x:Name="ChkRawShift" Content="Send Shift"
+                                       Margin="12 0 0 0" VerticalAlignment="Center"/>
+                        </Grid>
+
+                        <!-- Save / Cancel -->
+                        <DockPanel Grid.Row="8">
+                            <Button x:Name="BtnRawSave"       Content="Save"   Width="60" Margin="0 0 6 0"
+                                    DockPanel.Dock="Left" Click="OnRawSave"/>
+                            <Button x:Name="BtnRawCancelEdit" Content="Cancel" Width="60"
+                                    DockPanel.Dock="Left" Click="OnRawCancelEdit"/>
+                        </DockPanel>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
             <!-- ── Macros ────────────────────────────────────────────────── -->
             <TabItem Header="Macros">
                 <Grid>
@@ -648,125 +750,40 @@
 
             <!-- ── Debug ─────────────────────────────────────────────────── -->
             <TabItem Header="Debug">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="1"/>
-                        <RowDefinition Height="*" MinHeight="60"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-
+                <StackPanel Margin="0 4 0 0">
                     <!-- Logging -->
-                    <CheckBox Grid.Row="0" x:Name="ChkDebugLogging" Content="Enable debug logging"
-                              Margin="0 4 0 10"
+                    <CheckBox x:Name="ChkDebugLogging" Content="Enable debug logging"
+                              Margin="0 0 0 10"
                               ToolTip="Writes verbose DEBUG entries to the log file. Takes effect immediately. Enable only when diagnosing issues — it can grow the log quickly."/>
-                    <TextBlock Grid.Row="1" Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
-                               Margin="0 0 0 16"
+                    <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
                                Text="When enabled, verbose DEBUG entries are written to the log file. Only Info, Warn, and Error are logged when this is off. Takes effect immediately."/>
-
-                    <!-- Separator -->
-                    <Border Grid.Row="2" Background="#FF444444"/>
-
-                    <!-- Keyboard Input Mapping -->
-                    <DockPanel Grid.Row="3" Margin="0 12 0 0">
-                        <TextBlock DockPanel.Dock="Top"
-                                   Text="Keyboard Input Mapping"
-                                   FontWeight="Bold" Foreground="#FF88AADD"
-                                   Margin="0 0 0 8"/>
-                        <DockPanel DockPanel.Dock="Top" LastChildFill="False" Margin="0 0 0 5">
-                            <Button x:Name="BtnRawAdd"        Content="Add"         Margin="0 0 4 0"
-                                    DockPanel.Dock="Left"  Click="OnRawAdd"
-                                    ToolTip="Add a custom mapping from a host key to a Kronos raw keycode."/>
-                            <Button x:Name="BtnRawRemove"     Content="Remove"      IsEnabled="False"
-                                    DockPanel.Dock="Left"  Click="OnRawRemove"
-                                    ToolTip="Remove the selected raw key mapping."/>
-                            <Button x:Name="BtnInputTester"   Content="Test Inputs" IsEnabled="False" Visibility="Hidden"
-                                    DockPanel.Dock="Right" Click="OnInputTesterClick"/>
-                        </DockPanel>
-                        <TextBlock DockPanel.Dock="Bottom" Margin="0 6 0 0"
-                                   Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
-                                   Text="Custom mappings override the default key map and take effect immediately. Double-click a row to edit it."/>
-                        <ListView x:Name="RawList" SelectionMode="Single"
-                                  SelectionChanged="OnRawSelectionChanged"
-                                  MouseDoubleClick="OnRawDoubleClick"
-                                  ToolTip="Custom host-key → Kronos keycode mappings. These override the default key map and apply immediately. Double-click a row to edit it.">
-                            <ListView.View>
-                                <GridView>
-                                    <GridViewColumn Header="Host Key" Width="100" DisplayMemberBinding="{Binding HostKeyDisplay}"/>
-                                    <GridViewColumn Header="→ Sends"  Width="110" DisplayMemberBinding="{Binding RawDisplay}"/>
-                                    <GridViewColumn Header="Label"    Width="210" DisplayMemberBinding="{Binding Label}"/>
-                                </GridView>
-                            </ListView.View>
-                        </ListView>
-                    </DockPanel>
-
-                    <!-- Inline edit panel (collapsed until Add or double-click) -->
-                    <Grid Grid.Row="4" x:Name="RawEditor" Visibility="Collapsed">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="1"/>
-                            <RowDefinition Height="8"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="6"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="6"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="8"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-
-                        <Border Grid.Row="0" Background="#FF444444"/>
-
-                        <!-- Label -->
-                        <Grid Grid.Row="2">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="76"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Label:" VerticalAlignment="Center"/>
-                            <TextBox   Grid.Column="1" x:Name="TxtRawLabel"/>
-                        </Grid>
-
-                        <!-- Host key capture -->
-                        <Grid Grid.Row="4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="76"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Host key:" VerticalAlignment="Center"/>
-                            <Button    Grid.Column="1" x:Name="BtnRawCaptureKey" Content="(none)"
-                                       HorizontalContentAlignment="Left"
-                                       Click="OnRawCaptureKey"/>
-                        </Grid>
-
-                        <!-- Raw code + shift -->
-                        <Grid Grid.Row="6">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="76"/>
-                                <ColumnDefinition Width="60"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.Column="0" Text="Raw code:" VerticalAlignment="Center"/>
-                            <TextBox   Grid.Column="1" x:Name="TxtRawCode" Width="55" HorizontalAlignment="Left"/>
-                            <CheckBox  Grid.Column="2" x:Name="ChkRawShift" Content="Send Shift"
-                                       Margin="12 0 0 0" VerticalAlignment="Center"/>
-                        </Grid>
-
-                        <!-- Save / Cancel -->
-                        <DockPanel Grid.Row="8">
-                            <Button x:Name="BtnRawSave"       Content="Save"   Width="60" Margin="0 0 6 0"
-                                    DockPanel.Dock="Left" Click="OnRawSave"/>
-                            <Button x:Name="BtnRawCancelEdit" Content="Cancel" Width="60"
-                                    DockPanel.Dock="Left" Click="OnRawCancelEdit"/>
-                        </DockPanel>
-                    </Grid>
-
-                </Grid>
+                </StackPanel>
             </TabItem>
 
             <!-- ── MIDI / SysEx ──────────────────────────────────────────────── -->
             <TabItem Header="MIDI/SysEx">
                 <StackPanel Margin="0 4 0 0">
+                    <Grid Margin="0 0 0 6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="110"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="MIDI transport" VerticalAlignment="Center"
+                                   Foreground="#FF888888" FontSize="11"/>
+                        <ComboBox Grid.Column="1" x:Name="CMB_MidiTransport"
+                                  BorderBrush="#FF555555" Width="160"
+                                  ToolTip="Which path carries MIDI/SysEx to the Kronos. The screen/video is always over TCP. Auto prefers a directly-connected Kronos USB device.">
+                            <ComboBoxItem Content="Auto (prefer USB)"/>
+                            <ComboBoxItem Content="TCP (daemon)"/>
+                            <ComboBoxItem Content="USB (direct)"/>
+                        </ComboBox>
+                    </Grid>
+                    <TextBlock x:Name="TXT_UsbDeviceStatus" Foreground="#FF888888" FontSize="11"
+                               TextWrapping="Wrap" Margin="0 0 0 16"
+                               Text="Detecting USB MIDI devices…"/>
+
+                    <Border Background="#FF444444" Margin="0 0 0 14" Height="1"/>
+
                     <CheckBox x:Name="ChkMidiMonitor" Content="Monitor MIDI" Margin="0 0 0 6"
                               ToolTip="When disabled, all incoming MIDI and SysEx messages are ignored and the MIDI Monitor window is unavailable."/>
                     <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap" Margin="0 0 0 16"
@@ -778,6 +795,13 @@
                               ToolTip="Triggers a SysEx check-in when the Kronos sends a Program Change or Bank Select message. Requires Monitor MIDI to be enabled."/>
                     <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap" Margin="0 0 0 16"
                                Text="Automatically updates the current performance display when a Program Change or Bank Select is received from the Kronos."/>
+
+                    <Border Background="#FF444444" Margin="0 0 0 14" Height="1"/>
+
+                    <CheckBox x:Name="ChkPullNamesOnChange" Content="Pull Names on Program Change" Margin="0 0 0 6"
+                              ToolTip="When you select a program/combi whose name isn't cached yet, fetch just that name over MIDI. Best over USB, where a name fetch takes milliseconds. Requires Monitor MIDI."/>
+                    <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap" Margin="0 0 0 16"
+                               Text="Fills the performance name as you navigate, without a full Sync Names sweep. Over the daemon/DIN path this can be slow and briefly flash the Kronos display; over USB it is near-instant."/>
 
                     <Border Background="#FF444444" Margin="0 0 0 14" Height="1"/>
 

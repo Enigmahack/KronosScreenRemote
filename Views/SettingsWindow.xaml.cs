@@ -89,8 +89,16 @@ public partial class SettingsWindow : Window
         ChkDebugLogging.IsChecked = Result.DebugLogging;
 
         // MIDI / SysEx
+        CMB_MidiTransport.SelectedIndex = Result.MidiTransport switch
+        {
+            MidiTransportMode.Tcp => 1,
+            MidiTransportMode.Usb => 2,
+            _                     => 0,   // Auto
+        };
+        TXT_UsbDeviceStatus.Text = DescribeUsbDevices(Result.UsbMidiDeviceName);
         ChkMidiMonitor.IsChecked        = Result.MidiMonitorEnabled;
         ChkSysExPollOnChanges.IsChecked = Result.SysExPollOnChanges;
+        ChkPullNamesOnChange.IsChecked  = Result.PullNamesOnChange;
         ChkProactivePoll.IsChecked      = Result.ProactiveSysExPolling;
         int[] pollIntervals = { 30, 45, 60, 120 };
         int pollIdx = Array.IndexOf(pollIntervals, Result.SysExPollIntervalSec);
@@ -312,8 +320,15 @@ public partial class SettingsWindow : Window
         Result.DebugLogging = ChkDebugLogging.IsChecked == true;
 
         // MIDI / SysEx
+        Result.MidiTransport = CMB_MidiTransport.SelectedIndex switch
+        {
+            1 => MidiTransportMode.Tcp,
+            2 => MidiTransportMode.Usb,
+            _ => MidiTransportMode.Auto,
+        };
         Result.MidiMonitorEnabled    = ChkMidiMonitor.IsChecked == true;
         Result.SysExPollOnChanges    = ChkSysExPollOnChanges.IsChecked == true;
+        Result.PullNamesOnChange     = ChkPullNamesOnChange.IsChecked == true;
         Result.ProactiveSysExPolling = ChkProactivePoll.IsChecked == true;
         int[] pollIntervals = { 30, 45, 60, 120 };
         Result.SysExPollIntervalSec  = CMB_PollInterval.SelectedIndex >= 0
@@ -659,6 +674,25 @@ public partial class SettingsWindow : Window
     void OnProactivePollChanged(object s, RoutedEventArgs e)
         => CMB_PollInterval.IsEnabled = ChkProactivePoll.IsChecked == true;
 
+    // One-line summary of USB-MIDI detection for the transport section.
+    static string DescribeUsbDevices(string match)
+    {
+        try
+        {
+            var found = KronosMidiDevices.Find(match);
+            if (found != null)
+                return $"USB: Kronos detected — \"{found}\". Auto and USB modes will use it.";
+            int ins = KronosMidiDevices.InputNames().Count;
+            int outs = KronosMidiDevices.OutputNames().Count;
+            return $"USB: no Kronos (\"{match}\") found among {ins} input / {outs} output MIDI port(s). " +
+                   "Auto falls back to the TCP daemon.";
+        }
+        catch (Exception ex)
+        {
+            return $"USB: MIDI enumeration failed ({ex.Message}).";
+        }
+    }
+
     // ── FTP credentials ─────────────────────────────────────────────────────
 
     void OnClearFtpCredentials(object s, RoutedEventArgs e)
@@ -818,15 +852,17 @@ class KeybindRow : INotifyPropertyChanged
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
 
+// Values MUST match the TabItem order in SettingsWindow.xaml (used as SelectedIndex).
 public enum SettingsTab
 {
-    General    = 0,
-    Connection = 1,
-    Streaming  = 2,
-    View       = 3,
-    Image      = 4,
+    General     = 0,
+    Connection  = 1,
+    Streaming   = 2,
+    View        = 3,
+    Image       = 4,
     KeyBindings = 5,
-    Macros     = 6,
-    Debug      = 7,
-    MidiSysEx  = 8,
+    InputMapping = 6,
+    Macros      = 7,
+    Debug       = 8,
+    MidiSysEx   = 9,
 }

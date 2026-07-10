@@ -174,14 +174,16 @@ public partial class MainWindow
         _modePollCts?.Cancel();
         _modePollCts?.Dispose();
         _modePollCts = new CancellationTokenSource();
-        _sysExModeProven = false;   // screen detection leads until a live func 0x4E proves realtime SysEx
+        _lastSysExModeAt = DateTime.MinValue;   // screen detection leads until a live func 0x4E arrives
         TopLeftOcr.Reset();   // ensure first frame fires an immediate STATE query
         _ = ModePollLoop(_modePollCts.Token);
 
         _sysExService.ApplyMidiSettings(
             _settings.MidiMonitorEnabled, _settings.ProactiveSysExPolling,
             _settings.SysExPollIntervalSec, _settings.SysExPollOnChanges);
-        _sysExService.Start(_host, _ctrlPort);
+        // Hand the TCP endpoint to the coordinator; it picks TCP or (preferring)
+        // USB per the transport-mode setting and (re)starts the SysEx service.
+        _midiCoord.SetScreenConnection(true, _host, _ctrlPort);
     }
 
     // Single teardown path for every explicit disconnect (menu / context / tray / command
@@ -276,7 +278,9 @@ public partial class MainWindow
         _modePollCts?.Cancel();
         TopLeftOcr.Reset();
         _ctrl.Reset();
-        _sysExService.Reset();
+        // Don't Reset() the SysEx service directly — SetConnectionStatus routes the
+        // screen-drop through the coordinator, which keeps a standalone USB transport
+        // alive (Auto/USB mode) instead of killing MIDI on every video hiccup.
         SetConnectionStatus(ConnState.Disconnected);
         Dispatcher.InvokeAsync(() =>
         {
@@ -484,11 +488,21 @@ public partial class MainWindow
                 int detected = ModeDetector.Identify(raw, _frameW, _lut);
                 if (detected > 0)
                 {
-                    // Screen detection is only a fallback: once a live func 0x4E
-                    // has proven the Kronos transmits realtime SysEx, mode is
-                    // driven by SysEx alone. Until then (or if transmit is off),
-                    // screen detection drives it.
-                    if (!_sysExModeProven)
+                    // Screen detection runs simultaneously with SysEx mode-follow.
+                    // SysEx is the source of truth *while it is actively transmitting*:
+                    // a live func 0x4E in the last SysExModeGraceSec suppresses a
+                    // disagreeing (usually transitional) screen reading. Once SysEx
+                    // goes silent — transmit off at the Kronos, or MIDI monitoring off
+                    // in-app — the grace lapses and the screen drives the mode at once,
+                    // instead of waiting out the 3s pending-mode timeout fallback.
+                    bool sysExOverrides =
+                        (DateTime.Now - _lastSysExModeAt).TotalSeconds < SysExModeGraceSec &&
+                        detected != _lastSysExMode;
+                    // Combi-program-edit owns the button while it flashes: a stable
+                    // mode-3 banner there must not clobber it, but a change to any
+                    // other mode is a genuine exit and applies immediately.
+                    bool combiOwnsButton = _combi.Active && detected == 3;
+                    if (!sysExOverrides && !combiOwnsButton)
                         SetModeButton(detected);
                 }
                 else if (!ModeDetector.HasAny())
@@ -679,3 +693,4 @@ public partial class MainWindow
         OverlayLayer.InvalidateVisual();
     }
 }
+    

@@ -226,6 +226,146 @@ static class Storage
         Console.WriteLine($"[lock] {locked.Count} locked entry/entries saved → {LockPath}");
     }
 
+    // ── Set List cache ─────────────────────────────────────────────────────────
+    // Decoded Set List dumps cached per host so re-viewing doesn't re-interrupt
+    // the Kronos. Stored as host → (set list number → data).
+
+    static string SetListCachePath => Path.Combine(DataDir, "setlist_cache.json");
+    static readonly object _setListFileLock = new();
+
+    // NOTE: this reads + JSON-deserializes the whole cache file. Callers on the UI
+    // thread (viewer open, load/refresh, sync) MUST wrap it in Task.Run — a full Set
+    // List is ~79 KB of decoded data, so a populated cache is heavy to (de)serialize
+    // and would freeze the window. The lock serializes it against SaveSetLists.
+    public static Dictionary<int, SetListData> LoadSetLists(string host)
+    {
+        lock (_setListFileLock)
+        {
+            try
+            {
+                if (!File.Exists(SetListCachePath)) return new();
+                var all = JsonSerializer.Deserialize<Dictionary<string, Dictionary<int, SetListData>>>(
+                    File.ReadAllText(SetListCachePath));
+                if (all != null && all.TryGetValue(host, out var lists) && lists != null)
+                    return lists;
+            }
+            catch (Exception ex) { AppLog.Warn($"[setlist-cache] load failed: {ex.Message}"); }
+            return new();
+        }
+    }
+
+    // Read-modify-write of the whole multi-host cache file. Heavy (see LoadSetLists)
+    // AND now lock-guarded — it previously had no file lock, so a UI-thread save
+    // racing a background one could interleave and corrupt the file. Never call on
+    // the UI thread; wrap in Task.Run.
+    public static void SaveSetLists(string host, Dictionary<int, SetListData> lists)
+    {
+        lock (_setListFileLock)
+        {
+            try
+            {
+                var all = File.Exists(SetListCachePath)
+                    ? JsonSerializer.Deserialize<Dictionary<string, Dictionary<int, SetListData>>>(
+                          File.ReadAllText(SetListCachePath)) ?? new()
+                    : new();
+                all[host] = lists;
+                File.WriteAllText(SetListCachePath, JsonSerializer.Serialize(all));
+            }
+            catch (Exception ex) { AppLog.Warn($"[setlist-cache] save failed: {ex.Message}"); }
+        }
+    }
+
+    // ── Program/Combi name cache ───────────────────────────────────────────────
+    // Bulk-dumped names persisted per host so program-change follow is flash-free
+    // after the first session. Invalidated per bank on a Bank Digest (func 0x38).
+
+    static string NameCachePath => Path.Combine(DataDir, "name_cache.json");
+    static readonly object _nameCacheFileLock = new();
+
+    public static List<CachedName> LoadNames(string host)
+    {
+        try
+        {
+            if (!File.Exists(NameCachePath)) return new();
+            var all = JsonSerializer.Deserialize<Dictionary<string, List<CachedName>>>(
+                File.ReadAllText(NameCachePath));
+            if (all != null && all.TryGetValue(host, out var list) && list != null)
+                return list;
+        }
+        catch (Exception ex) { AppLog.Warn($"[name-cache] load failed: {ex.Message}"); }
+        return new();
+    }
+
+    public static void SaveNames(string host, List<CachedName> entries)
+    {
+        try
+        {
+            lock (_nameCacheFileLock)
+            {
+                var all = File.Exists(NameCachePath)
+                    ? JsonSerializer.Deserialize<Dictionary<string, List<CachedName>>>(
+                          File.ReadAllText(NameCachePath)) ?? new()
+                    : new();
+                all[host] = entries;
+                File.WriteAllText(NameCachePath, JsonSerializer.Serialize(all));
+            }
+        }
+        catch (Exception ex) { AppLog.Warn($"[name-cache] save failed: {ex.Message}"); }
+    }
+
+    // ── Dumped-bank ledger ─────────────────────────────────────────────────────
+    // Which (type, objBank) name-dumps have already been collected, persisted per
+    // host. SEPARATE from the name cache on purpose: an EMPTY bank dumps 128 blank
+    // names (all filtered out, nothing cached), so "has cached names" cannot tell a
+    // never-dumped bank from a dumped-but-empty one. The Kronos rejects name dumps
+    // after ~13 banks per app session, so a full sweep needs several sessions; this
+    // ledger lets each session skip banks already done and spend its budget on the
+    // rest, converging instead of re-grabbing the same first banks every time.
+    // Invalidated per bank on a Bank Digest (func 0x38), same as the name cache.
+
+    static string DumpedBanksPath => Path.Combine(DataDir, "dumped_banks.json");
+    static readonly object _dumpedFileLock = new();
+
+    // Stored as "type:objBank" hex strings, e.g. "1:47".
+    public static HashSet<(int Type, int Bank)> LoadDumpedBanks(string host)
+    {
+        var set = new HashSet<(int, int)>();
+        try
+        {
+            if (!File.Exists(DumpedBanksPath)) return set;
+            var all = JsonSerializer.Deserialize<Dictionary<string, List<string>>>(
+                File.ReadAllText(DumpedBanksPath));
+            if (all != null && all.TryGetValue(host, out var list) && list != null)
+                foreach (var s in list)
+                {
+                    var parts = s.Split(':');
+                    if (parts.Length == 2 &&
+                        int.TryParse(parts[0], out var t) &&
+                        int.TryParse(parts[1], System.Globalization.NumberStyles.HexNumber, null, out var b))
+                        set.Add((t, b));
+                }
+        }
+        catch (Exception ex) { AppLog.Warn($"[dumped-banks] load failed: {ex.Message}"); }
+        return set;
+    }
+
+    public static void SaveDumpedBanks(string host, HashSet<(int Type, int Bank)> set)
+    {
+        try
+        {
+            lock (_dumpedFileLock)
+            {
+                var all = File.Exists(DumpedBanksPath)
+                    ? JsonSerializer.Deserialize<Dictionary<string, List<string>>>(
+                          File.ReadAllText(DumpedBanksPath)) ?? new()
+                    : new();
+                all[host] = set.Select(k => $"{k.Type}:{k.Bank:X2}").ToList();
+                File.WriteAllText(DumpedBanksPath, JsonSerializer.Serialize(all));
+            }
+        }
+        catch (Exception ex) { AppLog.Warn($"[dumped-banks] save failed: {ex.Message}"); }
+    }
+
     // ── Calibration ───────────────────────────────────────────────────────────
 
     public static (CalMesh mesh, List<CalBiasDot> dots) LoadCal()

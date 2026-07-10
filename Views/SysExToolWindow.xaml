@@ -64,6 +64,12 @@
                           DockPanel.Dock="Left" IsChecked="True"
                           Foreground="#FF888888" FontSize="11"
                           VerticalAlignment="Center" Margin="0 0 12 0"/>
+                <!-- Active MIDI stream this monitor is watching (USB / DIN / TCP). -->
+                <TextBlock x:Name="TXT_Stream" DockPanel.Dock="Right"
+                           Foreground="#FF88AADD" FontSize="11" FontFamily="Consolas"
+                           VerticalAlignment="Center" Margin="16 0 0 0"
+                           Text="Stream: —"
+                           ToolTip="Which MIDI link this monitor's traffic is flowing over."/>
                 <TextBlock x:Name="TXT_SysExCount" DockPanel.Dock="Left"
                            Foreground="#FF555555" FontSize="11"
                            VerticalAlignment="Center" Margin="0 0 16 0"/>
@@ -146,7 +152,13 @@
                  ScrollViewer.VerticalScrollBarVisibility="Auto"
                  VirtualizingPanel.IsVirtualizing="True"
                  VirtualizingPanel.VirtualizationMode="Recycling"
-                 SelectionMode="Single">
+                 SelectionMode="Extended">
+            <ListBox.ContextMenu>
+                <ContextMenu>
+                    <MenuItem x:Name="MNU_CopyLine" Header="_Copy"        InputGestureText="Ctrl+C"/>
+                    <MenuItem x:Name="MNU_CopyAll"  Header="Copy _All Shown"/>
+                </ContextMenu>
+            </ListBox.ContextMenu>
             <ListBox.Resources>
                 <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}"                   Color="#FF1E3A5A"/>
                 <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}"               Color="#FFFFFFFF"/>
@@ -159,6 +171,7 @@
                     <Setter Property="Background"                 Value="Transparent"/>
                     <Setter Property="BorderThickness"            Value="0"/>
                     <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    <Setter Property="VerticalContentAlignment"   Value="Center"/>
                 </Style>
             </ListBox.ItemContainerStyle>
             <ListBox.ItemTemplate>

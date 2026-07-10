@@ -65,8 +65,23 @@ public partial class MainWindow
         };
 
         ApplyMidiMonitorMenuState();
+        UpdateMidiLinkBadge();   // reflect the transport chosen during ctor startup
         Dispatcher.InvokeAsync(RefreshFrameRect, DispatcherPriority.Background);
-        BeginConnect();
+
+        // Don't drag a USB-MIDI user through the daemon connect + FTP login on launch.
+        // When USB is the chosen/active MIDI path, the SysEx features already work over
+        // USB (started in the ctor, independent of the daemon); the screen stays opt-in
+        // via an explicit Connect. Only auto-connect when TCP is the MIDI path.
+        bool usbPath = _settings.MidiTransport == MidiTransportMode.Usb || _midiCoord.UsingUsb;
+        if (usbPath)
+        {
+            AppLog.Info("[conn] USB MIDI active — skipping daemon auto-connect (screen available via Connect)");
+            SetConnectionStatus(ConnState.Disconnected);   // render the USB-aware status line
+        }
+        else
+        {
+            BeginConnect();
+        }
     }
 
     IntPtr LLKeyboardProc(int code, IntPtr wParam, IntPtr lParam)
@@ -134,6 +149,8 @@ public partial class MainWindow
 
         _trayIcon?.Dispose();
         CompositionTarget.Rendering -= RenderTick;
+        _midiCoord?.Dispose();
+        _sysExService?.Reset();
         CleanupAudio();
         _connectCts?.Cancel();
         _connectCts?.Dispose();

@@ -142,5 +142,31 @@
             </Setter>
         </Style>
 
+        <!-- ── Silence the item-container alignment binding noise ─────────
+             The default ListBox/ComboBox/ListView item styles bind
+             Horizontal/VerticalContentAlignment to
+             {RelativeSource FindAncestor, AncestorType=ItemsControl}.
+             That binding fails (and logs a data-binding ERROR) whenever a
+             container is realized before it is connected to its ItemsControl
+             ancestor — e.g. items inside a Popup, or realized during a layout
+             pass. Setting the two properties explicitly here overrides the
+             failing theme binding (a Style setter outranks the theme-style
+             setter in WPF value precedence) while leaving the default control
+             template intact (we don't set Template, so it falls through to the
+             theme style). Applies app-wide to every plain container that
+             doesn't already supply its own ItemContainerStyle. -->
+        <Style TargetType="{x:Type ListBoxItem}">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment"   Value="Center"/>
+        </Style>
+        <Style TargetType="{x:Type ComboBoxItem}">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment"   Value="Center"/>
+        </Style>
+        <Style TargetType="{x:Type ListViewItem}">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            <Setter Property="VerticalContentAlignment"   Value="Center"/>
+        </Style>
+
     </Application.Resources>
 </Application>

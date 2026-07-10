@@ -84,6 +84,8 @@ public partial class MainWindow : Window
 
     // ── SysEx service ────────────────────────────────────────────────────────
     ISysExService _sysExService = null!;
+    // Picks/switches the MIDI backend (TCP daemon vs direct USB) behind the service.
+    MidiTransportCoordinator _midiCoord = null!;
 
     // ── SysEx status-bar indicators ───────────────────────────────────────────
     DateTime _sysExRxLastAt = DateTime.MinValue;
@@ -95,12 +97,17 @@ public partial class MainWindow : Window
     int _currentMode = 0;   // last mode applied by SetModeButton
     int _prevMode    = 0;   // mode before the current one; survives across frames
 
-    // SysEx is the primary mode source. Once a live Mode Change (func 0x4E) is
-    // seen — proving the Kronos actually transmits realtime SysEx — screen
-    // detection is demoted to fallback and never drives mode again this session.
-    // Until then (and if transmit is off, forever) screen detection stays active,
-    // so a Kronos with SysEx transmit disabled degrades gracefully.
-    bool _sysExModeProven = false;
+    // SysEx is the source of truth for the mode, but only while it is actively
+    // transmitting. A live Mode Change (func 0x4E) stamps _lastSysExModeAt; screen
+    // detection then defers to it for SysExModeGraceSec (covers screen-redraw lag).
+    // Once SysEx goes silent — transmit off at the Kronos, or MIDI monitoring off
+    // in-app — the grace lapses and screen detection drives the mode immediately.
+    // Recency subsumes the old "proven" latch: if a 0x4E never fired, the stamp is
+    // never fresh and the screen leads, so a SysEx-off Kronos degrades gracefully.
+    int      _lastSysExMode   = 0;               // mode from the last live func 0x4E
+    DateTime _lastSysExModeAt = DateTime.MinValue;
+    const double SysExModeGraceSec = 1.0;
+    int      _sysExDotPending;                   // 1 = a dot repaint is already queued
 
     // ── Combi program-edit state ──────────────────────────────────────────────
     readonly CombiEditState _combi = new();
@@ -109,6 +116,7 @@ public partial class MainWindow : Window
     HelpWindow?          _helpWin;
     KeyboardInfoWindow?  _kbdInfoWin;
     SysExToolWindow?     _sysExToolWin;
+    SetListWindow?       _setListWin;
 
     // ── Misc ──────────────────────────────────────────────────────────────────
     System.Windows.Forms.NotifyIcon? _trayIcon;
@@ -183,11 +191,23 @@ public partial class MainWindow : Window
         _ctrl = new CtrlClientAdapter(_host, _ctrlPort);
         _sysExService = new SysExService(Dispatcher);
         _sysExService.ValueSliderCc = _settings.ValueSliderCc;
+        _sysExService.PullNamesOnChange = _settings.PullNamesOnChange;
         _sysExService.InitialModeDetected += OnSysExInitialMode;
         _sysExService.ModeChanged += OnSysExModeChange;
         _sysExService.ValueSliderChanged += OnValueSliderSync;
         _sysExService.SysExTraffic += OnSysExTraffic;
         PerfStatusBarItem.DataContext = _sysExService;
+
+        // MIDI backend selection: prefers a directly-connected Kronos over USB
+        // (Auto), independent of the TCP screen connection. Starts USB standalone
+        // at launch if a device is present; the connect flow supplies TCP.
+        _midiCoord = new MidiTransportCoordinator(_sysExService);
+        _midiCoord.ActiveTransportChanged += OnMidiTransportChanged;
+        _sysExService.ApplyMidiSettings(
+            _settings.MidiMonitorEnabled, _settings.ProactiveSysExPolling,
+            _settings.SysExPollIntervalSec, _settings.SysExPollOnChanges);
+        _midiCoord.ApplySettings(_settings.MidiTransport, _settings.UsbMidiDeviceName);
+        _midiCoord.Start();
         _sysExDimTimer.Tick += (_, _) => UpdateSysExDots();
 
         // Log daemon-side ERR responses and surface them in the notification bubble.
@@ -259,6 +279,20 @@ public partial class MainWindow : Window
 
     void SendMode(int mode)
     {
+        // Ignore mode changes until the board is verified booted. The Kronos front
+        // panel ignores mode keys during boot anyway, so a press there does nothing
+        // useful — but it would still stamp a pending mode whose timeout fallback
+        // later lights the wrong button, and could perturb the boot sequence.
+        // "Booted" = a real mode has been confirmed (_detectedModeEver) and the boot
+        // overlay is not active. Both reset on (re)connect, so a fresh connection to
+        // a still-booting board also blocks until its first mode is detected.
+        if (!IsConnected || !_detectedModeEver || _boot.Phase)
+        {
+            AppLog.Debug($"[mode] SendMode({mode}) ignored — board not booted " +
+                         $"(connected={IsConnected}, detectedMode={_detectedModeEver}, boot={_boot.Phase})");
+            return;
+        }
+
         string name = mode switch {
             1 => "SETLIST", 2 => "COMBI",    3 => "PROGRAM",
             4 => "SEQUENCE",5 => "SAMPLING", 6 => "GLOBAL",
@@ -473,11 +507,13 @@ public partial class MainWindow : Window
     // prove realtime transmit, so screen detection stays active as a fallback.
     void OnSysExInitialMode(int mode) => SetModeButton(mode);
 
-    // Live mode change (func 0x4E). Proves the Kronos transmits realtime SysEx,
-    // so screen-based mode detection is demoted to fallback from here on.
+    // Live mode change (func 0x4E) — the authoritative source of truth. Stamp the
+    // time so screen detection defers to it for the brief redraw-lag window, then
+    // apply it (overriding any mode the screen may have just read during the change).
     void OnSysExModeChange(int mode)
     {
-        _sysExModeProven = true;
+        _lastSysExMode   = mode;
+        _lastSysExModeAt = DateTime.Now;
         SetModeButton(mode);
     }
 
@@ -580,6 +616,8 @@ public partial class MainWindow : Window
         MNU_CalMode.Click   += (sender, e) => { _cal.Mode = MNU_CalMode.IsChecked; if (_cal.Mode) EnterCalMode(); else ExitCalMode(); OverlayLayer.InvalidateVisual(); };
 
         MNU_SettingsDlg.Click += (sender, e) => OpenSettingsDialog();
+        MNU_ExportSettings.Click += (_, _) => ExportSettings();
+        MNU_ImportSettings.Click += (_, _) => ImportSettings();
 
         MNU_FileManager.Click    += (_, _) => OpenFileManagerWindow();
 
@@ -608,6 +646,9 @@ public partial class MainWindow : Window
         };
         MNU_InputTester.Click  += (sender, e) => new InputTesterWindow(_ctrl) { Owner = this }.Show();
         MNU_SysExTool.Click    += (sender, e) => OpenSysExToolWindow();
+        MNU_SetListView.Click  += (sender, e) => OpenSetListWindow();
+        MNU_SyncNames.Click    += (sender, e) => _ = SyncNamesAsync();
+        MNU_SyncAll.Click      += (sender, e) => _ = SyncAllAsync();
         MNU_KeyboardInfo.Click += (sender, e) => OpenKeyboardInfoWindow();
         CTX_KeyboardInfo.Click += (sender, e) => OpenKeyboardInfoWindow();
         MNU_KbdWarp.Visibility = Visibility.Collapsed;
@@ -913,13 +954,21 @@ public partial class MainWindow : Window
         bool ok = ShowDialogPreservingGeometry(dlg);
 
         if (!ok) return;
+        ApplySettingsResult(dlg.Result, dlg.WasReset);
+    }
 
-        bool streamChanged = _settings.PullMode    != dlg.Result.PullMode  ||
-                             _settings.MaxFps      != dlg.Result.MaxFps    ||
-                             _settings.KronosHost  != dlg.Result.KronosHost||
-                             _settings.StreamPort  != dlg.Result.StreamPort;
+    // Applies a new settings object live — shared by the Settings dialog's OK path
+    // and the File ▸ Import Settings menu action. Persists, re-derives endpoints,
+    // re-bakes the image pipeline, pushes MIDI/mirror/screensaver, and reconnects
+    // when streaming parameters changed.
+    void ApplySettingsResult(AppSettings newSettings, bool wasReset)
+    {
+        bool streamChanged = _settings.PullMode    != newSettings.PullMode  ||
+                             _settings.MaxFps      != newSettings.MaxFps    ||
+                             _settings.KronosHost  != newSettings.KronosHost||
+                             _settings.StreamPort  != newSettings.StreamPort;
 
-        _settings = dlg.Result;
+        _settings = newSettings;
         AppLog.DebugEnabled = _settings.DebugLogging;
         _host     = _settings.KronosHost;
         _port     = _settings.StreamPort;
@@ -959,12 +1008,15 @@ public partial class MainWindow : Window
         MNU_HideValueInput.IsChecked = _hideValueInput;
 
         _sysExService.ValueSliderCc = _settings.ValueSliderCc;
+        _sysExService.PullNamesOnChange = _settings.PullNamesOnChange;
         _sysExService.ApplyMidiSettings(
             _settings.MidiMonitorEnabled, _settings.ProactiveSysExPolling,
             _settings.SysExPollIntervalSec, _settings.SysExPollOnChanges);
+        // Re-pick the MIDI backend if the transport mode / USB device name changed.
+        _midiCoord.ApplySettings(_settings.MidiTransport, _settings.UsbMidiDeviceName);
         ApplyMidiMonitorMenuState();
 
-        if (dlg.WasReset)
+        if (wasReset)
         {
             if (IsConnected) TriggerReconnect();
             MessageBox.Show(
@@ -984,6 +1036,54 @@ public partial class MainWindow : Window
             _mirrorState = _settings.VgaMirrorEnabled;
             Ctrl(_mirrorState ? "MIRROR_ON" : "MIRROR_OFF");
             Ctrl($"SS_TIMEOUT {_settings.ScreensaverTimeout}");
+        }
+    }
+
+    // ── Settings import / export (File menu) ──────────────────────────────────
+
+    void ExportSettings()
+    {
+        var dlg = new Microsoft.Win32.SaveFileDialog
+        {
+            Title    = "Export Settings",
+            Filter   = "JSON Settings|*.json",
+            FileName = "kronos_screenremote_settings.json",
+        };
+        if (dlg.ShowDialog(this) != true) return;
+        try
+        {
+            Storage.SaveSettingsTo(_settings, dlg.FileName);
+            MessageBox.Show(this, $"Settings exported to:\n{dlg.FileName}",
+                "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Export failed:\n{ex.Message}",
+                "Export Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+
+    void ImportSettings()
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title  = "Import Settings",
+            Filter = "JSON Settings|*.json",
+        };
+        if (dlg.ShowDialog(this) != true) return;
+        try
+        {
+            // Reuse the dialog's live-apply path so an import behaves exactly like
+            // editing settings and clicking OK (persist + reconnect if needed).
+            var imported = Storage.LoadSettingsFrom(dlg.FileName);
+            ApplySettingsResult(imported, wasReset: false);
+            MessageBox.Show(this, "Settings imported and applied.",
+                "Import Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Import failed:\n{ex.Message}",
+                "Import Failed", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -1148,6 +1248,9 @@ public partial class MainWindow : Window
             {
                 ConnState.Connected  => $"Connected — {_host}",
                 ConnState.Connecting => $"Connecting to {_host}…",
+                // When USB MIDI is live, say so — otherwise a disconnected screen reads
+                // as "broken" even though the SysEx features are fully working over USB.
+                _ when _midiCoord.UsingUsb => "USB MIDI — screen not connected",
                 _                    => "Not connected"
             };
             ConnModeText.Text = state == ConnState.Connected
@@ -1165,7 +1268,9 @@ public partial class MainWindow : Window
             }
             if (state == ConnState.Disconnected)
             {
-                _sysExService.Reset();
+                // Drop only the TCP MIDI path; a standalone USB transport (Auto/USB
+                // mode with a device present) keeps running independent of the screen.
+                _midiCoord.SetScreenConnection(false, _host, _ctrlPort);
                 if (_combi.Active) { _combi.Active = false; _combi.FlashTimer.Stop(); }
                 _combi.IndicatorGoneAt = DateTime.MinValue;
                 _currentMode = 0;
@@ -1199,16 +1304,77 @@ public partial class MainWindow : Window
         ShowDialogPreservingGeometry(new AboutWindow(host, _ctrlPort) { Owner = this });
     }
 
+    // The MIDI backend changed (TCP daemon ⇄ direct USB, or none). Surface it on
+    // the performance status indicator so it's clear which path is live.
+    void OnMidiTransportChanged(string? description)
+    {
+        Dispatcher.InvokeAsync(() =>
+        {
+            PerfStatusBarItem.ToolTip = description == null
+                ? "MIDI: not connected"
+                : $"MIDI via {description}";
+            UpdateMidiLinkBadge();
+            // Mirror the active stream into the open SysEx monitor so it's clear which
+            // link its traffic is flowing over.
+            if (_sysExToolWin is { IsLoaded: true } tool)
+                tool.SetActiveStream(_midiCoord.ActiveLinkLabel);
+            // A USB hot-plug/removal while the screen is disconnected flips the status
+            // line between "Not connected" and "USB MIDI — screen not connected". Update
+            // just the text — not the full disconnected teardown, which would clear the
+            // mode buttons USB is actively driving.
+            if (!IsConnected)
+                StatusText.Text = _midiCoord.UsingUsb
+                    ? "USB MIDI — screen not connected"
+                    : "Not connected";
+        });
+    }
+
+    // Footer badge colours per link kind: USB green (native, fast), DIN amber (5-pin
+    // interface, slow), TCP blue (network), None dim.
+    static readonly System.Windows.Media.SolidColorBrush LinkUsbBrush  = FrozenBrush(0x7D, 0xC9, 0x7D);
+    static readonly System.Windows.Media.SolidColorBrush LinkDinBrush  = FrozenBrush(0xCC, 0xAA, 0x33);
+    static readonly System.Windows.Media.SolidColorBrush LinkTcpBrush  = FrozenBrush(0x88, 0xAA, 0xDD);
+    static readonly System.Windows.Media.SolidColorBrush LinkNoneBrush = FrozenBrush(0x77, 0x77, 0x77);
+
+    static System.Windows.Media.SolidColorBrush FrozenBrush(byte r, byte g, byte b)
+    {
+        var br = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(r, g, b));
+        br.Freeze();
+        return br;
+    }
+
+    // Paint the footer TCP/USB/DIN badge from the coordinator's current link.
+    void UpdateMidiLinkBadge()
+    {
+        var (text, brush) = _midiCoord.ActiveLink switch
+        {
+            MidiLinkKind.Usb => ("USB", LinkUsbBrush),
+            MidiLinkKind.Din => ("DIN", LinkDinBrush),
+            MidiLinkKind.Tcp => ("TCP", LinkTcpBrush),
+            _                => ("—",   LinkNoneBrush),
+        };
+        MidiLinkBadge.Text            = text;
+        MidiLinkBadge.Foreground      = brush;
+        MidiLinkBadgeBorder.BorderBrush = brush;
+    }
+
     void OnSysExTraffic(SysExTrafficEntry entry)
     {
         if (entry.IsSend) _sysExTxLastAt = DateTime.Now;
         else              _sysExRxLastAt = DateTime.Now;
 
-        Dispatcher.InvokeAsync(() =>
-        {
-            UpdateSysExDots();
-            if (!_sysExDimTimer.IsEnabled) _sysExDimTimer.Start();
-        });
+        // Coalesce: the 50 ms dim timer repaints the dots continuously, so we only
+        // need to poke it awake. One pending repaint at a time — a memory-speed event
+        // flood (or per-change name pulls) would otherwise queue a Dispatcher call per
+        // message and swamp the UI thread. The timestamps above are what actually
+        // drive the dot state; this just ensures the timer is running.
+        if (Interlocked.Exchange(ref _sysExDotPending, 1) == 0)
+            Dispatcher.InvokeAsync(() =>
+            {
+                Interlocked.Exchange(ref _sysExDotPending, 0);
+                UpdateSysExDots();
+                if (!_sysExDimTimer.IsEnabled) _sysExDimTimer.Start();
+            });
     }
 
     static readonly System.Windows.Media.SolidColorBrush SysExRxActiveBrush =
@@ -1255,7 +1421,166 @@ public partial class MainWindow : Window
             _settings.MidiOutputChannel = _sysExToolWin.SelectedChannel;
             Storage.SaveSettings(_settings);
         };
+        _sysExToolWin.SetActiveStream(_midiCoord.ActiveLinkLabel);   // seed with the current link
         _sysExToolWin.Show();
+    }
+
+    void OpenSetListWindow()
+    {
+        if (_setListWin != null && _setListWin.IsLoaded)
+        {
+            _setListWin.Activate();
+            _setListWin.Focus();
+            return;
+        }
+        _setListWin = new SetListWindow(_sysExService, _host) { Owner = this };
+        _setListWin.Show();
+    }
+
+    bool _syncBusy;                        // guards Sync Names and Sync All — one at a time
+    CancellationTokenSource? _syncAllCts;  // non-null while Sync All runs → a second click cancels
+
+    async Task SyncNamesAsync()
+    {
+        if (_syncBusy) return;
+        if (!_sysExService.CanDump)
+        {
+            SetNotification("Enable MIDI monitoring first (Settings → MIDI/SysEx)", isError: true);
+            return;
+        }
+
+        var choice = MessageBox.Show(
+            "Request all program & combi names from the Kronos and cache them locally.\n\n" +
+            "Internal and GM banks sync reliably. Some user banks may not — those can be " +
+            "captured by triggering Global → Dump on the Kronos itself (the app captures " +
+            "names from that too). Briefly shows \"Transmitting MIDI Data…\" on the Kronos." +
+            "\n\nStart now?",
+            "Sync Names", MessageBoxButton.OKCancel, MessageBoxImage.Information);
+        if (choice != MessageBoxResult.OK) return;
+
+        _syncBusy = true;
+        int lastDone = 0, lastTotal = 0;
+        var progress = new Progress<(int Done, int Total, int Names)>(p =>
+        {
+            lastDone = p.Done; lastTotal = p.Total;
+            SetNotification($"Syncing names… {p.Done}/{p.Total} banks — {p.Names} names", isError: false);
+        });
+        try
+        {
+            int names = await _sysExService.SyncNamesAsync(progress, CancellationToken.None);
+            if (lastTotal > 0 && lastDone < lastTotal)
+                SetNotification($"Synced {lastDone}/{lastTotal} banks ({names} names cached). " +
+                                "Any user banks that didn't sync: use Global → Dump on the Kronos.", isError: false);
+            else
+                SetNotification($"Name sync complete — {names} names cached", isError: false);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"[sync-names] {ex.Message}");
+            SetNotification($"Name sync failed: {ex.Message}", isError: true);
+        }
+        finally { _syncBusy = false; }
+    }
+
+    // "Sync All" — program/combi names (phase 1) then every set list (phase 2), each
+    // cached locally. Reuses the service methods directly (not the Sync Names wrapper,
+    // whose own dialog/guard we don't want here). Toggle-cancel: invoke again while it
+    // runs to stop; whatever synced so far is already saved.
+    async Task SyncAllAsync()
+    {
+        // Second click while running → cancel.
+        if (_syncAllCts is { } running)
+        {
+            running.Cancel();
+            SetNotification("Sync All: cancelling after the current item…", isError: false);
+            return;
+        }
+        if (_syncBusy)
+        {
+            SetNotification("A sync is already running", isError: true);
+            return;
+        }
+        if (!_sysExService.CanDump)
+        {
+            SetNotification("Enable MIDI monitoring first (Settings → MIDI/SysEx)", isError: true);
+            return;
+        }
+
+        // On the (slow) TCP path with USB not in use? Point the user at the fast path.
+        // Skip the tip if they've explicitly forced TCP in Settings.
+        bool onSlowTcp = !_midiCoord.UsingUsb && _settings.MidiTransport != MidiTransportMode.Tcp;
+        string usbTip = onSlowTcp
+            ? "\n\nTip: you're syncing over the network (TCP), which is slow for large " +
+              "dumps. Direct USB is usually much faster on the Kronos — connect it to " +
+              "this PC with a USB cable to try (the app switches to USB automatically, " +
+              "no other change needed). Or continue over the network now."
+            : "";
+
+        var choice = MessageBox.Show(
+            "Sync everything from the Kronos and cache it locally:\n" +
+            "  •  All program & combi names\n" +
+            "  •  All 128 set lists (names, slot colors, notes)\n\n" +
+            "This can take several minutes depending on how many set lists you have. " +
+            "The Kronos briefly shows \"Transmitting MIDI Data…\". You can cancel anytime " +
+            "(Tools → Cancel Sync All); progress is saved as it goes." +
+            usbTip + "\n\nStart now?",
+            "Sync All", MessageBoxButton.OKCancel, MessageBoxImage.Information);
+        if (choice != MessageBoxResult.OK) return;
+
+        _syncBusy = true;
+        var cts = new CancellationTokenSource();
+        _syncAllCts = cts;
+        MNU_SyncAll.Header = "Cancel Sync _All";
+        try
+        {
+            // Phase 1 — program/combi names (skips banks already in the ledger).
+            var nameProgress = new Progress<(int Done, int Total, int Names)>(p =>
+                SetNotification($"Sync All — names: {p.Done}/{p.Total} banks, {p.Names} cached", isError: false));
+            int names = await _sysExService.SyncNamesAsync(nameProgress, cts.Token);
+
+            // Phase 2 — every set list (name + slot colors + notes).
+            var listProgress = new Progress<(int Done, int Total, int Found)>(p =>
+                SetNotification($"Sync All — set lists: {p.Done}/{p.Total}, {p.Found} with content", isError: false));
+            var result = await _sysExService.DumpAllSetListsAsync(listProgress, cts.Token);
+
+            // Merge into the on-disk set-list cache (keyed by host, same as the viewer):
+            // content → store; confirmed-blank → drop a now-stale entry; no-response →
+            // leave untouched (a transient miss must not delete good cached data).
+            if (result.Found.Count > 0 || result.ConfirmedEmpty.Count > 0)
+            {
+                // Load + merge + persist the whole cache off the UI thread — each Set
+                // List is ~79 KB of decoded data, so doing this inline froze the main
+                // window at the end of a sync.
+                await Task.Run(() =>
+                {
+                    var cache = Storage.LoadSetLists(_host);
+                    foreach (var kv in result.Found) cache[kv.Key] = kv.Value;
+                    foreach (var n  in result.ConfirmedEmpty) cache.Remove(n);
+                    Storage.SaveSetLists(_host, cache);
+                });
+                if (_setListWin is { IsLoaded: true } win) await win.ReloadCacheAsync();
+            }
+
+            string via = _midiCoord.UsingUsb ? "USB" : "TCP";
+            if (result.Cancelled)
+                SetNotification($"Sync All cancelled — {names} names, {result.Found.Count} set lists saved so far (via {via})",
+                                isError: false);
+            else
+                SetNotification($"Sync All complete — {names} names, {result.Found.Count} set lists cached (via {via})",
+                                isError: false);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"[sync-all] {ex.Message}");
+            SetNotification($"Sync All failed: {ex.Message}", isError: true);
+        }
+        finally
+        {
+            _syncBusy   = false;
+            _syncAllCts = null;
+            cts.Dispose();
+            MNU_SyncAll.Header = "Sync _All (Names + Set Lists)…";
+        }
     }
 
     void OpenKeyboardInfoWindow()
@@ -1266,7 +1591,7 @@ public partial class MainWindow : Window
             _kbdInfoWin.Focus();
             return;
         }
-        _kbdInfoWin = new KeyboardInfoWindow(_host, _ctrlPort) { Owner = this };
+        _kbdInfoWin = new KeyboardInfoWindow(_host, _ctrlPort, () => IsConnected) { Owner = this };
         _kbdInfoWin.Show();
     }
 

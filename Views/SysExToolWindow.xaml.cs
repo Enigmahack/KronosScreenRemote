@@ -1,10 +1,13 @@
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace KronosScreenRemote;
 
@@ -42,6 +45,17 @@ partial class SysExToolWindow : Window
     readonly ObservableCollection<SysExMessageItem> _allItems = new();
     ICollectionView _view = null!;
 
+    // Live traffic is enqueued from background threads (the MIDI consumer thread and
+    // TX callers) and drained onto the UI thread in batches by _flushTimer. This is
+    // what keeps a burst — a Set List sync streams many large objects — from flooding
+    // the dispatcher with one InvokeAsync + collection mutation + scroll per message,
+    // which stalled every window (they all share the one UI thread). The display row,
+    // including its hex decode, is built on the enqueuing thread so even that work
+    // stays off the UI thread; the flush only mutates the collection and scrolls once.
+    readonly ConcurrentQueue<(SysExMessageItem Item, byte[]? Raw, bool IsMidi, bool IsSend)> _incoming = new();
+    readonly DispatcherTimer _flushTimer =
+        new(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(50) };
+
     readonly Dictionary<MidiMsgType, FilterState> _filterStates = new()
     {
         [MidiMsgType.Note]          = FilterState.On,
@@ -75,6 +89,17 @@ partial class SysExToolWindow : Window
 
         BTN_Clear.Click += (_, _) => Clear();
 
+        MNU_CopyLine.Click += (_, _) => CopySelected();
+        MNU_CopyAll.Click  += (_, _) => CopyAllShown();
+        LB_All.PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key == Key.C && (Keyboard.Modifiers & ModifierKeys.Control) != 0)
+            {
+                CopySelected();
+                e.Handled = true;
+            }
+        };
+
         InitFilterButton(BTN_Filter_Notes,      MidiMsgType.Note);
         InitFilterButton(BTN_Filter_CC,         MidiMsgType.CC);
         InitFilterButton(BTN_Filter_Prog,       MidiMsgType.ProgramChange);
@@ -89,14 +114,25 @@ partial class SysExToolWindow : Window
         CMB_OutChannel.SelectionChanged += (_, _) => ClearMidiLitKeys();
 
         _sysEx.SysExTraffic += OnTraffic;
+        _flushTimer.Tick += FlushIncoming;
+        _flushTimer.Start();
         Closed += (_, _) =>
         {
             _sysEx.SysExTraffic -= OnTraffic;
+            _flushTimer.Stop();
+            _flushTimer.Tick -= FlushIncoming;
             ReleaseNote();
             ClearMidiLitKeys();
         };
 
         Loaded += (_, _) => BuildPiano();
+    }
+
+    // Show which MIDI link this monitor's traffic is flowing over (USB / DIN / TCP),
+    // pushed by MainWindow as the active transport changes. UI thread only.
+    public void SetActiveStream(string? label)
+    {
+        TXT_Stream.Text = $"Stream: {(string.IsNullOrWhiteSpace(label) ? "—" : label)}";
     }
 
     void ClearMidiLitKeys()
@@ -311,58 +347,94 @@ partial class SysExToolWindow : Window
 
     // ── Traffic routing ──────────────────────────────────────────────────────
 
+    // Called on a background thread (the MIDI consumer thread, or a TX caller).
+    // Build the display row here — off the UI thread — and hand only the finished
+    // object to the batch queue; the flush timer surfaces it. No per-message
+    // Dispatcher call, so a memory-speed burst can't swamp the UI thread.
     void OnTraffic(SysExTrafficEntry entry)
     {
-        Dispatcher.InvokeAsync(() =>
+        _incoming.Enqueue((new SysExMessageItem(entry), entry.RawBytes, entry.IsMidi, entry.IsSend));
+    }
+
+    // Drains queued traffic onto the UI thread in one batch per tick: at most one
+    // count refresh and one scroll regardless of how many messages arrived.
+    void FlushIncoming(object? sender, EventArgs e)
+    {
+        if (_incoming.IsEmpty) return;
+
+        int added = 0;
+        const int maxPerTick = 4000;   // safety cap so a single tick can't itself stall
+        while (added < maxPerTick && _incoming.TryDequeue(out var q))
         {
+            added++;
             while (_allItems.Count >= MaxEntries)
                 _allItems.RemoveAt(0);
-
-            _allItems.Add(new SysExMessageItem(entry));
-            UpdateCount();
-
-            if (CHK_AutoScroll.IsChecked == true)
-                ScrollToBottom();
+            _allItems.Add(q.Item);
 
             // Light / un-light piano keys on incoming NoteOn / NoteOff from Kronos.
-            if (entry.IsMidi && !entry.IsSend && entry.RawBytes is { Length: >= 2 } raw)
-            {
-                byte status = raw[0];
-                int inCh = (status & 0x0F) + 1;
-                if (inCh == SelectedChannel)
-                {
-                    int type = status & 0xF0;
-                    int note = raw[1];
-                    bool isNoteOn  = type == 0x90 && raw.Length >= 3 && raw[2] > 0;
-                    bool isNoteOff = type == 0x80 || (type == 0x90 && raw.Length >= 3 && raw[2] == 0);
+            if (q.IsMidi && !q.IsSend && q.Raw is { Length: >= 2 } raw)
+                ApplyNoteLighting(raw);
+        }
 
-                    if (isNoteOn && _keyByMidi.TryGetValue(note, out var keyOn))
-                    {
-                        _midiLitNotes.Add(note);
-                        if (note != _pressedNote)
-                        {
-                            var (_, isBlack) = ((int, bool))keyOn.Tag!;
-                            keyOn.Background = isBlack ? BlackPressed : WhitePressed;
-                        }
-                    }
-                    else if (isNoteOff && _keyByMidi.TryGetValue(note, out var keyOff))
-                    {
-                        _midiLitNotes.Remove(note);
-                        if (note != _pressedNote)
-                        {
-                            var (_, isBlack) = ((int, bool))keyOff.Tag!;
-                            keyOff.Background = isBlack ? BlackNormal : WhiteNormal;
-                        }
-                    }
-                }
+        if (added == 0) return;
+        UpdateCount();
+        if (CHK_AutoScroll.IsChecked == true)
+            ScrollToBottom();
+    }
+
+    // UI-thread piano-key lighting for an incoming channel message on the selected
+    // channel. Non-channel messages (SysEx, etc.) fall through harmlessly.
+    void ApplyNoteLighting(byte[] raw)
+    {
+        byte status = raw[0];
+        int inCh = (status & 0x0F) + 1;
+        if (inCh != SelectedChannel) return;
+
+        int type = status & 0xF0;
+        int note = raw[1];
+        bool isNoteOn  = type == 0x90 && raw.Length >= 3 && raw[2] > 0;
+        bool isNoteOff = type == 0x80 || (type == 0x90 && raw.Length >= 3 && raw[2] == 0);
+
+        if (isNoteOn && _keyByMidi.TryGetValue(note, out var keyOn))
+        {
+            _midiLitNotes.Add(note);
+            if (note != _pressedNote)
+            {
+                var (_, isBlack) = ((int, bool))keyOn.Tag!;
+                keyOn.Background = isBlack ? BlackPressed : WhitePressed;
             }
-        });
+        }
+        else if (isNoteOff && _keyByMidi.TryGetValue(note, out var keyOff))
+        {
+            _midiLitNotes.Remove(note);
+            if (note != _pressedNote)
+            {
+                var (_, isBlack) = ((int, bool))keyOff.Tag!;
+                keyOff.Background = isBlack ? BlackNormal : WhiteNormal;
+            }
+        }
     }
 
     void Clear()
     {
         _allItems.Clear();
         UpdateCount();
+    }
+
+    void CopySelected()
+    {
+        var items = LB_All.SelectedItems.Cast<SysExMessageItem>().ToList();
+        if (items.Count == 0 && LB_All.SelectedItem is SysExMessageItem one) items.Add(one);
+        CopyToClipboard(items);
+    }
+
+    void CopyAllShown() => CopyToClipboard(_view.Cast<SysExMessageItem>().ToList());
+
+    static void CopyToClipboard(IReadOnlyList<SysExMessageItem> items)
+    {
+        if (items.Count == 0) return;
+        var text = string.Join(Environment.NewLine, items.Select(i => i.CopyText));
+        try { Clipboard.SetText(text); } catch { /* clipboard busy */ }
     }
 
     void UpdateCount()
@@ -379,7 +451,7 @@ partial class SysExToolWindow : Window
     }
 }
 
-class SysExMessageItem(SysExTrafficEntry entry)
+class SysExMessageItem
 {
     static readonly SolidColorBrush ColorNote      = MakeBrush(0x88, 0xBB, 0xFF); // blue-ish
     static readonly SolidColorBrush ColorCC        = MakeBrush(0xFF, 0xCC, 0x66); // amber
@@ -390,17 +462,54 @@ class SysExMessageItem(SysExTrafficEntry entry)
     static readonly SolidColorBrush ColorTransport = MakeBrush(0xAA, 0xDD, 0xFF); // light blue
     static readonly SolidColorBrush ColorOther     = MakeBrush(0xCC, 0xCC, 0xCC); // default
 
-    public string      Time      { get; } = entry.Timestamp.ToString("HH:mm:ss.fff");
-    public string      Dir       { get; } = entry.IsSend ? "TX" : "RX";
-    public bool        IsSend    { get; } = entry.IsSend;
-    public string      Hex       { get; } = entry.Hex;
-    public MidiMsgType MsgType   { get; } = Classify(entry);
-    public Brush       TypeColor { get; } = TypeToBrush(Classify(entry));
+    public string      Time      { get; }
+    public string      Dir       { get; }
+    public bool        IsSend    { get; }
+    public string      Hex       { get; }
+    public MidiMsgType MsgType   { get; }
+    public Brush       TypeColor { get; }
 
-    static MidiMsgType Classify(SysExTrafficEntry e)
+    readonly byte[]? _raw;
+    readonly string  _fallbackHex;
+
+    public SysExMessageItem(SysExTrafficEntry entry)
     {
-        if (!e.IsMidi) return MidiMsgType.SysEx;
-        var h = e.Hex;
+        Time   = entry.Timestamp.ToString("HH:mm:ss.fff");
+        Dir    = entry.IsSend ? "TX" : "RX";
+        IsSend = entry.IsSend;
+
+        _raw         = entry.RawBytes is { Length: > 0 } ? entry.RawBytes : null;
+        _fallbackHex = entry.Hex;
+
+        // Decode the human-readable description HERE, on the enqueuing background
+        // thread, rather than eagerly on the MIDI read/consumer thread for every
+        // firehose message. Live-stream entries arrive with an empty Hex and only
+        // RawBytes set; producing the hex for every one — with this window closed —
+        // was the GC source while navigating. The embedded hex is capped (96 bytes)
+        // so a bulk object (a Set List is ~79 KB) can neither build a ~½ MB string
+        // nor hand the UI a 200k-char wrapping TextBlock to lay out. Full bytes stay
+        // available for copy via RawHex.
+        Hex = _raw != null
+            ? MidiStreamMonitor.DecodeMidi(_raw, maxHexBytes: 96)
+            : entry.Hex;
+
+        var type  = Classify(entry.IsMidi, Hex);
+        MsgType   = type;
+        TypeColor = TypeToBrush(type);
+    }
+
+    // Full raw hex — built only when the row is actually copied, not per message,
+    // and never shown in the (capped) live log where it would be unreadable and slow.
+    public string RawHex => _raw != null
+        ? string.Join(' ', _raw.Select(x => x.ToString("X2")))
+        : _fallbackHex;
+
+    // One clipboard line: timestamp, direction, raw hex.
+    public string CopyText => $"{Time} {Dir} {RawHex}";
+
+    static MidiMsgType Classify(bool isMidi, string h)
+    {
+        if (!isMidi) return MidiMsgType.SysEx;
         if (h.StartsWith("NoteOn",    StringComparison.Ordinal) ||
             h.StartsWith("NoteOff",   StringComparison.Ordinal)) return MidiMsgType.Note;
         if (h.StartsWith("CC#",       StringComparison.Ordinal)) return MidiMsgType.CC;

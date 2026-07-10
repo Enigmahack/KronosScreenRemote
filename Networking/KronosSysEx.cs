@@ -418,6 +418,31 @@ sealed class KronosSysEx
         return null;
     }
 
+    // Parse an Object Dump (func 0x73) for a name-only object (0x12/0x13/…) into
+    // (index, name). Layout: F0 42 3g 68 73 obj bank idH idL version <name 8→7> F7.
+    // Returns (-1, "") on a non-matching message.
+    public static (int Index, string Name) ParseNameObjectDump(byte[] msg)
+    {
+        if (msg.Length < 12) return (-1, "");
+        if (msg[0] != 0xF0 || msg[1] != 0x42 || (msg[2] & 0xF0) != 0x30 ||
+            msg[3] != 0x68 || msg[4] != 0x73)
+            return (-1, "");
+
+        int index = ((msg[7] & 0x7F) << 7) | (msg[8] & 0x7F);   // idH, idL
+        int dataStart = 10;                                      // after version byte
+        int dataEnd = Array.IndexOf(msg, (byte)0xF7, dataStart);
+        if (dataEnd < 0) dataEnd = msg.Length;
+        if (dataEnd - dataStart < 2) return (index, "");
+
+        // Name is the first 24 bytes of every object (name-only or full). Decode
+        // just enough (32 sys/ex bytes → ≥24 binary) so a full 4 KB program dump
+        // doesn't decode in its entirety for a 24-byte name.
+        int decodeLen = Math.Min(dataEnd - dataStart, 32);
+        var decoded = Decode8to7(msg, dataStart, decodeLen);
+        int n = Math.Min(24, decoded.Length);
+        return (index, Encoding.ASCII.GetString(decoded, 0, n).TrimEnd('\0', ' '));
+    }
+
     // ── Korg 8-to-7-bit SysEx codec ─────────────────────────────────────────
 
     // Decode: every 8 SysEx bytes encode 7 binary bytes.
@@ -460,18 +485,28 @@ sealed class KronosSysEx
     // ── Bank label tables ────────────────────────────────────────────────────
     // Numbering from KRONOS_MIDI_SysEx.txt / SysExParams/SetList.txt.
 
+    // Combis have SEVEN internal banks (I-A…I-G) — one more than programs (I-A…I-F).
+    // KRONOS_MIDI_SysEx.txt *2: combi bank 0-6 = INT-A…G, then USER-A…G. The linear
+    // index here (used by func-0x33 perf-id AND the Set List slot decoder) must
+    // include I-G at index 6, or every combi from I-G onward is off by one — e.g. a
+    // slot referencing I-G:007 renders as U-A:007. (Programs skip straight to GM.)
     static readonly string[] CombiBanks =
-        ["I-A", "I-B", "I-C", "I-D", "I-E", "I-F",
+        ["I-A", "I-B", "I-C", "I-D", "I-E", "I-F", "I-G",
          "U-A", "U-B", "U-C", "U-D", "U-E", "U-F", "U-G"];
 
+    // Linear PROGRAM-bank numbering (func-33 / Set List program slots). This Kronos
+    // has SEVEN internal program banks (I-A…I-G, per the user's bank list), then the
+    // read-only GM/g banks, then USER (U-A…U-G, U-AA…U-GG). Index 6 = I-G.
     static readonly string[] ProgramBanks =
-        ["I-A", "I-B", "I-C", "I-D", "I-E", "I-F",
+        ["I-A", "I-B", "I-C", "I-D", "I-E", "I-F", "I-G",
          "GM", "g(1)", "g(2)", "g(3)", "g(4)", "g(5)", "g(6)", "g(7)",
          "g(8)", "g(9)", "g(d)",
          "U-A", "U-B", "U-C", "U-D", "U-E", "U-F", "U-G",
          "U-AA", "U-BB", "U-CC", "U-DD", "U-EE", "U-FF", "U-GG"];
 
-    static string ResolveBankLabel(int type, int bank) => type switch
+    // type: 0=Combi, 1=Program, 2=Song. Public so the Set List decoder can
+    // resolve slot performance banks with the same tables.
+    public static string ResolveBankLabel(int type, int bank) => type switch
     {
         0 => bank < CombiBanks.Length ? CombiBanks[bank] : $"?{bank}",
         1 => bank < ProgramBanks.Length ? ProgramBanks[bank] : $"?{bank}",

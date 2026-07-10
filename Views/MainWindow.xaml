@@ -10,20 +10,33 @@
         Icon="/Resources/Icons/AppIcon.ico">
     <DockPanel>
         <Menu x:Name="MainMenu" DockPanel.Dock="Top">
-            <MenuItem x:Name="MENU_Connection" Header="_Connection">
-                <MenuItem x:Name="MNU_Reconnect"      Header="_Connect"/>
+            <MenuItem x:Name="MENU_File" Header="_File">
+                <MenuItem x:Name="MNU_SettingsDlg"    Header="_Settings…"/>
                 <Separator/>
-
+                <MenuItem x:Name="MNU_ImportSettings" Header="_Import Settings…"
+                          ToolTip="Load application settings from a .json file and apply them now."/>
+                <MenuItem x:Name="MNU_ExportSettings" Header="_Export Settings…"
+                          ToolTip="Save the current application settings to a .json file."/>
+                <Separator/>
+                <MenuItem x:Name="MNU_Screenshot"  Header="Sa_ve Screenshot…"        InputGestureText="Ctrl+S"/>
+                <MenuItem x:Name="MNU_QuickSave"   Header="Q_uick Save Screenshot"/>
+                <MenuItem x:Name="MNU_CopyFrame"   Header="_Copy Frame to Clipboard"/>
+                <MenuItem x:Name="MNU_OpenScreenshotsFolder" Header="Open Screenshots _Folder"/>
+                <Separator/>
+                <MenuItem x:Name="MNU_OpenLog"     Header="Open _Log File"/>
+                <Separator/>
+                <MenuItem x:Name="MNU_Quit"        Header="_Quit"/>
+            </MenuItem>
+            <MenuItem x:Name="MENU_Connection" Header="_Connection">
+                <MenuItem x:Name="MNU_Reconnect"   Header="_Connect"/>
+                <MenuItem x:Name="MNU_Disconnect"  Header="_Disconnect" IsEnabled="False"/>
+                <Separator/>
                 <MenuItem x:Name="MENU_RecentHosts" Header="_Recent Connections">
                     <MenuItem x:Name="MNU_NoRecentHosts" Header="(none)" IsEnabled="False"/>
                 </MenuItem>
                 <MenuItem x:Name="MNU_CopyIP" Header="Copy _IP Address"/>
                 <Separator/>
-                <MenuItem x:Name="MNU_FileManager"    Header="File _Manager…"/>
-                <Separator/>
-                <MenuItem x:Name="MNU_Disconnect" Header="_Disconnect" IsEnabled="False"/>
-                <Separator/>
-                <MenuItem x:Name="MNU_Quit"       Header="_Quit"/>
+                <MenuItem x:Name="MNU_FileManager" Header="File _Manager…"/>
             </MenuItem>
             <MenuItem x:Name="MENU_View" Header="_View">
                 <MenuItem x:Name="MNU_AspectLock"    Header="_Aspect Lock"     IsCheckable="True" InputGestureText="A"/>
@@ -63,25 +76,28 @@
                 </MenuItem>
             </MenuItem>
             <MenuItem x:Name="MENU_Tools" Header="_Tools">
-                <MenuItem x:Name="MNU_PaletteEd"  Header="_Palette Editor"        IsCheckable="True" InputGestureText="P"/>
-                <MenuItem x:Name="MNU_CalMode"    Header="_Calibration"           IsCheckable="True" InputGestureText="C"/>
-                <MenuItem x:Name="MNU_KbdWarp"    Header="Enable _Warp Mode"      IsCheckable="True"/>
+                <!-- Display &amp; touch calibration -->
+                <MenuItem x:Name="MNU_PaletteEd"  Header="_Palette Editor"   IsCheckable="True" InputGestureText="P"/>
+                <MenuItem x:Name="MNU_CalMode"    Header="_Calibration"      IsCheckable="True" InputGestureText="C"/>
+                <MenuItem x:Name="MNU_KbdWarp"    Header="Enable _Warp Mode" IsCheckable="True"/>
                 <MenuItem x:Name="MENU_CalGrid"   Header="Calibration _Grid Size">
                     <MenuItem x:Name="MNU_CalGrid3" Header="_3×3" IsCheckable="True"/>
                     <MenuItem x:Name="MNU_CalGrid4" Header="_4×4" IsCheckable="True"/>
                     <MenuItem x:Name="MNU_CalGrid5" Header="_5×5" IsCheckable="True"/>
                 </MenuItem>
-                <MenuItem x:Name="MNU_TestMode" Header="Enter Kronos _Test Mode"/>
                 <Separator/>
-                <MenuItem x:Name="MNU_Screenshot"  Header="Save _Screenshot…"     InputGestureText="Ctrl+S"/>
-                <MenuItem x:Name="MNU_QuickSave"   Header="_Quick Save Screenshot"/>
-                <MenuItem x:Name="MNU_CopyFrame"   Header="_Copy Frame to Clipboard"/>
-                <MenuItem x:Name="MNU_OpenScreenshotsFolder" Header="Open Screenshots _Folder"/>
-                <MenuItem x:Name="MNU_OpenLog"     Header="Open _Log File"/>
-                <Separator/>
+                <!-- MIDI / SysEx -->
                 <MenuItem x:Name="MNU_SysExTool"    Header="Open _SysEx Tool…"/>
+                <MenuItem x:Name="MNU_SetListView"  Header="Set List _Viewer…"/>
+                <MenuItem x:Name="MNU_SyncNames"    Header="Sync _Program/Combi Names…"/>
+                <MenuItem x:Name="MNU_SyncAll"      Header="Sync _All (Names + Set Lists)…"/>
+                <Separator/>
+                <!-- Diagnostics -->
                 <MenuItem x:Name="MNU_KeyboardInfo" Header="_Keyboard Info…"/>
                 <MenuItem x:Name="MNU_InputTester"  Header="_Input Tester…" Visibility="Collapsed"/>
+                <MenuItem x:Name="MNU_TestMode"     Header="Enter Kronos _Test Mode"/>
+                <Separator/>
+                <!-- Keyboard input -->
                 <MenuItem x:Name="MNU_DisableKbd"   Header="_Disable Keyboard Send" IsCheckable="True"/>
             </MenuItem>
             <MenuItem x:Name="MENU_ModeSelect" Header="_Mode Select">
@@ -94,9 +110,6 @@
                 <MenuItem x:Name="MNU_Mode_Disk"     Header="_Disk"/>
             </MenuItem>
             <MenuItem x:Name="MENU_BankSelect" Header="Ban_k Select"/>
-            <MenuItem x:Name="MENU_Settings" Header="_Settings">
-                <MenuItem x:Name="MNU_SettingsDlg" Header="_Settings…"/>
-            </MenuItem>
             <MenuItem Header="_Help">
                 <MenuItem x:Name="MNU_ShowHelp"          Header="_Show Help"            InputGestureText="F1"/>
                 <MenuItem x:Name="MNU_CommandPalette"    Header="_Command Palette"      InputGestureText="Ctrl+K"/>
@@ -183,7 +196,19 @@
                                          FontSize="11"
                                          MinWidth="260"
                                          MaxHeight="200"
-                                         Padding="0 2"/>
+                                         Padding="0 2">
+                                    <!-- Explicit content alignment overrides the default ListBoxItem
+                                         style's FindAncestor(ItemsControl) alignment binding, which
+                                         fails (and logs a data-binding error) because this list lives
+                                         inside a Popup whose items are realized before the item is
+                                         connected to its ItemsControl ancestor. -->
+                                    <ListBox.ItemContainerStyle>
+                                        <Style TargetType="ListBoxItem">
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                            <Setter Property="VerticalContentAlignment"   Value="Center"/>
+                                        </Style>
+                                    </ListBox.ItemContainerStyle>
+                                </ListBox>
                             </StackPanel>
                         </Border>
                     </Popup>
@@ -244,6 +269,17 @@
                 <TextBlock x:Name="PingText" Foreground="#FF666666" FontSize="11"
                            VerticalAlignment="Center"
                            ToolTip="Round-trip network latency to Kronos"/>
+            </StatusBarItem>
+            <Separator Margin="2 4" Background="#FF444444" Width="1"/>
+            <!-- Active MIDI link badge: USB (native, fast) / DIN (5-pin interface, slow) / TCP (network). -->
+            <StatusBarItem Padding="4 0" VerticalContentAlignment="Center">
+                <Border x:Name="MidiLinkBadgeBorder" CornerRadius="3" Padding="5 1"
+                        BorderThickness="1" BorderBrush="#FF444444" Background="#FF202020"
+                        VerticalAlignment="Center"
+                        ToolTip="Active MIDI link — USB: Kronos native USB (fast); DIN: 5-pin MIDI interface (slow); TCP: network daemon.">
+                    <TextBlock x:Name="MidiLinkBadge" Text="—" FontSize="10" FontFamily="Consolas"
+                               FontWeight="Bold" Foreground="#FF777777" VerticalAlignment="Center"/>
+                </Border>
             </StatusBarItem>
             <Separator Margin="2 4" Background="#FF444444" Width="1"/>
             <StatusBarItem Padding="3 0" VerticalContentAlignment="Center">

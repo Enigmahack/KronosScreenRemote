@@ -30,6 +30,13 @@ public class AppSettings
     public bool DebugLogging { get; set; } = false;
 
     // MIDI / SysEx
+    // Which backend carries MIDI/SysEx to the Kronos (screen/video stays TCP).
+    // Auto prefers a directly-connected Kronos USB-MIDI device, else the daemon.
+    public MidiTransportMode MidiTransport { get; set; } = MidiTransportMode.Auto;
+    // Device-name substring used to locate the Kronos among USB-MIDI ports
+    // (case-insensitive; never a fixed slot). Default matches the Korg product name.
+    public string UsbMidiDeviceName { get; set; } = "KRONOS";
+
     public bool MidiMonitorEnabled    { get; set; } = true;
     public bool ProactiveSysExPolling { get; set; } = false;
     public int  SysExPollIntervalSec  { get; set; } = 60;
@@ -39,6 +46,9 @@ public class AppSettings
     // value slider to physical slider moves. The actual CC can vary with the
     // selected parameter/page; 18 is the Kronos default.
     public int  ValueSliderCc         { get; set; } = 18;
+    // Pull a program/combi's name (func 0x72) as you select it, when not already
+    // cached. Viable now that USB carries a name object in ~ms; off by default.
+    public bool PullNamesOnChange     { get; set; } = false;
 
     // Window geometry — -1 means "not yet saved; use defaults"
     public double WindowLeft     { get; set; } = -1;
