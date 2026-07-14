@@ -168,8 +168,8 @@ public partial class MainWindow
 
         // Push saved VGA mirror + screensaver settings to the daemon on every connect
         _mirrorState = _settings.VgaMirrorEnabled;
-        Ctrl(_mirrorState ? "MIRROR_ON" : "MIRROR_OFF");
-        Ctrl($"SS_TIMEOUT {_settings.ScreensaverTimeout}");
+        Ctrl(DaemonCommand.VgaMirror(_mirrorState));
+        Ctrl(DaemonCommand.ScreensaverTimeout(_settings.ScreensaverTimeout));
 
         _modePollCts?.Cancel();
         _modePollCts?.Dispose();
@@ -298,11 +298,9 @@ public partial class MainWindow
         {
             if (!ModeDetector.HasAny())
             {
-                var resp = await _ctrl.QueryAsync("STATE").ConfigureAwait(false);
-                if (resp != null && resp.StartsWith("MODE=", StringComparison.Ordinal) &&
-                    int.TryParse(resp[5..], out int mode) && mode > 0 &&
-                    (DateTime.Now - _lastUserModeChange).TotalSeconds > 1.5)
-                    await Dispatcher.InvokeAsync(() => SetModeButton(mode))
+                int? mode = await QueryStateModeAsync().ConfigureAwait(false);
+                if (mode is > 0 && (DateTime.Now - _lastUserModeChange).TotalSeconds > 1.5)
+                    await Dispatcher.InvokeAsync(() => SetModeButton((Mode)mode.Value))
                         .Task.ConfigureAwait(false);
             }
             try { await Task.Delay(1000, ct).ConfigureAwait(false); }
@@ -312,20 +310,29 @@ public partial class MainWindow
 
     async Task QueryModeAsync()
     {
-        var resp = await _ctrl.QueryAsync("STATE").ConfigureAwait(false);
-        if (resp != null && resp.StartsWith("MODE=", StringComparison.Ordinal) &&
-            int.TryParse(resp[5..], out int mode))
-            await Dispatcher.InvokeAsync(() => SetModeButton(mode))
+        int? mode = await QueryStateModeAsync().ConfigureAwait(false);
+        if (mode.HasValue)
+            await Dispatcher.InvokeAsync(() => SetModeButton((Mode)mode.Value))
                 .Task.ConfigureAwait(false);
     }
 
-    void SetModeButton(int mode)
+    // Ask the daemon for its current operating mode ("STATE" → "MODE=<n>").
+    // Returns the parsed mode number, or null if the query failed or carried no mode.
+    async Task<int?> QueryStateModeAsync()
     {
-        if (mode > 0)
+        var resp = await _ctrl.QueryAsync(DaemonCommand.QueryState).ConfigureAwait(false);
+        return resp != null && resp.StartsWith(DaemonCommand.StateReplyModePrefix, StringComparison.Ordinal) &&
+               int.TryParse(resp[DaemonCommand.StateReplyModePrefix.Length..], out int mode)
+            ? mode : null;
+    }
+
+    void SetModeButton(Mode mode)
+    {
+        if (mode != Mode.Unknown)
         {
             if (mode != _currentMode) _prevMode = _currentMode;
             _currentMode = mode;
-            _pendingMode = 0;  // detection is authoritative — clear pending
+            _pendingMode = Mode.Unknown;  // detection is authoritative — clear pending
             if (!_detectedModeEver)
             {
                 _detectedModeEver = true;
@@ -333,33 +340,15 @@ public partial class MainWindow
             }
         }
 
-        var btn = mode switch
-        {
-            1 => BTN_Setlist,
-            2 => BTN_Combi,
-            3 => BTN_Program,
-            4 => BTN_Sequence,
-            5 => BTN_Sampling,
-            6 => BTN_Global,
-            7 => BTN_Disk,
-            _ => (KronosButton?)null
-        };
-
-        if (btn != null && !_combi.Active)
+        if (ButtonForMode(mode) is { } btn && !_combi.Active)
             btn.Activate();
 
-        // mode=0 (server doesn't know yet) — leave current state rather than blanking
-                var modeName = mode switch
-        {
-            1 => "Setlist", 2 => "Combi",    3 => "Program",
-            4 => "Sequence",5 => "Sampling", 6 => "Global",
-            7 => "Disk",    _ => ""
-        };
+        // mode=Unknown (server doesn't know yet) — leave current state rather than blanking
+        var modeName = mode.DisplayName();
         if (modeName.Length > 0)
         {
             AppLog.Debug($"[mode] {modeName}");
             ModeText.Text = $"Mode: {modeName}";
-            _controlPaletteWin?.SetMode(mode);
 
             if (mode != _prevMode)
                 _sysExService.RefreshNow();
@@ -383,7 +372,6 @@ public partial class MainWindow
         _combi.FlashTimer.Start();
         AppLog.Debug("[mode] program-edit-from-combi: entered");
         ModeText.Text = "Mode: Program (from Combi)";
-        _controlPaletteWin?.SetMode(3);
     }
 
     void ExitCombiProgramEdit()
@@ -391,15 +379,22 @@ public partial class MainWindow
         _combi.Active = false;
         _combi.FlashTimer.Stop();
         // Re-apply current mode so button state is consistent
-        var btn = _currentMode switch
-        {
-            1 => BTN_Setlist,  2 => BTN_Combi,    3 => BTN_Program,
-            4 => BTN_Sequence, 5 => BTN_Sampling, 6 => BTN_Global,
-            7 => BTN_Disk,     _ => (KronosButton?)null
-        };
-        btn?.Activate();
+        ButtonForMode(_currentMode)?.Activate();
         AppLog.Debug("[mode] program-edit-from-combi: exited");
     }
+
+    // The mode-key control that lights for a given operating mode (null for Unknown).
+    KronosButton? ButtonForMode(Mode mode) => mode switch
+    {
+        Mode.Setlist  => BTN_Setlist,
+        Mode.Combi    => BTN_Combi,
+        Mode.Program  => BTN_Program,
+        Mode.Sequence => BTN_Sequence,
+        Mode.Sampling => BTN_Sampling,
+        Mode.Global   => BTN_Global,
+        Mode.Disk     => BTN_Disk,
+        _             => null,
+    };
 
     // Combi-program-edit detection — runs every frame, not gated by HasChanged, because the
     // indicator at (696,39) is outside the top-left OCR region.  Exit via mode change
@@ -410,14 +405,14 @@ public partial class MainWindow
         if (_frameIsMostlyBlack) return;
 
         bool indicatorActive = CombiProgramEditDetector.IsActive(raw, _frameW, _lut);
-        if (!_combi.Active && _currentMode == 3 && (_prevMode == 2 || _prevMode == 0) && indicatorActive)
+        if (!_combi.Active && _currentMode == Mode.Program && (_prevMode == Mode.Combi || _prevMode == Mode.Unknown) && indicatorActive)
         {
             _combi.IndicatorGoneAt = DateTime.MinValue;
             EnterCombiProgramEdit();
         }
         else if (_combi.Active)
         {
-            if (_currentMode != 3)
+            if (_currentMode != Mode.Program)
             {
                 _combi.IndicatorGoneAt = DateTime.MinValue;
                 ExitCombiProgramEdit();
@@ -497,13 +492,13 @@ public partial class MainWindow
                     // instead of waiting out the 3s pending-mode timeout fallback.
                     bool sysExOverrides =
                         (DateTime.Now - _lastSysExModeAt).TotalSeconds < SysExModeGraceSec &&
-                        detected != _lastSysExMode;
+                        (Mode)detected != _lastSysExMode;
                     // Combi-program-edit owns the button while it flashes: a stable
                     // mode-3 banner there must not clobber it, but a change to any
                     // other mode is a genuine exit and applies immediately.
-                    bool combiOwnsButton = _combi.Active && detected == 3;
+                    bool combiOwnsButton = _combi.Active && (Mode)detected == Mode.Program;
                     if (!sysExOverrides && !combiOwnsButton)
-                        SetModeButton(detected);
+                        SetModeButton((Mode)detected);
                 }
                 else if (!ModeDetector.HasAny())
                     _ = QueryModeAsync();
@@ -564,10 +559,10 @@ public partial class MainWindow
 
         // Pending mode fallback — if detection never confirmed within the timeout,
         // apply the user-selected mode so the button eventually lights up.
-        if (_pendingMode > 0 && DateTime.Now >= _pendingModeDeadline)
+        if (_pendingMode != Mode.Unknown && DateTime.Now >= _pendingModeDeadline)
         {
-            int fallback = _pendingMode;
-            _pendingMode = 0;
+            Mode fallback = _pendingMode;
+            _pendingMode = Mode.Unknown;
             AppLog.Debug($"[mode] pending mode {fallback} confirmed via timeout fallback");
             SetModeButton(fallback);
         }

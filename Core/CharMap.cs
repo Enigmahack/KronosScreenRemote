@@ -15,8 +15,8 @@ static class CharMap
     {
         if (!_map.TryGetValue(c, out var e)) return null;
         return e.Shift
-            ? ["KEY 42 1", $"KEY {e.Code} 1", $"KEY {e.Code} 0", "KEY 42 0"]
-            : [$"KEY {e.Code} 1", $"KEY {e.Code} 0"];
+            ? [DaemonCommand.Shift(true),  DaemonCommand.Key(e.Code, true), DaemonCommand.Key(e.Code, false), DaemonCommand.Shift(false)]
+            : [DaemonCommand.Key(e.Code, true), DaemonCommand.Key(e.Code, false)];
     }
 
     public static string GetDescription(char c) =>

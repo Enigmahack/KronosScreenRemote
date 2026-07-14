@@ -19,8 +19,13 @@ public partial class MainWindow : Window
     int    _fps      = 15;
 
     // ── Frame state ───────────────────────────────────────────────────────────
-    int             _frameW = 800;
-    int             _frameH = 600;
+    // Nominal Kronos display size (px). Used as the frame default and as the fixed
+    // basis for window-size and layout-column math (the live stream may report other
+    // dimensions, which then overwrite _frameW/_frameH).
+    const int       FrameDesignWidth  = 800;
+    const int       FrameDesignHeight = 600;
+    int             _frameW = FrameDesignWidth;
+    int             _frameH = FrameDesignHeight;
     PaletteEntry[]  _basePal  = new PaletteEntry[256];
     byte[]?         _rawFrame = null;   // == _frameBuf once the first frame arrives; null before
     byte[]?         _frameBuf = null;   // UI-owned copy target for StreamReceiver.TryCopyLatestFrame
@@ -28,23 +33,9 @@ public partial class MainWindow : Window
 
     WriteableBitmap? _wb;
 
-    // ── Editor state ──────────────────────────────────────────────────────────
-    bool   _edOpen   = false;
-    int    _edSel    = 0;
-    int    _edCh     = 0;         // 0=R 1=G 2=B
-    string? _edTyped = null;
-    int?   _hoverIdx = null;
+    // Persisted per-index color overrides, baked into the display LUT (RebuildLut) and
+    // applied by the zoom loupe. Loaded from disk on startup.
     Dictionary<int, PaletteEntry> _overrides = new();
-    HashSet<int> _locked = new();
-
-    List<HistEntry> _history = new();
-    int  _histPos   = -1;
-    PaletteEntry? _clipboard = null;
-
-    // Panel geometry — updated each draw
-    Rect   _panelRect;
-    Point  _gridOrigin;
-    double _sliderTop;
 
     // ── Display state ─────────────────────────────────────────────────────────
     bool   _aspectLock   = true;
@@ -78,7 +69,7 @@ public partial class MainWindow : Window
     CancellationTokenSource? _modePollCts;
     DateTime _lastUserModeChange  = DateTime.MinValue;
     bool     _helpActive          = false;
-    int      _pendingMode         = 0;          // 1-7 while awaiting detection confirmation
+    Mode     _pendingMode         = Mode.Unknown; // set while awaiting detection confirmation
     DateTime _pendingModeDeadline = DateTime.MinValue;
     const double PendingModeTimeoutSec = 3.0;
 
@@ -94,8 +85,8 @@ public partial class MainWindow : Window
     const double SysExDwellMs = 350;
 
     // ── Mode history (for transition detection) ───────────────────────────────
-    int _currentMode = 0;   // last mode applied by SetModeButton
-    int _prevMode    = 0;   // mode before the current one; survives across frames
+    Mode _currentMode = Mode.Unknown;   // last mode applied by SetModeButton
+    Mode _prevMode    = Mode.Unknown;   // mode before the current one; survives across frames
 
     // SysEx is the source of truth for the mode, but only while it is actively
     // transmitting. A live Mode Change (func 0x4E) stamps _lastSysExModeAt; screen
@@ -104,7 +95,7 @@ public partial class MainWindow : Window
     // in-app — the grace lapses and screen detection drives the mode immediately.
     // Recency subsumes the old "proven" latch: if a 0x4E never fired, the stamp is
     // never fresh and the screen leads, so a SysEx-off Kronos degrades gracefully.
-    int      _lastSysExMode   = 0;               // mode from the last live func 0x4E
+    Mode     _lastSysExMode   = Mode.Unknown;    // mode from the last live func 0x4E
     DateTime _lastSysExModeAt = DateTime.MinValue;
     const double SysExModeGraceSec = 1.0;
     int      _sysExDotPending;                   // 1 = a dot repaint is already queued
@@ -167,7 +158,6 @@ public partial class MainWindow : Window
 
     // ── Layout preset ─────────────────────────────────────────────────────────
     LayoutPreset           _layoutPreset      = LayoutPreset.Full;
-    ControlPaletteWindow?  _controlPaletteWin = null;
     FileManagerWindow?     _fileManagerWin;
 
     public MainWindow()
@@ -224,7 +214,6 @@ public partial class MainWindow : Window
         _hideDataInput  = _settings.HideDataInput;
         _hideValueInput = _settings.HideValueInput;
         _overrides    = Storage.LoadOverrides();
-        _locked       = Storage.LoadLocks();
         (_cal.Mesh, _cal.BiasDots) = Storage.LoadCal();
         if (!_cal.Mesh.IsIdentity() || _cal.BiasDots.Count > 0)
             Console.WriteLine($"[cal] mesh loaded, {_cal.BiasDots.Count} bias dot(s)");
@@ -237,7 +226,7 @@ public partial class MainWindow : Window
             _instantKeys.Clear();
             StopRepeat();
             ReleaseActiveRawKeys();
-            if (_capsShiftedKeys.Count > 0) { Ctrl("KEY 42 0"); _capsShiftedKeys.Clear(); }
+            if (_capsShiftedKeys.Count > 0) { Ctrl(DaemonCommand.Shift(false)); _capsShiftedKeys.Clear(); }
             _cal.DraggingNode = null;
             UpdateKbdStatus();
             OverlayLayer.InvalidateVisual();
@@ -269,7 +258,7 @@ public partial class MainWindow : Window
     // Records a user-requested mode and starts the confirmation timeout.
     // The button icon changes only when SetModeButton() is called by detection; if
     // detection never confirms within PendingModeTimeoutSec, RenderTick applies the fallback.
-    void SetPendingMode(int mode)
+    void SetPendingMode(Mode mode)
     {
         _pendingMode         = mode;
         _pendingModeDeadline = DateTime.Now.AddSeconds(PendingModeTimeoutSec);
@@ -277,7 +266,7 @@ public partial class MainWindow : Window
         _sysExService.NotifyUserActivity();
     }
 
-    void SendMode(int mode)
+    void SendMode(Mode mode)
     {
         // Ignore mode changes until the board is verified booted. The Kronos front
         // panel ignores mode keys during boot anyway, so a press there does nothing
@@ -293,52 +282,56 @@ public partial class MainWindow : Window
             return;
         }
 
-        string name = mode switch {
-            1 => "SETLIST", 2 => "COMBI",    3 => "PROGRAM",
-            4 => "SEQUENCE",5 => "SAMPLING", 6 => "GLOBAL",
-            7 => "DISK",    _ => ""
-        };
+        if (mode.ButtonName().Length == 0) return;
         SetPendingMode(mode);
-        Ctrl($"BUTTON {name}");
+        Ctrl(DaemonCommand.Button(mode));
     }
 
     void WireButtons()
     {
         // Mode buttons — send the hardware packet and record pending mode.
         // Icon only lights up once detection confirms (or timeout fallback fires).
-        BTN_Setlist.Click  += (sender, e) => SendMode(1);
-        BTN_Combi.Click    += (sender, e) => SendMode(2);
-        BTN_Program.Click  += (sender, e) => SendMode(3);
-        BTN_Sequence.Click += (sender, e) => SendMode(4);
-        BTN_Sampling.Click += (sender, e) => SendMode(5);
-        BTN_Global.Click   += (sender, e) => SendMode(6);
-        BTN_Disk.Click     += (sender, e) => SendMode(7);
+        BTN_Setlist.Click  += (sender, e) => SendMode(Mode.Setlist);
+        BTN_Combi.Click    += (sender, e) => SendMode(Mode.Combi);
+        BTN_Program.Click  += (sender, e) => SendMode(Mode.Program);
+        BTN_Sequence.Click += (sender, e) => SendMode(Mode.Sequence);
+        BTN_Sampling.Click += (sender, e) => SendMode(Mode.Sampling);
+        BTN_Global.Click   += (sender, e) => SendMode(Mode.Global);
+        BTN_Disk.Click     += (sender, e) => SendMode(Mode.Disk);
 
         // Toggle buttons
-        BTN_Help.Click    += (sender, e) => Ctrl("BUTTON HELP");
-        BTN_Compare.Click += (sender, e) => Ctrl("BUTTON COMPARE");
+        BTN_Help.Click    += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Help));
+        BTN_Compare.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Compare));
 
         // Number pad (no animation, but sends packet)
-        BTN_data_dash.Click   += (sender, e) => Ctrl("BUTTON NUM_DASH");
-        BTN_data0.Click       += (sender, e) => Ctrl("BUTTON NUM0");
-        BTN_data_period.Click += (sender, e) => Ctrl("BUTTON NUM_DOT");
-        BTN_data1.Click       += (sender, e) => Ctrl("BUTTON NUM1");
-        BTN_data2.Click       += (sender, e) => Ctrl("BUTTON NUM2");
-        BTN_data3.Click       += (sender, e) => Ctrl("BUTTON NUM3");
-        BTN_data4.Click       += (sender, e) => Ctrl("BUTTON NUM4");
-        BTN_data5.Click       += (sender, e) => Ctrl("BUTTON NUM5");
-        BTN_data6.Click       += (sender, e) => Ctrl("BUTTON NUM6");
-        BTN_data7.Click       += (sender, e) => Ctrl("BUTTON NUM7");
-        BTN_data8.Click       += (sender, e) => Ctrl("BUTTON NUM8");
-        BTN_data9.Click       += (sender, e) => Ctrl("BUTTON NUM9");
+        BTN_data_dash.Click   += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.NumDash));
+        BTN_data0.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(0));
+        BTN_data_period.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.NumDot));
+        BTN_data1.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(1));
+        BTN_data2.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(2));
+        BTN_data3.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(3));
+        BTN_data4.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(4));
+        BTN_data5.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(5));
+        BTN_data6.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(6));
+        BTN_data7.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(7));
+        BTN_data8.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(8));
+        BTN_data9.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(9));
 
         // Exit / Enter
-        BTN_Exit.Click  += (sender, e) => Ctrl("BUTTON EXIT");
-        BTN_Enter.Click += (sender, e) => Ctrl("BUTTON ENTER");
+        BTN_Exit.Click  += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Exit));
+        BTN_Enter.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Enter));
 
         // Value Inc / Dec
-        BTN_Inc.Click += (sender, e) => Ctrl("BUTTON INC");
-        BTN_Dec.Click += (sender, e) => Ctrl("BUTTON DEC");
+        BTN_Inc.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Inc));
+        BTN_Dec.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Dec));
+
+        // Sequencer transport — daemon maps each to a front-panel SEQUENCER key press.
+        BTN_SeqLocate.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.SeqLocate));
+        BTN_SeqRew.Click    += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.SeqRewind));
+        BTN_SeqFf.Click     += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.SeqForward));
+        BTN_SeqPause.Click  += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.SeqPause));
+        BTN_SeqRec.Click    += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.SeqRecord));
+        BTN_SeqStart.Click  += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.SeqStart));
 
         // Right-click context menus on mode and toggle buttons
         foreach (var btn in new KronosButton[] { BTN_Setlist, BTN_Combi, BTN_Program, BTN_Sequence,
@@ -394,9 +387,9 @@ public partial class MainWindow : Window
         int    diff  = steps - _wheel.DragSteps;
 
         if (diff > 0)
-            for (int i = 0; i < diff;  i++) { Ctrl("WHEEL CW");  TriggerWheelAnim(1);  }
+            for (int i = 0; i < diff;  i++) { Ctrl(DaemonCommand.Wheel(true));  TriggerWheelAnim(1);  }
         else if (diff < 0)
-            for (int i = 0; i < -diff; i++) { Ctrl("WHEEL CCW"); TriggerWheelAnim(-1); }
+            for (int i = 0; i < -diff; i++) { Ctrl(DaemonCommand.Wheel(false)); TriggerWheelAnim(-1); }
 
         if (diff != 0) _wheel.DragSteps = steps;
         e.Handled = true;
@@ -486,7 +479,7 @@ public partial class MainWindow : Window
         if (newVal != _vsliderValue)
         {
             _vsliderValue = newVal;
-            Ctrl($"VSLIDER {_vsliderValue}");
+            Ctrl(DaemonCommand.ValueSlider(_vsliderValue));
         }
     }
 
@@ -505,16 +498,16 @@ public partial class MainWindow : Window
 
     // Initial mode from the SysEx probe (func 0x42). Sets the mode but does NOT
     // prove realtime transmit, so screen detection stays active as a fallback.
-    void OnSysExInitialMode(int mode) => SetModeButton(mode);
+    void OnSysExInitialMode(int mode) => SetModeButton((Mode)mode);
 
     // Live mode change (func 0x4E) — the authoritative source of truth. Stamp the
     // time so screen detection defers to it for the brief redraw-lag window, then
     // apply it (overriding any mode the screen may have just read during the change).
     void OnSysExModeChange(int mode)
     {
-        _lastSysExMode   = mode;
+        _lastSysExMode   = (Mode)mode;
         _lastSysExModeAt = DateTime.Now;
-        SetModeButton(mode);
+        SetModeButton((Mode)mode);
     }
 
     // Follow the hardware VALUE slider (incoming CC#ValueSliderCc). Ignore while
@@ -533,7 +526,7 @@ public partial class MainWindow : Window
             MNU_RefreshDisplay.IsEnabled = IsConnected;                           // REFRESH needs a live stream
         };
         MNU_Reconnect.Click  += (sender, e) => UserInitiatedReconnect();
-        MNU_RefreshDisplay.Click += (sender, e) => Ctrl("REFRESH");
+        MNU_RefreshDisplay.Click += (sender, e) => Ctrl(DaemonCommand.RefreshDisplay);
         MNU_Disconnect.Click += (sender, e) => Disconnect();
 
         MENU_RecentHosts.SubmenuOpened += (sender, e) =>
@@ -611,8 +604,6 @@ public partial class MainWindow : Window
             MNU_CalMode.IsChecked    = _cal.Mode;
             MNU_DisableKbd.IsChecked = !_kbdSendEnabled;
         };
-        // Palette editor is disabled — collapse the menu item so it is not accessible
-        MNU_PaletteEd.Visibility = Visibility.Collapsed;
         MNU_CalMode.Click   += (sender, e) => { _cal.Mode = MNU_CalMode.IsChecked; if (_cal.Mode) EnterCalMode(); else ExitCalMode(); OverlayLayer.InvalidateVisual(); };
 
         MNU_SettingsDlg.Click += (sender, e) => OpenSettingsDialog();
@@ -658,32 +649,32 @@ public partial class MainWindow : Window
         foreach (var letter in bankLetters)
         {
             var mi = new MenuItem { Header = $"I-{letter}" };
-            mi.Click += (sender, e) => Ctrl($"BUTTON BANK_I{letter}");
+            mi.Click += (sender, e) => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, letter));
             MENU_BankSelect.Items.Add(mi);
         }
         MENU_BankSelect.Items.Add(new Separator());
         foreach (var letter in bankLetters)
         {
             var mi = new MenuItem { Header = $"U-{letter}" };
-            mi.Click += (sender, e) => Ctrl($"BUTTON BANK_U{letter}");
+            mi.Click += (sender, e) => Ctrl(DaemonCommand.BankButton(BankGroup.User, letter));
             MENU_BankSelect.Items.Add(mi);
         }
         MENU_BankSelect.Items.Add(new Separator());
         foreach (var letter in bankLetters)
         {
             var mi = new MenuItem { Header = $"U-{letter}{letter}" };
-            mi.Click += (sender, e) => Ctrl($"CHORD BANK_U{letter} BANK_I{letter}");
+            mi.Click += (sender, e) => Ctrl(DaemonCommand.DoubleUserBank(letter));
             MENU_BankSelect.Items.Add(mi);
         }
 
         // Mode Select
-        MNU_Mode_Setlist.Click  += (sender, e) => SendMode(1);
-        MNU_Mode_Combi.Click    += (sender, e) => SendMode(2);
-        MNU_Mode_Program.Click  += (sender, e) => SendMode(3);
-        MNU_Mode_Sequence.Click += (sender, e) => SendMode(4);
-        MNU_Mode_Sampling.Click += (sender, e) => SendMode(5);
-        MNU_Mode_Global.Click   += (sender, e) => SendMode(6);
-        MNU_Mode_Disk.Click     += (sender, e) => SendMode(7);
+        MNU_Mode_Setlist.Click  += (sender, e) => SendMode(Mode.Setlist);
+        MNU_Mode_Combi.Click    += (sender, e) => SendMode(Mode.Combi);
+        MNU_Mode_Program.Click  += (sender, e) => SendMode(Mode.Program);
+        MNU_Mode_Sequence.Click += (sender, e) => SendMode(Mode.Sequence);
+        MNU_Mode_Sampling.Click += (sender, e) => SendMode(Mode.Sampling);
+        MNU_Mode_Global.Click   += (sender, e) => SendMode(Mode.Global);
+        MNU_Mode_Disk.Click     += (sender, e) => SendMode(Mode.Disk);
 
         // Calibration grid size
         MENU_CalGrid.SubmenuOpened += (sender, e) =>
@@ -707,9 +698,9 @@ public partial class MainWindow : Window
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning);
             if (result != MessageBoxResult.Yes) return;
-            Ctrl("BUTTON PROGRAM");
+            Ctrl(DaemonCommand.Button(Mode.Program));
             await Task.Delay(500);
-            Ctrl("CHORD 500 MIX_KNOBS RESET ENTER NUM5");
+            Ctrl(DaemonCommand.EnterTestMode);
         };
 
         // Screenshot and frame operations
@@ -769,13 +760,13 @@ public partial class MainWindow : Window
         CTX_KbdEnable.Click         += (sender, e) => { _kbdSendEnabled = true;  _instantKeys.Clear(); StopRepeat(); UpdateKbdStatus(); OverlayLayer.InvalidateVisual(); };
         CTX_KbdDisable.Click        += (sender, e) => { _kbdSendEnabled = false; _instantKeys.Clear(); StopRepeat(); ReleaseActiveRawKeys(); UpdateKbdStatus(); OverlayLayer.InvalidateVisual(); };
         CTX_SetMaxFps.Click         += (sender, e) => OpenSettingsDialog(SettingsTab.Streaming);
-        CTX_Mode_Setlist.Click      += (sender, e) => SendMode(1);
-        CTX_Mode_Combi.Click        += (sender, e) => SendMode(2);
-        CTX_Mode_Program.Click      += (sender, e) => SendMode(3);
-        CTX_Mode_Sequence.Click     += (sender, e) => SendMode(4);
-        CTX_Mode_Sampling.Click     += (sender, e) => SendMode(5);
-        CTX_Mode_Global.Click       += (sender, e) => SendMode(6);
-        CTX_Mode_Disk.Click         += (sender, e) => SendMode(7);
+        CTX_Mode_Setlist.Click      += (sender, e) => SendMode(Mode.Setlist);
+        CTX_Mode_Combi.Click        += (sender, e) => SendMode(Mode.Combi);
+        CTX_Mode_Program.Click      += (sender, e) => SendMode(Mode.Program);
+        CTX_Mode_Sequence.Click     += (sender, e) => SendMode(Mode.Sequence);
+        CTX_Mode_Sampling.Click     += (sender, e) => SendMode(Mode.Sampling);
+        CTX_Mode_Global.Click       += (sender, e) => SendMode(Mode.Global);
+        CTX_Mode_Disk.Click         += (sender, e) => SendMode(Mode.Disk);
         CTX_OpenLogFile.Click       += (sender, e) => OnNotifyBubbleClick();
         CTX_ClearNotification.Click += (sender, e) => ClearNotification();
 
@@ -823,10 +814,7 @@ public partial class MainWindow : Window
 
         try
         {
-            var encoder = new PngBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(_wb));
-            using var fs = File.OpenWrite(dlg.FileName);
-            encoder.Save(fs);
+            SaveFramePng(_wb, dlg.FileName);
             Console.WriteLine($"[screenshot] saved → {dlg.FileName}");
         }
         catch (Exception ex)
@@ -842,14 +830,20 @@ public partial class MainWindow : Window
         try
         {
             var path = Path.Combine(EffectiveScreenshotDir, $"kronos_{DateTime.Now:yyyyMMdd_HHmmss}.png");
-            var encoder = new PngBitmapEncoder();
-            encoder.Frames.Add(BitmapFrame.Create(_wb));
-            using var fs = File.OpenWrite(path);
-            encoder.Save(fs);
+            SaveFramePng(_wb, path);
             SetNotification($"Saved {System.IO.Path.GetFileName(path)}", isError: false);
             Console.WriteLine($"[screenshot] quick-saved → {path}");
         }
         catch (Exception ex) { SetNotification($"Screenshot failed: {ex.Message}", isError: true); }
+    }
+
+    // Encode a frame as PNG and write it to path.
+    static void SaveFramePng(BitmapSource frame, string path)
+    {
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(frame));
+        using var fs = File.OpenWrite(path);
+        encoder.Save(fs);
     }
 
     void CopyFrameToClipboard()
@@ -947,14 +941,39 @@ public partial class MainWindow : Window
 
     void OpenSettingsDialog(SettingsTab tab = SettingsTab.General)
     {
+        // Snapshot the current image-adjustment values so Cancel can undo any live preview.
+        int    imgB  = _settings.ImageBrightness, imgC = _settings.ImageContrast,
+               imgSat = _settings.ImageSaturation, imgSh = _settings.ImageSharpen;
+        double imgG  = _settings.ImageGamma;
+
         var dlg = new SettingsWindow(_settings, m => _ = RunUserMacroAsync(m),
             showInputTester: () => new InputTesterWindow(_ctrl) { Owner = this }.Show(),
-            initialTab: tab)
+            initialTab: tab,
+            onImagePreview: PreviewImageAdjust)
             { Owner = this };
         bool ok = ShowDialogPreservingGeometry(dlg);
 
-        if (!ok) return;
+        if (!ok)
+        {
+            // Undo the live preview — restore the values in effect before the dialog opened.
+            PreviewImageAdjust(new ImagePreview(imgB, imgC, imgG, imgSat, imgSh));
+            return;
+        }
         ApplySettingsResult(dlg.Result, dlg.WasReset);
+    }
+
+    // Live image-adjustment preview driven by the Settings dialog's sliders: apply the values to
+    // the in-memory settings and re-bake the tone LUT / re-render the current frame immediately.
+    // Not persisted here (BtnOK's ApplySettingsResult saves; Cancel reverts to the pre-dialog snapshot).
+    void PreviewImageAdjust(ImagePreview p)
+    {
+        _settings.ImageBrightness = p.Brightness;
+        _settings.ImageContrast   = p.Contrast;
+        _settings.ImageGamma      = p.Gamma;
+        _settings.ImageSaturation = p.Saturation;
+        _settings.ImageSharpen    = p.Sharpen;
+        RebuildLut();
+        if (_wb != null && _rawFrame != null) ApplyLut();
     }
 
     // Applies a new settings object live — shared by the Settings dialog's OK path
@@ -1001,7 +1020,7 @@ public partial class MainWindow : Window
                 _boot.PreloadTimerStart = DateTime.Now;
                 BuildPreloadSchedule();
             }
-            Ctrl("REFRESH");
+            Ctrl(DaemonCommand.RefreshDisplay);
         }
         ApplyHideInputPanels();
         MNU_HideDataInput.IsChecked  = _hideDataInput;
@@ -1034,8 +1053,8 @@ public partial class MainWindow : Window
         {
             // Push VGA mirror + screensaver to daemon immediately if connected
             _mirrorState = _settings.VgaMirrorEnabled;
-            Ctrl(_mirrorState ? "MIRROR_ON" : "MIRROR_OFF");
-            Ctrl($"SS_TIMEOUT {_settings.ScreensaverTimeout}");
+            Ctrl(DaemonCommand.VgaMirror(_mirrorState));
+            Ctrl(DaemonCommand.ScreensaverTimeout(_settings.ScreensaverTimeout));
         }
     }
 
@@ -1273,8 +1292,8 @@ public partial class MainWindow : Window
                 _midiCoord.SetScreenConnection(false, _host, _ctrlPort);
                 if (_combi.Active) { _combi.Active = false; _combi.FlashTimer.Stop(); }
                 _combi.IndicatorGoneAt = DateTime.MinValue;
-                _currentMode = 0;
-                _prevMode    = 0;
+                _currentMode = Mode.Unknown;
+                _prevMode    = Mode.Unknown;
                 ClearModeButtons();
                 OverlayLayer.InvalidateVisual();
             }
@@ -1611,7 +1630,7 @@ public partial class MainWindow : Window
         [
             // ── Connection
             new("Reconnect",                        "",              () => TriggerReconnect()),
-            new("Refresh Display",                  "",              () => Ctrl("REFRESH")),
+            new("Refresh Display",                  "",              () => Ctrl(DaemonCommand.RefreshDisplay)),
             new("Disconnect",                       "",              () => Disconnect()),
             new("Settings…",                        "",              () => OpenSettingsDialog()),
             // ── View
@@ -1629,40 +1648,40 @@ public partial class MainWindow : Window
             new("Layout: Focused", "", () => ApplyLayoutPreset(LayoutPreset.Focused)),
             // ── Tools
             new("Keyboard Info",                    "",              () => OpenKeyboardInfoWindow()),
-            new("Toggle VGA Mirror",                K("Mirror"),        () => { _mirrorState = !_mirrorState; Ctrl(_mirrorState ? "MIRROR_ON" : "MIRROR_OFF"); }),
+            new("Toggle VGA Mirror",                K("Mirror"),        () => { _mirrorState = !_mirrorState; Ctrl(DaemonCommand.VgaMirror(_mirrorState)); }),
             new("Toggle Calibration Mode",          K("Calibrate"),     () => { _cal.Mode = !_cal.Mode; if (_cal.Mode) EnterCalMode(); else ExitCalMode(); OverlayLayer.InvalidateVisual(); }),
             new("Save Screenshot…",                 "",              () => SaveScreenshot()),
             new("Toggle Keyboard Send",             "",              () => { _kbdSendEnabled = !_kbdSendEnabled; _instantKeys.Clear(); StopRepeat(); ReleaseActiveRawKeys(); UpdateKbdStatus(); OverlayLayer.InvalidateVisual(); }),
             // ── Mode select
-            new("Mode: Setlist",  K("Mode Setlist"),  () => SendMode(1)),
-            new("Mode: Combi",    K("Mode Combi"),    () => SendMode(2)),
-            new("Mode: Program",  K("Mode Program"),  () => SendMode(3)),
-            new("Mode: Sequence", K("Mode Sequence"), () => SendMode(4)),
-            new("Mode: Sampling", K("Mode Sampling"), () => SendMode(5)),
-            new("Mode: Global",   K("Mode Global"),   () => SendMode(6)),
-            new("Mode: Disk",     K("Mode Disk"),     () => SendMode(7)),
+            new("Mode: Setlist",  K("Mode Setlist"),  () => SendMode(Mode.Setlist)),
+            new("Mode: Combi",    K("Mode Combi"),    () => SendMode(Mode.Combi)),
+            new("Mode: Program",  K("Mode Program"),  () => SendMode(Mode.Program)),
+            new("Mode: Sequence", K("Mode Sequence"), () => SendMode(Mode.Sequence)),
+            new("Mode: Sampling", K("Mode Sampling"), () => SendMode(Mode.Sampling)),
+            new("Mode: Global",   K("Mode Global"),   () => SendMode(Mode.Global)),
+            new("Mode: Disk",     K("Mode Disk"),     () => SendMode(Mode.Disk)),
             // ── Bank select
-            new("Bank I-A",  K("Bank I-A"),  () => Ctrl("BUTTON BANK_IA")),
-            new("Bank I-B",  K("Bank I-B"),  () => Ctrl("BUTTON BANK_IB")),
-            new("Bank I-C",  K("Bank I-C"),  () => Ctrl("BUTTON BANK_IC")),
-            new("Bank I-D",  K("Bank I-D"),  () => Ctrl("BUTTON BANK_ID")),
-            new("Bank I-E",  K("Bank I-E"),  () => Ctrl("BUTTON BANK_IE")),
-            new("Bank I-F",  K("Bank I-F"),  () => Ctrl("BUTTON BANK_IF")),
-            new("Bank I-G",  K("Bank I-G"),  () => Ctrl("BUTTON BANK_IG")),
-            new("Bank U-A",  K("Bank U-A"),  () => Ctrl("BUTTON BANK_UA")),
-            new("Bank U-B",  K("Bank U-B"),  () => Ctrl("BUTTON BANK_UB")),
-            new("Bank U-C",  K("Bank U-C"),  () => Ctrl("BUTTON BANK_UC")),
-            new("Bank U-D",  K("Bank U-D"),  () => Ctrl("BUTTON BANK_UD")),
-            new("Bank U-E",  K("Bank U-E"),  () => Ctrl("BUTTON BANK_UE")),
-            new("Bank U-F",  K("Bank U-F"),  () => Ctrl("BUTTON BANK_UF")),
-            new("Bank U-G",  K("Bank U-G"),  () => Ctrl("BUTTON BANK_UG")),
-            new("Bank U-AA", K("Bank U-AA"), () => Ctrl("CHORD BANK_UA BANK_IA")),
-            new("Bank U-BB", K("Bank U-BB"), () => Ctrl("CHORD BANK_UB BANK_IB")),
-            new("Bank U-CC", K("Bank U-CC"), () => Ctrl("CHORD BANK_UC BANK_IC")),
-            new("Bank U-DD", K("Bank U-DD"), () => Ctrl("CHORD BANK_UD BANK_ID")),
-            new("Bank U-EE", K("Bank U-EE"), () => Ctrl("CHORD BANK_UE BANK_IE")),
-            new("Bank U-FF", K("Bank U-FF"), () => Ctrl("CHORD BANK_UF BANK_IF")),
-            new("Bank U-GG", K("Bank U-GG"), () => Ctrl("CHORD BANK_UG BANK_IG")),
+            new("Bank I-A",  K("Bank I-A"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'A'))),
+            new("Bank I-B",  K("Bank I-B"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'B'))),
+            new("Bank I-C",  K("Bank I-C"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'C'))),
+            new("Bank I-D",  K("Bank I-D"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'D'))),
+            new("Bank I-E",  K("Bank I-E"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'E'))),
+            new("Bank I-F",  K("Bank I-F"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'F'))),
+            new("Bank I-G",  K("Bank I-G"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'G'))),
+            new("Bank U-A",  K("Bank U-A"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.User, 'A'))),
+            new("Bank U-B",  K("Bank U-B"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.User, 'B'))),
+            new("Bank U-C",  K("Bank U-C"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.User, 'C'))),
+            new("Bank U-D",  K("Bank U-D"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.User, 'D'))),
+            new("Bank U-E",  K("Bank U-E"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.User, 'E'))),
+            new("Bank U-F",  K("Bank U-F"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.User, 'F'))),
+            new("Bank U-G",  K("Bank U-G"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.User, 'G'))),
+            new("Bank U-AA", K("Bank U-AA"), () => Ctrl(DaemonCommand.DoubleUserBank('A'))),
+            new("Bank U-BB", K("Bank U-BB"), () => Ctrl(DaemonCommand.DoubleUserBank('B'))),
+            new("Bank U-CC", K("Bank U-CC"), () => Ctrl(DaemonCommand.DoubleUserBank('C'))),
+            new("Bank U-DD", K("Bank U-DD"), () => Ctrl(DaemonCommand.DoubleUserBank('D'))),
+            new("Bank U-EE", K("Bank U-EE"), () => Ctrl(DaemonCommand.DoubleUserBank('E'))),
+            new("Bank U-FF", K("Bank U-FF"), () => Ctrl(DaemonCommand.DoubleUserBank('F'))),
+            new("Bank U-GG", K("Bank U-GG"), () => Ctrl(DaemonCommand.DoubleUserBank('G'))),
             // ── Help
             new("Toggle Help Overlay", K("Help"), () => { _helpOpen = !_helpOpen; OverlayLayer.InvalidateVisual(); }),
             new("About",               "",        () => OpenAboutWindow()),
@@ -1674,14 +1693,6 @@ public partial class MainWindow : Window
 
     void ApplyLayoutPreset(LayoutPreset preset, bool saveSettings = true)
     {
-        // Tear down any existing detached window first
-        if (_controlPaletteWin != null)
-        {
-            _controlPaletteWin.Closed -= OnControlPaletteWindowClosed;
-            _controlPaletteWin.Close();
-            _controlPaletteWin = null;
-        }
-
         _layoutPreset = preset;
         if (saveSettings)
         {
@@ -1699,7 +1710,7 @@ public partial class MainWindow : Window
                 ControlViewbox.Visibility = Visibility.Visible;
                 ControlsColumn.Width = _hideDataInput
                     ? new GridLength(0, GridUnitType.Star)
-                    : new GridLength(800, GridUnitType.Star);
+                    : new GridLength(FrameDesignWidth, GridUnitType.Star);
                 ShowLeftPanel(!_hideValueInput);
                 break;
 
@@ -1714,7 +1725,7 @@ public partial class MainWindow : Window
                 ((TextBlock)BtnValueRailExpand.Content).Text = _focusedValueExpanded ? "›" : "‹";
                 BtnValueRailExpand.ToolTip = _focusedValueExpanded ? "Collapse value input" : "Expand value input";
                 ControlsColumn.Width = _focusedDataExpanded
-                    ? new GridLength(800, GridUnitType.Star)
+                    ? new GridLength(FrameDesignWidth, GridUnitType.Star)
                     : new GridLength(28);
                 ShowLeftPanel(_focusedValueExpanded, showRail: true);
                 break;
@@ -1739,7 +1750,7 @@ public partial class MainWindow : Window
         ((TextBlock)BtnRailExpand.Content).Text = _focusedDataExpanded ? "‹" : "›";
         BtnRailExpand.ToolTip = _focusedDataExpanded ? "Collapse data input" : "Expand data input";
         ControlsColumn.Width = _focusedDataExpanded
-            ? new GridLength(800, GridUnitType.Star)
+            ? new GridLength(FrameDesignWidth, GridUnitType.Star)
             : new GridLength(28);
         ResizeAndRefresh();
     }
@@ -1754,11 +1765,6 @@ public partial class MainWindow : Window
         BtnValueRailExpand.ToolTip = _focusedValueExpanded ? "Collapse value input" : "Expand value input";
         ShowLeftPanel(_focusedValueExpanded, showRail: true);
         ResizeAndRefresh();
-    }
-
-    void OnControlPaletteWindowClosed(object? s, EventArgs e)
-    {
-        _controlPaletteWin = null;
     }
 
     // ── Fullscreen ────────────────────────────────────────────────────────────
@@ -1805,15 +1811,15 @@ public partial class MainWindow : Window
         double menuH   = dp.ActualHeight - RootGrid.ActualHeight;
         double targetW = _layoutPreset switch
         {
-            LayoutPreset.Focused  => 800.0
+            LayoutPreset.Focused  => FrameDesignWidth
                                      + (_focusedValueExpanded ? 282.0 : 28.0)
-                                     + (_focusedDataExpanded  ? 800.0 : 28.0),
-            _                     => 800.0
+                                     + (_focusedDataExpanded  ? FrameDesignWidth : 28.0),
+            _                     => FrameDesignWidth
                                      + (_hideValueInput ? 0.0 : 282.0)
-                                     + (_hideDataInput  ? 0.0 : 800.0)
+                                     + (_hideDataInput  ? 0.0 : FrameDesignWidth)
         };
         Width  = targetW * scale + chromeW;
-        Height = 600.0   * scale + menuH + chromeH;
+        Height = FrameDesignHeight * scale + menuH + chromeH;
     }
 
     void ResizeAndRefresh()
@@ -1832,7 +1838,7 @@ public partial class MainWindow : Window
 
     void SyncMainAreaColumn()
     {
-        MainAreaColumn.Width = new GridLength(800 + ControlsColumn.Width.Value, GridUnitType.Star);
+        MainAreaColumn.Width = new GridLength(FrameDesignWidth + ControlsColumn.Width.Value, GridUnitType.Star);
     }
 
     void ShowLeftPanel(bool show, bool showRail = false)
@@ -1861,7 +1867,7 @@ public partial class MainWindow : Window
         {
             ControlsColumn.Width = _hideDataInput
                 ? new GridLength(0, GridUnitType.Star)
-                : new GridLength(800, GridUnitType.Star);
+                : new GridLength(FrameDesignWidth, GridUnitType.Star);
             ShowLeftPanel(!_hideValueInput);
         }
         ResizeAndRefresh();

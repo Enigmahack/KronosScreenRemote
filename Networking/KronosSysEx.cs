@@ -109,7 +109,7 @@ sealed class KronosSysEx
     // Returns null on timeout, error, or if SysEx is unavailable.
     public async Task<byte[]?> SendAsync(byte[] sysex, int timeoutMs = 3000)
     {
-        var hex = BytesToHex(sysex);
+        var hex = MidiHex.ToHex(sysex);
         return await SendHexAsync(hex, timeoutMs).ConfigureAwait(false);
     }
 
@@ -282,7 +282,7 @@ sealed class KronosSysEx
 
             var rxHex = resp["SYSEX_RESP ".Length..].Trim();
             Traffic?.Invoke(new SysExTrafficEntry(DateTime.Now, false, rxHex));
-            return HexToBytes(rxHex);
+            return MidiHex.ToBytes(rxHex);
         }
         finally
         {
@@ -292,7 +292,7 @@ sealed class KronosSysEx
 
     async Task<bool> CheckMidiCaptureAsync()
     {
-        var raw = await CtrlClient.QueryMultiAsync(_host, _ctrlPort, "MIDI_STATUS", timeoutMs: 2000)
+        var raw = await CtrlClient.QueryMultiAsync(_host, _ctrlPort, DaemonCommand.QueryMidiStatus, timeoutMs: 2000)
             .ConfigureAwait(false);
         if (raw == null) return false;
         foreach (var line in raw.Split('\n', StringSplitOptions.RemoveEmptyEntries))
@@ -306,6 +306,17 @@ sealed class KronosSysEx
 
     // ── Response parsers (static) ────────────────────────────────────────────
 
+    // True if a Korg SysEx frame header — F0 42 3g 68 <func> — begins at index i.
+    // Scanning callers bound their loop so i+4 is in range; the length guard keeps
+    // the helper self-safe. Byte order matches the previous inline short-circuit checks.
+    static bool HasKorgHeaderAt(byte[] b, int i, byte func) =>
+        i + 4 < b.Length
+        && b[i]              == 0xF0
+        && b[i + 1]          == 0x42
+        && (b[i + 2] & 0xF0) == 0x30
+        && b[i + 3]          == 0x68
+        && b[i + 4]          == func;
+
     // Parse Mode Data (func 0x42) from raw SysEx bytes.
     // Scans for F0 42 3x 68 42 header to tolerate leading real-time bytes.
     public static SysExModeData? ParseModeData(byte[] bytes)
@@ -313,11 +324,7 @@ sealed class KronosSysEx
         if (bytes.Length < 10) return null;
         for (int i = 0; i <= bytes.Length - 10; i++)
         {
-            if (bytes[i]     != 0xF0) continue;
-            if (bytes[i + 1] != 0x42) continue;
-            if ((bytes[i + 2] & 0xF0) != 0x30) continue;
-            if (bytes[i + 3] != 0x68) continue;
-            if (bytes[i + 4] != 0x42) continue;
+            if (!HasKorgHeaderAt(bytes, i, 0x42)) continue;
 
             return new SysExModeData(
                 bytes[i + 5] & 0x0F,
@@ -351,11 +358,7 @@ sealed class KronosSysEx
         bool sawRejectedHeader = false;
         for (int i = 0; i + 4 < bytes.Length; i++)
         {
-            if (bytes[i]     != 0xF0) continue;
-            if (bytes[i + 1] != 0x42) continue;
-            if ((bytes[i + 2] & 0xF0) != 0x30) continue;
-            if (bytes[i + 3] != 0x68) continue;
-            if (bytes[i + 4] != 0x33) continue;
+            if (!HasKorgHeaderAt(bytes, i, 0x33)) continue;
 
             // Payload spans i+5 up to the next F7 (or end of buffer).
             int end = Array.IndexOf(bytes, (byte)0xF7, i + 5);
@@ -375,7 +378,7 @@ sealed class KronosSysEx
         }
 
         if (sawRejectedHeader)
-            AppLog.Debug($"[sysex] perf-id header found but fields out of range: {BytesToHex(bytes)}");
+            AppLog.Debug($"[sysex] perf-id header found but fields out of range: {MidiHex.ToHex(bytes)}");
         return null;
     }
 
@@ -396,11 +399,7 @@ sealed class KronosSysEx
     {
         for (int i = 0; i <= bytes.Length - 8; i++)
         {
-            if (bytes[i]     != 0xF0) continue;
-            if (bytes[i + 1] != 0x42) continue;
-            if ((bytes[i + 2] & 0xF0) != 0x30) continue;
-            if (bytes[i + 3] != 0x68) continue;
-            if (bytes[i + 4] != 0x75) continue;
+            if (!HasKorgHeaderAt(bytes, i, 0x75)) continue;
             if (bytes[i + 5] != expectedObj) continue;
 
             int dataStart = i + 7;  // skip version byte
@@ -462,26 +461,6 @@ sealed class KronosSysEx
         return dst;
     }
 
-    // Encode: every 7 binary bytes become 8 SysEx bytes.
-    public static byte[] Encode7to8(byte[] src, int offset, int binaryLen)
-    {
-        int sysExLen = binaryLen + (binaryLen + 6) / 7;
-        var dst = new byte[sysExLen];
-        int si = offset, di = 0;
-
-        while (si < offset + binaryLen)
-        {
-            int groupLen = Math.Min(7, offset + binaryLen - si);
-            byte msbs = 0;
-            for (int bit = 0; bit < groupLen; bit++)
-                msbs |= (byte)(((src[si + bit] >> 7) & 1) << bit);
-            dst[di++] = msbs;
-            for (int bit = 0; bit < groupLen; bit++)
-                dst[di++] = (byte)(src[si++] & 0x7F);
-        }
-        return dst;
-    }
-
     // ── Bank label tables ────────────────────────────────────────────────────
     // Numbering from KRONOS_MIDI_SysEx.txt / SysExParams/SetList.txt.
 
@@ -513,31 +492,4 @@ sealed class KronosSysEx
         2 => "",
         _ => $"?{bank}"
     };
-
-    // ── Hex utilities ────────────────────────────────────────────────────────
-
-    static byte[]? HexToBytes(string hex)
-    {
-        var clean = hex.Replace(" ", "");
-        if (clean.Length % 2 != 0) return null;
-        try
-        {
-            var bytes = new byte[clean.Length / 2];
-            for (int i = 0; i < bytes.Length; i++)
-                bytes[i] = Convert.ToByte(clean.Substring(i * 2, 2), 16);
-            return bytes;
-        }
-        catch { return null; }
-    }
-
-    static string BytesToHex(byte[] bytes)
-    {
-        var sb = new StringBuilder(bytes.Length * 3);
-        for (int i = 0; i < bytes.Length; i++)
-        {
-            if (i > 0) sb.Append(' ');
-            sb.Append(bytes[i].ToString("X2"));
-        }
-        return sb.ToString();
-    }
 }

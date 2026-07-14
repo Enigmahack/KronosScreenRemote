@@ -77,7 +77,6 @@
             </MenuItem>
             <MenuItem x:Name="MENU_Tools" Header="_Tools">
                 <!-- Display &amp; touch calibration -->
-                <MenuItem x:Name="MNU_PaletteEd"  Header="_Palette Editor"   IsCheckable="True" InputGestureText="P"/>
                 <MenuItem x:Name="MNU_CalMode"    Header="_Calibration"      IsCheckable="True" InputGestureText="C"/>
                 <MenuItem x:Name="MNU_KbdWarp"    Header="Enable _Warp Mode" IsCheckable="True"/>
                 <MenuItem x:Name="MENU_CalGrid"   Header="Calibration _Grid Size">
@@ -126,8 +125,40 @@
         <StatusBar x:Name="AppStatusBar"
                    DockPanel.Dock="Bottom"
                    Background="#FF1A1A1A"
-                   Height="22"
+                   Height="28"
                    Padding="0">
+            <StatusBar.Resources>
+                <!-- Flat, non-focusable icon button for the footer sequencer transport row.
+                     Focusable=False + null FocusVisualStyle so a click never steals the
+                     keyboard-send focus (matches VuPickerBtn). -->
+                <Style x:Key="SeqTransportBtn" TargetType="Button">
+                    <Setter Property="Focusable"        Value="False"/>
+                    <Setter Property="FocusVisualStyle"  Value="{x:Null}"/>
+                    <Setter Property="Cursor"            Value="Hand"/>
+                    <Setter Property="Width"             Value="24"/>
+                    <Setter Property="Height"            Value="20"/>
+                    <Setter Property="Background"        Value="Transparent"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                        CornerRadius="3">
+                                    <ContentPresenter HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="bd" Property="Background" Value="#FF333333"/>
+                                    </Trigger>
+                                    <Trigger Property="IsPressed" Value="True">
+                                        <Setter TargetName="bd" Property="Background" Value="#FF454545"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </StatusBar.Resources>
             <!-- Right-aligned items must be declared BEFORE fill items in DockPanel -->
             <StatusBarItem DockPanel.Dock="Right" Padding="4 0 8 0">
                 <TextBlock x:Name="ModeText" Foreground="#FF88AADD" FontSize="11"
@@ -212,6 +243,39 @@
                             </StackPanel>
                         </Border>
                     </Popup>
+                </StackPanel>
+            </StatusBarItem>
+            <Separator DockPanel.Dock="Right" Margin="2 4" Background="#FF444444" Width="1"/>
+            <!-- ── Sequencer transport ──────────────────────────────────────────
+                 Panel-button emulation: each sends "BUTTON SEQ_*" over the ctrl port,
+                 which the daemon converts to a front-panel SEQUENCER key press. -->
+            <StatusBarItem DockPanel.Dock="Right" Padding="2 0" VerticalContentAlignment="Center">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                            ToolTip="Sequencer transport — sends the front-panel SEQUENCER buttons to the Kronos">
+                    <Button x:Name="BTN_SeqLocate" Style="{StaticResource SeqTransportBtn}"
+                            ToolTip="Locate — return to the locate point">
+                        <Path Fill="#FFB4B4B4" Data="M0,0 H1.8 V10 H0 Z M10,0 L3,5 L10,10 Z"/>
+                    </Button>
+                    <Button x:Name="BTN_SeqRew" Style="{StaticResource SeqTransportBtn}"
+                            ToolTip="Rewind (&lt;&lt;)">
+                        <Path Fill="#FFB4B4B4" Data="M5,0 L0,5 L5,10 Z M10,0 L5,5 L10,10 Z"/>
+                    </Button>
+                    <Button x:Name="BTN_SeqFf" Style="{StaticResource SeqTransportBtn}"
+                            ToolTip="Fast-forward (&gt;&gt;)">
+                        <Path Fill="#FFB4B4B4" Data="M0,0 L5,5 L0,10 Z M5,0 L10,5 L5,10 Z"/>
+                    </Button>
+                    <Button x:Name="BTN_SeqPause" Style="{StaticResource SeqTransportBtn}"
+                            ToolTip="Pause">
+                        <Path Fill="#FFB4B4B4" Data="M0.5,0 H3 V10 H0.5 Z M6,0 H8.5 V10 H6 Z"/>
+                    </Button>
+                    <Button x:Name="BTN_SeqRec" Style="{StaticResource SeqTransportBtn}"
+                            ToolTip="Record / Write">
+                        <Ellipse Width="10" Height="10" Fill="#FFE05656"/>
+                    </Button>
+                    <Button x:Name="BTN_SeqStart" Style="{StaticResource SeqTransportBtn}"
+                            ToolTip="Start / Stop">
+                        <Path Fill="#FF5EC26A" Data="M0.5,0 L10,5 L0.5,10 Z"/>
+                    </Button>
                 </StackPanel>
             </StatusBarItem>
             <Separator DockPanel.Dock="Right" Margin="2 4" Background="#FF444444" Width="1"/>

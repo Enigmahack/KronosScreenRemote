@@ -9,6 +9,12 @@ public enum ScalingQuality
     HighQuality,  // Fant — best resample quality (default; matches the prior fixed behaviour)
 }
 
+// A live snapshot of the five image-adjustment slider values. Pushed from the Settings
+// dialog to the main window on every slider change so brightness/contrast/gamma/saturation/
+// sharpen preview in real time; the main window reverts to the pre-dialog values on Cancel.
+public readonly record struct ImagePreview(
+    int Brightness, int Contrast, double Gamma, int Saturation, int Sharpen);
+
 // Pure, stateless image-adjustment math shared by the render pipeline.
 //
 // Tone (brightness / contrast / gamma) collapses into a single 256-entry per-channel curve, so the

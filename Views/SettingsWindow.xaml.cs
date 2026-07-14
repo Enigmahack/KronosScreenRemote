@@ -38,6 +38,12 @@ public partial class SettingsWindow : Window
 
     readonly Action? _showInputTester;
 
+    // Live image-preview callback: fired on every image-slider change so the main window can
+    // re-bake the tone LUT and re-render the current frame in real time. Armed only after the
+    // constructor's initial slider assignments so they don't trigger a redundant preview.
+    readonly Action<ImagePreview>? _onImagePreview;
+    bool _imagePreviewArmed;
+
     // Keys that route to physical control-surface buttons and must never be raw-mapped.
     static readonly HashSet<Key> PhysicalKeys = new()
     {
@@ -47,12 +53,14 @@ public partial class SettingsWindow : Window
     };
 
     public SettingsWindow(AppSettings settings, Action<MacroDefinition>? playMacro = null,
-                          Action? showInputTester = null, SettingsTab initialTab = SettingsTab.General)
+                          Action? showInputTester = null, SettingsTab initialTab = SettingsTab.General,
+                          Action<ImagePreview>? onImagePreview = null)
     {
         InitializeComponent();
         WindowTheme.ApplyDarkCaption(this);
         _playMacro      = playMacro;
         _showInputTester = showInputTester;
+        _onImagePreview  = onImagePreview;
         BtnInputTester.IsEnabled = showInputTester != null;
 
         // Full deep copy — Clone() carries every field (including pass-through fields not exposed
@@ -120,6 +128,7 @@ public partial class SettingsWindow : Window
         SlSaturation.Value = Result.ImageSaturation;
         SlSharpen.Value    = Result.ImageSharpen;
         UpdateImageLabels();
+        _imagePreviewArmed = true;   // initial values applied — live preview may fire from here on
 
         // Key bindings
         foreach (var (action, label, _) in AppSettings.Rebindable)
@@ -191,19 +200,29 @@ public partial class SettingsWindow : Window
     // ── Image tab ─────────────────────────────────────────────────────────────
 
     void SlBrightness_ValueChanged(object s, RoutedPropertyChangedEventArgs<double> e)
-    { if (TxtBrightnessLabel != null) TxtBrightnessLabel.Text = ((int)SlBrightness.Value).ToString("+0;-0;0"); }
+    { if (TxtBrightnessLabel != null) TxtBrightnessLabel.Text = ((int)SlBrightness.Value).ToString("+0;-0;0"); FireImagePreview(); }
 
     void SlContrast_ValueChanged(object s, RoutedPropertyChangedEventArgs<double> e)
-    { if (TxtContrastLabel != null) TxtContrastLabel.Text = ((int)SlContrast.Value).ToString("+0;-0;0"); }
+    { if (TxtContrastLabel != null) TxtContrastLabel.Text = ((int)SlContrast.Value).ToString("+0;-0;0"); FireImagePreview(); }
 
     void SlGamma_ValueChanged(object s, RoutedPropertyChangedEventArgs<double> e)
-    { if (TxtGammaLabel != null) TxtGammaLabel.Text = SlGamma.Value.ToString("F2"); }
+    { if (TxtGammaLabel != null) TxtGammaLabel.Text = SlGamma.Value.ToString("F2"); FireImagePreview(); }
 
     void SlSaturation_ValueChanged(object s, RoutedPropertyChangedEventArgs<double> e)
-    { if (TxtSaturationLabel != null) TxtSaturationLabel.Text = ((int)SlSaturation.Value).ToString("+0;-0;0"); }
+    { if (TxtSaturationLabel != null) TxtSaturationLabel.Text = ((int)SlSaturation.Value).ToString("+0;-0;0"); FireImagePreview(); }
 
     void SlSharpen_ValueChanged(object s, RoutedPropertyChangedEventArgs<double> e)
-    { if (TxtSharpenLabel != null) TxtSharpenLabel.Text = ((int)SlSharpen.Value).ToString(); }
+    { if (TxtSharpenLabel != null) TxtSharpenLabel.Text = ((int)SlSharpen.Value).ToString(); FireImagePreview(); }
+
+    // Push the current image-slider values to the main window for live preview.
+    // No-ops until the constructor has applied the initial values and a callback was supplied.
+    void FireImagePreview()
+    {
+        if (!_imagePreviewArmed || _onImagePreview == null) return;
+        _onImagePreview(new ImagePreview(
+            (int)SlBrightness.Value, (int)SlContrast.Value, SlGamma.Value,
+            (int)SlSaturation.Value, (int)SlSharpen.Value));
+    }
 
     void UpdateImageLabels()
     {
@@ -224,6 +243,7 @@ public partial class SettingsWindow : Window
         SlSaturation.Value = 0;
         SlSharpen.Value    = 0;
         UpdateImageLabels();
+        FireImagePreview();
     }
 
     void OnKeyListDoubleClick(object s, MouseButtonEventArgs e)

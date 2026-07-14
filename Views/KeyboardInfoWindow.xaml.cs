@@ -108,7 +108,7 @@ public partial class KeyboardInfoWindow : Window
         _polling = true;
         try
         {
-            var raw = await CtrlClient.QueryMultiAsync(_host, _port, "SYSINFO");
+            var raw = await CtrlClient.QueryMultiAsync(_host, _port, DaemonCommand.QuerySysInfo);
             if (raw is null) { SetStatus(false); return; }
 
             var info = ParseSysInfo(raw);
@@ -145,6 +145,8 @@ public partial class KeyboardInfoWindow : Window
 
         TXT_CpuTotal.Text = info.CpuPct >= 0 ? $"{info.CpuPct}%" : "—";
         RedrawGraph();
+
+        SetBar(OverallBarGrid, TXT_Overall, info.CpuPct);
 
         // Per-core bars
         SetBar(BarGrid0, TXT_Core0, info.Cores.Length > 0 ? info.Cores[0] : -1);

@@ -89,7 +89,7 @@ sealed class TcpMidiTransport : IKronosMidiTransport
 
     public async Task<bool> SendAsync(byte[] message)
     {
-        var resp = await CtrlClient.QueryAsync(_host, _ctrlPort, $"MIDI_SEND {MidiHex.ToHex(message)}", 2000)
+        var resp = await CtrlClient.QueryAsync(_host, _ctrlPort, DaemonCommand.MidiSend(MidiHex.ToHex(message)), 2000)
             .ConfigureAwait(false);
         return resp?.TrimEnd() == "OK";
     }
