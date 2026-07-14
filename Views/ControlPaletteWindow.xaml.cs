@@ -23,20 +23,20 @@ public partial class ControlPaletteWindow : Window
     const int WheelAnimIdleMs     = 400;
     static readonly double[] WheelAngles = { 0.0, 10.0, -10.0 };
 
-    public ControlPaletteWindow(Action<string> ctrl, Action<int>? onUserModeChange = null)
+    public ControlPaletteWindow(Action<string> ctrl, Action<Mode>? onUserModeChange = null)
     {
         _ctrl = ctrl;
         InitializeComponent();
         WindowTheme.ApplyDarkCaption(this);
 
         // Mode buttons — pass mode number so MainWindow can track pending confirmation
-        BTN_Setlist.Click  += (_, _) => { onUserModeChange?.Invoke(1); ctrl("BUTTON SETLIST"); };
-        BTN_Combi.Click    += (_, _) => { onUserModeChange?.Invoke(2); ctrl("BUTTON COMBI"); };
-        BTN_Program.Click  += (_, _) => { onUserModeChange?.Invoke(3); ctrl("BUTTON PROGRAM"); };
-        BTN_Sequence.Click += (_, _) => { onUserModeChange?.Invoke(4); ctrl("BUTTON SEQUENCE"); };
-        BTN_Sampling.Click += (_, _) => { onUserModeChange?.Invoke(5); ctrl("BUTTON SAMPLING"); };
-        BTN_Global.Click   += (_, _) => { onUserModeChange?.Invoke(6); ctrl("BUTTON GLOBAL"); };
-        BTN_Disk.Click     += (_, _) => { onUserModeChange?.Invoke(7); ctrl("BUTTON DISK"); };
+        BTN_Setlist.Click  += (_, _) => { onUserModeChange?.Invoke(Mode.Setlist);  ctrl("BUTTON SETLIST"); };
+        BTN_Combi.Click    += (_, _) => { onUserModeChange?.Invoke(Mode.Combi);    ctrl("BUTTON COMBI"); };
+        BTN_Program.Click  += (_, _) => { onUserModeChange?.Invoke(Mode.Program);  ctrl("BUTTON PROGRAM"); };
+        BTN_Sequence.Click += (_, _) => { onUserModeChange?.Invoke(Mode.Sequence); ctrl("BUTTON SEQUENCE"); };
+        BTN_Sampling.Click += (_, _) => { onUserModeChange?.Invoke(Mode.Sampling); ctrl("BUTTON SAMPLING"); };
+        BTN_Global.Click   += (_, _) => { onUserModeChange?.Invoke(Mode.Global);   ctrl("BUTTON GLOBAL"); };
+        BTN_Disk.Click     += (_, _) => { onUserModeChange?.Invoke(Mode.Disk);     ctrl("BUTTON DISK"); };
 
         // Toggle buttons
         BTN_Help.Click    += (_, _) => ctrl("BUTTON HELP");
@@ -78,18 +78,18 @@ public partial class ControlPaletteWindow : Window
 
     // ── Mode sync (called by MainWindow when OCR or poll updates the mode) ────
 
-    public void SetMode(int mode)
+    public void SetMode(Mode mode)
     {
         var btn = mode switch
         {
-            1 => BTN_Setlist,
-            2 => BTN_Combi,
-            3 => BTN_Program,
-            4 => BTN_Sequence,
-            5 => BTN_Sampling,
-            6 => BTN_Global,
-            7 => BTN_Disk,
-            _ => (KronosButton?)null
+            Mode.Setlist  => BTN_Setlist,
+            Mode.Combi    => BTN_Combi,
+            Mode.Program  => BTN_Program,
+            Mode.Sequence => BTN_Sequence,
+            Mode.Sampling => BTN_Sampling,
+            Mode.Global   => BTN_Global,
+            Mode.Disk     => BTN_Disk,
+            _             => (KronosButton?)null
         };
         btn?.Activate();
     }

@@ -146,6 +146,8 @@ public partial class KeyboardInfoWindow : Window
         TXT_CpuTotal.Text = info.CpuPct >= 0 ? $"{info.CpuPct}%" : "—";
         RedrawGraph();
 
+        SetBar(OverallBarGrid, TXT_Overall, info.CpuPct);
+
         // Per-core bars
         SetBar(BarGrid0, TXT_Core0, info.Cores.Length > 0 ? info.Cores[0] : -1);
         SetBar(BarGrid1, TXT_Core1, info.Cores.Length > 1 ? info.Cores[1] : -1);

@@ -78,7 +78,7 @@ public partial class MainWindow : Window
     CancellationTokenSource? _modePollCts;
     DateTime _lastUserModeChange  = DateTime.MinValue;
     bool     _helpActive          = false;
-    int      _pendingMode         = 0;          // 1-7 while awaiting detection confirmation
+    Mode     _pendingMode         = Mode.Unknown; // set while awaiting detection confirmation
     DateTime _pendingModeDeadline = DateTime.MinValue;
     const double PendingModeTimeoutSec = 3.0;
 
@@ -94,8 +94,8 @@ public partial class MainWindow : Window
     const double SysExDwellMs = 350;
 
     // ── Mode history (for transition detection) ───────────────────────────────
-    int _currentMode = 0;   // last mode applied by SetModeButton
-    int _prevMode    = 0;   // mode before the current one; survives across frames
+    Mode _currentMode = Mode.Unknown;   // last mode applied by SetModeButton
+    Mode _prevMode    = Mode.Unknown;   // mode before the current one; survives across frames
 
     // SysEx is the source of truth for the mode, but only while it is actively
     // transmitting. A live Mode Change (func 0x4E) stamps _lastSysExModeAt; screen
@@ -104,7 +104,7 @@ public partial class MainWindow : Window
     // in-app — the grace lapses and screen detection drives the mode immediately.
     // Recency subsumes the old "proven" latch: if a 0x4E never fired, the stamp is
     // never fresh and the screen leads, so a SysEx-off Kronos degrades gracefully.
-    int      _lastSysExMode   = 0;               // mode from the last live func 0x4E
+    Mode     _lastSysExMode   = Mode.Unknown;    // mode from the last live func 0x4E
     DateTime _lastSysExModeAt = DateTime.MinValue;
     const double SysExModeGraceSec = 1.0;
     int      _sysExDotPending;                   // 1 = a dot repaint is already queued
@@ -269,7 +269,7 @@ public partial class MainWindow : Window
     // Records a user-requested mode and starts the confirmation timeout.
     // The button icon changes only when SetModeButton() is called by detection; if
     // detection never confirms within PendingModeTimeoutSec, RenderTick applies the fallback.
-    void SetPendingMode(int mode)
+    void SetPendingMode(Mode mode)
     {
         _pendingMode         = mode;
         _pendingModeDeadline = DateTime.Now.AddSeconds(PendingModeTimeoutSec);
@@ -277,7 +277,7 @@ public partial class MainWindow : Window
         _sysExService.NotifyUserActivity();
     }
 
-    void SendMode(int mode)
+    void SendMode(Mode mode)
     {
         // Ignore mode changes until the board is verified booted. The Kronos front
         // panel ignores mode keys during boot anyway, so a press there does nothing
@@ -293,11 +293,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        string name = mode switch {
-            1 => "SETLIST", 2 => "COMBI",    3 => "PROGRAM",
-            4 => "SEQUENCE",5 => "SAMPLING", 6 => "GLOBAL",
-            7 => "DISK",    _ => ""
-        };
+        string name = mode.ButtonName();
+        if (name.Length == 0) return;
         SetPendingMode(mode);
         Ctrl($"BUTTON {name}");
     }
@@ -306,13 +303,13 @@ public partial class MainWindow : Window
     {
         // Mode buttons — send the hardware packet and record pending mode.
         // Icon only lights up once detection confirms (or timeout fallback fires).
-        BTN_Setlist.Click  += (sender, e) => SendMode(1);
-        BTN_Combi.Click    += (sender, e) => SendMode(2);
-        BTN_Program.Click  += (sender, e) => SendMode(3);
-        BTN_Sequence.Click += (sender, e) => SendMode(4);
-        BTN_Sampling.Click += (sender, e) => SendMode(5);
-        BTN_Global.Click   += (sender, e) => SendMode(6);
-        BTN_Disk.Click     += (sender, e) => SendMode(7);
+        BTN_Setlist.Click  += (sender, e) => SendMode(Mode.Setlist);
+        BTN_Combi.Click    += (sender, e) => SendMode(Mode.Combi);
+        BTN_Program.Click  += (sender, e) => SendMode(Mode.Program);
+        BTN_Sequence.Click += (sender, e) => SendMode(Mode.Sequence);
+        BTN_Sampling.Click += (sender, e) => SendMode(Mode.Sampling);
+        BTN_Global.Click   += (sender, e) => SendMode(Mode.Global);
+        BTN_Disk.Click     += (sender, e) => SendMode(Mode.Disk);
 
         // Toggle buttons
         BTN_Help.Click    += (sender, e) => Ctrl("BUTTON HELP");
@@ -339,6 +336,14 @@ public partial class MainWindow : Window
         // Value Inc / Dec
         BTN_Inc.Click += (sender, e) => Ctrl("BUTTON INC");
         BTN_Dec.Click += (sender, e) => Ctrl("BUTTON DEC");
+
+        // Sequencer transport — daemon maps each to a front-panel SEQUENCER key press.
+        BTN_SeqLocate.Click += (sender, e) => Ctrl("BUTTON SEQ_LOCATE");
+        BTN_SeqRew.Click    += (sender, e) => Ctrl("BUTTON SEQ_REW");
+        BTN_SeqFf.Click     += (sender, e) => Ctrl("BUTTON SEQ_FF");
+        BTN_SeqPause.Click  += (sender, e) => Ctrl("BUTTON SEQ_PAUSE");
+        BTN_SeqRec.Click    += (sender, e) => Ctrl("BUTTON SEQ_REC");
+        BTN_SeqStart.Click  += (sender, e) => Ctrl("BUTTON SEQ_START");
 
         // Right-click context menus on mode and toggle buttons
         foreach (var btn in new KronosButton[] { BTN_Setlist, BTN_Combi, BTN_Program, BTN_Sequence,
@@ -505,16 +510,16 @@ public partial class MainWindow : Window
 
     // Initial mode from the SysEx probe (func 0x42). Sets the mode but does NOT
     // prove realtime transmit, so screen detection stays active as a fallback.
-    void OnSysExInitialMode(int mode) => SetModeButton(mode);
+    void OnSysExInitialMode(int mode) => SetModeButton((Mode)mode);
 
     // Live mode change (func 0x4E) — the authoritative source of truth. Stamp the
     // time so screen detection defers to it for the brief redraw-lag window, then
     // apply it (overriding any mode the screen may have just read during the change).
     void OnSysExModeChange(int mode)
     {
-        _lastSysExMode   = mode;
+        _lastSysExMode   = (Mode)mode;
         _lastSysExModeAt = DateTime.Now;
-        SetModeButton(mode);
+        SetModeButton((Mode)mode);
     }
 
     // Follow the hardware VALUE slider (incoming CC#ValueSliderCc). Ignore while
@@ -677,13 +682,13 @@ public partial class MainWindow : Window
         }
 
         // Mode Select
-        MNU_Mode_Setlist.Click  += (sender, e) => SendMode(1);
-        MNU_Mode_Combi.Click    += (sender, e) => SendMode(2);
-        MNU_Mode_Program.Click  += (sender, e) => SendMode(3);
-        MNU_Mode_Sequence.Click += (sender, e) => SendMode(4);
-        MNU_Mode_Sampling.Click += (sender, e) => SendMode(5);
-        MNU_Mode_Global.Click   += (sender, e) => SendMode(6);
-        MNU_Mode_Disk.Click     += (sender, e) => SendMode(7);
+        MNU_Mode_Setlist.Click  += (sender, e) => SendMode(Mode.Setlist);
+        MNU_Mode_Combi.Click    += (sender, e) => SendMode(Mode.Combi);
+        MNU_Mode_Program.Click  += (sender, e) => SendMode(Mode.Program);
+        MNU_Mode_Sequence.Click += (sender, e) => SendMode(Mode.Sequence);
+        MNU_Mode_Sampling.Click += (sender, e) => SendMode(Mode.Sampling);
+        MNU_Mode_Global.Click   += (sender, e) => SendMode(Mode.Global);
+        MNU_Mode_Disk.Click     += (sender, e) => SendMode(Mode.Disk);
 
         // Calibration grid size
         MENU_CalGrid.SubmenuOpened += (sender, e) =>
@@ -769,13 +774,13 @@ public partial class MainWindow : Window
         CTX_KbdEnable.Click         += (sender, e) => { _kbdSendEnabled = true;  _instantKeys.Clear(); StopRepeat(); UpdateKbdStatus(); OverlayLayer.InvalidateVisual(); };
         CTX_KbdDisable.Click        += (sender, e) => { _kbdSendEnabled = false; _instantKeys.Clear(); StopRepeat(); ReleaseActiveRawKeys(); UpdateKbdStatus(); OverlayLayer.InvalidateVisual(); };
         CTX_SetMaxFps.Click         += (sender, e) => OpenSettingsDialog(SettingsTab.Streaming);
-        CTX_Mode_Setlist.Click      += (sender, e) => SendMode(1);
-        CTX_Mode_Combi.Click        += (sender, e) => SendMode(2);
-        CTX_Mode_Program.Click      += (sender, e) => SendMode(3);
-        CTX_Mode_Sequence.Click     += (sender, e) => SendMode(4);
-        CTX_Mode_Sampling.Click     += (sender, e) => SendMode(5);
-        CTX_Mode_Global.Click       += (sender, e) => SendMode(6);
-        CTX_Mode_Disk.Click         += (sender, e) => SendMode(7);
+        CTX_Mode_Setlist.Click      += (sender, e) => SendMode(Mode.Setlist);
+        CTX_Mode_Combi.Click        += (sender, e) => SendMode(Mode.Combi);
+        CTX_Mode_Program.Click      += (sender, e) => SendMode(Mode.Program);
+        CTX_Mode_Sequence.Click     += (sender, e) => SendMode(Mode.Sequence);
+        CTX_Mode_Sampling.Click     += (sender, e) => SendMode(Mode.Sampling);
+        CTX_Mode_Global.Click       += (sender, e) => SendMode(Mode.Global);
+        CTX_Mode_Disk.Click         += (sender, e) => SendMode(Mode.Disk);
         CTX_OpenLogFile.Click       += (sender, e) => OnNotifyBubbleClick();
         CTX_ClearNotification.Click += (sender, e) => ClearNotification();
 
@@ -947,14 +952,39 @@ public partial class MainWindow : Window
 
     void OpenSettingsDialog(SettingsTab tab = SettingsTab.General)
     {
+        // Snapshot the current image-adjustment values so Cancel can undo any live preview.
+        int    imgB  = _settings.ImageBrightness, imgC = _settings.ImageContrast,
+               imgSat = _settings.ImageSaturation, imgSh = _settings.ImageSharpen;
+        double imgG  = _settings.ImageGamma;
+
         var dlg = new SettingsWindow(_settings, m => _ = RunUserMacroAsync(m),
             showInputTester: () => new InputTesterWindow(_ctrl) { Owner = this }.Show(),
-            initialTab: tab)
+            initialTab: tab,
+            onImagePreview: PreviewImageAdjust)
             { Owner = this };
         bool ok = ShowDialogPreservingGeometry(dlg);
 
-        if (!ok) return;
+        if (!ok)
+        {
+            // Undo the live preview — restore the values in effect before the dialog opened.
+            PreviewImageAdjust(new ImagePreview(imgB, imgC, imgG, imgSat, imgSh));
+            return;
+        }
         ApplySettingsResult(dlg.Result, dlg.WasReset);
+    }
+
+    // Live image-adjustment preview driven by the Settings dialog's sliders: apply the values to
+    // the in-memory settings and re-bake the tone LUT / re-render the current frame immediately.
+    // Not persisted here (BtnOK's ApplySettingsResult saves; Cancel reverts to the pre-dialog snapshot).
+    void PreviewImageAdjust(ImagePreview p)
+    {
+        _settings.ImageBrightness = p.Brightness;
+        _settings.ImageContrast   = p.Contrast;
+        _settings.ImageGamma      = p.Gamma;
+        _settings.ImageSaturation = p.Saturation;
+        _settings.ImageSharpen    = p.Sharpen;
+        RebuildLut();
+        if (_wb != null && _rawFrame != null) ApplyLut();
     }
 
     // Applies a new settings object live — shared by the Settings dialog's OK path
@@ -1273,8 +1303,8 @@ public partial class MainWindow : Window
                 _midiCoord.SetScreenConnection(false, _host, _ctrlPort);
                 if (_combi.Active) { _combi.Active = false; _combi.FlashTimer.Stop(); }
                 _combi.IndicatorGoneAt = DateTime.MinValue;
-                _currentMode = 0;
-                _prevMode    = 0;
+                _currentMode = Mode.Unknown;
+                _prevMode    = Mode.Unknown;
                 ClearModeButtons();
                 OverlayLayer.InvalidateVisual();
             }
@@ -1634,13 +1664,13 @@ public partial class MainWindow : Window
             new("Save Screenshot…",                 "",              () => SaveScreenshot()),
             new("Toggle Keyboard Send",             "",              () => { _kbdSendEnabled = !_kbdSendEnabled; _instantKeys.Clear(); StopRepeat(); ReleaseActiveRawKeys(); UpdateKbdStatus(); OverlayLayer.InvalidateVisual(); }),
             // ── Mode select
-            new("Mode: Setlist",  K("Mode Setlist"),  () => SendMode(1)),
-            new("Mode: Combi",    K("Mode Combi"),    () => SendMode(2)),
-            new("Mode: Program",  K("Mode Program"),  () => SendMode(3)),
-            new("Mode: Sequence", K("Mode Sequence"), () => SendMode(4)),
-            new("Mode: Sampling", K("Mode Sampling"), () => SendMode(5)),
-            new("Mode: Global",   K("Mode Global"),   () => SendMode(6)),
-            new("Mode: Disk",     K("Mode Disk"),     () => SendMode(7)),
+            new("Mode: Setlist",  K("Mode Setlist"),  () => SendMode(Mode.Setlist)),
+            new("Mode: Combi",    K("Mode Combi"),    () => SendMode(Mode.Combi)),
+            new("Mode: Program",  K("Mode Program"),  () => SendMode(Mode.Program)),
+            new("Mode: Sequence", K("Mode Sequence"), () => SendMode(Mode.Sequence)),
+            new("Mode: Sampling", K("Mode Sampling"), () => SendMode(Mode.Sampling)),
+            new("Mode: Global",   K("Mode Global"),   () => SendMode(Mode.Global)),
+            new("Mode: Disk",     K("Mode Disk"),     () => SendMode(Mode.Disk)),
             // ── Bank select
             new("Bank I-A",  K("Bank I-A"),  () => Ctrl("BUTTON BANK_IA")),
             new("Bank I-B",  K("Bank I-B"),  () => Ctrl("BUTTON BANK_IB")),

@@ -58,6 +58,32 @@
                             HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
                 </Border>
 
+                <!-- Overall CPU bar -->
+                <Grid Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="36"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="38"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Overall"
+                               FontSize="10" Foreground="#FF888888" FontWeight="SemiBold"
+                               VerticalAlignment="Center"
+                               ToolTip="Total CPU usage across all cores."/>
+                    <Border Grid.Column="1" Background="#FF252525"
+                            CornerRadius="2" Margin="4,3">
+                        <Grid x:Name="OverallBarGrid">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="0*"/>
+                                <ColumnDefinition Width="100*"/>
+                            </Grid.ColumnDefinitions>
+                            <Rectangle Grid.Column="0" Fill="#FF4E9FE5" RadiusX="2" RadiusY="2"/>
+                        </Grid>
+                    </Border>
+                    <TextBlock Grid.Column="2" x:Name="TXT_Overall"
+                               FontSize="10" FontFamily="Consolas" Foreground="#FF4E9FE5"
+                               HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                </Grid>
+
                 <!-- Per-core bars -->
                 <Grid Margin="0,0,0,6">
                     <Grid.RowDefinitions>

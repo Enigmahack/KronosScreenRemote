@@ -361,13 +361,13 @@ public partial class MainWindow
         }
 
         // Mode select (rebindable; default F2–F8; F1 reserved for Help above)
-        if (IsAction("Mode Setlist",  e)) { SendMode(1); return; }
-        if (IsAction("Mode Combi",    e)) { SendMode(2); return; }
-        if (IsAction("Mode Program",  e)) { SendMode(3); return; }
-        if (IsAction("Mode Sequence", e)) { SendMode(4); return; }
-        if (IsAction("Mode Sampling", e)) { SendMode(5); return; }
-        if (IsAction("Mode Global",   e)) { SendMode(6); return; }
-        if (IsAction("Mode Disk",     e)) { SendMode(7); return; }
+        if (IsAction("Mode Setlist",  e)) { SendMode(Mode.Setlist);  return; }
+        if (IsAction("Mode Combi",    e)) { SendMode(Mode.Combi);    return; }
+        if (IsAction("Mode Program",  e)) { SendMode(Mode.Program);  return; }
+        if (IsAction("Mode Sequence", e)) { SendMode(Mode.Sequence); return; }
+        if (IsAction("Mode Sampling", e)) { SendMode(Mode.Sampling); return; }
+        if (IsAction("Mode Global",   e)) { SendMode(Mode.Global);   return; }
+        if (IsAction("Mode Disk",     e)) { SendMode(Mode.Disk);     return; }
 
         // Bank select (unassigned by default; rebindable in Settings)
         foreach (char b in new[] { 'A', 'B', 'C', 'D', 'E', 'F', 'G' })
