@@ -77,7 +77,6 @@
             </MenuItem>
             <MenuItem x:Name="MENU_Tools" Header="_Tools">
                 <!-- Display &amp; touch calibration -->
-                <MenuItem x:Name="MNU_PaletteEd"  Header="_Palette Editor"   IsCheckable="True" InputGestureText="P"/>
                 <MenuItem x:Name="MNU_CalMode"    Header="_Calibration"      IsCheckable="True" InputGestureText="C"/>
                 <MenuItem x:Name="MNU_KbdWarp"    Header="Enable _Warp Mode" IsCheckable="True"/>
                 <MenuItem x:Name="MENU_CalGrid"   Header="Calibration _Grid Size">

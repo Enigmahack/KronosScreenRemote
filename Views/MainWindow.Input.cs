@@ -170,35 +170,16 @@ public partial class MainWindow
         if (ctrl && e.Key == Key.Z)
         {
             if (_cal.Mode) { if (_shiftHeld) CalHistRedo(); else CalHistUndo(); }
-            else          { if (_shiftHeld) HistRedo();    else HistUndo();    }
             OverlayLayer.InvalidateVisual(); return;
         }
         if (ctrl && e.Key == Key.Y)
         {
-            if (_cal.Mode) CalHistRedo(); else HistRedo();
+            if (_cal.Mode) CalHistRedo();
             OverlayLayer.InvalidateVisual(); return;
         }
         if (ctrl && e.Key == Key.K) { OpenCommandPalette(); e.Handled = true; return; }
-        if (ctrl && e.Key == Key.C && _edOpen)
-        {
-            _clipboard = EffRgb(_edSel);
-            Console.WriteLine($"[clipboard] copied entry {_edSel}: {_clipboard}");
-            return;
-        }
-        if (ctrl && e.Key == Key.V && _edOpen && _clipboard.HasValue)
-        {
-            if (!_locked.Contains(_edSel))
-            {
-                var old = _overrides.TryGetValue(_edSel, out var ov) ? ov : (PaletteEntry?)null;
-                _overrides[_edSel] = _clipboard.Value;
-                HistPush(_edSel, old, _clipboard.Value);
-                RebuildLut(); ApplyLut();
-            }
-            _edTyped = null;
-            OverlayLayer.InvalidateVisual(); return;
-        }
 
-        if (ctrl && e.Key == Key.V && !_edOpen && _kbdCapture && _kbdSendEnabled)
+        if (ctrl && e.Key == Key.V && _kbdCapture && _kbdSendEnabled)
         {
             PasteClipboardToKronos();
             e.Handled = true; return;
@@ -209,7 +190,7 @@ public partial class MainWindow
         if (ctrl && e.Key == Key.D3) { SetWindowSize(1.25); return; }
         if (ctrl && e.Key == Key.D4) { SetWindowSize(1.50); return; }
         if (ctrl && e.Key == Key.D5) { SetWindowSize(2.00); return; }
-        if (ctrl && e.Key == Key.S && !_edOpen && !_cal.Mode) { SaveScreenshot(); e.Handled = true; return; }
+        if (ctrl && e.Key == Key.S && !_cal.Mode) { SaveScreenshot(); e.Handled = true; return; }
 
         // ── Fullscreen shortcuts (intercept before capture so they work even when forwarding) ──
         if (_fs.Active && !ctrl && !e.IsRepeat)
@@ -228,12 +209,12 @@ public partial class MainWindow
         {
             _instantKeys.Add(Key.Return);   // suppress KEY-up so KEY 28 0 is never sent to vkbd
             BTN_Enter.FlashDepress();
-            Ctrl("BUTTON ENTER");
+            Ctrl(DaemonCommand.Button(PanelButton.Enter));
             e.Handled = true; return;
         }
 
         // ── Macros (user-defined first, then built-ins) — requires modifier key ─
-        if (!e.IsRepeat && _kbdCapture && _kbdSendEnabled && !_edOpen && !_cal.Mode
+        if (!e.IsRepeat && _kbdCapture && _kbdSendEnabled && !_cal.Mode
             && Keyboard.Modifiers != ModifierKeys.None)
         {
             var baseKey = e.Key == Key.System ? e.SystemKey : e.Key;
@@ -243,7 +224,7 @@ public partial class MainWindow
         }
 
         // ── Numpad 0–9 / − / · : always forward when capture active ──────────
-        if (_kbdCapture && _kbdSendEnabled && !_edOpen && !ctrl && !e.IsRepeat && !_cal.Mode)
+        if (_kbdCapture && _kbdSendEnabled && !ctrl && !e.IsRepeat && !_cal.Mode)
         {
             int? numBtn = e.Key switch
             {
@@ -251,14 +232,14 @@ public partial class MainWindow
                 Key.NumPad4 => 4, Key.NumPad5 => 5, Key.NumPad6 => 6, Key.NumPad7 => 7,
                 Key.NumPad8 => 8, Key.NumPad9 => 9, _ => (int?)null
             };
-            if (numBtn.HasValue) { NumButton(numBtn.Value)?.FlashDepress(); Ctrl($"BUTTON NUM{numBtn.Value}"); e.Handled = true; return; }
-            if (e.Key == Key.Subtract) { BTN_data_dash.FlashDepress();   Ctrl("BUTTON NUM_DASH"); e.Handled = true; return; }
-            if (e.Key == Key.Decimal)  { BTN_data_period.FlashDepress(); Ctrl("BUTTON NUM_DOT");  e.Handled = true; return; }
+            if (numBtn.HasValue) { NumButton(numBtn.Value)?.FlashDepress(); Ctrl(DaemonCommand.NumberButton(numBtn.Value)); e.Handled = true; return; }
+            if (e.Key == Key.Subtract) { BTN_data_dash.FlashDepress();   Ctrl(DaemonCommand.Button(PanelButton.NumDash)); e.Handled = true; return; }
+            if (e.Key == Key.Decimal)  { BTN_data_period.FlashDepress(); Ctrl(DaemonCommand.Button(PanelButton.NumDot));  e.Handled = true; return; }
         }
 
         // ── Keyboard capture: forward before any local shortcut ──────────────
         // F1–F12 fall through to the IsAction checks below (mode select, help, etc.).
-        if (_kbdCapture && _kbdSendEnabled && !_edOpen && !ctrl && !e.IsRepeat && !_cal.Mode
+        if (_kbdCapture && _kbdSendEnabled && !ctrl && !e.IsRepeat && !_cal.Mode
             && (e.Key < Key.F1 || e.Key > Key.F12))
         {
             // Shifted override: Kronos needs a different keycode or Shift handling
@@ -266,10 +247,10 @@ public partial class MainWindow
             if (shifted.HasValue)
             {
                 AppLog.Debug($"[kbd] shifted key {e.Key} → linux {shifted.Value.Code} keepShift={shifted.Value.KeepShift}");
-                if (!shifted.Value.KeepShift) Ctrl("KEY 42 0");   // drop Shift if not needed
-                Ctrl($"KEY {shifted.Value.Code} 1");
-                Ctrl($"KEY {shifted.Value.Code} 0");
-                if (!shifted.Value.KeepShift) Ctrl("KEY 42 1");   // restore Shift
+                if (!shifted.Value.KeepShift) Ctrl(DaemonCommand.Shift(false));   // drop Shift if not needed
+                Ctrl(DaemonCommand.Key(shifted.Value.Code, true));
+                Ctrl(DaemonCommand.Key(shifted.Value.Code, false));
+                if (!shifted.Value.KeepShift) Ctrl(DaemonCommand.Shift(true));   // restore Shift
                 _instantKeys.Add(e.Key);
                 e.Handled = true; return;
             }
@@ -278,8 +259,8 @@ public partial class MainWindow
             if (rawMap != null)
             {
                 AppLog.Debug($"[kbd] raw-map {rawMap.HostKeyDisplay} → KEY {rawMap.RawCode}");
-                if (rawMap.RawShift) Ctrl("KEY 42 1");
-                Ctrl($"KEY {rawMap.RawCode} 1");
+                if (rawMap.RawShift) Ctrl(DaemonCommand.Shift(true));
+                Ctrl(DaemonCommand.Key(rawMap.RawCode, true));
                 _activeRawKeys[e.Key] = rawMap;   // release exactly this code on key-up
                 StartRepeat(rawMap.RawCode);
                 e.Handled = true; return;
@@ -297,10 +278,10 @@ public partial class MainWindow
                     && Keyboard.GetKeyStates(Key.CapsLock).HasFlag(KeyStates.Toggled)
                     && !_shiftHeld)
                 {
-                    if (_capsShiftedKeys.Count == 0) Ctrl("KEY 42 1");
+                    if (_capsShiftedKeys.Count == 0) Ctrl(DaemonCommand.Shift(true));
                     _capsShiftedKeys.Add(e.Key);
                 }
-                Ctrl($"KEY {lkc.Value} 1");
+                Ctrl(DaemonCommand.Key(lkc.Value, true));
                 if (RepeatableKeys.Contains(e.Key))
                     StartRepeat(lkc.Value);
                 e.Handled = true; return;
@@ -313,18 +294,16 @@ public partial class MainWindow
         {
             if (_fs.Active)               { ToggleFullscreen(); return; }
             if (_helpOpen)                   { _helpOpen = false; OverlayLayer.InvalidateVisual(); return; }
-            if (_edOpen && _edTyped != null) { _edTyped  = null;  OverlayLayer.InvalidateVisual(); return; }
-            if (_edOpen)                     { _edOpen   = false; OverlayLayer.InvalidateVisual(); return; }
             if (_drag.Pending || _drag.Active)
             {
                 var cancelPos = _drag.Active ? _drag.Last : _drag.PendingPos;
                 _drag.Pending = false; _drag.Active = false;
                 FrameImage.ReleaseMouseCapture();
-                Ctrl($"TOUCH_UP {cancelPos.x} {cancelPos.y}");
+                Ctrl(DaemonCommand.TouchUp(cancelPos.x, cancelPos.y));
                 OverlayLayer.InvalidateVisual(); return;
             }
             if (_zoomOn)                     { _zoomOn = false; OverlayLayer.InvalidateVisual(); return; }
-            Ctrl("BUTTON EXIT"); return;
+            Ctrl(DaemonCommand.Button(PanelButton.Exit)); return;
         }
 
         if (IsAction("Help", e))         { OpenHelpWindow(); return; }
@@ -347,7 +326,7 @@ public partial class MainWindow
         if (IsAction("Mirror", e))
         {
             _mirrorState = !_mirrorState;
-            Ctrl(_mirrorState ? "MIRROR_ON" : "MIRROR_OFF"); return;
+            Ctrl(DaemonCommand.VgaMirror(_mirrorState)); return;
         }
 
         if (IsAction("Fullscreen", e))   { ToggleFullscreen(); return; }
@@ -355,9 +334,9 @@ public partial class MainWindow
         if (IsAction("HideDataInput",  e)) { ToggleHideDataInput();  return; }
         if (IsAction("HideValueInput", e)) { ToggleHideValueInput(); return; }
 
-        if (e.Key == Key.Return && !_edOpen)
+        if (e.Key == Key.Return)
         {
-            Ctrl("BUTTON ENTER"); return;
+            Ctrl(DaemonCommand.Button(PanelButton.Enter)); return;
         }
 
         // Mode select (rebindable; default F2–F8; F1 reserved for Help above)
@@ -372,9 +351,9 @@ public partial class MainWindow
         // Bank select (unassigned by default; rebindable in Settings)
         foreach (char b in new[] { 'A', 'B', 'C', 'D', 'E', 'F', 'G' })
         {
-            if (IsAction($"Bank I-{b}",    e)) { Ctrl($"BUTTON BANK_I{b}");           return; }
-            if (IsAction($"Bank U-{b}",    e)) { Ctrl($"BUTTON BANK_U{b}");           return; }
-            if (IsAction($"Bank U-{b}{b}", e)) { Ctrl($"CHORD BANK_U{b} BANK_I{b}"); return; }
+            if (IsAction($"Bank I-{b}",    e)) { Ctrl(DaemonCommand.BankButton(BankGroup.Internal, b)); return; }
+            if (IsAction($"Bank U-{b}",    e)) { Ctrl(DaemonCommand.BankButton(BankGroup.User, b));     return; }
+            if (IsAction($"Bank U-{b}{b}", e)) { Ctrl(DaemonCommand.DoubleUserBank(b));                 return; }
         }
 
         if (IsAction("Calibrate", e))
@@ -411,81 +390,12 @@ public partial class MainWindow
             OverlayLayer.InvalidateVisual(); return;
         }
 
-        if (!_edOpen) return;
-
-        if (e.Key == Key.R) { _edCh = 0; _edTyped = null; OverlayLayer.InvalidateVisual(); return; }
-        if (e.Key == Key.G) { _edCh = 1; _edTyped = null; OverlayLayer.InvalidateVisual(); return; }
-        if (e.Key == Key.B) { _edCh = 2; _edTyped = null; OverlayLayer.InvalidateVisual(); return; }
-
-        if (e.Key == Key.L)
-        {
-            bool wasLocked = _locked.Contains(_edSel);
-            HistPushLock(_edSel, wasLocked, !wasLocked);
-            if (wasLocked) _locked.Remove(_edSel);
-            else _locked.Add(_edSel);
-            Storage.SaveLocks(_locked);
-            OverlayLayer.InvalidateVisual(); return;
-        }
-
-        if (e.Key == Key.S)
-        {
-            Storage.SaveOverrides(_overrides);
-            Storage.SaveLocks(_locked);
-            RebuildLut(); ApplyLut(); return;
-        }
-
-        if (e.Key == Key.Delete)
-        {
-            if (!_locked.Contains(_edSel) && _overrides.TryGetValue(_edSel, out var old))
-            {
-                _overrides.Remove(_edSel);
-                HistPush(_edSel, old, null);
-                RebuildLut(); ApplyLut();
-            }
-            _edTyped = null; OverlayLayer.InvalidateVisual(); return;
-        }
-
-        if (e.Key == Key.Back)
-        {
-            if (_edTyped?.Length > 0)
-                _edTyped = _edTyped.Length == 1 ? null : _edTyped[..^1];
-            OverlayLayer.InvalidateVisual(); return;
-        }
-
-        if (e.Key == Key.Return)
-        {
-            if (_edTyped != null && !_locked.Contains(_edSel) &&
-                int.TryParse(_edTyped, out int v))
-                SetChannel(_edCh, v);
-            _edTyped = null; OverlayLayer.InvalidateVisual(); return;
-        }
-
-        if (e.Key is Key.Up or Key.Down)
-        {
-            int delta = e.Key == Key.Up ? 1 : -1;
-            if (_shiftHeld) delta *= 10;
-            DeltaChannel(delta);
-            _edTyped = null; OverlayLayer.InvalidateVisual(); return;
-        }
-
-        char c2 = e.Key switch
-        {
-            >= Key.D0 and <= Key.D9   => (char)('0' + (e.Key - Key.D0)),
-            >= Key.NumPad0 and <= Key.NumPad9 => (char)('0' + (e.Key - Key.NumPad0)),
-            _ => '\0'
-        };
-        if (c2 != '\0')
-        {
-            var typed = (_edTyped ?? "") + c2;
-            _edTyped  = typed.Length > 3 ? typed[^3..] : typed;
-            OverlayLayer.InvalidateVisual();
-        }
     }
 
     void OnKeyUp(object s, KeyEventArgs e)
     {
         _shiftHeld = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
-        if (!_edOpen && _kbdCapture && _kbdSendEnabled)
+        if (_kbdCapture && _kbdSendEnabled)
         {
             // Releasing Shift while a key-repeat is active would leave the repeat running
             // without Shift on the Kronos — e.g. '>' (Shift+OemPeriod) degrades to '.'
@@ -507,17 +417,17 @@ public partial class MainWindow
             if (_activeRawKeys.Remove(e.Key, out var sentRaw))
             {
                 if (_repeatCode == sentRaw.RawCode) StopRepeat();
-                Ctrl($"KEY {sentRaw.RawCode} 0");
-                if (sentRaw.RawShift) Ctrl("KEY 42 0");
+                Ctrl(DaemonCommand.Key(sentRaw.RawCode, false));
+                if (sentRaw.RawShift) Ctrl(DaemonCommand.Shift(false));
                 e.Handled = true; return;
             }
             int? lkc = KeyMap.ToLinux(e.Key);
             if (lkc.HasValue)
             {
                 if (_repeatCode == lkc.Value) StopRepeat();
-                Ctrl($"KEY {lkc.Value} 0");
+                Ctrl(DaemonCommand.Key(lkc.Value, false));
                 if (_capsShiftedKeys.Remove(e.Key) && _capsShiftedKeys.Count == 0)
-                    Ctrl("KEY 42 0");
+                    Ctrl(DaemonCommand.Shift(false));
                 e.Handled = true;
             }
         }
@@ -533,37 +443,26 @@ public partial class MainWindow
         bool releasedShift = false;
         foreach (var raw in _activeRawKeys.Values)
         {
-            Ctrl($"KEY {raw.RawCode} 0");
+            Ctrl(DaemonCommand.Key(raw.RawCode, false));
             if (raw.RawShift) releasedShift = true;
         }
         _activeRawKeys.Clear();
-        if (releasedShift) Ctrl("KEY 42 0");
+        if (releasedShift) Ctrl(DaemonCommand.Shift(false));
     }
 
     void OnMouseWheel(object s, MouseWheelEventArgs e)
     {
-        var pos  = Mouse.GetPosition(RootGrid);
         bool ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
 
         // Ctrl+scroll adjusts zoom level instead of sending wheel to Kronos
-        if (ctrl && !_edOpen)
+        if (ctrl)
         {
             if (e.Delta > 0) DoZoomIn(); else DoZoomOut();
             return;
         }
 
-        if (_edOpen && _panelRect.Contains(pos))
-        {
-            if (_locked.Contains(_edSel)) return;
-            int delta = (e.Delta > 0 ? 1 : -1) * (_shiftHeld ? 10 : 1);
-            DeltaChannel(delta);
-            _edTyped = null;
-            OverlayLayer.InvalidateVisual();
-            return;
-        }
-
         bool cw = e.Delta > 0;
-        Ctrl(cw ? "WHEEL CW" : "WHEEL CCW");
+        Ctrl(DaemonCommand.Wheel(cw));
         TriggerWheelAnim(cw ? 1 : -1);
     }
 
@@ -615,7 +514,7 @@ public partial class MainWindow
                 if (dist >= DragState.MoveThresh)
                 {
                     _drag.Last = (cnx, cny);
-                    Ctrl($"TOUCH_MOVE {cnx} {cny}");
+                    Ctrl(DaemonCommand.TouchMove(cnx, cny));
                     _drag.Marker = (pos, DateTime.Now);
                 }
             }
@@ -636,7 +535,7 @@ public partial class MainWindow
             _instantKeys.Clear();
             StopRepeat();
             ReleaseActiveRawKeys();
-            if (_capsShiftedKeys.Count > 0) { Ctrl("KEY 42 0"); _capsShiftedKeys.Clear(); }
+            if (_capsShiftedKeys.Count > 0) { Ctrl(DaemonCommand.Shift(false)); _capsShiftedKeys.Clear(); }
         }
         if (_kbdCapture != prevCapture) UpdateKbdStatus();
 
@@ -688,33 +587,6 @@ public partial class MainWindow
 
         if (e.ChangedButton == MouseButton.Left)
         {
-            if (_edOpen && _panelRect.Contains(pos))
-            {
-                var sw = OverlayRenderer.SwatchAt(pos, _gridOrigin);
-                if (sw.HasValue)
-                {
-                    _edSel = sw.Value; _edTyped = null;
-                }
-                else
-                {
-                    var hit = OverlayRenderer.SliderHit(pos, _panelRect.X, _sliderTop);
-                    if (hit.HasValue)
-                    {
-                        _edCh = hit.Value.ch;
-                        SetChannel(hit.Value.ch, hit.Value.val);
-                        _edTyped = null;
-                    }
-                }
-                OverlayLayer.InvalidateVisual(); return;
-            }
-
-            if (_edOpen)
-            {
-                var idx = RawIdxAt(pos);
-                if (idx.HasValue) { _edSel = idx.Value; _edTyped = null; }
-                OverlayLayer.InvalidateVisual(); return;
-            }
-
             if (_frameRect.Contains(pos))
             {
                 var (nx, ny) = ScreenToKronos(pos);
@@ -722,7 +594,7 @@ public partial class MainWindow
                 _drag.PendingPos = (cnx, cny);
                 _drag.Last       = (cnx, cny);  // valid fallback for leave/capture-loss
                 _drag.Pending    = true;
-                Ctrl($"TOUCH_DOWN {cnx} {cny}");  // send immediately, not deferred to first move
+                Ctrl(DaemonCommand.TouchDown(cnx, cny));  // send immediately, not deferred to first move
                 _drag.Marker = (pos, DateTime.Now);
                 FrameImage.CaptureMouse();
                 OverlayLayer.InvalidateVisual();
@@ -752,7 +624,7 @@ public partial class MainWindow
         {
             _drag.Pending = false;
             FrameImage.ReleaseMouseCapture();
-            Ctrl($"TOUCH_UP {_drag.PendingPos.x} {_drag.PendingPos.y}");
+            Ctrl(DaemonCommand.TouchUp(_drag.PendingPos.x, _drag.PendingPos.y));
             _drag.Marker = (pos, DateTime.Now);
             OverlayLayer.InvalidateVisual();
         }
@@ -762,7 +634,7 @@ public partial class MainWindow
             var (cnx, cny) = ApplyCal(nx, ny);
             _drag.Active = false;
             FrameImage.ReleaseMouseCapture();
-            Ctrl($"TOUCH_UP {cnx} {cny}");
+            Ctrl(DaemonCommand.TouchUp(cnx, cny));
             _drag.Marker = (pos, DateTime.Now);
             OverlayLayer.InvalidateVisual();
         }
@@ -819,8 +691,8 @@ public partial class MainWindow
             _repeatTimer.Interval = TimeSpan.FromMilliseconds(40);
         }
         if (_repeatCode == 0 || !_kbdCapture || !_kbdSendEnabled) { StopRepeat(); return; }
-        Ctrl($"KEY {_repeatCode} 1");
-        Ctrl($"KEY {_repeatCode} 0");
+        Ctrl(DaemonCommand.Key(_repeatCode, true));
+        Ctrl(DaemonCommand.Key(_repeatCode, false));
     }
 
     void OnFrameLostMouseCapture(object s, MouseEventArgs e)
@@ -835,14 +707,14 @@ public partial class MainWindow
         if (_drag.Active)
         {
             _drag.Active  = false;
-            Ctrl($"TOUCH_UP {_drag.Last.x} {_drag.Last.y}");
+            Ctrl(DaemonCommand.TouchUp(_drag.Last.x, _drag.Last.y));
             _drag.Marker = null;
             OverlayLayer.InvalidateVisual();
         }
         else if (_drag.Pending)
         {
             _drag.Pending = false;
-            Ctrl($"TOUCH_UP {_drag.PendingPos.x} {_drag.PendingPos.y}");
+            Ctrl(DaemonCommand.TouchUp(_drag.PendingPos.x, _drag.PendingPos.y));
             _drag.Marker = null;
             OverlayLayer.InvalidateVisual();
         }
@@ -860,12 +732,12 @@ public partial class MainWindow
         int endCode  = ResolveCode(Key.End,  107);
         int homeCode = ResolveCode(Key.Home, 102);
         AppLog.Debug($"[macro] SelectAll → KEY {endCode} (End), Shift+KEY {homeCode} (Home)");
-        Ctrl($"KEY {endCode} 1");
-        Ctrl($"KEY {endCode} 0");
-        Ctrl("KEY 42 1");
-        Ctrl($"KEY {homeCode} 1");
-        Ctrl($"KEY {homeCode} 0");
-        Ctrl("KEY 42 0");
+        Ctrl(DaemonCommand.Key(endCode, true));
+        Ctrl(DaemonCommand.Key(endCode, false));
+        Ctrl(DaemonCommand.Shift(true));
+        Ctrl(DaemonCommand.Key(homeCode, true));
+        Ctrl(DaemonCommand.Key(homeCode, false));
+        Ctrl(DaemonCommand.Shift(false));
     }
 
     bool TryFireUserMacro(Keybind trigger)
@@ -884,7 +756,7 @@ public partial class MainWindow
     {
         foreach (var step in macro.Steps)
         {
-            Ctrl($"KEY {step.Code} {(step.Down ? 1 : 0)}");
+            Ctrl(DaemonCommand.Key(step.Code, step.Down));
             await Task.Delay(macro.StepDelayMs);
         }
         AppLog.Info($"[macro] '{macro.Description}' done ({macro.Steps.Count} steps, {macro.StepDelayMs}ms/step)");

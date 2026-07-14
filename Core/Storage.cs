@@ -12,7 +12,6 @@ static class Storage
         Path.GetDirectoryName(Environment.ProcessPath) ?? ".";
 
     static string OverridePath  => Path.Combine(DataDir, "palette_override.json");
-    static string LockPath      => Path.Combine(DataDir, "palette_lock.json");
     static string CalPath       => Path.Combine(DataDir, "cal_data.json");
     static string SettingsPath  => Path.Combine(DataDir, "settings.json");
 
@@ -193,37 +192,6 @@ static class Storage
             return d;
         }
         catch { return new(); }
-    }
-
-    public static void SaveOverrides(Dictionary<int, PaletteEntry> ov)
-    {
-        var obj = new JsonObject();
-        foreach (var kv in ov.OrderBy(x => x.Key))
-            obj[kv.Key.ToString()] = new JsonArray(kv.Value.R, kv.Value.G, kv.Value.B);
-        File.WriteAllText(OverridePath, obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-        Console.WriteLine($"[palette] {ov.Count} override(s) saved → {OverridePath}");
-    }
-
-    // ── Palette locks ─────────────────────────────────────────────────────────
-
-    public static HashSet<int> LoadLocks()
-    {
-        if (!File.Exists(LockPath)) return new();
-        try
-        {
-            var arr = JsonNode.Parse(File.ReadAllText(LockPath))?.AsArray();
-            if (arr == null) return new();
-            return arr.Select(n => n?.GetValue<int>() ?? -1).Where(i => i >= 0).ToHashSet();
-        }
-        catch { return new(); }
-    }
-
-    public static void SaveLocks(HashSet<int> locked)
-    {
-        var arr = new JsonArray();
-        foreach (var i in locked.OrderBy(x => x)) arr.Add(i);
-        File.WriteAllText(LockPath, arr.ToJsonString());
-        Console.WriteLine($"[lock] {locked.Count} locked entry/entries saved → {LockPath}");
     }
 
     // ── Set List cache ─────────────────────────────────────────────────────────

@@ -10,31 +10,8 @@ public partial class MainWindow
     {
         var mouse = Mouse.GetPosition(RootGrid);
 
-        if (_edOpen)
-        {
-            if (!_panelRect.Contains(mouse))
-                _hoverIdx = RawIdxAt(mouse);
-            else
-                _hoverIdx = OverlayRenderer.SwatchAt(mouse, _gridOrigin);
-        }
-        else
-        {
-            _hoverIdx = null;
-        }
-
         if (_connState == ConnState.Disconnected && _frameRect.Width > 0)
             OverlayRenderer.DrawDisconnectedOverlay(dc, _frameRect, _pixPerDip);
-
-        if (_hoverIdx.HasValue)
-            OverlayRenderer.DrawHoverTooltip(dc, _hoverIdx.Value,
-                _basePal, _overrides, mouse, winSize, _pixPerDip);
-
-        if (_edOpen)
-        {
-            (_panelRect, _gridOrigin, _sliderTop) = OverlayRenderer.DrawEditor(
-                dc, winSize, _basePal, _overrides,
-                _edSel, _edCh, _edTyped, _hoverIdx, _locked, _pixPerDip);
-        }
 
         if (_zoomOn && _wb != null)
             OverlayRenderer.DrawZoomLoupe(dc, _wb, _rawFrame,

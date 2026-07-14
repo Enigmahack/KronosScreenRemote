@@ -185,10 +185,10 @@ internal partial class InputTesterWindow : Window
     {
         if (!int.TryParse(TxtRawCode.Text.Trim(), out int code) || code < 1 || code > 767) return;
         bool shift = ChkRawShift.IsChecked == true;
-        if (shift) _ctrl.Send("KEY 42 1");
-        _ctrl.Send($"KEY {code} 1");
-        _ctrl.Send($"KEY {code} 0");
-        if (shift) _ctrl.Send("KEY 42 0");
+        if (shift) _ctrl.Send(DaemonCommand.Shift(true));
+        _ctrl.Send(DaemonCommand.Key(code, true));
+        _ctrl.Send(DaemonCommand.Key(code, false));
+        if (shift) _ctrl.Send(DaemonCommand.Shift(false));
         FocusObserved();
     }
 

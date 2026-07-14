@@ -37,7 +37,7 @@ static class CtrlClient
         _host = host;
         _port = port;
 
-        if (cmd.StartsWith("TOUCH_MOVE ", StringComparison.Ordinal))
+        if (cmd.StartsWith(DaemonCommand.TouchMovePrefix, StringComparison.Ordinal))
         {
             // Coalesce: latest position replaces any not-yet-sent move.
             Interlocked.Exchange(ref _pendingMove, cmd);
@@ -107,7 +107,7 @@ static class CtrlClient
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
             await s.ConnectAsync(_host, _port, cts.Token);
             // Identify this as a persistent session so the server keeps the connection open.
-            await s.SendAsync("CTRL_PERSIST\n"u8.ToArray(), SocketFlags.None, cts.Token);
+            await s.SendAsync(Encoding.ASCII.GetBytes(DaemonCommand.PersistentSession + "\n"), SocketFlags.None, cts.Token);
 
             // Publish before starting the drain loop so SendOneAsync can use it.
             Interlocked.Exchange(ref _sock, s);

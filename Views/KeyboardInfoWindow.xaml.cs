@@ -108,7 +108,7 @@ public partial class KeyboardInfoWindow : Window
         _polling = true;
         try
         {
-            var raw = await CtrlClient.QueryMultiAsync(_host, _port, "SYSINFO");
+            var raw = await CtrlClient.QueryMultiAsync(_host, _port, DaemonCommand.QuerySysInfo);
             if (raw is null) { SetStatus(false); return; }
 
             var info = ParseSysInfo(raw);
