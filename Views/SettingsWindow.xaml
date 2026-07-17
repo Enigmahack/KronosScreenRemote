@@ -5,147 +5,17 @@
         ResizeMode="CanResizeWithGrip"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        Background="#FF1E1E1E"
-        Foreground="White">
+        Background="{StaticResource WindowBackgroundBrush}"
+        Foreground="{StaticResource TextBrush}">
     <Window.Resources>
-        <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="White"/>
-        </Style>
-        <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="White"/>
-        </Style>
-        <Style TargetType="RadioButton">
-            <Setter Property="Foreground" Value="White"/>
-        </Style>
-        <Style TargetType="Button">
-            <Setter Property="Background"   Value="#FF3A3A3A"/>
-            <Setter Property="Foreground"   Value="White"/>
-            <Setter Property="BorderBrush"  Value="#FF666666"/>
-            <Setter Property="Padding"      Value="8 3"/>
-        </Style>
-        <Style TargetType="TextBox">
-            <Setter Property="Background"   Value="#FF2A2A2A"/>
-            <Setter Property="Foreground"   Value="White"/>
-            <Setter Property="BorderBrush"  Value="#FF555555"/>
-            <Setter Property="Padding"      Value="4 2"/>
-            <Setter Property="CaretBrush"   Value="White"/>
-        </Style>
-        <Style TargetType="ListView">
-            <Setter Property="Background"   Value="#FF2A2A2A"/>
-            <Setter Property="Foreground"   Value="White"/>
-            <Setter Property="BorderBrush"  Value="#FF555555"/>
-        </Style>
-        <Style TargetType="GridViewColumnHeader">
-            <Setter Property="Background"   Value="#FF333333"/>
-            <Setter Property="Foreground"   Value="#FFCCCCCC"/>
-            <Setter Property="BorderBrush"  Value="#FF555555"/>
-        </Style>
-        <Style TargetType="Slider">
-            <Setter Property="Foreground"   Value="#FF88AADD"/>
-        </Style>
-
-        <!-- Dark ListViewItem: readable selection + amber listening highlight -->
-        <Style TargetType="ListViewItem">
-            <Setter Property="Foreground" Value="White"/>
-            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ListViewItem">
-                        <Border x:Name="Bd"
-                                Background="Transparent"
-                                BorderBrush="Transparent"
-                                BorderThickness="1"
-                                Padding="1 2">
-                            <GridViewRowPresenter
-                                Columns="{TemplateBinding GridView.ColumnCollection}"
-                                Content="{TemplateBinding Content}"
-                                VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#FF363636"/>
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#FF1A4E6E"/>
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#FF3A8FBF"/>
-                            </Trigger>
-                            <MultiTrigger>
-                                <MultiTrigger.Conditions>
-                                    <Condition Property="IsSelected" Value="True"/>
-                                    <Condition Property="IsMouseOver" Value="True"/>
-                                </MultiTrigger.Conditions>
-                                <Setter TargetName="Bd" Property="Background" Value="#FF205A80"/>
-                            </MultiTrigger>
-                            <!-- Amber highlight while recording a new key -->
-                            <DataTrigger Binding="{Binding IsListening}" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#FF4D3000"/>
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#FFDD9933"/>
-                            </DataTrigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Dark TabItem -->
-        <Style TargetType="TabItem">
-            <Setter Property="Foreground"  Value="#FFCCCCCC"/>
-            <Setter Property="Background"  Value="#FF252525"/>
-            <Setter Property="BorderBrush" Value="#FF555555"/>
-            <Setter Property="Padding"     Value="12 5"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="TabItem">
-                        <Border x:Name="Border"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="1 1 1 0"
-                                Padding="{TemplateBinding Padding}"
-                                Margin="0 0 2 0">
-                            <ContentPresenter ContentSource="Header"
-                                              TextElement.Foreground="{TemplateBinding Foreground}"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Border" Property="Background"  Value="#FF2E2E2E"/>
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Border" Property="Background"  Value="#FF3A3A3A"/>
-                                <Setter TargetName="Border" Property="BorderBrush" Value="#FF88AADD"/>
-                                <Setter Property="Foreground" Value="White"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Dark TabControl -->
-        <Style TargetType="TabControl">
-            <Setter Property="Background"  Value="#FF2A2A2A"/>
-            <Setter Property="BorderBrush" Value="#FF555555"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="TabControl">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="*"/>
-                            </Grid.RowDefinitions>
-                            <TabPanel Grid.Row="0" IsItemsHost="True"
-                                      Background="Transparent" Margin="0 0 0 -1"/>
-                            <Border Grid.Row="1"
-                                    Background="{TemplateBinding Background}"
-                                    BorderBrush="{TemplateBinding BorderBrush}"
-                                    BorderThickness="1">
-                                <ContentPresenter x:Name="PART_SelectedContentHost"
-                                                  ContentSource="SelectedContent"
-                                                  Margin="12"/>
-                            </Border>
-                        </Grid>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
+        <!-- Key-binding list: app-wide ListViewItem look plus an amber highlight while recording a new key. -->
+        <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsListening}" Value="True">
+                    <Setter Property="Background" Value="#FF4D3000"/>
+                    <Setter Property="BorderBrush" Value="#FFDD9933"/>
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
     </Window.Resources>
 
@@ -279,8 +149,6 @@
                         <TextBlock Grid.Row="2" Grid.Column="0" Text="FTP Password" VerticalAlignment="Center"
                                    ToolTip="Password for FTP authentication to the Kronos."/>
                         <PasswordBox Grid.Row="2" Grid.Column="1" x:Name="TxtFtpPass"
-                                     Background="#FF2A2A2A" Foreground="White" BorderBrush="#FF555555"
-                                     Padding="4 2"
                                      ToolTip="Password for FTP authentication to the Kronos."/>
 
                         <TextBlock Grid.Row="4" Grid.Column="0" Text="FTP Port" VerticalAlignment="Center"

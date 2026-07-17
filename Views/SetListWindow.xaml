@@ -8,8 +8,8 @@
         ResizeMode="CanResize"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        Background="#FF1A1A1A"
-        Foreground="#FFD0D0D0">
+        Background="{StaticResource WindowBackgroundBrush}"
+        Foreground="{StaticResource TextBrush}">
     <Grid Margin="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -20,8 +20,8 @@
 
         <!-- Top bar: selector + actions -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0 0 0 8">
-            <TextBlock Text="Set List" VerticalAlignment="Center" Margin="0 0 6 0" Foreground="#FF999999"/>
-            <ComboBox x:Name="CMB_SetList" Width="180" BorderBrush="#FF555555"/>
+            <TextBlock Text="Set List" VerticalAlignment="Center" Margin="0 0 6 0" Foreground="{StaticResource MutedTextBrush}"/>
+            <ComboBox x:Name="CMB_SetList" Width="180"/>
             <Button x:Name="BTN_Load" Content="Load" Width="80" Margin="8 0 0 0"
                     ToolTip="Dump the selected Set List from the Kronos (or show it from cache)."/>
             <Button x:Name="BTN_Refresh" Content="Refresh" Width="80" Margin="6 0 0 0"
@@ -46,16 +46,6 @@
                   BorderBrush="#FF333333" HorizontalGridLinesBrush="#FF2A2A2A"
                   SelectionMode="Single" CanUserAddRows="False" CanUserResizeRows="False"
                   FontFamily="Segoe UI" FontSize="12" RowHeight="24">
-            <DataGrid.ColumnHeaderStyle>
-                <Style TargetType="{x:Type DataGridColumnHeader}">
-                    <Setter Property="Background" Value="#FF262626"/>
-                    <Setter Property="Foreground" Value="#FFBBBBBB"/>
-                    <Setter Property="Padding" Value="6 3"/>
-                    <Setter Property="BorderBrush" Value="#FF333333"/>
-                    <Setter Property="BorderThickness" Value="0 0 1 1"/>
-                    <Setter Property="FontWeight" Value="SemiBold"/>
-                </Style>
-            </DataGrid.ColumnHeaderStyle>
             <DataGrid.Columns>
                 <DataGridTextColumn Header="#" Binding="{Binding Number}" Width="42"/>
                 <DataGridTemplateColumn Header="" Width="26">

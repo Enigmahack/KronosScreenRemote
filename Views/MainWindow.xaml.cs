@@ -616,7 +616,7 @@ public partial class MainWindow : Window, ICtrlSender
         MNU_InputTester.Click  += (sender, e) => new InputTesterWindow(_ctrl) { Owner = this }.Show();
         MNU_SysExTool.Click    += (sender, e) => OpenSysExToolWindow();
         MNU_SetListView.Click  += (sender, e) => OpenSetListWindow();
-        // MNU_Librarian.Click    += (sender, e) => OpenLibrarianWindow();
+        MNU_Librarian.Click    += (sender, e) => OpenLibrarianWindow();
         MNU_SyncNames.Click    += (sender, e) => _ = SyncNamesAsync();
         MNU_SyncAll.Click      += (sender, e) => _ = SyncAllAsync();
         MNU_KeyboardInfo.Click += (sender, e) => OpenKeyboardInfoWindow();
@@ -628,7 +628,7 @@ public partial class MainWindow : Window, ICtrlSender
         // Bank Select popup stays a 3-item list instead of one flat 21-item dropdown.
         char[] bankLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
 
-        var bankInternal = new MenuItem { Header = "_Internal" };
+        var bankInternal = new MenuItem { Header = "_Internal (A-G)" };
         foreach (var letter in bankLetters)
         {
             var mi = new MenuItem { Header = $"_{letter}" };
@@ -637,7 +637,7 @@ public partial class MainWindow : Window, ICtrlSender
         }
         MENU_BankSelect.Items.Add(bankInternal);
 
-        var bankUser = new MenuItem { Header = "_User" };
+        var bankUser = new MenuItem { Header = "_User (A-G)" };
         foreach (var letter in bankLetters)
         {
             var mi = new MenuItem { Header = $"_{letter}" };

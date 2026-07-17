@@ -6,8 +6,8 @@
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        Background="#FF1A1A1A"
-        Foreground="White">
+        Background="{StaticResource WindowBackgroundBrush}"
+        Foreground="{StaticResource TextBrush}">
     <Grid Margin="28 24 28 20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -62,8 +62,6 @@
                 Content="Close"
                 HorizontalAlignment="Right"
                 Width="80" Height="28"
-                Background="#FF3A3A3A" Foreground="White"
-                BorderBrush="#FF666666"
                 Click="CloseButton_Click"/>
     </Grid>
 </Window>

@@ -7,88 +7,8 @@
         MinWidth="640" MinHeight="400"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        Background="#FF1E1E1E"
-        Foreground="#FFCCCCCC">
-
-    <Window.Resources>
-
-        <!-- Override Aero theming so dark background actually renders -->
-        <Style TargetType="Button">
-            <Setter Property="OverridesDefaultStyle" Value="True"/>
-            <Setter Property="Background"      Value="#FF3A3A3A"/>
-            <Setter Property="Foreground"      Value="#FFDDDDDD"/>
-            <Setter Property="BorderBrush"     Value="#FF666666"/>
-            <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding"         Value="8,4"/>
-            <Setter Property="Cursor"          Value="Hand"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Button">
-                        <Border x:Name="Bd"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                Padding="{TemplateBinding Padding}"
-                                CornerRadius="2">
-                            <ContentPresenter HorizontalAlignment="Center"
-                                              VerticalAlignment="Center"
-                                              TextElement.Foreground="{TemplateBinding Foreground}"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#FF505050"/>
-                            </Trigger>
-                            <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#FF252525"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Bd" Property="Opacity" Value="0.4"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style TargetType="DataGridColumnHeader">
-            <Setter Property="Background"                 Value="#FF252525"/>
-            <Setter Property="Foreground"                 Value="#FF888888"/>
-            <Setter Property="BorderBrush"                Value="#FF444444"/>
-            <Setter Property="BorderThickness"            Value="0,0,0,1"/>
-            <Setter Property="Padding"                    Value="4,4"/>
-            <Setter Property="SeparatorBrush"             Value="#FF444444"/>
-            <Setter Property="FontSize"                   Value="11"/>
-            <Setter Property="HorizontalContentAlignment" Value="Left"/>
-        </Style>
-        <Style TargetType="DataGridCell">
-            <Setter Property="BorderBrush"     Value="Transparent"/>
-            <Setter Property="BorderThickness" Value="0"/>
-            <Setter Property="Padding"         Value="2,0"/>
-            <Setter Property="Background"      Value="Transparent"/>
-            <Style.Triggers>
-                <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background"  Value="Transparent"/>
-                    <Setter Property="BorderBrush" Value="Transparent"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-        <Style TargetType="DataGridRow">
-            <Setter Property="Background" Value="#FF1E1E1E"/>
-            <Setter Property="Foreground" Value="#FFCCCCCC"/>
-            <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#FF252525"/>
-                </Trigger>
-                <Trigger Property="IsSelected" Value="True">
-                    <Setter Property="Background" Value="#FF2D4A7A"/>
-                    <Setter Property="Foreground" Value="#FFFFFFFF"/>
-                </Trigger>
-            </Style.Triggers>
-        </Style>
-        <Style TargetType="ComboBoxItem">
-            <Setter Property="Foreground" Value="#FF111111"/>
-        </Style>
-    </Window.Resources>
+        Background="{StaticResource WindowBackgroundBrush}"
+        Foreground="{StaticResource TextBrush}">
 
     <DockPanel>
 
@@ -116,23 +36,14 @@
                     <!-- Observed + Send -->
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock Text="Observed: " Foreground="#FF888888" VerticalAlignment="Center"/>
-                        <!-- Foreground is dark so text is readable on Aero-rendered light background -->
                         <ComboBox x:Name="CboObserved" Width="200" Margin="0,0,10,0"
                                   IsEditable="True"
                                   IsTextSearchEnabled="False"
-                                  Background="#FF2A2A2A" Foreground="#FF111111"
-                                  BorderBrush="#FF666666" Padding="3,0"
                                   FontFamily="Consolas" FontSize="14"
                                   VerticalContentAlignment="Center"
                                   DropDownClosed="CboObserved_DropDownClosed"
                                   LostFocus="CboObserved_LostFocus"
-                                  PreviewKeyDown="CboObserved_PreviewKeyDown">
-                            <ComboBox.ItemContainerStyle>
-                                <Style TargetType="ComboBoxItem">
-                                    <Setter Property="Foreground" Value="#FF111111"/>
-                                </Style>
-                            </ComboBox.ItemContainerStyle>
-                        </ComboBox>
+                                  PreviewKeyDown="CboObserved_PreviewKeyDown"/>
                         <Button x:Name="BtnSend" Content="Send to Kronos  (F5)"
                                 Padding="12,5" IsEnabled="False"
                                 Click="BtnSend_Click"/>

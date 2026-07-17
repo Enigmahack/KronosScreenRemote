@@ -11,7 +11,8 @@
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
         Topmost="True"
-        Background="#FF1E1E1E">
+        Background="{StaticResource WindowBackgroundBrush}"
+        Foreground="{StaticResource TextBrush}">
 
     <Window.Resources>
         <!-- Item container: dark highlight on hover/selection -->

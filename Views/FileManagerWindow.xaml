@@ -5,220 +5,16 @@
         ResizeMode="CanResize"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="True"
-        Background="#FF1A1A1A"
-        Foreground="White">
+        Background="{StaticResource WindowBackgroundBrush}"
+        Foreground="{StaticResource TextBrush}">
     <Window.Resources>
-        <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="White"/>
-        </Style>
-        <Style TargetType="TextBox">
-            <Setter Property="Background"      Value="#FF1A1A1A"/>
+        <!-- Read-only path display fields; distinct from the app-wide editable TextBox style. -->
+        <Style x:Key="PathTextStyle" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+            <Setter Property="Background"      Value="{StaticResource WindowBackgroundBrush}"/>
             <Setter Property="Foreground"      Value="#FFCCCCCC"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="IsReadOnly"      Value="True"/>
             <Setter Property="Padding"         Value="0"/>
-        </Style>
-        <Style TargetType="Button">
-            <Setter Property="Background"  Value="#FF3A3A3A"/>
-            <Setter Property="Foreground"  Value="White"/>
-            <Setter Property="BorderBrush" Value="#FF666666"/>
-            <Setter Property="Padding"     Value="8 3"/>
-            <Setter Property="Margin"      Value="0 0 4 0"/>
-        </Style>
-        <Style TargetType="ListView">
-            <Setter Property="Background"  Value="#FF232323"/>
-            <Setter Property="Foreground"  Value="White"/>
-            <Setter Property="BorderBrush" Value="#FF444444"/>
-        </Style>
-        <Style TargetType="GridViewColumnHeader">
-            <Setter Property="Background"  Value="#FF2E2E2E"/>
-            <Setter Property="Foreground"  Value="#FFCCCCCC"/>
-            <Setter Property="BorderBrush" Value="#FF555555"/>
-            <Setter Property="Padding"     Value="4 3"/>
-        </Style>
-        <Style TargetType="ListViewItem">
-            <Setter Property="Foreground"  Value="White"/>
-            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-            <Setter Property="Margin"      Value="0 0 0 2"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ListViewItem">
-                        <Border x:Name="Bd" Background="Transparent"
-                                BorderBrush="Transparent" BorderThickness="1" Padding="2 4">
-                            <GridViewRowPresenter
-                                Columns="{TemplateBinding GridView.ColumnCollection}"
-                                Content="{TemplateBinding Content}"
-                                VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#FF363636"/>
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#FF1A4E6E"/>
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#FF3A8FBF"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Dark context-menu theme -->
-        <Style TargetType="ContextMenu">
-            <Setter Property="Background"            Value="#FF282828"/>
-            <Setter Property="BorderBrush"           Value="#FF555555"/>
-            <Setter Property="BorderThickness"       Value="1"/>
-            <Setter Property="Foreground"            Value="White"/>
-            <Setter Property="Padding"               Value="2"/>
-            <Setter Property="OverridesDefaultStyle" Value="True"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ContextMenu">
-                        <Border Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                Padding="{TemplateBinding Padding}"
-                                SnapsToDevicePixels="True">
-                            <ItemsPresenter/>
-                        </Border>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <Style TargetType="MenuItem">
-            <Setter Property="Background"            Value="Transparent"/>
-            <Setter Property="Foreground"            Value="White"/>
-            <Setter Property="Padding"               Value="10 5"/>
-            <Setter Property="OverridesDefaultStyle" Value="True"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="MenuItem">
-                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter ContentSource="Header"
-                                              RecognizesAccessKey="True"
-                                              VerticalAlignment="Center"/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsHighlighted" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#FF1A4E6E"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Foreground" Value="#FF606060"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <Style x:Key="{x:Static MenuItem.SeparatorStyleKey}" TargetType="Separator">
-            <Setter Property="OverridesDefaultStyle" Value="True"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Separator">
-                        <Rectangle Height="1" Margin="4 3" Fill="#FF444444"/>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <!-- Dark drive-selector ComboBox -->
-        <Style TargetType="ComboBox">
-            <Setter Property="OverridesDefaultStyle" Value="True"/>
-            <Setter Property="Background"            Value="#FF3A3A3A"/>
-            <Setter Property="Foreground"            Value="White"/>
-            <Setter Property="BorderBrush"           Value="#FF666666"/>
-            <Setter Property="BorderThickness"       Value="1"/>
-            <Setter Property="MaxDropDownHeight"     Value="200"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ComboBox">
-                        <Grid>
-                            <Border x:Name="Bd"
-                                    Background="{TemplateBinding Background}"
-                                    BorderBrush="{TemplateBinding BorderBrush}"
-                                    BorderThickness="{TemplateBinding BorderThickness}">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="18"/>
-                                    </Grid.ColumnDefinitions>
-                                    <ContentPresenter Grid.Column="0"
-                                                      IsHitTestVisible="False"
-                                                      Content="{TemplateBinding SelectionBoxItem}"
-                                                      ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
-                                                      Margin="5 2 2 2"
-                                                      VerticalAlignment="Center"/>
-                                    <Path Grid.Column="1"
-                                          Data="M 0 0 L 4 4 L 8 0 Z"
-                                          Fill="#FFAAAAAA" Width="8" Height="4"
-                                          HorizontalAlignment="Center" VerticalAlignment="Center"
-                                          Stretch="Fill" IsHitTestVisible="False"/>
-                                </Grid>
-                            </Border>
-                            <ToggleButton Focusable="False" OverridesDefaultStyle="True"
-                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay,
-                                              RelativeSource={RelativeSource TemplatedParent}}">
-                                <ToggleButton.Template>
-                                    <ControlTemplate TargetType="ToggleButton">
-                                        <Border Background="Transparent"/>
-                                    </ControlTemplate>
-                                </ToggleButton.Template>
-                            </ToggleButton>
-                            <Popup x:Name="PART_Popup" Placement="Bottom"
-                                   IsOpen="{TemplateBinding IsDropDownOpen}"
-                                   AllowsTransparency="True" Focusable="False"
-                                   PopupAnimation="Slide">
-                                <Border MinWidth="{TemplateBinding ActualWidth}"
-                                        MaxHeight="{TemplateBinding MaxDropDownHeight}"
-                                        Background="#FF2E2E2E"
-                                        BorderBrush="#FF555555" BorderThickness="1">
-                                    <ScrollViewer CanContentScroll="True">
-                                        <ItemsPresenter/>
-                                    </ScrollViewer>
-                                </Border>
-                            </Popup>
-                        </Grid>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#FF4A4A4A"/>
-                            </Trigger>
-                            <Trigger Property="IsDropDownOpen" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="#FF88AADD"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Bd" Property="Opacity" Value="0.5"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-        <Style TargetType="ComboBoxItem">
-            <Setter Property="OverridesDefaultStyle"       Value="True"/>
-            <Setter Property="Foreground"                  Value="White"/>
-            <Setter Property="Padding"                     Value="6 3"/>
-            <Setter Property="HorizontalContentAlignment"  Value="Stretch"/>
-            <Setter Property="VerticalContentAlignment"    Value="Center"/>
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ComboBoxItem">
-                        <Border x:Name="Bd" Background="Transparent"
-                                Padding="{TemplateBinding Padding}">
-                            <ContentPresenter/>
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsHighlighted" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#FF1A4E6E"/>
-                            </Trigger>
-                            <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#FF1A4E6E"/>
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
         </Style>
 
         <!-- Name cell: folders get a bright blue tint, files stay white -->
@@ -268,7 +64,7 @@
                         DragOver="OnUpDragOver" DragLeave="OnUpDragLeave" Drop="OnUpDrop"/>
                 <TextBlock DockPanel.Dock="Left" Text="Local: " Foreground="#FF88DD88"
                            VerticalAlignment="Center" FontWeight="SemiBold"/>
-                <TextBox x:Name="LocalPathBox" VerticalAlignment="Center"/>
+                <TextBox x:Name="LocalPathBox" Style="{StaticResource PathTextStyle}" VerticalAlignment="Center"/>
             </DockPanel>
         </Border>
         <Rectangle Grid.Row="0" Grid.Column="1" Fill="#FF444444"/>
@@ -280,7 +76,7 @@
                         DragOver="OnUpDragOver" DragLeave="OnUpDragLeave" Drop="OnUpDrop"/>
                 <TextBlock DockPanel.Dock="Left" Text="Kronos: " Foreground="#FF88AADD"
                            VerticalAlignment="Center" FontWeight="SemiBold"/>
-                <TextBox x:Name="RemotePathBox" VerticalAlignment="Center"/>
+                <TextBox x:Name="RemotePathBox" Style="{StaticResource PathTextStyle}" VerticalAlignment="Center"/>
             </DockPanel>
         </Border>
 
@@ -322,11 +118,11 @@
         <Border Grid.Row="2" Grid.Column="0" Background="#FF252525"
                 BorderBrush="#FF444444" BorderThickness="0 1 0 0" Padding="6 4">
             <StackPanel Orientation="Horizontal">
-                <Button x:Name="BtnUpload"         Content="→ Send to Kronos" Click="OnUpload"
+                <Button x:Name="BtnUpload"         Content="→ Send to Kronos" Click="OnUpload" Margin="0 0 4 0"
                         ToolTip="Upload selected local files to Kronos"/>
-                <Button x:Name="BtnLocalNewFolder" Content="New Folder"       Click="OnLocalNewFolder"/>
-                <Button x:Name="BtnLocalDelete"    Content="Delete"           Click="OnLocalDelete"/>
-                <Button x:Name="BtnLocalRename"    Content="Rename"           Click="OnLocalRename"/>
+                <Button x:Name="BtnLocalNewFolder" Content="New Folder"       Click="OnLocalNewFolder" Margin="0 0 4 0"/>
+                <Button x:Name="BtnLocalDelete"    Content="Delete"           Click="OnLocalDelete" Margin="0 0 4 0"/>
+                <Button x:Name="BtnLocalRename"    Content="Rename"           Click="OnLocalRename" Margin="0 0 4 0"/>
                 <Button x:Name="BtnLocalRefresh"   Content="↺"               Click="OnLocalRefresh"
                         Width="32" Margin="0"/>
             </StackPanel>
@@ -335,11 +131,11 @@
         <Border Grid.Row="2" Grid.Column="2" Background="#FF252525"
                 BorderBrush="#FF444444" BorderThickness="0 1 0 0" Padding="6 4">
             <StackPanel Orientation="Horizontal">
-                <Button x:Name="BtnDownload"        Content="← Send to PC"   Click="OnDownload"
+                <Button x:Name="BtnDownload"        Content="← Send to PC"   Click="OnDownload" Margin="0 0 4 0"
                         ToolTip="Download selected Kronos files to local"/>
-                <Button x:Name="BtnRemoteNewFolder" Content="New Folder"      Click="OnRemoteNewFolder"/>
-                <Button x:Name="BtnRemoteDelete"    Content="Delete"          Click="OnRemoteDelete"/>
-                <Button x:Name="BtnRemoteRename"    Content="Rename"          Click="OnRemoteRename"/>
+                <Button x:Name="BtnRemoteNewFolder" Content="New Folder"      Click="OnRemoteNewFolder" Margin="0 0 4 0"/>
+                <Button x:Name="BtnRemoteDelete"    Content="Delete"          Click="OnRemoteDelete" Margin="0 0 4 0"/>
+                <Button x:Name="BtnRemoteRename"    Content="Rename"          Click="OnRemoteRename" Margin="0 0 4 0"/>
                 <Button x:Name="BtnRemoteRefresh"   Content="↺"              Click="OnRemoteRefresh"
                         Width="32" Margin="0"/>
             </StackPanel>

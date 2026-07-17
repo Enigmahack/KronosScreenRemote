@@ -8,8 +8,8 @@
         ResizeMode="CanResize"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        Background="#FF1A1A1A"
-        Foreground="#FFD0D0D0">
+        Background="{StaticResource WindowBackgroundBrush}"
+        Foreground="{StaticResource TextBrush}">
     <Grid Margin="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -35,35 +35,33 @@
                       ToolTip="Sweep every combi slot and all 128 set lists, not just named ones. Slow but complete."/>
             <Button x:Name="BTN_ScanCancel" Content="Cancel" Width="70" Margin="12 0 0 0" IsEnabled="False"/>
             <TextBlock x:Name="TXT_ScanStatus" VerticalAlignment="Center" Margin="12 0 0 0"
-                       Foreground="#FF88AADD" TextTrimming="CharacterEllipsis" Text="Not scanned"/>
+                       Foreground="{StaticResource AccentBrush}" TextTrimming="CharacterEllipsis" Text="Not scanned"/>
         </StackPanel>
 
         <!-- Move controls -->
-        <GroupBox Grid.Row="2" Header="Move (swap)" BorderBrush="#FF333333" Foreground="#FF999999" Margin="0 0 0 8">
+        <GroupBox Grid.Row="2" Header="Move (swap)" Margin="0 0 0 8">
             <StackPanel Margin="6">
                 <StackPanel Orientation="Horizontal" Margin="0 2 0 6">
-                    <TextBlock Text="Object type:" VerticalAlignment="Center" Margin="0 0 8 0" Foreground="#FF999999"/>
+                    <TextBlock Text="Object type:" VerticalAlignment="Center" Margin="0 0 8 0" Foreground="{StaticResource MutedTextBrush}"/>
                     <RadioButton x:Name="RB_Prog" Content="Program" IsChecked="True" VerticalAlignment="Center"/>
                     <RadioButton x:Name="RB_Combi" Content="Combi" VerticalAlignment="Center" Margin="12 0 0 0"/>
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" Margin="0 2 0 4">
                     <TextBlock Text="Source:" Width="80" VerticalAlignment="Center"/>
-                    <TextBlock Text="Bank" VerticalAlignment="Center" Margin="0 0 4 0" Foreground="#FF999999"/>
-                    <ComboBox x:Name="CMB_SrcBank" Width="90" BorderBrush="#FF555555"/>
-                    <TextBlock Text="No." VerticalAlignment="Center" Margin="10 0 4 0" Foreground="#FF999999"/>
-                    <TextBox x:Name="TXT_SrcNum" Width="48" Text="0" BorderBrush="#FF555555"
-                             Background="#FF222222" Foreground="#FFE0E0E0"/>
+                    <TextBlock Text="Bank" VerticalAlignment="Center" Margin="0 0 4 0" Foreground="{StaticResource MutedTextBrush}"/>
+                    <ComboBox x:Name="CMB_SrcBank" Width="90"/>
+                    <TextBlock Text="No." VerticalAlignment="Center" Margin="10 0 4 0" Foreground="{StaticResource MutedTextBrush}"/>
+                    <TextBox x:Name="TXT_SrcNum" Width="48" Text="0"/>
                     <TextBlock x:Name="TXT_SrcUsage" VerticalAlignment="Center" Margin="14 0 0 0" Foreground="#FF9ACD9A"/>
                 </StackPanel>
 
                 <StackPanel Orientation="Horizontal" Margin="0 2 0 4">
                     <TextBlock Text="Destination:" Width="80" VerticalAlignment="Center"/>
-                    <TextBlock Text="Bank" VerticalAlignment="Center" Margin="0 0 4 0" Foreground="#FF999999"/>
-                    <ComboBox x:Name="CMB_DstBank" Width="90" BorderBrush="#FF555555"/>
-                    <TextBlock Text="No." VerticalAlignment="Center" Margin="10 0 4 0" Foreground="#FF999999"/>
-                    <TextBox x:Name="TXT_DstNum" Width="48" Text="0" BorderBrush="#FF555555"
-                             Background="#FF222222" Foreground="#FFE0E0E0"/>
+                    <TextBlock Text="Bank" VerticalAlignment="Center" Margin="0 0 4 0" Foreground="{StaticResource MutedTextBrush}"/>
+                    <ComboBox x:Name="CMB_DstBank" Width="90"/>
+                    <TextBlock Text="No." VerticalAlignment="Center" Margin="10 0 4 0" Foreground="{StaticResource MutedTextBrush}"/>
+                    <TextBox x:Name="TXT_DstNum" Width="48" Text="0"/>
                     <TextBlock x:Name="TXT_DstUsage" VerticalAlignment="Center" Margin="14 0 0 0" Foreground="#FF9ACD9A"/>
                 </StackPanel>
 
@@ -76,17 +74,16 @@
         </GroupBox>
 
         <!-- Preview / log -->
-        <TextBox Grid.Row="3" x:Name="TXT_Log" IsReadOnly="True" IsReadOnlyCaretVisible="False"
+        <TextBox Grid.Row="3" x:Name="TXT_Log" Style="{StaticResource ConsoleTextBoxStyle}"
                  VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-                 TextWrapping="NoWrap" FontFamily="Consolas" FontSize="12"
-                 Background="#FF141414" Foreground="#FFCFCFCF" BorderBrush="#FF333333"/>
+                 TextWrapping="NoWrap" FontSize="12"/>
 
         <!-- Commit row + spike gate -->
         <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0 8 0 0">
             <CheckBox x:Name="CHK_Spike" Content="Store-Bank spike verified on this unit" VerticalAlignment="Center"
                       ToolTip="Required. Confirms 0x76 preserves untouched slots on this instrument (see the banner)."/>
             <Button x:Name="BTN_Commit" Content="Commit Move" Width="120" Margin="20 0 0 0"
-                    Background="#FF4A1F1F" Foreground="#FFEEDDDD" IsEnabled="False"/>
+                    Style="{StaticResource DangerButtonStyle}" IsEnabled="False"/>
         </StackPanel>
 
         <TextBlock Grid.Row="5" x:Name="TXT_BackupHint" Margin="0 6 0 0" FontSize="11" Foreground="#FF777777"/>

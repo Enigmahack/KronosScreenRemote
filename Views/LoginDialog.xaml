@@ -5,38 +5,8 @@
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
-        Background="#FF1E1E1E"
-        Foreground="White">
-    <Window.Resources>
-        <Style TargetType="TextBlock">
-            <Setter Property="Foreground" Value="White"/>
-        </Style>
-        <Style TargetType="TextBox">
-            <Setter Property="Background"  Value="#FF2A2A2A"/>
-            <Setter Property="Foreground"  Value="White"/>
-            <Setter Property="BorderBrush" Value="#FF555555"/>
-            <Setter Property="Padding"     Value="4 2"/>
-            <Setter Property="CaretBrush"  Value="White"/>
-        </Style>
-        <Style TargetType="PasswordBox">
-            <Setter Property="Background"  Value="#FF2A2A2A"/>
-            <Setter Property="Foreground"  Value="White"/>
-            <Setter Property="BorderBrush" Value="#FF555555"/>
-            <Setter Property="Padding"     Value="4 2"/>
-            <Setter Property="CaretBrush"  Value="White"/>
-        </Style>
-        <Style TargetType="Button">
-            <Setter Property="Background"  Value="#FF3A3A3A"/>
-            <Setter Property="Foreground"  Value="White"/>
-            <Setter Property="BorderBrush" Value="#FF666666"/>
-            <Setter Property="Padding"     Value="8 3"/>
-            <Setter Property="MinWidth"    Value="75"/>
-        </Style>
-        <Style TargetType="CheckBox">
-            <Setter Property="Foreground" Value="White"/>
-        </Style>
-    </Window.Resources>
-
+        Background="{StaticResource WindowBackgroundBrush}"
+        Foreground="{StaticResource TextBrush}">
     <Grid Margin="18">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -77,11 +47,11 @@
 
         <!-- Buttons -->
         <DockPanel Grid.Row="14">
-            <Button x:Name="BtnClear" Content="Clear" Click="OnClear" DockPanel.Dock="Left"
+            <Button x:Name="BtnClear" Content="Clear" Click="OnClear" DockPanel.Dock="Left" MinWidth="75"
                     ToolTip="Clear both fields so you can enter fresh credentials"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button x:Name="BtnCancel" Content="Cancel" IsCancel="True" Click="OnCancel" Margin="0 0 8 0"/>
-                <Button x:Name="BtnOk"    Content="OK"     IsDefault="True" Click="OnOk"/>
+                <Button x:Name="BtnCancel" Content="Cancel" IsCancel="True" Click="OnCancel" Margin="0 0 8 0" MinWidth="75"/>
+                <Button x:Name="BtnOk"    Content="OK"     IsDefault="True" Click="OnOk" MinWidth="75"/>
             </StackPanel>
         </DockPanel>
     </Grid>

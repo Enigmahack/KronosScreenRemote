@@ -6,9 +6,9 @@
         MinWidth="300" MinHeight="440"
         ResizeMode="CanResize"
         WindowStartupLocation="CenterOwner"
-        ShowInTaskbar="False"
-        Background="#FF1A1A1A"
-        Foreground="#FFD0D0D0" SizeToContent="Height">
+        ShowInTaskbar="False" SizeToContent="Height"
+        Background="{StaticResource WindowBackgroundBrush}"
+        Foreground="{StaticResource TextBrush}">
     <DockPanel>
 
         <!-- Bottom bar: update interval + status -->

@@ -88,7 +88,7 @@
                 <!-- MIDI / SysEx -->
                 <MenuItem x:Name="MNU_SysExTool"    Header="Open _MIDI Monitor" InputGestureText="M"/>
                 <MenuItem x:Name="MNU_SetListView"  Header="Set List _Viewer…" InputGestureText="V"/>
-
+                <MenuItem x:Name="MNU_Librarian"    Header="_Librarian…" InputGestureText="L"/>
                 <MenuItem x:Name="MNU_SyncNames"    Header="Sync _Program/Combi Names…"/>
                 <MenuItem x:Name="MNU_SyncAll"      Header="Sync _All (Names + Set Lists)…"/>
                 <Separator/>
@@ -568,6 +568,7 @@
                             Background="Transparent"
                             Foreground="#FF88DD88"
                             BorderThickness="0"
+                            Padding="0"
                             FontSize="16"
                             Focusable="False"
                             VerticalContentAlignment="Center"
@@ -805,6 +806,7 @@
                             Background="Transparent"
                             Foreground="#FF88AADD"
                             BorderThickness="0"
+                            Padding="0"
                             FontSize="16"
                             Focusable="False"
                             VerticalContentAlignment="Center"

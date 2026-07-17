@@ -20,6 +20,14 @@ public partial class App : Application
             Environment.Exit(fails.Count == 0 ? 0 : 1);
         }
 
+        // Headless diagnostic: `--ui-theme-smoketest` constructs every Window/Dialog with
+        // dummy args to catch XamlParseException from the Themes/Dark.xaml migration
+        // (missing StaticResource, bad template part) without showing a window.
+        if (e.Args.Contains("--ui-theme-smoketest"))
+        {
+            UiThemeSmokeTest.Run();
+        }
+
         // Single source of truth for the app directory (settings, palette, cal, log all colocate).
         var logPath = Path.Combine(Storage.DataDir, "screenremote.log");
         AppLog.Init(logPath);
