@@ -59,6 +59,14 @@ readonly record struct PerformanceInfo(
     }
 }
 
+// A parsed func-0x73 Object Dump: header fields + the decoded (8→7) object body.
+// The Body is a mutable copy the Librarian patches (reference bytes) before
+// re-sending. Value equality is not used, so the byte[] reference is fine.
+sealed record ObjectDump(int Obj, int Bank, int Index, byte Version, byte[] Body);
+
+// A parsed func-0x38 Bank Digest: which bank, and its 20-byte SHA-1 storage digest.
+readonly record struct BankDigest(int Obj, int Bank, byte[] Sha1);
+
 // General-purpose Korg Kronos SysEx client.
 //
 // Handles all SysEx communication through the screenremote daemon's SYSEX
@@ -417,6 +425,113 @@ sealed class KronosSysEx
         return null;
     }
 
+    // Parse a Reply (func 0x24) message: F0 42 3g 68 24 cc F7. Returns the Reply
+    // Code (0 = success, non-zero = failure — see KRONOS_MIDI_SysEx.txt *6), or
+    // null if the message isn't a Reply.
+    public static int? ParseReply(byte[] msg)
+    {
+        for (int i = 0; i + 5 < msg.Length; i++)
+            if (HasKorgHeaderAt(msg, i, 0x24))
+                return msg[i + 5] & 0x7F;
+        return null;
+    }
+
+    // Build an Object Dump (func 0x73) WRITE message for a small, directly
+    // addressed sub-object — e.g. Set List Slot Name (0x11, bank=set list,
+    // index=slot) or Set List Slot Comments (0x10, same addressing). Not safe
+    // for large objects: the daemon's MIDI_SEND caps at a 4096-byte payload
+    // (screenremote.c CTRL_LINE_MAX), which a full ~79 KB Set List object (0x0D)
+    // blows through by a wide margin.
+    //   F0 42 3g 68 73 obj bank idH idL version <data 7→8> F7
+    public static byte[] BuildObjectDumpMessage(int obj, int bank, int index, byte version, byte[] binaryData)
+    {
+        var encoded = Encode7to8(binaryData, 0, binaryData.Length);
+        var msg = new byte[11 + encoded.Length];
+        msg[0] = 0xF0; msg[1] = 0x42; msg[2] = 0x30; msg[3] = 0x68; msg[4] = 0x73;
+        msg[5] = (byte)obj;
+        msg[6] = (byte)bank;
+        msg[7] = (byte)((index >> 7) & 0x7F);
+        msg[8] = (byte)(index & 0x7F);
+        msg[9] = version;
+        Array.Copy(encoded, 0, msg, 10, encoded.Length);
+        msg[^1] = 0xF7;
+        return msg;
+    }
+
+    // Build a Store Bank Request (func 0x76): commits previously-sent Object Dump
+    // (func 0x73) data for the given object type/bank to non-volatile storage.
+    //   F0 42 3g 68 76 obj bank F7
+    public static byte[] BuildStoreBankRequest(int obj, int bank) =>
+        new byte[] { 0xF0, 0x42, 0x30, 0x68, 0x76, (byte)obj, (byte)bank, 0xF7 };
+
+    // ── Librarian additions: full-object parse, param-change, digest, mode ──────
+
+    // Parse a received func-0x73 Object Dump into header fields + decoded body.
+    //   F0 42 3g 68 73 obj bank idH idL version <data 8→7> F7
+    public static ObjectDump? ParseObjectDump(byte[] msg)
+    {
+        if (msg.Length < 11) return null;
+        if (msg[0] != 0xF0 || msg[1] != 0x42 || (msg[2] & 0xF0) != 0x30 ||
+            msg[3] != 0x68 || msg[4] != 0x73)
+            return null;
+        int obj   = msg[5];
+        int bank  = msg[6];
+        int index = ((msg[7] & 0x7F) << 7) | (msg[8] & 0x7F);
+        byte version = msg[9];
+        int dataStart = 10;
+        int dataEnd = Array.IndexOf(msg, (byte)0xF7, dataStart);
+        if (dataEnd < 0) dataEnd = msg.Length;
+        var body = Decode8to7(msg, dataStart, dataEnd - dataStart);
+        return new ObjectDump(obj, bank, index, version, body);
+    }
+
+    // Build a Parameter Change (func 0x43, integer): edits the CURRENT edit buffer
+    // only (audible now, never persisted). typ/soc/sub/pid/idx are DECIMAL ids sent
+    // verbatim (e.g. a set-list slot is pid=18, typ=37 — NOT 0x12/0x25). value is
+    // 21-bit two's-complement across three 7-bit bytes.
+    //   F0 42 3g 68 43 typ soc sub pid idx vH vM vL F7
+    public static byte[] BuildParamChange(int typ, int soc, int sub, int pid, int idx, int value)
+    {
+        int v = value & 0x1FFFFF;
+        return new byte[]
+        {
+            0xF0, 0x42, 0x30, 0x68, 0x43,
+            (byte)(typ & 0x7F), (byte)(soc & 0x7F), (byte)(sub & 0x7F),
+            (byte)(pid & 0x7F), (byte)(idx & 0x7F),
+            (byte)((v >> 14) & 0x7F), (byte)((v >> 7) & 0x7F), (byte)(v & 0x7F),
+            0xF7,
+        };
+    }
+
+    // Build a Bank Digest Request (func 0x37): the instrument replies with a func
+    // 0x38 storage digest for that bank.  F0 42 3g 68 37 obj bank F7
+    public static byte[] BuildBankDigestRequest(int obj, int bank) =>
+        new byte[] { 0xF0, 0x42, 0x30, 0x68, 0x37, (byte)obj, (byte)bank, 0xF7 };
+
+    // Build a Mode Change (func 0x4E): 0 Combi, 2 Program, 4 Seq, 7 Global, 9 Set List.
+    //   F0 42 3g 68 4E 0m F7
+    public static byte[] BuildModeChange(int mode) =>
+        new byte[] { 0xF0, 0x42, 0x30, 0x68, 0x4E, (byte)(mode & 0x0F), 0xF7 };
+
+    // Parse a func-0x38 Bank Digest reply into (obj, bank, 20-byte SHA-1).
+    //   F0 42 3g 68 38 obj bank <sha1 8→7 = 23 bytes> F7
+    public static BankDigest? ParseBankDigest(byte[] msg)
+    {
+        for (int i = 0; i + 6 < msg.Length; i++)
+        {
+            if (!HasKorgHeaderAt(msg, i, 0x38)) continue;
+            int obj = msg[i + 5];
+            int bank = msg[i + 6];
+            int dataStart = i + 7;
+            int dataEnd = Array.IndexOf(msg, (byte)0xF7, dataStart);
+            if (dataEnd < 0) dataEnd = msg.Length;
+            var sha1 = Decode8to7(msg, dataStart, dataEnd - dataStart);
+            if (sha1.Length > 20) Array.Resize(ref sha1, 20);
+            return new BankDigest(obj, bank, sha1);
+        }
+        return null;
+    }
+
     // Parse an Object Dump (func 0x73) for a name-only object (0x12/0x13/…) into
     // (index, name). Layout: F0 42 3g 68 73 obj bank idH idL version <name 8→7> F7.
     // Returns (-1, "") on a non-matching message.
@@ -457,6 +572,34 @@ sealed class KronosSysEx
             byte msbs = src[si++];
             for (int bit = 0; bit < 7 && si < offset + sysExLen && di < binaryLen; bit++)
                 dst[di++] = (byte)(src[si++] | (((msbs >> bit) & 1) << 7));
+        }
+        return dst;
+    }
+
+    // Encode: inverse of Decode8to7. Every 7 binary bytes produce 8 SysEx bytes —
+    // an MSB byte (bit N = bit 7 of the Nth following byte) followed by up to 7
+    // bytes each holding the low 7 bits of one binary byte. Matches
+    // KRONOS_MIDI_SysEx.txt *3 exactly (sysExSize = binarySize + (binarySize+6)/7).
+    public static byte[] Encode7to8(byte[] src, int offset, int binaryLen)
+    {
+        int sysExLen = binaryLen + (binaryLen + 6) / 7;
+        var dst = new byte[sysExLen];
+        int si = offset, di = 0;
+        int end = offset + binaryLen;
+
+        while (si < end)
+        {
+            int groupLen = Math.Min(7, end - si);
+            int msbIndex = di++;
+            byte msbs = 0;
+            for (int bit = 0; bit < groupLen; bit++)
+            {
+                byte b = src[si + bit];
+                if ((b & 0x80) != 0) msbs |= (byte)(1 << bit);
+                dst[di++] = (byte)(b & 0x7F);
+            }
+            dst[msbIndex] = msbs;
+            si += groupLen;
         }
         return dst;
     }

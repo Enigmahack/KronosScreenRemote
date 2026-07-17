@@ -126,6 +126,15 @@ public class AppSettings
         ("Bank U-EE", "Bank: U-EE",  Key.None),
         ("Bank U-FF", "Bank: U-FF",  Key.None),
         ("Bank U-GG", "Bank: U-GG",  Key.None),
+        // Sequencer transport (unassigned by default) — mirrors the footer transport
+        // row; "Seq Save" fires the same shared REC/WRITE press as "Seq Record" does.
+        ("Seq Locate",  "Seq: Locate",       Key.None),
+        ("Seq Rewind",  "Seq: Rewind",       Key.None),
+        ("Seq Forward", "Seq: Fast-Forward", Key.None),
+        ("Seq Pause",   "Seq: Pause",        Key.None),
+        ("Seq Record",  "Seq: Record",       Key.None),
+        ("Seq Start",   "Seq: Start/Stop",   Key.None),
+        ("Seq Save",    "Write / Save",      Key.None),
     ];
 
     public Keybind GetKeybind(string action)

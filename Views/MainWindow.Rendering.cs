@@ -43,8 +43,5 @@ public partial class MainWindow
             if (splash != null)
                 OverlayRenderer.DrawBootOverlay(dc, _frameRect, splash, ComputeBootFillFraction());
         }
-
-        if (_helpOpen)
-            OverlayRenderer.DrawHelp(dc, winSize, _pixPerDip, _settings.GetKeyName);
     }
 }

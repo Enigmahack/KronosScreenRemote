@@ -363,6 +363,11 @@ sealed class UsbMidiTransport : IKronosMidiTransport
         }
     }
 
+    // USB has no per-message size cap — winmm's long-message send (SendBuffer)
+    // transmits the whole SysEx in one call, and SplitMessages keeps a complete
+    // F0…F7 as a single message. So a large object write is just SendAsync.
+    public Task<bool> SendLargeSysExAsync(byte[] sysex) => SendAsync(sysex);
+
     static string SafeName(Func<string> get, string fallback)
     {
         try { return get(); } catch { return fallback; }

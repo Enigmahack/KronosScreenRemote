@@ -187,6 +187,30 @@ public partial class HelpWindow : Window
         Row(cs, "Data wheel",     "Drag up or down to scroll. Mouse scroll wheel also works everywhere.");
         Add(cs);
 
+        // ── Sequencer Transport & Save ────────────────────────────────────────
+        Add(SectionHead("Sequencer Transport & Save  (status bar)"));
+        Add(Body("The status bar's footer includes a small transport row that sends the Kronos front-panel " +
+                 "SEQUENCER buttons, plus a separate Save button just to its left. Both are greyed out — not " +
+                 "hidden — when the current Kronos mode doesn't support them, so the row stays in a fixed " +
+                 "position instead of the status bar reflowing every time the mode changes."));
+        var sq = ShortcutTable(230);
+        Row(sq, "Locate / Rewind / Fast-Forward / Pause", "Momentary — send the matching SEQUENCER key.\n" +
+                                                            "Active only in Sequence mode.");
+        Row(sq, "Record",                                 "Toggle — stays depressed with a pale red background\n" +
+                                                            "while armed. Active only in Sequence mode. Stopping\n" +
+                                                            "playback clears it automatically (there's no recording-\n" +
+                                                            "while-stopped state), and so does any mode change,\n" +
+                                                            "as a guard against a stale/desynced toggle.");
+        Row(sq, "Start / Stop",                           "Toggle — the icon swaps between ▶ and ■.\n" +
+                                                            "Active only in Sequence mode.");
+        Row(sq, "Save  (disk icon)",                       "One-shot — sends the same Record/Write key press as\n" +
+                                                            "Record, but never toggles. Active in Setlist, Combi,\n" +
+                                                            "Program, and Global modes  (the modes where that\n" +
+                                                            "key means “Write” rather than “Record”).");
+        Add(sq);
+        Add(Note("On the real Kronos, REC/WRITE is one physical key — this app splits its two roles onto\n" +
+                 "two buttons so both stay visible regardless of the current mode."));
+
         // ── Keyboard Shortcuts ────────────────────────────────────────────────
         Add(SectionHead("Keyboard Shortcuts"));
         Add(Body("These shortcuts work when the app window is focused and keyboard capture is not active.\n" +
@@ -200,6 +224,13 @@ public partial class HelpWindow : Window
         Row(ks, K("Mode Sampling", "F6"),     "Switch Kronos to Sampling mode.");
         Row(ks, K("Mode Global",   "F7"),     "Switch Kronos to Global mode.");
         Row(ks, K("Mode Disk",     "F8"),     "Switch Kronos to Disk mode.");
+        Row(ks, K("Seq Locate",    "—"),      "Sequencer: Locate  (Sequence mode only).");
+        Row(ks, K("Seq Rewind",    "—"),      "Sequencer: Rewind  (Sequence mode only).");
+        Row(ks, K("Seq Forward",   "—"),      "Sequencer: Fast-Forward  (Sequence mode only).");
+        Row(ks, K("Seq Pause",     "—"),      "Sequencer: Pause  (Sequence mode only).");
+        Row(ks, K("Seq Record",    "—"),      "Sequencer: Record  (Sequence mode only).");
+        Row(ks, K("Seq Start",     "—"),      "Sequencer: Start / Stop  (Sequence mode only).");
+        Row(ks, K("Seq Save",      "—"),      "Write / Save current edit  (Setlist/Combi/Program/Global).");
         Row(ks, K("AspectLock",    "A"),      "Toggle aspect-ratio lock on the screen panel.");
         Row(ks, K("Calibrate",     "C"),      "Toggle touch calibration mode.");
         Row(ks, K("Fullscreen",    "F"),      "Toggle fullscreen.");
@@ -308,8 +339,10 @@ public partial class HelpWindow : Window
 
         // ── Bank Select ───────────────────────────────────────────────────────
         Add(SectionHead("Bank Select  (Bank Select menu  or  rebindable shortcuts)"));
-        Add(Body("Sends a bank-select button press to the Kronos. Banks I-A through I-G and U-A through U-G " +
-                 "correspond to the internal and user bank rows. U-XX banks (U-AA, U-BB, …) send a chord of " +
+        Add(Body("Sends a bank-select button press to the Kronos. The Bank Select menu is organized into " +
+                 "three sub-menus — Internal, User, and User (AA–GG) — rather than one long flat list. " +
+                 "Internal and User list single letters A through G and correspond to the internal and user " +
+                 "bank rows; User (AA–GG) lists the doubled-letter pairs (AA, BB, …) and sends a chord of " +
                  "both the U and I buttons simultaneously, selecting the combined user/internal bank slot."));
         Add(Note("Bank select shortcuts are unassigned by default. Bind them in Settings → Settings… → Keybindings."));
 
@@ -379,6 +412,8 @@ public partial class HelpWindow : Window
         Row(sb, "Keyboard Info",        "Opens a keyboard info pane, displaying various stats related to CPU, Memory, Temperature, and Storage.");
         Row(sb, "VU meter",             "Shows the level of a local Windows audio device (e.g. your DAW output).\n" +
                                         "Click the ▲ button to pick the device to monitor. Choice is saved in settings.");
+        Row(sb, "Sequencer transport + Save", "SEQUENCER buttons and Record/Write — see “Sequencer Transport\n" +
+                                               "& Save” above.");
         Row(sb, "Mode: …",              "Current Kronos operating mode. Detected from the screen image when\n" +
                                          "reference images are available; otherwise polled from the daemon every 1 s.");
         Add(sb);

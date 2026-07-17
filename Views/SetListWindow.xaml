@@ -26,6 +26,9 @@
                     ToolTip="Dump the selected Set List from the Kronos (or show it from cache)."/>
             <Button x:Name="BTN_Refresh" Content="Refresh" Width="80" Margin="6 0 0 0"
                     ToolTip="Re-dump the selected Set List, replacing the cached copy."/>
+            <Button x:Name="BTN_EditSlot" Content="Edit Slot…" Width="90" Margin="14 0 0 0"
+                    IsEnabled="False"
+                    ToolTip="Edit the selected slot's Name and Notes. Performance is read-only — see the hint below."/>
             <TextBlock x:Name="TXT_Status" VerticalAlignment="Center" Margin="14 0 0 0"
                        Foreground="#FF88AADD" TextTrimming="CharacterEllipsis"/>
         </StackPanel>
@@ -73,6 +76,6 @@
 
         <TextBlock Grid.Row="3" x:Name="TXT_Hint" Margin="0 8 0 0" FontSize="11" Foreground="#FF777777"
                    TextWrapping="Wrap"
-                   Text="Dumps are read from the Kronos once and cached. Requires MIDI monitoring on and SysEx transmit enabled on the Kronos. Empty slots are hidden."/>
+                   Text="Dumps are read from the Kronos once and cached. Requires MIDI monitoring on and SysEx transmit enabled on the Kronos. Empty slots are hidden. Select a slot and click Edit Slot… (or double-click it) to change its Name and Notes — Performance can't be edited from here."/>
     </Grid>
 </Window>

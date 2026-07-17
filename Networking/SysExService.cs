@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows.Threading;
 
@@ -69,8 +70,6 @@ sealed class SysExService : ISysExService
     bool _isAvailable;
 
     public event PropertyChangedEventHandler? PropertyChanged;
-    public event Action<int>? InitialModeDetected;
-    public event Action<int>? ModeChanged;
     public event Action<int>? ValueSliderChanged;
     public event Action<SysExTrafficEntry>? SysExTraffic;
 
@@ -264,8 +263,11 @@ sealed class SysExService : ISysExService
             return;
         }
 
-        // Mode Change (SysEx func 0x4E): F0 42 3g 68 4E 0m F7 — authoritative,
-        // event-driven mode follow. See KRONOS_MIDI_SysEx.txt func 4E.
+        // Mode Change (SysEx func 0x4E): F0 42 3g 68 4E 0m F7 — passive live-stream
+        // signal. The UI no longer treats this as a mode source (the daemon's STATE
+        // command is authoritative there — see MainWindow.Streaming.cs's ModePollLoop),
+        // but it's still the freshest available seed for _stateMode, which
+        // Program-Change stream decode below needs to resolve the right bank.
         if (status == 0xF0 && raw.Length >= 7 &&
             raw[1] == 0x42 && (raw[2] & 0xF0) == 0x30 && raw[3] == 0x68 && raw[4] == 0x4E)
         {
@@ -275,7 +277,6 @@ sealed class SysExService : ISysExService
             {
                 _stateMode = stateMode;   // for program-change stream decode
                 AppLog.Info($"[sysex] mode-change 0x4E -> {md.ModeName} (state={stateMode})");
-                _dispatcher.InvokeAsync(() => ModeChanged?.Invoke(stateMode));
             }
             return;
         }
@@ -655,6 +656,59 @@ sealed class SysExService : ISysExService
         return msg != null ? SetListData.FromObjectDump(msg) : null;
     }
 
+    // Write a Set List slot's Name and/or Notes, then commit. See ISysExService
+    // for why Performance isn't offered here. Pauses perf polling for the same
+    // reason DumpSetListAsync does — its func 0x33 query could otherwise steal
+    // one of our func 0x24 Replies.
+    public async Task<SetListSlotWriteResult> WriteSetListSlotAsync(int setListNumber, int slotNumber, string? name, string? comments)
+    {
+        var dump = _dump;
+        if (dump == null || _transport?.CanStream != true)
+            return SetListSlotWriteResult.Fail("MIDI monitoring is off — enable it in Settings → MIDI/SysEx");
+        if (name == null && comments == null)
+            return SetListSlotWriteResult.Fail("Nothing to save");
+
+        _dumping = true;
+        try
+        {
+            if (name != null)
+            {
+                var code = await dump.SendObjectDumpAsync(0x11, setListNumber, slotNumber, 0, PadAscii(name, 24)).ConfigureAwait(false);
+                if (code == null) return SetListSlotWriteResult.Fail("No response writing the name — is SysEx receive enabled on the Kronos?");
+                if (code != 0)    return SetListSlotWriteResult.Fail($"Kronos rejected the name write (code {code})");
+            }
+
+            if (comments != null)
+            {
+                var code = await dump.SendObjectDumpAsync(0x10, setListNumber, slotNumber, 0, PadAscii(comments, 512)).ConfigureAwait(false);
+                if (code == null) return SetListSlotWriteResult.Fail("No response writing the notes — is SysEx receive enabled on the Kronos?");
+                if (code != 0)    return SetListSlotWriteResult.Fail($"Kronos rejected the notes write (code {code})");
+            }
+
+            var storeCode = await dump.SendStoreBankRequestAsync(0x0D, 0).ConfigureAwait(false);
+            if (storeCode == null) return SetListSlotWriteResult.Fail("No response committing to storage — the edit may be lost on power-off");
+            if (storeCode != 0)    return SetListSlotWriteResult.Fail($"Kronos rejected the store request (code {storeCode})");
+
+            return SetListSlotWriteResult.Ok();
+        }
+        finally
+        {
+            _dumping = false;
+            RefreshNow();
+        }
+    }
+
+    // Space-pad (Kronos convention for these ASCII fields) or truncate to exactly
+    // len bytes.
+    static byte[] PadAscii(string s, int len)
+    {
+        var data = new byte[len];
+        Array.Fill(data, (byte)0x20);
+        var bytes = System.Text.Encoding.ASCII.GetBytes(s);
+        Array.Copy(bytes, data, Math.Min(bytes.Length, len));
+        return data;
+    }
+
     // Coalescing debounce: each Program/Bank message restarts a short timer, so
     // a CC0+CC32+PC burst fires a single refresh ~PerfRefreshDebounceMs later.
     // The user-activity guard still skips refreshes during active app-driven
@@ -700,11 +754,7 @@ sealed class SysExService : ISysExService
                 {
                     int stateMode = md.Value.ToStateMode();
                     if (stateMode > 0)
-                    {
                         _stateMode = stateMode;   // seed for program-change stream decode
-                        await _dispatcher.InvokeAsync(() => InitialModeDetected?.Invoke(stateMode))
-                            .Task.ConfigureAwait(false);
-                    }
                 }
             }
 
@@ -812,5 +862,105 @@ sealed class SysExService : ISysExService
         field = value;
         _dispatcher.InvokeAsync(() =>
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name)));
+    }
+
+    // ── Librarian primitives (ISysExService + IMoveExecutor) ────────────────────
+    // Bulk read/write over the live stream; each pauses the func-33 perf loop
+    // (_dumping) so it can't steal one of our 0x73/0x24 replies, mirroring the
+    // existing DumpSetListAsync / WriteSetListSlotAsync pattern.
+
+    public async Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index)
+    {
+        var dump = _dump;
+        if (dump == null || _transport?.CanStream != true) return null;
+        _dumping = true;
+        try
+        {
+            var req  = SysExDumpCollector.ObjectDumpRequest(obj, bank, index);
+            // Set Lists are ~79 KB and slow to serialize — give the "no activity" window headroom.
+            var msgs = await dump.CollectAsync(req, (byte)obj, expectedCount: 1,
+                                    noResponseMs: obj == 0x0D ? 10000 : 6000).ConfigureAwait(false);
+            var msg = msgs.Count > 0 ? msgs[0] : null;
+            return msg != null ? KronosSysEx.ParseObjectDump(msg) : null;
+        }
+        finally { _dumping = false; }
+    }
+
+    public async Task<int> WriteObjectAsync(WriteOp op)
+    {
+        var dump = _dump;
+        if (dump == null || _transport?.CanStream != true) return -1;
+        _dumping = true;
+        try
+        {
+            var msg  = KronosSysEx.BuildObjectDumpMessage(op.Obj, op.Bank, op.Index, op.Version, op.Body);
+            var code = await dump.SendLargeObjectDumpAndAwaitReplyAsync(msg).ConfigureAwait(false);
+            return code ?? -1;
+        }
+        finally { _dumping = false; }
+    }
+
+    public async Task<int> StoreBankAsync(int obj, int bank)
+    {
+        var dump = _dump;
+        if (dump == null || _transport?.CanStream != true) return -1;
+        _dumping = true;
+        try
+        {
+            var code = await dump.SendStoreBankRequestAsync(obj, bank, timeoutMs: 20000).ConfigureAwait(false);
+            return code ?? -1;
+        }
+        finally { _dumping = false; }
+    }
+
+    public async Task<byte[]?> BankDigestAsync(int obj, int bank)
+    {
+        var transport = _transport;
+        if (transport?.CanStream != true) return null;
+        _dumping = true;
+        var tcs = new TaskCompletionSource<byte[]?>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        void OnMsg(byte[] m)
+        {
+            var d = KronosSysEx.ParseBankDigest(m);
+            if (d is { } bd && bd.Obj == obj && bd.Bank == bank) tcs.TrySetResult(bd.Sha1);
+        }
+
+        transport.SysExMessageReceived += OnMsg;
+        try
+        {
+            if (!await transport.SendAsync(KronosSysEx.BuildBankDigestRequest(obj, bank)).ConfigureAwait(false))
+                return null;
+            var winner = await Task.WhenAny(tcs.Task, Task.Delay(5000)).ConfigureAwait(false);
+            return winner == tcs.Task ? tcs.Task.Result : null;
+        }
+        finally
+        {
+            transport.SysExMessageReceived -= OnMsg;
+            _dumping = false;
+        }
+    }
+
+    public async Task BackupObjectsAsync(IReadOnlyList<WriteOp> ops, string path)
+    {
+        await using var fs = new FileStream(path, FileMode.Create, FileAccess.Write);
+        foreach (var op in ops)
+        {
+            var m = KronosSysEx.BuildObjectDumpMessage(op.Obj, op.Bank, op.Index, op.Version, op.Body);
+            await fs.WriteAsync(m).ConfigureAwait(false);
+        }
+    }
+
+    public async Task SendRawAsync(byte[] data)
+    {
+        var transport = _transport;
+        if (transport != null) await transport.SendAsync(data).ConfigureAwait(false);
+    }
+
+    public ObjLoc? CurrentPerformanceLoc()
+    {
+        if (_lastBankId is not { } b) return null;
+        int objType = b.Type == 1 ? LibObj.Program : LibObj.Combi;
+        return new ObjLoc(objType, b.ObjBank, b.Number);
     }
 }

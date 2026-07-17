@@ -6,10 +6,11 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using KronosScreenRemote.ViewModels;
 
 namespace KronosScreenRemote;
 
-public partial class MainWindow : Window
+public partial class MainWindow : Window, ICtrlSender
 {
     // ── Connection settings ───────────────────────────────────────────────────
     string _host     = "";
@@ -40,7 +41,6 @@ public partial class MainWindow : Window
     // ── Display state ─────────────────────────────────────────────────────────
     bool   _aspectLock   = true;
     bool   _mirrorState  = false;
-    bool   _helpOpen     = false;
     bool   _zoomOn       = false;
     double _zoomLevel    = 2.5;
     bool   _hideDataInput       = false;
@@ -67,7 +67,6 @@ public partial class MainWindow : Window
 
     // ── Mode polling ──────────────────────────────────────────────────────────
     CancellationTokenSource? _modePollCts;
-    DateTime _lastUserModeChange  = DateTime.MinValue;
     bool     _helpActive          = false;
     Mode     _pendingMode         = Mode.Unknown; // set while awaiting detection confirmation
     DateTime _pendingModeDeadline = DateTime.MinValue;
@@ -88,26 +87,17 @@ public partial class MainWindow : Window
     Mode _currentMode = Mode.Unknown;   // last mode applied by SetModeButton
     Mode _prevMode    = Mode.Unknown;   // mode before the current one; survives across frames
 
-    // SysEx is the source of truth for the mode, but only while it is actively
-    // transmitting. A live Mode Change (func 0x4E) stamps _lastSysExModeAt; screen
-    // detection then defers to it for SysExModeGraceSec (covers screen-redraw lag).
-    // Once SysEx goes silent — transmit off at the Kronos, or MIDI monitoring off
-    // in-app — the grace lapses and screen detection drives the mode immediately.
-    // Recency subsumes the old "proven" latch: if a 0x4E never fired, the stamp is
-    // never fresh and the screen leads, so a SysEx-off Kronos degrades gracefully.
-    Mode     _lastSysExMode   = Mode.Unknown;    // mode from the last live func 0x4E
-    DateTime _lastSysExModeAt = DateTime.MinValue;
-    const double SysExModeGraceSec = 1.0;
-    int      _sysExDotPending;                   // 1 = a dot repaint is already queued
+    int _sysExDotPending;                   // 1 = a dot repaint is already queued
 
-    // ── Combi program-edit state ──────────────────────────────────────────────
-    readonly CombiEditState _combi = new();
+    // ── Program-edit-context state (daemon EDITCTX; Combi or Sequence origin) ──
+    readonly EditContextState _editCtx = new();
 
     // ── Help window ──────────────────────────────────────────────────────────
     HelpWindow?          _helpWin;
     KeyboardInfoWindow?  _kbdInfoWin;
     SysExToolWindow?     _sysExToolWin;
     SetListWindow?       _setListWin;
+    LibrarianWindow?     _librarianWin;
 
     // ── Misc ──────────────────────────────────────────────────────────────────
     System.Windows.Forms.NotifyIcon? _trayIcon;
@@ -117,6 +107,7 @@ public partial class MainWindow : Window
     CancellationTokenSource? _connectCts;
     IStreamReceiver? _receiver;
     ICtrlClient      _ctrl        = null!;
+    readonly SeqTransportViewModel _seqTransport;
     double           _pixPerDip   = 1.0;
     bool             _shiftHeld   = false;
     readonly FullscreenState _fs = new();
@@ -182,11 +173,13 @@ public partial class MainWindow : Window
         _sysExService = new SysExService(Dispatcher);
         _sysExService.ValueSliderCc = _settings.ValueSliderCc;
         _sysExService.PullNamesOnChange = _settings.PullNamesOnChange;
-        _sysExService.InitialModeDetected += OnSysExInitialMode;
-        _sysExService.ModeChanged += OnSysExModeChange;
         _sysExService.ValueSliderChanged += OnValueSliderSync;
         _sysExService.SysExTraffic += OnSysExTraffic;
         PerfStatusBarItem.DataContext = _sysExService;
+
+        _seqTransport = new SeqTransportViewModel(this);
+        SeqTransportBarItem.DataContext = _seqTransport;
+        SeqSaveBarItem.DataContext = _seqTransport;
 
         // MIDI backend selection: prefers a directly-connected Kronos over USB
         // (Auto), independent of the TCP screen connection. Starts USB standalone
@@ -246,12 +239,12 @@ public partial class MainWindow : Window
         InitWheelDrag();
         InitValueSlider();
 
-        _combi.FlashTimer.Interval = TimeSpan.FromMilliseconds(420);
-        _combi.FlashTimer.Tick += (sender, e) =>
+        _editCtx.FlashTimer.Interval = TimeSpan.FromMilliseconds(420);
+        _editCtx.FlashTimer.Tick += (sender, e) =>
         {
-            if (!_combi.Active) { _combi.FlashTimer.Stop(); return; }
-            _combi.FlashState = !_combi.FlashState;
-            BTN_Program.IsActive = _combi.FlashState;
+            if (!_editCtx.Active) { _editCtx.FlashTimer.Stop(); return; }
+            _editCtx.FlashState = !_editCtx.FlashState;
+            BTN_Program.IsActive = _editCtx.FlashState;
         };
     }
 
@@ -262,7 +255,6 @@ public partial class MainWindow : Window
     {
         _pendingMode         = mode;
         _pendingModeDeadline = DateTime.Now.AddSeconds(PendingModeTimeoutSec);
-        _lastUserModeChange  = DateTime.Now;
         _sysExService.NotifyUserActivity();
     }
 
@@ -326,12 +318,12 @@ public partial class MainWindow : Window
         BTN_Dec.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Dec));
 
         // Sequencer transport — daemon maps each to a front-panel SEQUENCER key press.
+        // Record/Start are handled by SeqTransportBarItem's DataContext (SeqTransportViewModel)
+        // via Command/IsChecked bindings in XAML instead of code-behind — see _seqTransport.
         BTN_SeqLocate.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.SeqLocate));
         BTN_SeqRew.Click    += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.SeqRewind));
         BTN_SeqFf.Click     += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.SeqForward));
         BTN_SeqPause.Click  += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.SeqPause));
-        BTN_SeqRec.Click    += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.SeqRecord));
-        BTN_SeqStart.Click  += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.SeqStart));
 
         // Right-click context menus on mode and toggle buttons
         foreach (var btn in new KronosButton[] { BTN_Setlist, BTN_Combi, BTN_Program, BTN_Sequence,
@@ -496,20 +488,6 @@ public partial class MainWindow : Window
     // ── SysEx-driven UI sync (runs on the UI thread — events are marshaled
     //    by SysExService before they reach here) ────────────────────────────────
 
-    // Initial mode from the SysEx probe (func 0x42). Sets the mode but does NOT
-    // prove realtime transmit, so screen detection stays active as a fallback.
-    void OnSysExInitialMode(int mode) => SetModeButton((Mode)mode);
-
-    // Live mode change (func 0x4E) — the authoritative source of truth. Stamp the
-    // time so screen detection defers to it for the brief redraw-lag window, then
-    // apply it (overriding any mode the screen may have just read during the change).
-    void OnSysExModeChange(int mode)
-    {
-        _lastSysExMode   = (Mode)mode;
-        _lastSysExModeAt = DateTime.Now;
-        SetModeButton((Mode)mode);
-    }
-
     // Follow the hardware VALUE slider (incoming CC#ValueSliderCc). Ignore while
     // the user is dragging the UI slider so an echo can't fight the drag.
     void OnValueSliderSync(int val)
@@ -638,34 +616,44 @@ public partial class MainWindow : Window
         MNU_InputTester.Click  += (sender, e) => new InputTesterWindow(_ctrl) { Owner = this }.Show();
         MNU_SysExTool.Click    += (sender, e) => OpenSysExToolWindow();
         MNU_SetListView.Click  += (sender, e) => OpenSetListWindow();
+        // MNU_Librarian.Click    += (sender, e) => OpenLibrarianWindow();
         MNU_SyncNames.Click    += (sender, e) => _ = SyncNamesAsync();
         MNU_SyncAll.Click      += (sender, e) => _ = SyncAllAsync();
         MNU_KeyboardInfo.Click += (sender, e) => OpenKeyboardInfoWindow();
         CTX_KeyboardInfo.Click += (sender, e) => OpenKeyboardInfoWindow();
         MNU_KbdWarp.Visibility = Visibility.Collapsed;
 
-        // Bank Select — items built in code to avoid 21 x:Name declarations in XAML
+        // Bank Select — items built in code to avoid 28 x:Name declarations in XAML.
+        // Nested into Internal/User/U-User sub-dropdowns (each just A-G) so the top
+        // Bank Select popup stays a 3-item list instead of one flat 21-item dropdown.
         char[] bankLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+
+        var bankInternal = new MenuItem { Header = "_Internal" };
         foreach (var letter in bankLetters)
         {
-            var mi = new MenuItem { Header = $"I-{letter}" };
+            var mi = new MenuItem { Header = $"_{letter}" };
             mi.Click += (sender, e) => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, letter));
-            MENU_BankSelect.Items.Add(mi);
+            bankInternal.Items.Add(mi);
         }
-        MENU_BankSelect.Items.Add(new Separator());
+        MENU_BankSelect.Items.Add(bankInternal);
+
+        var bankUser = new MenuItem { Header = "_User" };
         foreach (var letter in bankLetters)
         {
-            var mi = new MenuItem { Header = $"U-{letter}" };
+            var mi = new MenuItem { Header = $"_{letter}" };
             mi.Click += (sender, e) => Ctrl(DaemonCommand.BankButton(BankGroup.User, letter));
-            MENU_BankSelect.Items.Add(mi);
+            bankUser.Items.Add(mi);
         }
-        MENU_BankSelect.Items.Add(new Separator());
+        MENU_BankSelect.Items.Add(bankUser);
+
+        var bankUUser = new MenuItem { Header = "Us_er (AA–GG)" };
         foreach (var letter in bankLetters)
         {
-            var mi = new MenuItem { Header = $"U-{letter}{letter}" };
+            var mi = new MenuItem { Header = $"_{letter}{letter}" };
             mi.Click += (sender, e) => Ctrl(DaemonCommand.DoubleUserBank(letter));
-            MENU_BankSelect.Items.Add(mi);
+            bankUUser.Items.Add(mi);
         }
+        MENU_BankSelect.Items.Add(bankUUser);
 
         // Mode Select
         MNU_Mode_Setlist.Click  += (sender, e) => SendMode(Mode.Setlist);
@@ -1173,6 +1161,8 @@ public partial class MainWindow : Window
         _ctrl.Send(cmd);
     }
 
+    void ICtrlSender.Send(string cmd) => Ctrl(cmd);
+
     // ── Keyboard status indicator ─────────────────────────────────────────────
 
     void UpdateKbdStatus()
@@ -1290,11 +1280,13 @@ public partial class MainWindow : Window
                 // Drop only the TCP MIDI path; a standalone USB transport (Auto/USB
                 // mode with a device present) keeps running independent of the screen.
                 _midiCoord.SetScreenConnection(false, _host, _ctrlPort);
-                if (_combi.Active) { _combi.Active = false; _combi.FlashTimer.Stop(); }
-                _combi.IndicatorGoneAt = DateTime.MinValue;
+                if (_editCtx.Active) { _editCtx.Active = false; _editCtx.FlashTimer.Stop(); }
+                _editCtx.Origin = EditContext.None;
                 _currentMode = Mode.Unknown;
                 _prevMode    = Mode.Unknown;
                 ClearModeButtons();
+                _seqTransport.Reset();
+                _seqTransport.CurrentMode = Mode.Unknown;
                 OverlayLayer.InvalidateVisual();
             }
             // Start boot overlay immediately on connect so it shows while waiting for first frame
@@ -1454,6 +1446,18 @@ public partial class MainWindow : Window
         }
         _setListWin = new SetListWindow(_sysExService, _host) { Owner = this };
         _setListWin.Show();
+    }
+
+    void OpenLibrarianWindow()
+    {
+        if (_librarianWin != null && _librarianWin.IsLoaded)
+        {
+            _librarianWin.Activate();
+            _librarianWin.Focus();
+            return;
+        }
+        _librarianWin = new LibrarianWindow(_sysExService, _host) { Owner = this };
+        _librarianWin.Show();
     }
 
     bool _syncBusy;                        // guards Sync Names and Sync All — one at a time
@@ -1637,6 +1641,8 @@ public partial class MainWindow : Window
             new("Toggle Fullscreen",                K("Fullscreen"),    () => ToggleFullscreen()),
             new("Toggle Aspect Lock",               K("AspectLock"),    () => { _aspectLock = !_aspectLock; RefreshFrameRect(); }),
             new("Toggle Zoom Window",               K("Zoom Window"),   () => { _zoomOn = !_zoomOn; OverlayLayer.InvalidateVisual(); }),
+            new("Zoom In",                          K("Zoom In"),       () => DoZoomIn()),
+            new("Zoom Out",                         K("Zoom Out"),      () => DoZoomOut()),
             new("Window Size: Small (75%)",         "Ctrl+1",           () => SetWindowSize(0.75)),
             new("Window Size: Normal (100%)",       "Ctrl+2",           () => SetWindowSize(1.0)),
             new("Window Size: Large (125%)",        "Ctrl+3",           () => SetWindowSize(1.25)),
@@ -1682,8 +1688,16 @@ public partial class MainWindow : Window
             new("Bank U-EE", K("Bank U-EE"), () => Ctrl(DaemonCommand.DoubleUserBank('E'))),
             new("Bank U-FF", K("Bank U-FF"), () => Ctrl(DaemonCommand.DoubleUserBank('F'))),
             new("Bank U-GG", K("Bank U-GG"), () => Ctrl(DaemonCommand.DoubleUserBank('G'))),
+            // ── Sequencer transport
+            new("Seq: Locate",       K("Seq Locate"),  () => Ctrl(DaemonCommand.Button(PanelButton.SeqLocate))),
+            new("Seq: Rewind",       K("Seq Rewind"),  () => Ctrl(DaemonCommand.Button(PanelButton.SeqRewind))),
+            new("Seq: Fast-Forward", K("Seq Forward"), () => Ctrl(DaemonCommand.Button(PanelButton.SeqForward))),
+            new("Seq: Pause",        K("Seq Pause"),   () => Ctrl(DaemonCommand.Button(PanelButton.SeqPause))),
+            new("Seq: Record",       K("Seq Record"),  () => _seqTransport.RecordCommand.Execute(null)),
+            new("Seq: Start/Stop",   K("Seq Start"),   () => _seqTransport.StartStopCommand.Execute(null)),
+            new("Write / Save",      K("Seq Save"),    () => _seqTransport.RecordCommand.Execute(null)),
             // ── Help
-            new("Toggle Help Overlay", K("Help"), () => { _helpOpen = !_helpOpen; OverlayLayer.InvalidateVisual(); }),
+            new("Show Help",           K("Help"), () => OpenHelpWindow()),
             new("About",               "",        () => OpenAboutWindow()),
             new("Quit",                K("Quit"),  () => TryQuit()),
         ];

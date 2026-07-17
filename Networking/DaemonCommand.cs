@@ -68,12 +68,9 @@ static class DaemonCommand
 
     // ── Queries (expect a response) ─────────────────────────────────────────────
 
-    public const string QueryState      = "STATE";       // reply: "MODE=<n>"
+    public const string QueryState      = "STATE";       // reply: "MODE=<n> EDITCTX=<e>"
     public const string QueryMidiStatus = "MIDI_STATUS";
     public const string QuerySysInfo    = "SYSINFO";
-
-    // Prefix of the STATE reply; the operating-mode number follows it.
-    public const string StateReplyModePrefix = "MODE=";
 
     // ── MIDI bridge ─────────────────────────────────────────────────────────────
 

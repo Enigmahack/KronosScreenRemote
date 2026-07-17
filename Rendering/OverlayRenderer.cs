@@ -6,8 +6,8 @@ using System.Windows.Media.Imaging;
 namespace KronosScreenRemote;
 
 /// <summary>
-/// All overlay drawing logic (palette editor, zoom, help, calibration,
-/// touch marker, hover tooltip). Called from MainWindow's OverlayElement.RenderCallback.
+/// All overlay drawing logic (palette editor, zoom, calibration, touch marker,
+/// hover tooltip). Called from MainWindow's OverlayElement.RenderCallback.
 /// Methods take the full application state as a parameter record to keep them pure.
 /// </summary>
 static class OverlayRenderer
@@ -290,65 +290,4 @@ static class OverlayRenderer
             fr.Y + (fr.Height - ft.Height) / 2));
     }
 
-    public static void DrawHelp(DrawingContext dc, Size winSize, double pixPerDip,
-        Func<string, string>? getKey = null)
-    {
-        string K(string action, string fallback) => getKey?.Invoke(action) ?? fallback;
-
-        var helpMain = new (string key, string desc)[]
-        {
-            (K("Help",          "F1"), "Toggle this help"),
-            (K("Zoom Window",   "Z"),  "Toggle zoom (2.5–10×)"),
-            ("+  /  −",               "Zoom in / out (enables Zoom if off)"),
-            (K("AspectLock",    "A"),  "Toggle aspect-ratio lock"),
-            (K("Mirror",        "M"),  "Toggle VGA mirror on Kronos"),
-            (K("Fullscreen",    "F"),  "Toggle fullscreen"),
-            ("~ (fullscreen)",         "Show / hide menu bar"),
-            (K("HideDataInput",  "—"),  "Hide/show data input"),
-            (K("HideValueInput", "—"),  "Hide/show value input"),
-            (K("Calibrate",     "C"),  "Calibrate  |  Click=touch  Drag node=warp  RC=add/del dot  S=save  R=reset  X=clear  C=exit"),
-            ("Click (view)",           "Send touch tap to Kronos"),
-            ("Scroll",                 "Turn data wheel (always active)"),
-            ("Esc",                    "EXIT to Kronos  (or close overlay)"),
-            ("Enter",                  "ENTER to Kronos"),
-            (K("Mode Setlist",  "F2"), "Mode: Setlist"),
-            (K("Mode Combi",    "F3"), "Mode: Combi"),
-            (K("Mode Program",  "F4"), "Mode: Program"),
-            (K("Mode Sequence", "F5"), "Mode: Sequence"),
-            (K("Mode Sampling", "F6"), "Mode: Sampling"),
-            (K("Mode Global",   "F7"), "Mode: Global"),
-            (K("Mode Disk",     "F8"), "Mode: Disk"),
-            ("Ctrl+1–5",              "Window size 75% – 200%"),
-            (K("Quit",          "Q"),  "Quit  (prompts if enabled in Settings)"),
-        };
-
-        const int LineH = 16, Pad = 12, HeadH = 18;
-        double keyW  = helpMain.Max(r => MeasureText(r.key).Width);
-        double descW = helpMain.Max(r => MeasureText(r.desc).Width);
-        const int ColGap = 14;
-
-        double panW = Pad + keyW + ColGap + descW + Pad;
-        double panH = Pad + HeadH + Pad / 2.0
-                    + helpMain.Length * LineH + Pad;
-
-        double ppx = (winSize.Width  - panW) / 2;
-        double ppy = (winSize.Height - panH) / 2;
-
-        dc.DrawRectangle(B(10, 10, 10, 210), null, new Rect(ppx, ppy, panW, panH));
-        dc.DrawRectangle(null, P(80, 80, 80), new Rect(ppx, ppy, panW, panH));
-
-        double y = ppy + Pad;
-
-        void Row(string k, string d, double ry)
-        {
-            DrawText(dc, k, new Point(ppx + Pad, ry), Color.FromRgb(255, 220, 80),  pixPerDip);
-            DrawText(dc, d, new Point(ppx + Pad + keyW + ColGap, ry),
-                     Color.FromRgb(200, 200, 200), pixPerDip);
-        }
-
-        DrawText(dc, "MAIN CONTROLS", new Point(ppx + Pad, y),
-                 Color.FromRgb(160, 200, 255), pixPerDip);
-        y += HeadH + Pad / 2.0;
-        foreach (var (k, d) in helpMain) { Row(k, d, y); y += LineH; }
-    }
 }

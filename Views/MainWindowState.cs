@@ -87,14 +87,15 @@ sealed class CalibrationState
     public (int offX, int offY) DragStartOffset;
 }
 
-// "Editing a Program from within a Combi" indicator + its flashing-button animation.
-sealed class CombiEditState
+// "Editing a Program from within a Combi/Sequence" (daemon EDITCTX) state + its
+// flashing-button animation. Driven directly by the daemon's STATE poll — EDITCTX is
+// exact per call, so (unlike the old pixel-badge heuristic this replaced) no holdoff
+// is needed: a failed poll just leaves the state unchanged until the next success.
+sealed class EditContextState
 {
-    public const double ExitDelaySec = 1.5;  // indicator must be absent this long before exiting
-
-    public bool     Active;
-    public bool     FlashState;
-    public DateTime IndicatorGoneAt = DateTime.MinValue; // holdoff timestamp for indicator-absence exit
+    public bool        Active;
+    public bool        FlashState;
+    public EditContext Origin;
     public readonly DispatcherTimer FlashTimer = new();
 }
 

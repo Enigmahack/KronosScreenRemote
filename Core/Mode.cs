@@ -1,9 +1,10 @@
 namespace KronosScreenRemote;
 
 // The seven Kronos operating modes, in the app/daemon "STATE mode" numbering (1-7,
-// with 0 = not yet detected). This is the numbering ModeDetector.Identify() returns
-// and that the mode-tracking fields (_currentMode / _pendingMode / …), SendMode(),
-// SetModeButton(), and the daemon's "STATE -> MODE=N" reply all use.
+// with 0 = not yet detected). This is the numbering the daemon's "STATE -> MODE=<n>
+// EDITCTX=<e>" reply uses (see MainWindow.Streaming.cs's ModePollLoop/QueryStateAsync),
+// and that the mode-tracking fields (_currentMode / _pendingMode / …), SendMode(), and
+// SetModeButton() all use.
 //
 // IMPORTANT: this is NOT the Korg SysEx wire-protocol mode numbering (0=Combi, 2=Program,
 // 4=Sequencer, 6=Sampling, 7=Global, 8=Disk, 9=Setlist). Those values live in

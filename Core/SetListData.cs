@@ -127,3 +127,11 @@ sealed record SetListSyncResult(
     IReadOnlyDictionary<int, SetListData> Found,
     IReadOnlyCollection<int> ConfirmedEmpty,
     int Attempted, bool Cancelled);
+
+// Result of ISysExService.WriteSetListSlotAsync. Error is a user-facing reason,
+// set only when Success is false.
+readonly record struct SetListSlotWriteResult(bool Success, string? Error)
+{
+    public static SetListSlotWriteResult Ok() => new(true, null);
+    public static SetListSlotWriteResult Fail(string error) => new(false, error);
+}

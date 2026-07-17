@@ -17,6 +17,37 @@ sealed class MidiStreamMonitor
     readonly string _host;
     CancellationTokenSource? _cts;
 
+    // The 9875 bridge is BIDIRECTIONAL: whatever a client writes, the daemon
+    // recv()s and write()s straight to /proc/.midi_in (midi_tcp.c) with no per-line
+    // cap — so a full-object (0x73) write goes over this same socket as one
+    // continuous stream (the path Python uses), no ctrl-port MIDI_SEND chunking. The
+    // read loop and this write use opposite directions of the one NetworkStream,
+    // which is safe to use concurrently; _writeGate serialises writers only.
+    readonly SemaphoreSlim _writeGate = new(1, 1);
+    volatile NetworkStream? _writeStream;
+
+    // Inject raw MIDI bytes (typically one large SysEx) into the Kronos over the
+    // live 9875 socket. Returns false if the stream isn't connected or the write
+    // failed (caller may fall back to the capped ctrl MIDI_SEND path).
+    public async Task<bool> SendAsync(byte[] data)
+    {
+        var stream = _writeStream;
+        if (stream == null) return false;
+        await _writeGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await stream.WriteAsync(data).ConfigureAwait(false);
+            await stream.FlushAsync().ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"[midi-mon] 9875 inject write failed: {ex.Message}");
+            return false;
+        }
+        finally { _writeGate.Release(); }
+    }
+
     public event Action<SysExTrafficEntry>? Traffic;
 
     // Raw complete SysEx messages (F0…F7) as they arrive on the stream. Used by
@@ -77,6 +108,7 @@ sealed class MidiStreamMonitor
     {
         var buf = new byte[4096];
         var parser = new MidiStreamParser();
+        _writeStream = stream;   // expose this connection's write direction for injection
 
         // Daemon v1.9.1 streams bulk dumps at USB memory speed (~800 KB/s, ~280×
         // the old DIN rate). The read loop MUST return to draining the socket the
@@ -121,6 +153,7 @@ sealed class MidiStreamMonitor
         }
         finally
         {
+            _writeStream = null;   // this connection is going away; no more injects on it
             parser.MessageReceived -= OnMessage;
             parser.SysExActivity   -= OnSysExActivity;
             parser.SysExAborted    -= OnSysExAborted;

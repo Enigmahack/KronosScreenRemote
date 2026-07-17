@@ -2,7 +2,7 @@ using System.ComponentModel;
 
 namespace KronosScreenRemote;
 
-interface ISysExService : INotifyPropertyChanged
+interface ISysExService : INotifyPropertyChanged, IMoveExecutor
 {
     string PerformanceDisplay { get; }
 
@@ -42,18 +42,20 @@ interface ISysExService : INotifyPropertyChanged
     Task<SetListSyncResult> DumpAllSetListsAsync(
         IProgress<(int Done, int Total, int Found)>? progress, CancellationToken ct);
 
+    // Write a Set List slot's Name and/or Notes (Comments) via Object Dump (obj
+    // 0x11 / 0x10 — bank=set list, index=slot), then commit with a Store Bank
+    // Request (func 0x76). Pass null for a field to leave it unchanged.
+    //
+    // Performance (type/bank/index) is intentionally NOT writable here: the only
+    // SysEx path for it (Parameter Change, func 0x43) edits whichever Set List is
+    // currently active on the Kronos's own screen, not an arbitrary bank+index
+    // like this write — there's no safe way to target a background Set List.
+    Task<SetListSlotWriteResult> WriteSetListSlotAsync(int setListNumber, int slotNumber, string? name, string? comments);
+
     // Request every program/combi bank's names and capture them into the cache,
     // so program-change follow shows names with no per-change SysEx query. Reports
     // (banks done, banks total, names captured). Returns the final name count.
     Task<int> SyncNamesAsync(IProgress<(int Done, int Total, int Names)>? progress, CancellationToken ct);
-
-    event Action<int>? InitialModeDetected;
-
-    // Fired (on the UI thread) when the Kronos transmits a Mode Change (SysEx
-    // func 0x4E) over the live MIDI stream. Argument is the STATE-equivalent
-    // mode (1-7). This is the authoritative, event-driven mode source; screen
-    // detection is only a fallback.
-    event Action<int>? ModeChanged;
 
     // Fired (on the UI thread) when an incoming CC matching ValueSliderCc is
     // seen on the live MIDI stream. Argument is the 0-127 controller value.
@@ -69,4 +71,14 @@ interface ISysExService : INotifyPropertyChanged
     // Send raw MIDI bytes via MIDI_SEND on the control port.
     // Fires SysExTraffic for both the TX bytes and the OK/ERR response.
     Task<bool> SendMidiAsync(string hexBytes);
+
+    // ── Librarian ────────────────────────────────────────────────────────────
+    // Dump one full object (obj 0x00 Program / 0x01 Combi / 0x0D Set List) by
+    // bank+index, parsed into header + decoded body. Null if unavailable/no reply.
+    Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index);
+
+    // Best-effort current performance as an ObjLoc (for the live 0x43 dual-write).
+    // Null if unknown. (The remaining Librarian primitives — object write, Store,
+    // digest, backup, raw send — come from the IMoveExecutor base interface.)
+    ObjLoc? CurrentPerformanceLoc();
 }

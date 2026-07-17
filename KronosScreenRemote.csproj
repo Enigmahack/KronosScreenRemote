@@ -78,6 +78,7 @@
   </Target>
 
   <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="FluentFTP" Version="51.0.0" />
     <PackageReference Include="NAudio" Version="2.2.1" />
   </ItemGroup>

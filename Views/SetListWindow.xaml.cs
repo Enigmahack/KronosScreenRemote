@@ -25,9 +25,12 @@ partial class SetListWindow : Window
             CMB_SetList.Items.Add(FormatSetListLabel(i));   // names fill in after the async load
         CMB_SetList.SelectedIndex = 0;
 
-        BTN_Load.Click    += async (_, _) => await LoadAsync(force: false);
-        BTN_Refresh.Click += async (_, _) => await LoadAsync(force: true);
+        BTN_Load.Click     += async (_, _) => await LoadAsync(force: false);
+        BTN_Refresh.Click  += async (_, _) => await LoadAsync(force: true);
+        BTN_EditSlot.Click += (_, _) => EditSelectedSlot();
         CMB_SetList.SelectionChanged += (_, _) => { if (!_suppressSelChanged) ShowFromCacheIfPresent(); };
+        DG_Slots.SelectionChanged    += (_, _) => BTN_EditSlot.IsEnabled = DG_Slots.SelectedItem is SlotRow;
+        DG_Slots.MouseDoubleClick    += (_, _) => { if (DG_Slots.SelectedItem is SlotRow) EditSelectedSlot(); };
 
         // Read the on-disk cache off the UI thread on open, then paint labels + view.
         Loaded += async (_, _) => await ReloadCacheAsync();
@@ -68,8 +71,75 @@ partial class SetListWindow : Window
         else
         {
             DG_Slots.ItemsSource = null;
+            BTN_EditSlot.IsEnabled = false;
             TXT_Name.Text   = "";
             TXT_Status.Text = "Not loaded — press Load";
+        }
+    }
+
+    // Opens the edit dialog for the selected row, then saves any change. The
+    // dialog's Performance display is read-only — see ISysExService
+    // .WriteSetListSlotAsync for why Performance can't be written from here.
+    void EditSelectedSlot()
+    {
+        if (DG_Slots.SelectedItem is not SlotRow row) return;
+        if (!_cache.TryGetValue(SelectedNumber, out var data) || row.Number >= data.Slots.Count) return;
+        var slot = data.Slots[row.Number];
+
+        var dlg = new SetListSlotEditDialog(slot) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+
+        _ = SaveSlotAsync(SelectedNumber, slot, dlg.SlotName, dlg.Notes);
+    }
+
+    async Task SaveSlotAsync(int setListNumber, SetListSlot original, string newName, string newNotes)
+    {
+        if (!_sysEx.CanDump)
+        {
+            TXT_Status.Text = "MIDI monitoring is off — enable it in Settings → MIDI/SysEx";
+            return;
+        }
+
+        string? nameArg     = newName  != original.Name     ? newName  : null;
+        string? commentsArg = newNotes != original.Comments ? newNotes : null;
+        if (nameArg == null && commentsArg == null) { TXT_Status.Text = "No changes"; return; }
+
+        SetBusy(true, $"Saving Slot {original.Number:D3}…");
+        try
+        {
+            var result = await _sysEx.WriteSetListSlotAsync(setListNumber, original.Number, nameArg, commentsArg);
+            if (!result.Success)
+            {
+                TXT_Status.Text = $"Save failed: {result.Error}";
+                return;
+            }
+
+            // Re-dump to confirm the write landed and refresh the cache from
+            // ground truth, rather than patching the cached record by hand.
+            TXT_Status.Text = "Saved — reloading…";
+            var fresh = await _sysEx.DumpSetListAsync(setListNumber);
+            if (fresh != null)
+            {
+                _cache[setListNumber] = fresh;
+                var snapshot = new Dictionary<int, SetListData>(_cache);
+                await Task.Run(() => Storage.SaveSetLists(_host, snapshot));
+
+                _suppressSelChanged = true;
+                CMB_SetList.Items[setListNumber] = FormatSetListLabel(setListNumber);
+                _suppressSelChanged = false;
+
+                if (setListNumber == SelectedNumber) Render(fresh);
+            }
+            TXT_Status.Text = "Saved";
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"[setlist] slot save failed: {ex.Message}");
+            TXT_Status.Text = $"Error: {ex.Message}";
+        }
+        finally
+        {
+            SetBusy(false, null);
         }
     }
 
@@ -141,6 +211,7 @@ partial class SetListWindow : Window
             rows.Add(new SlotRow(slot));
         }
         DG_Slots.ItemsSource = rows;
+        BTN_EditSlot.IsEnabled = false;   // ItemsSource swap drops any prior selection
     }
 
     void SetBusy(bool busy, string? status)
@@ -148,6 +219,7 @@ partial class SetListWindow : Window
         BTN_Load.IsEnabled       = !busy;
         BTN_Refresh.IsEnabled    = !busy;
         CMB_SetList.IsEnabled    = !busy;
+        BTN_EditSlot.IsEnabled   = !busy && DG_Slots.SelectedItem is SlotRow;
         Cursor = busy ? Cursors.Wait : null;
         if (status != null) TXT_Status.Text = status;
     }

@@ -11,7 +11,7 @@
     <DockPanel>
         <Menu x:Name="MainMenu" DockPanel.Dock="Top">
             <MenuItem x:Name="MENU_File" Header="_File">
-                <MenuItem x:Name="MNU_SettingsDlg"    Header="_Settings…"/>
+                <MenuItem x:Name="MNU_SettingsDlg"    Header="_Settings…" InputGestureText="S"/>
                 <Separator/>
                 <MenuItem x:Name="MNU_ImportSettings" Header="_Import Settings…"
                           ToolTip="Load application settings from a .json file and apply them now."/>
@@ -25,18 +25,18 @@
                 <Separator/>
                 <MenuItem x:Name="MNU_OpenLog"     Header="Open _Log File"/>
                 <Separator/>
-                <MenuItem x:Name="MNU_Quit"        Header="_Quit"/>
+                <MenuItem x:Name="MNU_Quit"        Header="_Quit" InputGestureText="Q"/>
             </MenuItem>
             <MenuItem x:Name="MENU_Connection" Header="_Connection">
-                <MenuItem x:Name="MNU_Reconnect"   Header="_Connect"/>
-                <MenuItem x:Name="MNU_Disconnect"  Header="_Disconnect" IsEnabled="False"/>
+                <MenuItem x:Name="MNU_Reconnect"   Header="_Connect" InputGestureText="C"/>
+                <MenuItem x:Name="MNU_Disconnect"  Header="_Disconnect" IsEnabled="False" InputGestureText="D"/>
                 <Separator/>
                 <MenuItem x:Name="MENU_RecentHosts" Header="_Recent Connections">
                     <MenuItem x:Name="MNU_NoRecentHosts" Header="(none)" IsEnabled="False"/>
                 </MenuItem>
                 <MenuItem x:Name="MNU_CopyIP" Header="Copy _IP Address"/>
                 <Separator/>
-                <MenuItem x:Name="MNU_FileManager" Header="File _Manager…"/>
+                <MenuItem x:Name="MNU_FileManager" Header="File _Manager…" InputGestureText="M"/>
             </MenuItem>
             <MenuItem x:Name="MENU_View" Header="_View">
                 <MenuItem x:Name="MNU_AspectLock"    Header="_Aspect Lock"     IsCheckable="True" InputGestureText="A"/>
@@ -46,7 +46,7 @@
                 <MenuItem x:Name="MNU_HideDataInput"  Header="Hide _Data Input"   IsCheckable="True"/>
                 <MenuItem x:Name="MNU_HideValueInput" Header="Hide _Value Input"  IsCheckable="True"/>
                 <MenuItem x:Name="MNU_AlwaysOnTop"   Header="Always on _Top"   IsCheckable="True"/>
-                <MenuItem x:Name="MNU_RefreshDisplay" Header="Re_fresh Display"/>
+                <MenuItem x:Name="MNU_RefreshDisplay" Header="_Refresh Display"/>
                 <Separator/>
                 <MenuItem x:Name="MENU_ScalingMode" Header="Scaling _Quality"
                           ToolTip="How the 800×600 screen is scaled up to the window.">
@@ -86,8 +86,9 @@
                 </MenuItem>
                 <Separator/>
                 <!-- MIDI / SysEx -->
-                <MenuItem x:Name="MNU_SysExTool"    Header="Open _SysEx Tool…"/>
-                <MenuItem x:Name="MNU_SetListView"  Header="Set List _Viewer…"/>
+                <MenuItem x:Name="MNU_SysExTool"    Header="Open _MIDI Monitor" InputGestureText="M"/>
+                <MenuItem x:Name="MNU_SetListView"  Header="Set List _Viewer…" InputGestureText="V"/>
+
                 <MenuItem x:Name="MNU_SyncNames"    Header="Sync _Program/Combi Names…"/>
                 <MenuItem x:Name="MNU_SyncAll"      Header="Sync _All (Names + Set Lists)…"/>
                 <Separator/>
@@ -100,20 +101,20 @@
                 <MenuItem x:Name="MNU_DisableKbd"   Header="_Disable Keyboard Send" IsCheckable="True"/>
             </MenuItem>
             <MenuItem x:Name="MENU_ModeSelect" Header="_Mode Select">
-                <MenuItem x:Name="MNU_Mode_Setlist"  Header="_Setlist"/>
-                <MenuItem x:Name="MNU_Mode_Combi"    Header="_Combi"/>
-                <MenuItem x:Name="MNU_Mode_Program"  Header="_Program"/>
-                <MenuItem x:Name="MNU_Mode_Sequence" Header="S_equence"/>
-                <MenuItem x:Name="MNU_Mode_Sampling" Header="S_ampling"/>
-                <MenuItem x:Name="MNU_Mode_Global"   Header="_Global"/>
-                <MenuItem x:Name="MNU_Mode_Disk"     Header="_Disk"/>
+                <MenuItem x:Name="MNU_Mode_Setlist"  Header="_Setlist" InputGestureText="S"/>
+                <MenuItem x:Name="MNU_Mode_Combi"    Header="_Combi" InputGestureText="C"/>
+                <MenuItem x:Name="MNU_Mode_Program"  Header="_Program" InputGestureText="P"/>
+                <MenuItem x:Name="MNU_Mode_Sequence" Header="S_equence" InputGestureText="E"/>
+                <MenuItem x:Name="MNU_Mode_Sampling" Header="S_ampling" InputGestureText="A"/>
+                <MenuItem x:Name="MNU_Mode_Global"   Header="_Global" InputGestureText="G"/>
+                <MenuItem x:Name="MNU_Mode_Disk"     Header="_Disk" InputGestureText="D"/>
             </MenuItem>
             <MenuItem x:Name="MENU_BankSelect" Header="Ban_k Select"/>
             <MenuItem Header="_Help">
                 <MenuItem x:Name="MNU_ShowHelp"          Header="_Show Help"            InputGestureText="F1"/>
                 <MenuItem x:Name="MNU_CommandPalette"    Header="_Command Palette"      InputGestureText="Ctrl+K"/>
                 <Separator/>
-                <MenuItem x:Name="MNU_About"             Header="_About…"/>
+                <MenuItem x:Name="MNU_About"             Header="_About…" InputGestureText="A"/>
                 <!-- Future: Check for Updates / Report Issue — hidden until a public release pipeline exists -->
                 <Separator x:Name="SEP_HelpExternal"    Visibility="Collapsed"/>
                 <MenuItem x:Name="MNU_CheckForUpdates"  Header="Check for _Updates…"   Visibility="Collapsed"/>
@@ -128,6 +129,7 @@
                    Height="28"
                    Padding="0">
             <StatusBar.Resources>
+                <BooleanToVisibilityConverter x:Key="BoolToVis"/>
                 <!-- Flat, non-focusable icon button for the footer sequencer transport row.
                      Focusable=False + null FocusVisualStyle so a click never steals the
                      keyboard-send focus (matches VuPickerBtn). -->
@@ -152,6 +154,78 @@
                                     </Trigger>
                                     <Trigger Property="IsPressed" Value="True">
                                         <Setter TargetName="bd" Property="Background" Value="#FF454545"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                    <!-- Dimmed, not hidden, when the current mode doesn't support this button —
+                         keeps the footer's width/layout stable across the frequent mode switches
+                         this app is built around, instead of reflowing the status bar every time. -->
+                    <Style.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.35"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+                <!-- Toggle variant of the flat seq-transport button: Record/Start need to
+                     stay visibly depressed while active, not just while the mouse is down. -->
+                <Style x:Key="SeqTransportToggleBtn" TargetType="ToggleButton">
+                    <Setter Property="Focusable"        Value="False"/>
+                    <Setter Property="FocusVisualStyle"  Value="{x:Null}"/>
+                    <Setter Property="Cursor"            Value="Hand"/>
+                    <Setter Property="Width"             Value="24"/>
+                    <Setter Property="Height"            Value="20"/>
+                    <Setter Property="Background"        Value="Transparent"/>
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ToggleButton">
+                                <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                        CornerRadius="3">
+                                    <ContentPresenter HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="bd" Property="Background" Value="#FF333333"/>
+                                    </Trigger>
+                                    <Trigger Property="IsPressed" Value="True">
+                                        <Setter TargetName="bd" Property="Background" Value="#FF454545"/>
+                                    </Trigger>
+                                    <Trigger Property="IsChecked" Value="True">
+                                        <Setter TargetName="bd" Property="Background" Value="#FF454545"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                    <!-- See SeqTransportBtn — dimmed, not hidden, outside a supported mode. -->
+                    <Style.Triggers>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Opacity" Value="0.35"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+                <!-- Same toggle look, but a pale red checked-state (instead of the neutral
+                     gray above) so an armed recording reads clearly at a glance. -->
+                <Style x:Key="SeqRecordToggleBtn" TargetType="ToggleButton" BasedOn="{StaticResource SeqTransportToggleBtn}">
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="ToggleButton">
+                                <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                        CornerRadius="3">
+                                    <ContentPresenter HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="bd" Property="Background" Value="#FF333333"/>
+                                    </Trigger>
+                                    <Trigger Property="IsPressed" Value="True">
+                                        <Setter TargetName="bd" Property="Background" Value="#FF454545"/>
+                                    </Trigger>
+                                    <Trigger Property="IsChecked" Value="True">
+                                        <Setter TargetName="bd" Property="Background" Value="#FF6E3535"/>
                                     </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
@@ -246,37 +320,64 @@
                 </StackPanel>
             </StatusBarItem>
             <Separator DockPanel.Dock="Right" Margin="2 4" Background="#FF444444" Width="1"/>
-            <!-- ── Sequencer transport ──────────────────────────────────────────
+            <!-- ── Sequencer transport ───────────────────────────────────────────
                  Panel-button emulation: each sends "BUTTON SEQ_*" over the ctrl port,
                  which the daemon converts to a front-panel SEQUENCER key press. -->
-            <StatusBarItem DockPanel.Dock="Right" Padding="2 0" VerticalContentAlignment="Center">
-                <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
-                            ToolTip="Sequencer transport — sends the front-panel SEQUENCER buttons to the Kronos">
-                    <Button x:Name="BTN_SeqLocate" Style="{StaticResource SeqTransportBtn}"
-                            ToolTip="Locate — return to the locate point">
-                        <Path Fill="#FFB4B4B4" Data="M0,0 H1.8 V10 H0 Z M10,0 L3,5 L10,10 Z"/>
-                    </Button>
-                    <Button x:Name="BTN_SeqRew" Style="{StaticResource SeqTransportBtn}"
-                            ToolTip="Rewind (&lt;&lt;)">
-                        <Path Fill="#FFB4B4B4" Data="M5,0 L0,5 L5,10 Z M10,0 L5,5 L10,10 Z"/>
-                    </Button>
-                    <Button x:Name="BTN_SeqFf" Style="{StaticResource SeqTransportBtn}"
-                            ToolTip="Fast-forward (&gt;&gt;)">
-                        <Path Fill="#FFB4B4B4" Data="M0,0 L5,5 L0,10 Z M5,0 L10,5 L5,10 Z"/>
-                    </Button>
-                    <Button x:Name="BTN_SeqPause" Style="{StaticResource SeqTransportBtn}"
-                            ToolTip="Pause">
-                        <Path Fill="#FFB4B4B4" Data="M0.5,0 H3 V10 H0.5 Z M6,0 H8.5 V10 H6 Z"/>
-                    </Button>
-                    <Button x:Name="BTN_SeqRec" Style="{StaticResource SeqTransportBtn}"
-                            ToolTip="Record / Write">
-                        <Ellipse Width="10" Height="10" Fill="#FFE05656"/>
-                    </Button>
-                    <Button x:Name="BTN_SeqStart" Style="{StaticResource SeqTransportBtn}"
-                            ToolTip="Start / Stop">
-                        <Path Fill="#FF5EC26A" Data="M0.5,0 L10,5 L0.5,10 Z"/>
-                    </Button>
-                </StackPanel>
+            <!-- DataContext = SeqTransportViewModel (set in MainWindow's constructor) —
+                 everything below binds Command/IsChecked/IsEnabled to it directly. -->
+            <StatusBarItem x:Name="SeqTransportBarItem" DockPanel.Dock="Right" Padding="2 0" VerticalContentAlignment="Center">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                IsEnabled="{Binding IsTransportEnabled}"
+                                ToolTip="Sequencer transport — sends the front-panel SEQUENCER buttons to the Kronos">
+                        <Button x:Name="BTN_SeqLocate" Style="{StaticResource SeqTransportBtn}"
+                                ToolTip="Locate — return to the locate point">
+                            <Path Fill="#FFB4B4B4" Data="M0,0 H1.8 V10 H0 Z M10,0 L3,5 L10,10 Z"/>
+                        </Button>
+                        <Button x:Name="BTN_SeqRew" Style="{StaticResource SeqTransportBtn}"
+                                ToolTip="Rewind (&lt;&lt;)">
+                            <Path Fill="#FFB4B4B4" Data="M5,0 L0,5 L5,10 Z M10,0 L5,5 L10,10 Z"/>
+                        </Button>
+                        <Button x:Name="BTN_SeqFf" Style="{StaticResource SeqTransportBtn}"
+                                ToolTip="Fast-forward (&gt;&gt;)">
+                            <Path Fill="#FFB4B4B4" Data="M0,0 L5,5 L0,10 Z M5,0 L10,5 L5,10 Z"/>
+                        </Button>
+                        <Button x:Name="BTN_SeqPause" Style="{StaticResource SeqTransportBtn}"
+                                ToolTip="Pause">
+                            <Path Fill="#FFB4B4B4" Data="M0.5,0 H3 V10 H0.5 Z M6,0 H8.5 V10 H6 Z"/>
+                        </Button>
+                        <ToggleButton x:Name="BTN_SeqRec" Style="{StaticResource SeqRecordToggleBtn}"
+                                IsChecked="{Binding IsRecording, Mode=TwoWay}"
+                                Command="{Binding RecordCommand}"
+                                ToolTip="Record">
+                            <Ellipse Width="10" Height="10" Fill="#FFE05656"/>
+                        </ToggleButton>
+                        <ToggleButton x:Name="BTN_SeqStart" Style="{StaticResource SeqTransportToggleBtn}"
+                                IsChecked="{Binding IsPlaying, Mode=TwoWay}"
+                                Command="{Binding StartStopCommand}"
+                                ToolTip="Start / Stop">
+                            <Grid>
+                                <Path Fill="#FF5EC26A" Data="M0.5,0 L10,5 L0.5,10 Z"
+                                      Visibility="{Binding IsStopped, Converter={StaticResource BoolToVis}}"/>
+                                <Path Fill="#FF5EC26A" Data="M1,1 H9 V9 H1 Z"
+                                      Visibility="{Binding IsPlaying, Converter={StaticResource BoolToVis}}"/>
+                            </Grid>
+                        </ToggleButton>
+                    </StackPanel>
+            </StatusBarItem>
+            <Separator DockPanel.Dock="Right" Margin="2 4" Background="#FF444444" Width="1"/>
+            <!-- Save/Write: fires the same REC/WRITE key press as Record, as a one-shot —
+                 on real hardware it's one physical key that means Record in Sequence mode
+                 and Write everywhere else it applies. Its own StatusBarItem (not nested in
+                 SeqTransportBarItem) since its enabled modes don't overlap with Sequence. -->
+            <StatusBarItem x:Name="SeqSaveBarItem" DockPanel.Dock="Right" Padding="2 0" VerticalContentAlignment="Center">
+                <Button x:Name="BTN_SeqSave" Style="{StaticResource SeqTransportBtn}"
+                        Width="30" Height="24"
+                        Command="{Binding RecordCommand}"
+                        IsEnabled="{Binding IsSaveEnabled}"
+                        ToolTip="Write - Save your changes (Setlist/Combi/Program/Global)">
+                    <Path Fill="#FFB4B4B4" Width="12" Height="12" Stretch="Uniform"
+                          Data="M0,0 H8 L10,2 V10 H0 Z M2,0 H6 V3 H2 Z"/>
+                </Button>
             </StatusBarItem>
             <Separator DockPanel.Dock="Right" Margin="2 4" Background="#FF444444" Width="1"/>
             <!-- Left items -->
@@ -493,16 +594,16 @@
                 <Image.ContextMenu>
                     <ContextMenu>
                         <MenuItem x:Name="CTX_CopyFrame"       Header="_Copy Frame to Clipboard"/>
-                        <MenuItem x:Name="CTX_QuickSave"       Header="_Quick Save Screenshot"/>
+                        <MenuItem x:Name="CTX_QuickSave"       Header="Q_uick Save Screenshot"/>
                         <MenuItem x:Name="CTX_Screenshot"      Header="Save _Screenshot…" InputGestureText="Ctrl+S"/>
-                        <MenuItem x:Name="CTX_OpenScreenshots" Header="Open Screenshots _Folder"/>
+                        <MenuItem x:Name="CTX_OpenScreenshots" Header="Open Screenshots Fo_lder"/>
                         <Separator/>
-                        <MenuItem x:Name="CTX_ZoomIn"          Header="Zoom _In"/>
+                        <MenuItem x:Name="CTX_ZoomIn"          Header="Zoom I_n"/>
                         <MenuItem x:Name="CTX_ZoomOut"         Header="Zoom _Out"/>
                         <MenuItem x:Name="CTX_ZoomReset"       Header="_Reset Zoom"/>
                         <Separator/>
-                        <MenuItem x:Name="CTX_AspectLock"      Header="_Aspect Lock"  IsCheckable="True"/>
-                        <MenuItem x:Name="CTX_Fullscreen"      Header="_Fullscreen"  IsCheckable="True"/>
+                        <MenuItem x:Name="CTX_AspectLock"      Header="_Aspect Lock"  IsCheckable="True" InputGestureText="A"/>
+                        <MenuItem x:Name="CTX_Fullscreen"      Header="_Fullscreen"  IsCheckable="True" InputGestureText="F"/>
                         <Separator/>
                         <MenuItem x:Name="CTX_ScalingMode" Header="Scaling _Quality">
                             <MenuItem x:Name="CTX_ScaleSharp"  Header="_Sharp (crisp pixels)" IsCheckable="True"/>
@@ -513,8 +614,8 @@
                         <Separator/>
                         <MenuItem x:Name="CTX_KeyboardInfo"    Header="_Keyboard Info…"/>
                         <Separator/>
-                        <MenuItem x:Name="CTX_Reconnect"       Header="Re_connect"/>
-                        <MenuItem x:Name="CTX_Disconnect"      Header="_Disconnect"/>
+                        <MenuItem x:Name="CTX_Reconnect"       Header="Reconn_ect" InputGestureText="E"/>
+                        <MenuItem x:Name="CTX_Disconnect"      Header="_Disconnect" InputGestureText="D"/>
                     </ContextMenu>
                 </Image.ContextMenu>
             </Image>

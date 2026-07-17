@@ -54,9 +54,13 @@
                                         <ColumnDefinition Width="Auto" SharedSizeGroup="Shortcut"/>
                                     </Grid.ColumnDefinitions>
 
+                                    <!-- Hidden (not Collapsed) so every submenu row reserves this
+                                         gutter uniformly, whether or not it is checkable — keeps
+                                         header text aligned across all dropdowns. Top-level bar
+                                         buttons still collapse it via the Role trigger below. -->
                                     <Border x:Name="CheckMark" Grid.Column="0"
                                             Width="16" Height="16" Margin="0 0 6 0"
-                                            Visibility="Collapsed"
+                                            Visibility="Hidden"
                                             VerticalAlignment="Center">
                                         <TextBlock x:Name="Glyph" Text="&#x2713;"
                                                    FontSize="12" Foreground="WhiteSmoke"

@@ -9,6 +9,17 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // Headless diagnostic: `--librarian-selftest` runs the pure Librarian model
+        // checks, writes OK / FAIL to a temp file, and exits without a window. Used to
+        // verify the reference/bank/plan logic off-hardware (no unit-test project here).
+        if (e.Args.Contains("--librarian-selftest"))
+        {
+            var fails = Librarian.SelfTest();
+            var outPath = Path.Combine(Path.GetTempPath(), "kronos_librarian_selftest.txt");
+            File.WriteAllText(outPath, fails.Count == 0 ? "OK" : "FAIL: " + string.Join(", ", fails));
+            Environment.Exit(fails.Count == 0 ? 0 : 1);
+        }
+
         // Single source of truth for the app directory (settings, palette, cal, log all colocate).
         var logPath = Path.Combine(Storage.DataDir, "screenremote.log");
         AppLog.Init(logPath);

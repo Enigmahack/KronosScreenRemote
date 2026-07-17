@@ -240,6 +240,87 @@ sealed class SysExDumpCollector
         lock (replied) return (new HashSet<int>(replied), converged);
     }
 
+    // ── Writes (Object Dump send + Store Bank Request) ──────────────────────────
+    //
+    // MIDI_SEND is fire-and-forget on the daemon's ctrl port — there's no
+    // synchronous response to a write the way KronosSysEx's SYSEX command has for
+    // reads. The Kronos's func 0x24 Reply comes back asynchronously on the live
+    // stream instead, so these await it there, the same way CollectAsync watches
+    // for 0x73 replies. Only small, directly-addressed sub-objects (e.g. Set List
+    // Slot Name/Comments) go through here — see BuildObjectDumpMessage's caveat
+    // about the daemon's 4096-byte MIDI_SEND cap.
+
+    // Send a SysEx message and wait for the next func 0x24 Reply on the live
+    // stream. Returns the Reply Code (0 = success), or null on send failure or
+    // timeout (no Reply arrived — e.g. SysEx receive disabled on the Kronos).
+    public async Task<int?> SendAndAwaitReplyAsync(byte[] message, int timeoutMs = 4000)
+    {
+        await _gate.WaitAsync().ConfigureAwait(false);
+        var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        void OnMsg(byte[] m)
+        {
+            var code = KronosSysEx.ParseReply(m);
+            if (code != null) tcs.TrySetResult(code.Value);
+        }
+
+        _transport.SysExMessageReceived += OnMsg;
+        try
+        {
+            bool sent = await _transport.SendAsync(message).ConfigureAwait(false);
+            if (!sent) return null;
+
+            var winner = await Task.WhenAny(tcs.Task, Task.Delay(timeoutMs)).ConfigureAwait(false);
+            return winner == tcs.Task ? tcs.Task.Result : null;
+        }
+        finally
+        {
+            _transport.SysExMessageReceived -= OnMsg;
+            _gate.Release();
+        }
+    }
+
+    // Object Dump write (func 0x73) for a small, directly-addressed sub-object.
+    public Task<int?> SendObjectDumpAsync(int obj, int bank, int index, byte version, byte[] binaryData, int timeoutMs = 4000) =>
+        SendAndAwaitReplyAsync(KronosSysEx.BuildObjectDumpMessage(obj, bank, index, version, binaryData), timeoutMs);
+
+    // Send a LARGE Object Dump (func 0x73) — a full Combi (~8.9 KB) or Set List
+    // (~79 KB) that exceeds the daemon's per-MIDI_SEND cap — and await the func 0x24
+    // Reply on the live stream. Uses the transport's backend-aware large send
+    // (TCP chunks across MIDI_SEND; USB one long message). Longer default timeout:
+    // a big object plus (over TCP) many chunk round-trips take a few seconds before
+    // the Kronos replies. Returns the Reply Code (0 = success) or null on timeout.
+    public async Task<int?> SendLargeObjectDumpAndAwaitReplyAsync(byte[] message, int timeoutMs = 8000)
+    {
+        await _gate.WaitAsync().ConfigureAwait(false);
+        var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        void OnMsg(byte[] m)
+        {
+            var code = KronosSysEx.ParseReply(m);
+            if (code != null) tcs.TrySetResult(code.Value);
+        }
+
+        _transport.SysExMessageReceived += OnMsg;
+        try
+        {
+            bool sent = await _transport.SendLargeSysExAsync(message).ConfigureAwait(false);
+            if (!sent) return null;
+
+            var winner = await Task.WhenAny(tcs.Task, Task.Delay(timeoutMs)).ConfigureAwait(false);
+            return winner == tcs.Task ? tcs.Task.Result : null;
+        }
+        finally
+        {
+            _transport.SysExMessageReceived -= OnMsg;
+            _gate.Release();
+        }
+    }
+
+    // Store Bank Request (func 0x76) — commits previously-sent Object Dump data.
+    public Task<int?> SendStoreBankRequestAsync(int obj, int bank, int timeoutMs = 4000) =>
+        SendAndAwaitReplyAsync(KronosSysEx.BuildStoreBankRequest(obj, bank), timeoutMs);
+
     // ── Request builders (Korg header F0 42 30 68, matching existing convention) ──
 
     // Object Dump Request (func 0x72): one specific object.

@@ -66,4 +66,12 @@ interface IKronosMidiTransport : IDisposable
     // Fire-and-forget raw MIDI out. The buffer may contain one or more
     // concatenated messages (SysEx blocks and/or short channel messages).
     Task<bool> SendAsync(byte[] message);
+
+    // Send ONE large SysEx message (a full-object 0x73 write — Combi ~8.9 KB, Set
+    // List ~79 KB) reliably, regardless of backend size limits. USB sends it as a
+    // single long message; TCP splits it into ctrl-line-sized MIDI_SEND writes the
+    // daemon injects contiguously into /proc/.midi_in, so the Kronos reassembles the
+    // single F0…F7 from the byte stream. `sysex` MUST be exactly one complete
+    // message (F0…F7) — do not pass concatenated messages here.
+    Task<bool> SendLargeSysExAsync(byte[] sysex);
 }

@@ -170,9 +170,17 @@ static class CtrlClient
             using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(timeoutMs));
             await s.ConnectAsync(host, port, cts.Token);
             await s.SendAsync(Encoding.ASCII.GetBytes(cmd + "\n"), SocketFlags.None, cts.Token);
-            var buf = new byte[32];
-            int n = await s.ReceiveAsync(buf, SocketFlags.None, cts.Token);
-            return n > 0 ? Encoding.ASCII.GetString(buf, 0, n).Trim() : null;
+            // Accumulate until a full line arrives — a single-line reply isn't guaranteed
+            // to land in one TCP segment/ReceiveAsync call.
+            var sb  = new StringBuilder();
+            var buf = new byte[256];
+            while (!sb.ToString().Contains('\n'))
+            {
+                int n = await s.ReceiveAsync(buf, SocketFlags.None, cts.Token);
+                if (n <= 0) break;
+                sb.Append(Encoding.ASCII.GetString(buf, 0, n));
+            }
+            return sb.Length > 0 ? sb.ToString().Trim() : null;
         }
         catch { return null; }
     }

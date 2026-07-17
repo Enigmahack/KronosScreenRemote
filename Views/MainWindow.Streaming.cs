@@ -56,7 +56,7 @@ public partial class MainWindow
                 MessageBox.Show(
                     "No Kronos IP address is configured.\n\nGo to Settings and enter the Kronos IP address.",
                     "Connection", MessageBoxButton.OK, MessageBoxImage.Information);
-                OpenSettingsDialog();
+                OpenSettingsDialog(SettingsTab.Connection);
             });
             SetConnectionStatus(ConnState.Disconnected);  // BeginConnect set Connecting; undo it
             return;
@@ -174,8 +174,7 @@ public partial class MainWindow
         _modePollCts?.Cancel();
         _modePollCts?.Dispose();
         _modePollCts = new CancellationTokenSource();
-        _lastSysExModeAt = DateTime.MinValue;   // screen detection leads until a live func 0x4E arrives
-        TopLeftOcr.Reset();   // ensure first frame fires an immediate STATE query
+        TopLeftOcr.Reset();   // ensure the first frame re-evaluates help-overlay state
         _ = ModePollLoop(_modePollCts.Token);
 
         _sysExService.ApplyMidiSettings(
@@ -292,45 +291,80 @@ public partial class MainWindow
         });
     }
 
+    const int ModePollIntervalMs = 500;
+
+    // The daemon's STATE command is the sole, unconditional mode/edit-context source —
+    // no pixel scanning, no SysEx fallback. Polled continuously for as long as a stream
+    // connection is live.
     async Task ModePollLoop(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
-            if (!ModeDetector.HasAny())
-            {
-                int? mode = await QueryStateModeAsync().ConfigureAwait(false);
-                if (mode is > 0 && (DateTime.Now - _lastUserModeChange).TotalSeconds > 1.5)
-                    await Dispatcher.InvokeAsync(() => SetModeButton((Mode)mode.Value))
-                        .Task.ConfigureAwait(false);
-            }
-            try { await Task.Delay(1000, ct).ConfigureAwait(false); }
+            var state = await QueryStateAsync().ConfigureAwait(false);
+            if (state is { } s)
+                await Dispatcher.InvokeAsync(() => ApplyDaemonState(s.Mode, s.EditCtx))
+                    .Task.ConfigureAwait(false);
+            try { await Task.Delay(ModePollIntervalMs, ct).ConfigureAwait(false); }
             catch (OperationCanceledException) { break; }
         }
     }
 
-    async Task QueryModeAsync()
-    {
-        int? mode = await QueryStateModeAsync().ConfigureAwait(false);
-        if (mode.HasValue)
-            await Dispatcher.InvokeAsync(() => SetModeButton((Mode)mode.Value))
-                .Task.ConfigureAwait(false);
-    }
-
-    // Ask the daemon for its current operating mode ("STATE" → "MODE=<n>").
-    // Returns the parsed mode number, or null if the query failed or carried no mode.
-    async Task<int?> QueryStateModeAsync()
+    // Ask the daemon for its current operating mode and edit context
+    // ("STATE" → "MODE=<n> EDITCTX=<e>"). Returns null if the query failed or the
+    // reply carried no MODE field.
+    async Task<(Mode Mode, EditContext EditCtx)?> QueryStateAsync()
     {
         var resp = await _ctrl.QueryAsync(DaemonCommand.QueryState).ConfigureAwait(false);
-        return resp != null && resp.StartsWith(DaemonCommand.StateReplyModePrefix, StringComparison.Ordinal) &&
-               int.TryParse(resp[DaemonCommand.StateReplyModePrefix.Length..], out int mode)
-            ? mode : null;
+        if (resp == null) return null;
+
+        int mode = -1, editCtx = 0;
+        foreach (var tok in resp.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            int eq = tok.IndexOf('=');
+            if (eq <= 0) continue;
+            var val = tok[(eq + 1)..];
+            if (tok.StartsWith("MODE=", StringComparison.Ordinal))
+                int.TryParse(val, out mode);
+            else if (tok.StartsWith("EDITCTX=", StringComparison.Ordinal))
+                int.TryParse(val, out editCtx);
+        }
+        return mode >= 0 ? ((Mode)mode, (EditContext)editCtx) : null;
+    }
+
+    // Apply one STATE poll result. EDITCTX (only ever non-zero while MODE=Program)
+    // takes priority: it drives the flashing-Program/lit-origin-button state directly,
+    // with no debounce needed since the daemon's eva_mode.ko source is exact per call.
+    void ApplyDaemonState(Mode mode, EditContext ctx)
+    {
+        if (ctx == EditContext.None)
+        {
+            if (_editCtx.Active) ExitProgramEditContext();
+
+            // STATE is authoritative and exact (eva_mode.ko or, at worst, the daemon's own
+            // pixel fallback) — unlike the old client-side pixel/SysEx heuristics this
+            // replaced, there's no stale/false reading to hold off for. Apply it as soon as
+            // it disagrees with what's currently shown, so a button press lights up as fast
+            // as the daemon itself confirms the change (one poll interval, not an added grace).
+            if (mode != Mode.Unknown && mode != _currentMode)
+                SetModeButton(mode);
+            return;
+        }
+
+        if (mode != _currentMode) SetModeButton(mode);   // keep _currentMode bookkeeping correct
+        if (!_editCtx.Active || _editCtx.Origin != ctx)
+            EnterProgramEditContext(ctx);
     }
 
     void SetModeButton(Mode mode)
     {
         if (mode != Mode.Unknown)
         {
-            if (mode != _currentMode) _prevMode = _currentMode;
+            if (mode != _currentMode)
+            {
+                _prevMode = _currentMode;
+                _seqTransport.Reset();   // see SeqTransportViewModel.Reset for why
+                _seqTransport.CurrentMode = mode;
+            }
             _currentMode = mode;
             _pendingMode = Mode.Unknown;  // detection is authoritative — clear pending
             if (!_detectedModeEver)
@@ -340,7 +374,7 @@ public partial class MainWindow
             }
         }
 
-        if (ButtonForMode(mode) is { } btn && !_combi.Active)
+        if (ButtonForMode(mode) is { } btn && !_editCtx.Active)
             btn.Activate();
 
         // mode=Unknown (server doesn't know yet) — leave current state rather than blanking
@@ -363,24 +397,27 @@ public partial class MainWindow
         ModeText.Text = "";
     }
 
-    void EnterCombiProgramEdit()
+    void EnterProgramEditContext(EditContext ctx)
     {
-        _combi.Active = true;
-        _combi.FlashState = false;
-        BTN_Combi.IsActive    = true;
+        _editCtx.Active     = true;
+        _editCtx.Origin     = ctx;
+        _editCtx.FlashState = false;
+        BTN_Combi.IsActive    = ctx == EditContext.ProgramFromCombi;
+        BTN_Sequence.IsActive = ctx == EditContext.ProgramFromSequence;
         BTN_Program.IsActive  = false;
-        _combi.FlashTimer.Start();
-        AppLog.Debug("[mode] program-edit-from-combi: entered");
-        ModeText.Text = "Mode: Program (from Combi)";
+        _editCtx.FlashTimer.Start();
+        AppLog.Debug($"[mode] program-edit-from-{ctx.DisplayName()}: entered");
+        ModeText.Text = $"Mode: Program (from {ctx.DisplayName()})";
     }
 
-    void ExitCombiProgramEdit()
+    void ExitProgramEditContext()
     {
-        _combi.Active = false;
-        _combi.FlashTimer.Stop();
+        AppLog.Debug($"[mode] program-edit-from-{_editCtx.Origin.DisplayName()}: exited");
+        _editCtx.Active = false;
+        _editCtx.Origin = EditContext.None;
+        _editCtx.FlashTimer.Stop();
         // Re-apply current mode so button state is consistent
         ButtonForMode(_currentMode)?.Activate();
-        AppLog.Debug("[mode] program-edit-from-combi: exited");
     }
 
     // The mode-key control that lights for a given operating mode (null for Unknown).
@@ -395,45 +432,6 @@ public partial class MainWindow
         Mode.Disk     => BTN_Disk,
         _             => null,
     };
-
-    // Combi-program-edit detection — runs every frame, not gated by HasChanged, because the
-    // indicator at (696,39) is outside the top-left OCR region.  Exit via mode change
-    // (_currentMode != 3) is immediate; exit via indicator absence uses a holdoff so a menu/overlay
-    // briefly covering the indicator region doesn't kill the flash animation.
-    void UpdateCombiProgramEditState(byte[] raw)
-    {
-        if (_frameIsMostlyBlack) return;
-
-        bool indicatorActive = CombiProgramEditDetector.IsActive(raw, _frameW, _lut);
-        if (!_combi.Active && _currentMode == Mode.Program && (_prevMode == Mode.Combi || _prevMode == Mode.Unknown) && indicatorActive)
-        {
-            _combi.IndicatorGoneAt = DateTime.MinValue;
-            EnterCombiProgramEdit();
-        }
-        else if (_combi.Active)
-        {
-            if (_currentMode != Mode.Program)
-            {
-                _combi.IndicatorGoneAt = DateTime.MinValue;
-                ExitCombiProgramEdit();
-            }
-            else if (indicatorActive)
-            {
-                _combi.IndicatorGoneAt = DateTime.MinValue; // indicator back — reset holdoff
-            }
-            else
-            {
-                // indicator absent but mode still 3 — may be a menu covering (696,39)
-                if (_combi.IndicatorGoneAt == DateTime.MinValue)
-                    _combi.IndicatorGoneAt = DateTime.Now;
-                else if ((DateTime.Now - _combi.IndicatorGoneAt).TotalSeconds >= CombiEditState.ExitDelaySec)
-                {
-                    _combi.IndicatorGoneAt = DateTime.MinValue;
-                    ExitCombiProgramEdit();
-                }
-            }
-        }
-    }
 
     void RenderTick(object? s, EventArgs e)
     {
@@ -470,42 +468,17 @@ public partial class MainWindow
             _frameIsMostlyBlack      = IsFrameMostlyBlack(raw, _lut);        // 90% — suppresses mode detection
             _frameIsLikelyBootScreen = IsFrameMostlyBlack(raw, _lut, _settings.BootScreenThreshold / 100.0);
 
-            // Top-left 140×55 changed — update mode and help state independently.
-            // Rows 0–26 = mode banner; rows 27–55 = help banner; never overlap.
-            // Guard on !_frameIsMostlyBlack: near-black reference pixels (dark mode banner text)
-            // score as false positives against the black boot framebuffer, so skip detection
-            // until Eva's UI is visible (at least 10% non-black pixels across the frame).
+            // Top-left 140×55 changed — re-check help-overlay state (rows 27–55 of the ROI).
+            // Mode/edit-context no longer come from pixels at all — see ModePollLoop, which
+            // polls the daemon's STATE command directly. Guard on !_frameIsMostlyBlack:
+            // near-black reference pixels (dark help-banner text) score as false positives
+            // against the black boot framebuffer, so skip detection until Eva's UI is visible
+            // (at least 10% non-black pixels across the frame).
             if (TopLeftOcr.HasChanged(raw, _frameW) && !_frameIsMostlyBlack)
             {
-                _helpActive      = ModeDetector.IsHelpActive(raw, _frameW, _lut);
+                _helpActive       = HelpDetector.IsHelpActive(raw, _frameW, _lut);
                 BTN_Help.IsActive = _helpActive;
-
-                int detected = ModeDetector.Identify(raw, _frameW, _lut);
-                if (detected > 0)
-                {
-                    // Screen detection runs simultaneously with SysEx mode-follow.
-                    // SysEx is the source of truth *while it is actively transmitting*:
-                    // a live func 0x4E in the last SysExModeGraceSec suppresses a
-                    // disagreeing (usually transitional) screen reading. Once SysEx
-                    // goes silent — transmit off at the Kronos, or MIDI monitoring off
-                    // in-app — the grace lapses and the screen drives the mode at once,
-                    // instead of waiting out the 3s pending-mode timeout fallback.
-                    bool sysExOverrides =
-                        (DateTime.Now - _lastSysExModeAt).TotalSeconds < SysExModeGraceSec &&
-                        (Mode)detected != _lastSysExMode;
-                    // Combi-program-edit owns the button while it flashes: a stable
-                    // mode-3 banner there must not clobber it, but a change to any
-                    // other mode is a genuine exit and applies immediately.
-                    bool combiOwnsButton = _combi.Active && (Mode)detected == Mode.Program;
-                    if (!sysExOverrides && !combiOwnsButton)
-                        SetModeButton((Mode)detected);
-                }
-                else if (!ModeDetector.HasAny())
-                    _ = QueryModeAsync();
-                // refs loaded but no match = transitional frame; leave mode unchanged
             }
-
-            UpdateCombiProgramEditState(raw);
         }
 
         // Boot phase entry: enters immediately once connected (BootState.EntryDelaySec=0) if no mode detected.

@@ -93,4 +93,49 @@ sealed class TcpMidiTransport : IKronosMidiTransport
             .ConfigureAwait(false);
         return resp?.TrimEnd() == "OK";
     }
+
+    public async Task<bool> SendLargeSysExAsync(byte[] sysex)
+    {
+        // PREFERRED: inject over the 9875 stream socket. It's the daemon's raw
+        // bidirectional MIDI pipe — inbound bytes are recv()'d and write()'n straight
+        // to /proc/.midi_in with NO per-line cap (midi_tcp.c), the same fast path
+        // Python uses. One socket write carries the whole object; TCP handles the
+        // size and the daemon reassembles the byte stream to the Kronos.
+        var monitor = _monitor;
+        if (monitor != null && await monitor.SendAsync(sysex).ConfigureAwait(false))
+            return true;
+
+        // FALLBACK only (monitor/stream not available): the ctrl-port MIDI_SEND path,
+        // whose mb[4096] decode buffer + CTRL_LINE_MAX cap force splitting a big object
+        // across several sends the daemon injects contiguously.
+        AppLog.Warn("[midi-tcp] 9875 injector unavailable — falling back to chunked MIDI_SEND");
+        return await SendViaChunkedMidiSendAsync(sysex).ConfigureAwait(false);
+    }
+
+    // Max MIDI bytes per MIDI_SEND. MidiHex.ToHex is space-separated (~3 chars/byte),
+    // so the daemon's CTRL_LINE_MAX (8320) and its mb[4096] decode buffer both bound a
+    // single send; 2048 stays well under either with headroom for the "MIDI_SEND "
+    // prefix. Splitting mid-SysEx is safe: the daemon write()s each chunk's raw bytes
+    // to /proc/.midi_in in order, so the Kronos sees one contiguous F0…F7.
+    const int MaxMidiSendBytes = 2048;
+
+    async Task<bool> SendViaChunkedMidiSendAsync(byte[] sysex)
+    {
+        if (sysex.Length <= MaxMidiSendBytes)
+            return await SendAsync(sysex).ConfigureAwait(false);
+
+        for (int off = 0; off < sysex.Length; off += MaxMidiSendBytes)
+        {
+            int len = Math.Min(MaxMidiSendBytes, sysex.Length - off);
+            var chunk = sysex[off..(off + len)];
+            var resp = await CtrlClient.QueryAsync(_host, _ctrlPort,
+                DaemonCommand.MidiSend(MidiHex.ToHex(chunk)), 3000).ConfigureAwait(false);
+            if (resp?.TrimEnd() != "OK")
+            {
+                AppLog.Warn($"[midi-tcp] large SysEx chunk at {off}/{sysex.Length} failed");
+                return false;
+            }
+        }
+        return true;
+    }
 }

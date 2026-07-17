@@ -293,7 +293,6 @@ public partial class MainWindow
         if (e.Key == Key.Escape)
         {
             if (_fs.Active)               { ToggleFullscreen(); return; }
-            if (_helpOpen)                   { _helpOpen = false; OverlayLayer.InvalidateVisual(); return; }
             if (_drag.Pending || _drag.Active)
             {
                 var cancelPos = _drag.Active ? _drag.Last : _drag.PendingPos;
@@ -355,6 +354,21 @@ public partial class MainWindow
             if (IsAction($"Bank U-{b}",    e)) { Ctrl(DaemonCommand.BankButton(BankGroup.User, b));     return; }
             if (IsAction($"Bank U-{b}{b}", e)) { Ctrl(DaemonCommand.DoubleUserBank(b));                 return; }
         }
+
+        // Sequencer transport (unassigned by default; rebindable in Settings) — gated the
+        // same way as the footer buttons' IsEnabled, so a shortcut can't do anything the
+        // greyed-out button itself couldn't. Falls through (not "handled") when the current
+        // mode doesn't support it, same as any other unmatched key.
+        if (_seqTransport.IsTransportEnabled)
+        {
+            if (IsAction("Seq Locate",  e)) { Ctrl(DaemonCommand.Button(PanelButton.SeqLocate));  return; }
+            if (IsAction("Seq Rewind",  e)) { Ctrl(DaemonCommand.Button(PanelButton.SeqRewind));  return; }
+            if (IsAction("Seq Forward", e)) { Ctrl(DaemonCommand.Button(PanelButton.SeqForward)); return; }
+            if (IsAction("Seq Pause",   e)) { Ctrl(DaemonCommand.Button(PanelButton.SeqPause));   return; }
+            if (IsAction("Seq Record",  e)) { _seqTransport.RecordCommand.Execute(null);          return; }
+            if (IsAction("Seq Start",   e)) { _seqTransport.StartStopCommand.Execute(null);       return; }
+        }
+        if (_seqTransport.IsSaveEnabled && IsAction("Seq Save", e)) { _seqTransport.RecordCommand.Execute(null); return; }
 
         if (IsAction("Calibrate", e))
         {
