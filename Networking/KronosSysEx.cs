@@ -67,6 +67,11 @@ sealed record ObjectDump(int Obj, int Bank, int Index, byte Version, byte[] Body
 // A parsed func-0x38 Bank Digest: which bank, and its 20-byte SHA-1 storage digest.
 readonly record struct BankDigest(int Obj, int Bank, byte[] Sha1);
 
+// A parsed func-0x61 Program Bank Types reply: one flag per bit (true = EXi, false
+// = HD-1), indexed exactly as the wire bitmap is (see ParseProgramBankTypes /
+// KronosBanks.ProgramBankTypeBitIndex for what each index means).
+readonly record struct ProgramBankTypes(bool[] IsExi);
+
 // General-purpose Korg Kronos SysEx client.
 //
 // Handles all SysEx communication through the screenremote daemon's SYSEX
@@ -528,6 +533,36 @@ sealed class KronosSysEx
             var sha1 = Decode8to7(msg, dataStart, dataEnd - dataStart);
             if (sha1.Length > 20) Array.Resize(ref sha1, 20);
             return new BankDigest(obj, bank, sha1);
+        }
+        return null;
+    }
+
+    // Build a Program Bank Types Request (func 0x60): the instrument replies with a
+    // func 0x61 Program Bank Types bitmap (edit buffer + every typed program bank,
+    // HD-1 vs EXi).  F0 42 3g 68 60 F7
+    public static byte[] BuildProgramBankTypesRequest() =>
+        new byte[] { 0xF0, 0x42, 0x30, 0x68, 0x60, 0xF7 };
+
+    // Parse a func-0x61 Program Bank Types reply: F0 42 3g 68 61 numBits data[] F7.
+    // data[] is 7-bit-packed (bit 0 of data[0] = overall bit 0, ... bit 6 of data[0]
+    // = overall bit 6, bit 0 of data[1] = overall bit 7, etc.) — 1 = EXi, 0 = HD-1.
+    public static ProgramBankTypes? ParseProgramBankTypes(byte[] msg)
+    {
+        for (int i = 0; i + 6 < msg.Length; i++)
+        {
+            if (!HasKorgHeaderAt(msg, i, 0x61)) continue;
+            int numBits = msg[i + 5] & 0x7F;
+            int dataStart = i + 6;
+            int dataEnd = Array.IndexOf(msg, (byte)0xF7, dataStart);
+            if (dataEnd < 0) dataEnd = msg.Length;
+            var flags = new bool[numBits];
+            for (int bit = 0; bit < numBits; bit++)
+            {
+                int byteIdx = dataStart + bit / 7;
+                if (byteIdx >= dataEnd) break;
+                flags[bit] = (msg[byteIdx] & (1 << (bit % 7))) != 0;
+            }
+            return new ProgramBankTypes(flags);
         }
         return null;
     }

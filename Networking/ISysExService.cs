@@ -81,4 +81,9 @@ interface ISysExService : INotifyPropertyChanged, IMoveExecutor
     // Null if unknown. (The remaining Librarian primitives — object write, Store,
     // digest, backup, raw send — come from the IMoveExecutor base interface.)
     ObjLoc? CurrentPerformanceLoc();
+
+    // Bulk HD-1/EXi type query for every program bank (func 0x60/0x61) — a single
+    // cheap, non-destructive request, unlike the deprecated per-bank 0x7D/0x7E query.
+    // Null if unavailable/no reply.
+    Task<ProgramBankTypes?> RequestProgramBankTypesAsync();
 }

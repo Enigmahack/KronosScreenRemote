@@ -25,9 +25,31 @@ static class LibObj
 // A movable object location, addressed in object-dump (header) encoding.
 readonly record struct ObjLoc(int ObjType, int Bank, int Number)
 {
-    public string Label() => ObjType == LibObj.Program
-        ? $"{KronosBanks.ProgramLabel(Bank)}:{Number:D3}"
-        : $"{KronosBanks.CombiLabel(Bank)}:{Number:D3}";
+    public string Label() => ObjType switch
+    {
+        LibObj.Program => $"{KronosBanks.ProgramLabel(Bank)}:{Number:D3}",
+        LibObj.SetList => $"Set List {Number:D2}",
+        _              => $"{KronosBanks.CombiLabel(Bank)}:{Number:D3}",
+    };
+}
+
+// What a right-click "Rescan" at a given tree node means: one slot (Number set), one
+// bank (Bank set, Number null), or every bank of that type (both null). Used instead
+// of re-deriving scope from a node's label, which is ambiguous (Program and Combi
+// trees reuse the same bank letters).
+readonly record struct RescanScope(int ObjType, int? Bank, int? Number)
+{
+    public string Describe()
+    {
+        string typeName = ObjType switch { LibObj.Program => "Program", LibObj.Combi => "Combi", _ => "Set List" };
+        if (Number is int n)
+            return ObjType == LibObj.SetList ? $"Set List {n:D2}" : $"{typeName} {BankLabel()}:{n:D3}";
+        if (Bank is int)
+            return $"{typeName} bank {BankLabel()}";
+        return $"all {typeName}s";
+    }
+
+    string BankLabel() => ObjType == LibObj.Program ? KronosBanks.ProgramLabel(Bank!.Value) : KronosBanks.CombiLabel(Bank!.Value);
 }
 
 // One reference site pointing at a movable object.
@@ -48,19 +70,35 @@ sealed class WriteOp
     { Obj = obj; Bank = bank; Index = index; Version = version; Body = body; Note = note; }
 }
 
-sealed class MovePlan
+// What ArmPlanAsync/ApplyMoveAsync actually need from a plan — implemented by both the
+// single-pair MovePlan and (Core/BatchMoveModel.cs) BatchMovePlan, so both share the exact
+// same backup/staleness-gate/write/Store/live-preview discipline with zero duplicated logic.
+interface IExecutablePlan
+{
+    List<WriteOp> Writes { get; }
+    List<WriteOp> PreImages { get; }
+    List<(int Obj, int Bank)> Stores { get; }
+    Dictionary<(int, int), byte[]> DigestBaseline { get; }
+    List<byte[]> LivePc { get; }
+    List<string> Warnings { get; }
+    string BackupLabel { get; }            // filename-safe; ApplyMoveAsync prefixes it with the stamp
+    bool IsRefusable { get; }
+}
+
+sealed class MovePlan : IExecutablePlan
 {
     public ObjLoc Src, Dst;
-    public List<WriteOp> Writes = new();
-    public List<WriteOp> PreImages = new();               // ORIGINAL objects (backup/restore)
-    public List<(int Obj, int Bank)> Stores = new();      // banks to Store (deduped)
+    public List<WriteOp> Writes { get; } = new();
+    public List<WriteOp> PreImages { get; } = new();       // ORIGINAL objects (backup/restore)
+    public List<(int Obj, int Bank)> Stores { get; } = new();   // banks to Store (deduped)
     public List<ReferrerSite> Referrers = new();
     public List<string> Preview = new();
-    public List<string> Warnings = new();
-    public List<byte[]> LivePc = new();                   // optional 0x43 dual-write
-    public Dictionary<(int, int), byte[]> DigestBaseline = new();
+    public List<string> Warnings { get; } = new();
+    public List<byte[]> LivePc { get; } = new();           // optional 0x43 dual-write
+    public Dictionary<(int, int), byte[]> DigestBaseline { get; } = new();
 
     public bool IsRefusable => Warnings.Any(w => w.StartsWith("REFUSE:", StringComparison.Ordinal));
+    public string BackupLabel => $"move_{Src.Label()}_{Dst.Label()}".Replace(":", "").Replace(" ", "");
 }
 
 // Read/patch the (bank, number) reference bytes inside a DECODED object body.
@@ -94,6 +132,8 @@ static class LibRefs
     {
         for (int t = 0; t < TimbreCount; t++)
         {
+            int b = Timbre0Num + t * TimbreStride;
+            if (b + 1 >= body.Length) yield break;   // truncated/short dump — stop, don't throw
             var (bank, num) = CombiTimbreRef(body, t);
             yield return (t, bank, num);
         }
@@ -148,6 +188,8 @@ sealed class RefIndex
     public List<ReferrerSite> ReferrersOf(ObjLoc loc)
     {
         var outp = new List<ReferrerSite>();
+        if (loc.ObjType == LibObj.SetList) return outp;   // nothing ever references a Set List
+
         int refType = loc.ObjType == LibObj.Program ? 1 : 0;
         int wantBank = KronosBanks.ObjBankToFunc33(refType, loc.Bank);
         if (wantBank < 0) return outp;
@@ -202,6 +244,8 @@ sealed class LibraryCatalog
     public List<ReferrerSite> ReferrersOf(ObjLoc loc)
     {
         var outp = new List<ReferrerSite>();
+        if (loc.ObjType == LibObj.SetList) return outp;   // nothing ever references a Set List
+
         int refType = loc.ObjType == LibObj.Program ? 1 : 0;
         int wantBank = KronosBanks.ObjBankToFunc33(refType, loc.Bank);
         if (wantBank < 0) return outp;
@@ -242,6 +286,33 @@ static class Librarian
         LibObj.SetList => "Set Lists",
         _ => $"obj{obj:X2}:bank{bank:X2}",
     };
+
+    // ── Name field helpers (Program/Combi bodies: 24-byte ASCII name at offset 0) ──
+    // Used by both a single-slot rename write (LibrarianWindow's double-click-to-rename)
+    // and anywhere else that needs to read or patch just the name without touching the
+    // rest of an object's body.
+
+    public static byte[] PadAscii(string s, int len)
+    {
+        var data = new byte[len];
+        Array.Fill(data, (byte)0x20);
+        var bytes = System.Text.Encoding.ASCII.GetBytes(s);
+        Array.Copy(bytes, data, Math.Min(bytes.Length, len));
+        return data;
+    }
+
+    public static string ReadName(byte[] body) =>
+        System.Text.Encoding.ASCII.GetString(body, 0, Math.Min(24, body.Length)).TrimEnd('\0', ' ');
+
+    // Same bytes as `original`, only the first 24 (the name field) replaced — every other
+    // byte of the object (parameters, timbres, whatever) is preserved exactly.
+    public static byte[] BuildRenamedBody(byte[] original, string newName)
+    {
+        var body = (byte[])original.Clone();
+        var padded = PadAscii(newName, 24);
+        Array.Copy(padded, body, Math.Min(24, body.Length));
+        return body;
+    }
 
     // Compute a coherent swap(src, dst). PURE — no hardware access. srcDump/dstDump
     // are the freshly dumped bodies of the two objects being swapped.
@@ -342,7 +413,7 @@ static class Librarian
 
     // Capture the storage digest of every affected bank — the staleness baseline
     // ApplyMoveAsync re-checks immediately before Storing.
-    public static async Task ArmPlanAsync(MovePlan plan, IMoveExecutor ex)
+    public static async Task ArmPlanAsync(IExecutablePlan plan, IMoveExecutor ex)
     {
         foreach (var (obj, bank) in plan.Stores)
         {
@@ -355,7 +426,7 @@ static class Librarian
     // writes -> Store -> optional live 0x43. Aborts (before any Store) on a stale
     // digest or a rejected write. `stamp` is an externally supplied timestamp.
     public static async Task<(bool Ok, List<string> Steps, string? Aborted)> ApplyMoveAsync(
-        MovePlan plan, IMoveExecutor ex, string backupDir, string stamp,
+        IExecutablePlan plan, IMoveExecutor ex, string backupDir, string stamp,
         Action<string>? progress = null, bool doLive = true)
     {
         var steps = new List<string>();
@@ -365,7 +436,7 @@ static class Librarian
             return (false, steps, string.Join("; ", plan.Warnings));
 
         // 1. Backup the pre-image of every object we overwrite (restore = replay + Store).
-        var safe = $"{stamp}_move_{plan.Src.Label()}_{plan.Dst.Label()}".Replace(":", "").Replace(" ", "");
+        var safe = $"{stamp}_{plan.BackupLabel}";
         var backupPath = System.IO.Path.Combine(backupDir, safe + ".syx");
         Note($"backup {plan.PreImages.Count} pre-image object(s) -> {backupPath}");
         await ex.BackupObjectsAsync(plan.PreImages, backupPath).ConfigureAwait(false);
@@ -443,6 +514,13 @@ static class Librarian
         foreach (var (t, bank, num) in LibRefs.IterCombiTimbreRefs(combi))
             Check($"timbre-{t}", bank == t % 30 && num == ((t * 3) & 0x7F));
 
+        // 3b. A short/truncated combi body (e.g. a glitched dump) must yield whatever fits,
+        // not throw IndexOutOfRangeException — regression test for a real scan crash where
+        // a full 128-slot bank sweep hit an unexpectedly short body.
+        var shortCombi = new byte[5000];   // shorter than timbre 12's offset (4802 + 11*188 = 6870)
+        var shortRefs = LibRefs.IterCombiTimbreRefs(shortCombi).ToList();
+        Check("short-combi-no-throw", shortRefs.Count < LibRefs.TimbreCount);
+
         // 4. Set-list slot patch preserves color/transpose bits.
         var sl = new byte[69416];
         int b0 = 24;
@@ -500,6 +578,17 @@ static class Librarian
         Check("refindex-usage", ri.UsageCount(src) == 2 && ri.UsageCount(dst) == 1);
         Check("refindex-ids", ri.ReferrerObjectIds(src).SetEquals(
             new HashSet<(int, int, int)> { (LibObj.Combi, 0x00, 0), (LibObj.SetList, 0, 0) }));
+
+        // 7. Name-field helpers: rename touches only the first 24 bytes, PadAscii
+        // truncates/pads correctly (migrated from the retired StoreBankVerification tool).
+        var nameOriginal = new byte[200];
+        for (int i = 0; i < nameOriginal.Length; i++) nameOriginal[i] = (byte)((i * 7 + 3) & 0x7F);
+        var renamed = BuildRenamedBody(nameOriginal, "STORETEST-000000");
+        Check("rename-preserves-tail", renamed.AsSpan(24).SequenceEqual(nameOriginal.AsSpan(24)));
+        Check("rename-name-readable", ReadName(renamed) == "STORETEST-000000");
+        Check("rename-same-length", renamed.Length == nameOriginal.Length);
+        Check("padascii-truncate", PadAscii("THIS NAME IS DEFINITELY TOO LONG", 8).Length == 8);
+        Check("padascii-pad", PadAscii("AB", 4).AsSpan().SequenceEqual(new byte[] { 0x41, 0x42, 0x20, 0x20 }));
 
         return fails;
     }

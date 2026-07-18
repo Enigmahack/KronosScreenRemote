@@ -334,6 +334,155 @@ static class Storage
         catch (Exception ex) { AppLog.Warn($"[dumped-banks] save failed: {ex.Message}"); }
     }
 
+    // ── Librarian reference-graph cache ───────────────────────────────────────
+    // Persists RefIndex (Core/LibrarianModel.cs) across sessions so a "lazy" scan can diff
+    // against last time instead of rebuilding from scratch. Combi-timbre / set-list-slot
+    // reference tuples plus per-bank SHA-1 digests, keyed by host like the caches above.
+    // Tuple-keyed dictionaries don't serialize directly, hence the flat DTO shape below —
+    // same trick LoadDumpedBanks/SaveDumpedBanks uses for its "type:objBank" string keys.
+
+    static string RefGraphPath => Path.Combine(DataDir, "librarian_refs_cache.json");
+    static readonly object _refGraphFileLock = new();
+
+    public sealed record RefGraphCombiEntry(int Bank, int Index, List<int[]> Refs);       // Refs: [bank, number]
+    public sealed record RefGraphSetlistEntry(int Number, List<int[]> Refs);              // Refs: [slot, type, bank, index]
+    public sealed record RefGraphDigest(int Obj, int Bank, string Hex);
+
+    public sealed record RefGraph(
+        List<RefGraphCombiEntry> Combis, List<RefGraphSetlistEntry> Setlists, List<RefGraphDigest> Digests)
+    {
+        public static RefGraph Empty => new(new(), new(), new());
+    }
+
+    public static RefGraph LoadRefGraph(string host)
+    {
+        lock (_refGraphFileLock)
+        {
+            try
+            {
+                if (!File.Exists(RefGraphPath)) return RefGraph.Empty;
+                var all = JsonSerializer.Deserialize<Dictionary<string, RefGraph>>(File.ReadAllText(RefGraphPath));
+                if (all != null && all.TryGetValue(host, out var g) && g != null) return g;
+            }
+            catch (Exception ex) { AppLog.Warn($"[librarian-refs] load failed: {ex.Message}"); }
+            return RefGraph.Empty;
+        }
+    }
+
+    public static void SaveRefGraph(string host, RefGraph graph)
+    {
+        lock (_refGraphFileLock)
+        {
+            try
+            {
+                var all = File.Exists(RefGraphPath)
+                    ? JsonSerializer.Deserialize<Dictionary<string, RefGraph>>(File.ReadAllText(RefGraphPath)) ?? new()
+                    : new();
+                all[host] = graph;
+                File.WriteAllText(RefGraphPath, JsonSerializer.Serialize(all));
+            }
+            catch (Exception ex) { AppLog.Warn($"[librarian-refs] save failed: {ex.Message}"); }
+        }
+    }
+
+    // ── Librarian batch-move clipboard ────────────────────────────────────────
+    // Persists BatchClipboard (Core/BatchMoveModel.cs) across sessions — cut-but-unplaced
+    // objects must never be silently lost just because the window or app was closed. Same
+    // per-host JSON pattern as the reference-graph cache above; flat DTO (Provenance as a
+    // string, Origin/PastedTo split into plain ints) keeps the file simple and inspectable,
+    // same reasoning as RefGraphDigest storing its SHA-1 as hex rather than raw bytes.
+
+    static string ClipboardPath => Path.Combine(DataDir, "librarian_clipboard_cache.json");
+    static readonly object _clipboardFileLock = new();
+
+    public sealed record ClipboardEntryDto(
+        int ObjType, int OriginBank, int OriginNumber, byte Version, byte[] Body,
+        string Provenance, string Reason, DateTime CutAt,
+        int? PastedBank, int? PastedNumber, DateTime? PastedAt, Guid? BankCopyGroup = null);
+
+    public static List<ClipboardEntryDto> LoadClipboard(string host)
+    {
+        lock (_clipboardFileLock)
+        {
+            try
+            {
+                if (!File.Exists(ClipboardPath)) return new();
+                var all = JsonSerializer.Deserialize<Dictionary<string, List<ClipboardEntryDto>>>(File.ReadAllText(ClipboardPath));
+                if (all != null && all.TryGetValue(host, out var list) && list != null) return list;
+            }
+            catch (Exception ex) { AppLog.Warn($"[librarian-clipboard] load failed: {ex.Message}"); }
+            return new();
+        }
+    }
+
+    public static void SaveClipboard(string host, List<ClipboardEntryDto> entries)
+    {
+        lock (_clipboardFileLock)
+        {
+            try
+            {
+                var all = File.Exists(ClipboardPath)
+                    ? JsonSerializer.Deserialize<Dictionary<string, List<ClipboardEntryDto>>>(File.ReadAllText(ClipboardPath)) ?? new()
+                    : new();
+                all[host] = entries;
+                File.WriteAllText(ClipboardPath, JsonSerializer.Serialize(all));
+            }
+            catch (Exception ex) { AppLog.Warn($"[librarian-clipboard] save failed: {ex.Message}"); }
+        }
+    }
+
+    // ── Program bank type cache ───────────────────────────────────────────────
+    // Persists the func-0x61 Program Bank Types bitmap (HD-1 vs EXi) per host so the
+    // Librarian can label Program banks immediately on open, before any Scan has run.
+    // Refreshed from hardware on the first successful Scan of each session
+    // (LibrarianWindow.ScanAsync) and re-saved here whenever that refresh lands.
+
+    static string ProgramBankTypesPath => Path.Combine(DataDir, "program_bank_types_cache.json");
+    static readonly object _programBankTypesFileLock = new();
+
+    public static bool[]? LoadProgramBankTypes(string host)
+    {
+        lock (_programBankTypesFileLock)
+        {
+            try
+            {
+                if (!File.Exists(ProgramBankTypesPath)) return null;
+                var all = JsonSerializer.Deserialize<Dictionary<string, bool[]>>(File.ReadAllText(ProgramBankTypesPath));
+                if (all != null && all.TryGetValue(host, out var flags) && flags != null) return flags;
+            }
+            catch (Exception ex) { AppLog.Warn($"[program-bank-types] load failed: {ex.Message}"); }
+            return null;
+        }
+    }
+
+    public static void SaveProgramBankTypes(string host, bool[] flags)
+    {
+        lock (_programBankTypesFileLock)
+        {
+            try
+            {
+                var all = File.Exists(ProgramBankTypesPath)
+                    ? JsonSerializer.Deserialize<Dictionary<string, bool[]>>(File.ReadAllText(ProgramBankTypesPath)) ?? new()
+                    : new();
+                all[host] = flags;
+                File.WriteAllText(ProgramBankTypesPath, JsonSerializer.Serialize(all));
+            }
+            catch (Exception ex) { AppLog.Warn($"[program-bank-types] save failed: {ex.Message}"); }
+        }
+    }
+
+    // ── Librarian backups ──────────────────────────────────────────────────────
+    // Shared by the move feature (Librarian.ApplyMoveAsync) and the Store-Bank
+    // verification tool — both back up pre-images to timestamped .syx files here
+    // before writing anything.
+
+    public static string BackupDir()
+    {
+        var d = Path.Combine(DataDir, "librarian_backups");
+        Directory.CreateDirectory(d);
+        return d;
+    }
+
     // ── Calibration ───────────────────────────────────────────────────────────
 
     public static (CalMesh mesh, List<CalBiasDot> dots) LoadCal()

@@ -941,6 +941,34 @@ sealed class SysExService : ISysExService
         }
     }
 
+    public async Task<ProgramBankTypes?> RequestProgramBankTypesAsync()
+    {
+        var transport = _transport;
+        if (transport?.CanStream != true) return null;
+        _dumping = true;
+        var tcs = new TaskCompletionSource<ProgramBankTypes?>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        void OnMsg(byte[] m)
+        {
+            var d = KronosSysEx.ParseProgramBankTypes(m);
+            if (d != null) tcs.TrySetResult(d);
+        }
+
+        transport.SysExMessageReceived += OnMsg;
+        try
+        {
+            if (!await transport.SendAsync(KronosSysEx.BuildProgramBankTypesRequest()).ConfigureAwait(false))
+                return null;
+            var winner = await Task.WhenAny(tcs.Task, Task.Delay(5000)).ConfigureAwait(false);
+            return winner == tcs.Task ? tcs.Task.Result : null;
+        }
+        finally
+        {
+            transport.SysExMessageReceived -= OnMsg;
+            _dumping = false;
+        }
+    }
+
     public async Task BackupObjectsAsync(IReadOnlyList<WriteOp> ops, string path)
     {
         await using var fs = new FileStream(path, FileMode.Create, FileAccess.Write);

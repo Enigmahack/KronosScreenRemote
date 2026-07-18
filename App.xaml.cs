@@ -15,6 +15,8 @@ public partial class App : Application
         if (e.Args.Contains("--librarian-selftest"))
         {
             var fails = Librarian.SelfTest();
+            fails.AddRange(LibraryRepository.SelfTest());
+            fails.AddRange(BatchLibrarian.SelfTest());
             var outPath = Path.Combine(Path.GetTempPath(), "kronos_librarian_selftest.txt");
             File.WriteAllText(outPath, fails.Count == 0 ? "OK" : "FAIL: " + string.Join(", ", fails));
             Environment.Exit(fails.Count == 0 ? 0 : 1);

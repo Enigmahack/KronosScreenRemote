@@ -172,6 +172,19 @@ static class KronosBanks
     // Object-dump program banks that can never be a move destination (read-only GM/g).
     public static bool IsReadOnlyProgramBank(int objBank) => objBank is >= 0x10 and <= 0x1A;
 
+    // Bit position of a program bank's HD-1/EXi type flag within func-0x61's Program
+    // Bank Types bitmap (bit 0 = edit buffer, 1-6 = I-A..I-F, 7-13 = U-A..U-G,
+    // 14-20 = U-AA..U-GG — KRONOS_MIDI_SysEx.txt func [61]). Null for banks the
+    // bitmap doesn't cover (I-G, and the read-only GM/g banks, which have no
+    // HD-1/EXi type at all).
+    public static int? ProgramBankTypeBitIndex(int objBank) => objBank switch
+    {
+        >= 0x00 and <= 0x05 => 1 + (objBank - 0x00),          // I-A..I-F
+        >= 0x40 and <= 0x46 => 7 + (objBank - 0x40),          // U-A..U-G
+        >= 0x47 and <= 0x4D => 14 + (objBank - 0x47),         // U-AA..U-GG
+        _ => null,
+    };
+
     static string Int(int i)  => $"I-{(char)('A' + i)}";
     static string User(int i) => i <= 6
         ? $"U-{(char)('A' + i)}"                        // U-A..U-G

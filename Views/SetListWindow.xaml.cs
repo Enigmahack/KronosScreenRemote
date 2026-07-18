@@ -12,7 +12,7 @@ partial class SetListWindow : Window
     readonly Dictionary<int, SetListData> _cache;
     bool _suppressSelChanged;
 
-    public SetListWindow(ISysExService sysEx, string host)
+    public SetListWindow(ISysExService sysEx, string host, int initialNumber = 0)
     {
         _sysEx = sysEx;
         _host  = host;
@@ -23,7 +23,7 @@ partial class SetListWindow : Window
 
         for (int i = 0; i < SetListData.MaxCount; i++)
             CMB_SetList.Items.Add(FormatSetListLabel(i));   // names fill in after the async load
-        CMB_SetList.SelectedIndex = 0;
+        CMB_SetList.SelectedIndex = Math.Clamp(initialNumber, 0, SetListData.MaxCount - 1);
 
         BTN_Load.Click     += async (_, _) => await LoadAsync(force: false);
         BTN_Refresh.Click  += async (_, _) => await LoadAsync(force: true);

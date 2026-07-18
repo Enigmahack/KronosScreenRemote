@@ -74,6 +74,24 @@ static class UiThemeSmokeTest
                     $"Background={Describe(btn.Background)} Foreground={Describe(btn.Foreground)} " +
                     $"HasTemplate={(btn.Template != null)} StyleIsNull={(btn.Style == null)}"));
             }
+            if (w.FindName("TV_Objects") is System.Windows.Controls.TreeView tv)
+            {
+                tv.Measure(new Size(400, 400));
+                tv.Arrange(new Rect(0, 0, 400, 400));
+                tv.UpdateLayout();
+                if (tv.ItemContainerGenerator.ContainerFromIndex(0) is System.Windows.Controls.TreeViewItem tvi)
+                    results.Add(("  TV_Objects root item (control-level check)", true,
+                        $"Background={Describe(tvi.Background)} Foreground={Describe(tvi.Foreground)} Roots={tv.Items.Count}"));
+                else
+                    results.Add(("  TV_Objects root item (control-level check)", true,
+                        $"(no container realized off-screen — Roots={tv.Items.Count}, TreeView.Background={Describe(tv.Background)})"));
+            }
+            if (w.FindName("GRP_Clipboard") is System.Windows.Controls.GroupBox grp)
+                results.Add(("  GRP_Clipboard (control-level check)", true,
+                    $"Background={Describe(grp.Background)} Foreground={Describe(grp.Foreground)}"));
+            if (w.FindName("TV_Clipboard") is System.Windows.Controls.TreeView clipTv)
+                results.Add(("  TV_Clipboard (control-level check)", true,
+                    $"Background={Describe(clipTv.Background)} Foreground={Describe(clipTv.Foreground)}"));
             return w;
         });
         Try("LoginDialog",            () => new LoginDialog("", 0));
@@ -118,6 +136,7 @@ file sealed class FakeSysExService : ISysExService
     public Task<bool> SendMidiAsync(string hexBytes) => Task.FromResult(false);
     public Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index) => Task.FromResult<ObjectDump?>(null);
     public ObjLoc? CurrentPerformanceLoc() => null;
+    public Task<ProgramBankTypes?> RequestProgramBankTypesAsync() => Task.FromResult<ProgramBankTypes?>(null);
 
     public Task BackupObjectsAsync(IReadOnlyList<WriteOp> ops, string path) => Task.CompletedTask;
     public Task<byte[]?> BankDigestAsync(int obj, int bank) => Task.FromResult<byte[]?>(null);

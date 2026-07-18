@@ -342,6 +342,18 @@
     </Style>
 
     <!-- ══════════════════════════════════════════════════════════════════
+         Expander
+         ══════════════════════════════════════════════════════════════════ -->
+
+    <Style TargetType="Expander">
+        <Setter Property="Foreground"      Value="{StaticResource TextBrush}"/>
+        <Setter Property="Background"      Value="{StaticResource PanelBackgroundBrush}"/>
+        <Setter Property="BorderBrush"     Value="{StaticResource BorderBrush1}"/>
+        <Setter Property="BorderThickness" Value="1"/>
+        <Setter Property="Padding"         Value="4"/>
+    </Style>
+
+    <!-- ══════════════════════════════════════════════════════════════════
          TabControl / TabItem
          ══════════════════════════════════════════════════════════════════ -->
 
@@ -490,6 +502,53 @@
 
     <Style TargetType="Slider">
         <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+    </Style>
+
+    <!-- ══════════════════════════════════════════════════════════════════
+         TreeView / TreeViewItem — first use of TreeView anywhere in the app
+         (the Librarian's object browser), so there's no existing dark-theme
+         precedent to copy. Uses the stock control template (TreeViewItem's
+         default template does thread Background/Foreground via TemplateBinding,
+         unlike Button) plus SystemColors overrides for selection highlighting —
+         the same technique SysExToolWindow's ListBox already uses.
+         ══════════════════════════════════════════════════════════════════ -->
+
+    <!-- App-wide SystemColors overrides (Setter can't target FrameworkElement.Resources — it's
+         not a DependencyProperty — so these live at the top level instead, same effect: any
+         stock-templated control anywhere, not just TreeViewItem, picks up dark selection
+         highlighting instead of the OS default). -->
+    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}"                  Color="#FF1A4E6E"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}"              Color="#FFFFFFFF"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}"                    Color="#FF232323"/>
+    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#FF1A4E6E"/>
+
+    <!-- Same color as the SystemColors selection highlight above, named for direct use by custom
+         (non-native) multi-select highlighting — e.g. the Librarian's TV_Objects, which drives its
+         own IsBatchSelected-bound highlight instead of relying on TreeViewItem.IsSelected (that
+         native, single-item-only highlight is deliberately neutralized just for that tree; see
+         LibrarianWindow.xaml). Reusing this color keeps every selection highlight in the app
+         visually consistent even where the highlighting mechanism differs. -->
+    <SolidColorBrush x:Key="SelectionHighlightBrush" Color="#FF1A4E6E"/>
+
+    <!-- Git-style staging color for the Librarian's object browser (TV_Objects in
+         LibrarianWindow.xaml) — Staged = a paste/swap has queued a write here but Commit hasn't
+         run yet (dirty/uncommitted); Committed = this session's Commit wrote it. Same content-
+         level-Border technique as SelectionHighlightBrush, for the same reason (the stock
+         TreeViewItem template's own IsSelected trigger would otherwise win). -->
+    <SolidColorBrush x:Key="StagedHighlightBrush" Color="#FF6E1A1A"/>
+    <SolidColorBrush x:Key="CommittedHighlightBrush" Color="#FF1A6E2A"/>
+
+    <Style TargetType="TreeView">
+        <Setter Property="Background"  Value="{StaticResource PanelBackgroundBrush}"/>
+        <Setter Property="Foreground"  Value="{StaticResource TextBrush}"/>
+        <Setter Property="BorderBrush" Value="{StaticResource BorderBrush1}"/>
+        <Setter Property="Padding"     Value="2"/>
+    </Style>
+
+    <Style TargetType="TreeViewItem">
+        <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Padding"    Value="2 2"/>
     </Style>
 
     <!-- ══════════════════════════════════════════════════════════════════
