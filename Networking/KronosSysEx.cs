@@ -277,7 +277,7 @@ sealed class KronosSysEx
         {
             Traffic?.Invoke(new SysExTrafficEntry(DateTime.Now, true, sysexHex));
 
-            var resp = await CtrlClient.QueryMultiAsync(_host, _ctrlPort,
+            var resp = await CtrlQuery.QueryMultiAsync(_host, _ctrlPort,
                 $"SYSEX {sysexHex}", timeoutMs).ConfigureAwait(false);
 
             if (resp == null) return null;
@@ -305,7 +305,7 @@ sealed class KronosSysEx
 
     async Task<bool> CheckMidiCaptureAsync()
     {
-        var raw = await CtrlClient.QueryMultiAsync(_host, _ctrlPort, DaemonCommand.QueryMidiStatus, timeoutMs: 2000)
+        var raw = await CtrlQuery.QueryMultiAsync(_host, _ctrlPort, DaemonCommand.QueryMidiStatus, timeoutMs: 2000)
             .ConfigureAwait(false);
         if (raw == null) return false;
         foreach (var line in raw.Split('\n', StringSplitOptions.RemoveEmptyEntries))
@@ -319,16 +319,24 @@ sealed class KronosSysEx
 
     // ── Response parsers (static) ────────────────────────────────────────────
 
-    // True if a Korg SysEx frame header — F0 42 3g 68 <func> — begins at index i.
-    // Scanning callers bound their loop so i+4 is in range; the length guard keeps
-    // the helper self-safe. Byte order matches the previous inline short-circuit checks.
-    static bool HasKorgHeaderAt(byte[] b, int i, byte func) =>
-        i + 4 < b.Length
+    // True if a Korg SysEx frame header — F0 42 3g 68 — begins at index i (4 header bytes,
+    // any function byte). Published so every SysEx producer/consumer shares ONE definition of
+    // the header instead of re-spelling F0/42/3g/68 inline in a dozen places — the divergence
+    // this centralizes is exactly the failure mode that bred the bank-table bug. Length-guarded
+    // so it's self-safe; a scanning caller still bounds its own loop and keeps whatever extra
+    // Length>=N guard the bytes it reads past i+3 require (this checks only i..i+3).
+    public static bool HasKorgHeaderAt(byte[] b, int i) =>
+        i + 3 < b.Length
         && b[i]              == 0xF0
         && b[i + 1]          == 0x42
         && (b[i + 2] & 0xF0) == 0x30
-        && b[i + 3]          == 0x68
-        && b[i + 4]          == func;
+        && b[i + 3]          == 0x68;
+
+    // As above, plus the function byte at i+4 equals `func` (a 5-byte match). The func-byte
+    // length check is separate so the base header check can't read out of range for a 4-byte
+    // buffer. Byte order matches the previous inline short-circuit checks.
+    public static bool HasKorgHeaderAt(byte[] b, int i, byte func) =>
+        HasKorgHeaderAt(b, i) && i + 4 < b.Length && b[i + 4] == func;
 
     // Parse Mode Data (func 0x42) from raw SysEx bytes.
     // Scans for F0 42 3x 68 42 header to tolerate leading real-time bytes.
@@ -450,14 +458,25 @@ sealed class KronosSysEx
     public static byte[] BuildObjectDumpMessage(int obj, int bank, int index, byte version, byte[] binaryData)
     {
         var encoded = Encode7to8(binaryData, 0, binaryData.Length);
-        var msg = new byte[11 + encoded.Length];
-        msg[0] = 0xF0; msg[1] = 0x42; msg[2] = 0x30; msg[3] = 0x68; msg[4] = 0x73;
-        msg[5] = (byte)obj;
-        msg[6] = (byte)bank;
-        msg[7] = (byte)((index >> 7) & 0x7F);
-        msg[8] = (byte)(index & 0x7F);
-        msg[9] = version;
-        Array.Copy(encoded, 0, msg, 10, encoded.Length);
+        var payload = new byte[5 + encoded.Length];
+        payload[0] = (byte)obj;
+        payload[1] = (byte)bank;
+        payload[2] = (byte)((index >> 7) & 0x7F);
+        payload[3] = (byte)(index & 0x7F);
+        payload[4] = version;
+        Array.Copy(encoded, 0, payload, 5, encoded.Length);
+        return KorgMessage(0x73, payload);
+    }
+
+    // Assemble a Korg SysEx message — F0 42 30 68 <func> <payload…> F7 — the single place the
+    // 4-byte Korg preamble is written for outbound messages (every Build* here funnels through
+    // it, so a framing change is a one-line edit). Channel byte 0x30 = global channel 1, the
+    // channel every request this client sends targets.
+    public static byte[] KorgMessage(byte func, params byte[] payload)
+    {
+        var msg = new byte[6 + payload.Length];
+        msg[0] = 0xF0; msg[1] = 0x42; msg[2] = 0x30; msg[3] = 0x68; msg[4] = func;
+        Array.Copy(payload, 0, msg, 5, payload.Length);
         msg[^1] = 0xF7;
         return msg;
     }
@@ -466,7 +485,7 @@ sealed class KronosSysEx
     // (func 0x73) data for the given object type/bank to non-volatile storage.
     //   F0 42 3g 68 76 obj bank F7
     public static byte[] BuildStoreBankRequest(int obj, int bank) =>
-        new byte[] { 0xF0, 0x42, 0x30, 0x68, 0x76, (byte)obj, (byte)bank, 0xF7 };
+        KorgMessage(0x76, (byte)obj, (byte)bank);
 
     // ── Librarian additions: full-object parse, param-change, digest, mode ──────
 
@@ -475,9 +494,7 @@ sealed class KronosSysEx
     public static ObjectDump? ParseObjectDump(byte[] msg)
     {
         if (msg.Length < 11) return null;
-        if (msg[0] != 0xF0 || msg[1] != 0x42 || (msg[2] & 0xF0) != 0x30 ||
-            msg[3] != 0x68 || msg[4] != 0x73)
-            return null;
+        if (!HasKorgHeaderAt(msg, 0, 0x73)) return null;
         int obj   = msg[5];
         int bank  = msg[6];
         int index = ((msg[7] & 0x7F) << 7) | (msg[8] & 0x7F);
@@ -497,25 +514,21 @@ sealed class KronosSysEx
     public static byte[] BuildParamChange(int typ, int soc, int sub, int pid, int idx, int value)
     {
         int v = value & 0x1FFFFF;
-        return new byte[]
-        {
-            0xF0, 0x42, 0x30, 0x68, 0x43,
+        return KorgMessage(0x43,
             (byte)(typ & 0x7F), (byte)(soc & 0x7F), (byte)(sub & 0x7F),
             (byte)(pid & 0x7F), (byte)(idx & 0x7F),
-            (byte)((v >> 14) & 0x7F), (byte)((v >> 7) & 0x7F), (byte)(v & 0x7F),
-            0xF7,
-        };
+            (byte)((v >> 14) & 0x7F), (byte)((v >> 7) & 0x7F), (byte)(v & 0x7F));
     }
 
     // Build a Bank Digest Request (func 0x37): the instrument replies with a func
     // 0x38 storage digest for that bank.  F0 42 3g 68 37 obj bank F7
     public static byte[] BuildBankDigestRequest(int obj, int bank) =>
-        new byte[] { 0xF0, 0x42, 0x30, 0x68, 0x37, (byte)obj, (byte)bank, 0xF7 };
+        KorgMessage(0x37, (byte)obj, (byte)bank);
 
     // Build a Mode Change (func 0x4E): 0 Combi, 2 Program, 4 Seq, 7 Global, 9 Set List.
     //   F0 42 3g 68 4E 0m F7
     public static byte[] BuildModeChange(int mode) =>
-        new byte[] { 0xF0, 0x42, 0x30, 0x68, 0x4E, (byte)(mode & 0x0F), 0xF7 };
+        KorgMessage(0x4E, (byte)(mode & 0x0F));
 
     // Parse a func-0x38 Bank Digest reply into (obj, bank, 20-byte SHA-1).
     //   F0 42 3g 68 38 obj bank <sha1 8→7 = 23 bytes> F7
@@ -540,7 +553,7 @@ sealed class KronosSysEx
     // func 0x61 Program Bank Types bitmap (edit buffer + every typed program bank,
     // HD-1 vs EXi).  F0 42 3g 68 60 F7
     public static byte[] BuildProgramBankTypesRequest() =>
-        new byte[] { 0xF0, 0x42, 0x30, 0x68, 0x60, 0xF7 };
+        KorgMessage(0x60);
 
     // Parse a func-0x61 Program Bank Types reply: F0 42 3g 68 61 numBits data[] F7.
     // data[] is 7-bit-packed (bit 0 of data[0] = overall bit 0, ... bit 6 of data[0]
@@ -572,9 +585,7 @@ sealed class KronosSysEx
     public static (int Index, string Name) ParseNameObjectDump(byte[] msg)
     {
         if (msg.Length < 12) return (-1, "");
-        if (msg[0] != 0xF0 || msg[1] != 0x42 || (msg[2] & 0xF0) != 0x30 ||
-            msg[3] != 0x68 || msg[4] != 0x73)
-            return (-1, "");
+        if (!HasKorgHeaderAt(msg, 0, 0x73)) return (-1, "");
 
         int index = ((msg[7] & 0x7F) << 7) | (msg[8] & 0x7F);   // idH, idL
         int dataStart = 10;                                      // after version byte

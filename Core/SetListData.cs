@@ -56,9 +56,7 @@ sealed record SetListData(int Number, string Name, IReadOnlyList<SetListSlot> Sl
     {
         // Header (10 bytes) + at least an F7.
         if (msg.Length < 12) return null;
-        if (msg[0] != 0xF0 || msg[1] != 0x42 || (msg[2] & 0xF0) != 0x30 ||
-            msg[3] != 0x68 || msg[4] != 0x73 || msg[5] != 0x0D)
-            return null;
+        if (!KronosSysEx.HasKorgHeaderAt(msg, 0, 0x73) || msg[5] != 0x0D) return null;
 
         int number = ((msg[7] & 0x7F) << 7) | (msg[8] & 0x7F);   // idH,idL
         int dataStart = 10;                                       // after version byte

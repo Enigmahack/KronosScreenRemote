@@ -73,70 +73,64 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         RefreshTree();
     }
 
+    // The Programs/Combis/Set Lists tree SHAPE is shared with the PCG pane (ObjectTreeScaffold);
+    // this pane supplies only what's local-specific — which slots the cache holds, and the rich
+    // per-leaf decoration (dirty/conflicted/pending-delete/dependency dot). keepEmptyRoots: true
+    // keeps all three type roots visible even when empty (a Set List root, for instance, is a
+    // valid auto-fill drop target regardless), the behavior this pane has always had.
     public void RefreshTree()
     {
-        var expandedKeys = ObjectTreeNode.CollectExpandedKeys(Roots);
-        Roots.Clear();
-
-        var programsRoot = new ObjectTreeNode("Programs");
-        var combisRoot = new ObjectTreeNode("Combis");
-        // Set Lists have no bank concept (a flat 128 numbered slots) — the type root itself
-        // is the valid auto-fill drop target, unlike Programs/Combis where only a specific
-        // BANK sub-node is (dropping on "Programs" itself doesn't say which of 21 banks).
-        var setListsRoot = new ObjectTreeNode("Set Lists", bankRef: (LibObj.SetList, 0));
-
-        BuildTypeSubtree(programsRoot, LibObj.Program);
-        BuildTypeSubtree(combisRoot, LibObj.Combi);
-        BuildSetListSubtree(setListsRoot);
-
-        Roots.Add(programsRoot);
-        Roots.Add(combisRoot);
-        Roots.Add(setListsRoot);
-        ObjectTreeNode.RestoreExpandedKeys(Roots, expandedKeys);
+        ObjectTreeScaffold.Rebuild(
+            Roots,
+            banksFor: BanksFor,
+            setListLocs: SetListLocs(),
+            makeLeaf: MakeLeafNode,
+            bankLabel: (objType, bank) => BankNodeLabel(objType, ObjectTypeRegistry.Get(objType), bank),
+            keepEmptyRoots: true);
         TreeRefreshed?.Invoke();
     }
 
-    void BuildTypeSubtree(ObjectTreeNode typeRoot, int objType)
+    // The populated banks of one Program/Combi object type, in EditableBanks() order — a bank's
+    // Locs are only the slots the cache actually holds (index-only Exists check, no blob read).
+    IReadOnlyList<ObjectTreeScaffold.Bank> BanksFor(int objType)
     {
         var descriptor = ObjectTypeRegistry.Get(objType);
+        var banks = new List<ObjectTreeScaffold.Bank>();
         foreach (var bank in descriptor.EditableBanks())
         {
-            var bankNode = new ObjectTreeNode(BankNodeLabel(objType, descriptor, bank), bankRef: (objType, bank));
+            var locs = new List<ObjLoc>();
             for (int number = 0; number < descriptor.SlotCount; number++)
-            {
-                if (!_cache.Exists(objType, bank, number)) continue;   // nothing local for this slot
-                bankNode.Children.Add(MakeLeafNode(new ObjLoc(objType, bank, number)));
-            }
-            if (bankNode.Children.Count > 0) typeRoot.Children.Add(bankNode);
+                if (_cache.Exists(objType, bank, number))
+                    locs.Add(new ObjLoc(objType, bank, number));
+            banks.Add(new ObjectTreeScaffold.Bank(bank, locs));
         }
+        return banks;
+    }
+
+    // The populated Set List slots (flat, all bank 0), in numeric order.
+    IReadOnlyList<ObjLoc> SetListLocs()
+    {
+        var locs = new List<ObjLoc>();
+        for (int number = 0; number < SetListData.MaxCount; number++)
+        {
+            var loc = new ObjLoc(LibObj.SetList, 0, number);
+            if (_cache.Exists(loc.ObjType, loc.Bank, loc.Number)) locs.Add(loc);
+        }
+        return locs;
     }
 
     // Mirrors PcgPaneViewModel.BankNodeLabel's own "(EXi)"/"(HD-1)" suffix exactly — which
     // wire format a bank holds matters just as much once it's local as it did in a loaded
     // .pcg file (a real prior gap: Local Library showed no format indicator at all). Derived
     // from the first occupied slot's cached IsExi bit (LocalLibraryCache.IsExi — index-only,
-    // no blob read), since every Program in one bank shares the same format. An empty bank
-    // gets no suffix, but BuildTypeSubtree above never adds an empty bank to the tree anyway.
-    string BankNodeLabel(int objType, IObjectTypeDescriptor descriptor, int bank)
+    // no blob read), since every Program in one bank shares the same format. Only ever called
+    // for a populated bank (the scaffold skips empty ones), so bank.Locs is never empty here.
+    string BankNodeLabel(int objType, IObjectTypeDescriptor descriptor, ObjectTreeScaffold.Bank bank)
     {
-        string label = descriptor.BankLabel(bank);
+        string label = descriptor.BankLabel(bank.Number);
         if (objType != LibObj.Program) return label;
-        for (int number = 0; number < descriptor.SlotCount; number++)
-        {
-            if (!_cache.Exists(objType, bank, number)) continue;
-            return label + (_cache.IsExi(objType, bank, number) ? " (EXi)" : " (HD-1)");
-        }
-        return label;
-    }
-
-    void BuildSetListSubtree(ObjectTreeNode setListsRoot)
-    {
-        for (int number = 0; number < SetListData.MaxCount; number++)
-        {
-            var loc = new ObjLoc(LibObj.SetList, 0, number);
-            if (!_cache.Exists(loc.ObjType, loc.Bank, loc.Number)) continue;
-            setListsRoot.Children.Add(MakeLeafNode(loc));
-        }
+        var first = bank.Locs[0];
+        return label + (_cache.IsExi(first.ObjType, first.Bank, first.Number) ? " (EXi)" : " (HD-1)");
     }
 
     ObjectTreeNode MakeLeafNode(ObjLoc loc)

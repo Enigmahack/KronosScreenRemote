@@ -10,7 +10,7 @@ static class SyncPipeline
     public sealed record PushResult(bool Ok, string? Error, int Written, List<ObjLoc> Conflicted);
 
     public static async Task<PushResult> PushAsync(
-        ISysExService sysEx, LocalLibraryCache cache, SessionDependencyClipboard sessionClip,
+        ILibrarianService sysEx, LocalLibraryCache cache, SessionDependencyClipboard sessionClip,
         Action<string>? progress = null)
     {
         var (plan, conflicted) = await ChangesetBuilder.BuildAsync(cache, sysEx, sessionClip).ConfigureAwait(false);
@@ -63,11 +63,11 @@ static class SyncPipeline
     }
 
     public static Task<LibraryPullPipeline.PullResult> PullAsync(
-        ISysExService sysEx, LocalLibraryCache cache, bool full, Action<string>? progress = null) =>
+        ILibrarianService sysEx, LocalLibraryCache cache, bool full, Action<string>? progress = null) =>
         LibraryPullPipeline.PullAsync(sysEx, cache, full, progress);
 
     public static Task<PushResult> CommitChangesAsync(
-        ISysExService sysEx, LocalLibraryCache cache, SessionDependencyClipboard sessionClip, Action<string>? progress = null) =>
+        ILibrarianService sysEx, LocalLibraryCache cache, SessionDependencyClipboard sessionClip, Action<string>? progress = null) =>
         PushAsync(sysEx, cache, sessionClip, progress);
 
     // Pull first, then push — so the push's conflict pre-scan sees the freshest possible
@@ -75,7 +75,7 @@ static class SyncPipeline
     // pull would push against a possibly-stale baseline and then immediately re-pull over
     // data it just wrote).
     public static async Task<(LibraryPullPipeline.PullResult Pull, PushResult Push)> SyncLibraryAsync(
-        ISysExService sysEx, LocalLibraryCache cache, SessionDependencyClipboard sessionClip,
+        ILibrarianService sysEx, LocalLibraryCache cache, SessionDependencyClipboard sessionClip,
         bool fullPull, Action<string>? progress = null)
     {
         var pull = await LibraryPullPipeline.PullAsync(sysEx, cache, fullPull, progress).ConfigureAwait(false);

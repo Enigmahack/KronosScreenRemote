@@ -54,7 +54,7 @@
 
             <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0 10 0 0">
                 <TextBlock Text="Color" VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
-                <ComboBox x:Name="CMB_SlotColor" Width="90" Margin="8 0 0 0" IsEnabled="False"/>
+                <ComboBox x:Name="CMB_SlotColor" Width="150" Margin="8 0 0 0" IsEnabled="False"/>
             </StackPanel>
 
             <TextBlock Grid.Row="5" Text="Comments" Margin="0 10 0 0"/>

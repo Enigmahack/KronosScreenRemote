@@ -22,6 +22,7 @@ public partial class App : Application
             fails.AddRange(LocalLibrarySelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(LocalEditOpsSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(SyncPipelineSelfTests.SelfTestAsync().GetAwaiter().GetResult());
+            fails.AddRange(DataSafetySelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(PcgFileSelfTests.SelfTest());
             fails.AddRange(PcgPaneLoadSelfTests.SelfTest());
             fails.AddRange(CrossPanePlacementSelfTests.SelfTestAsync().GetAwaiter().GetResult());
@@ -29,6 +30,10 @@ public partial class App : Application
             fails.AddRange(MergeCacheSelfTests.SelfTest());
             fails.AddRange(DependencyResolutionSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(MergeTreeVisibilitySelfTests.SelfTest());
+            fails.AddRange(PaneSelectionSelfTests.SelfTest());
+            fails.AddRange(RawKeyMapSelfTests.SelfTest());
+            fails.AddRange(DumpGateSelfTests.SelfTest());
+            fails.AddRange(MidiTransportReplySelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(MergeGroupPlacementSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             var outPath = Path.Combine(Path.GetTempPath(), "kronos_librarian_selftest.txt");
             File.WriteAllText(outPath, fails.Count == 0 ? "OK" : "FAIL: " + string.Join(", ", fails));

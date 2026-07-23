@@ -15,7 +15,7 @@ namespace KronosScreenRemote.ViewModels;
 // once — LocalPane and PcgPane individually don't know about each other.
 partial class LibrarianShellViewModel : ObservableObject
 {
-    readonly ISysExService _sysEx;
+    readonly ILibrarianService _sysEx;
     readonly LocalLibraryCache _cache;
     readonly AppSettings _settings;
     readonly string _host;
@@ -48,7 +48,7 @@ partial class LibrarianShellViewModel : ObservableObject
     // Sync/Commit entirely. Null (e.g. a headless self-test) defaults to proceeding.
     public Func<IReadOnlyList<SessionDependencyEntry>, Task<bool>>? ConfirmContinueWithPendingDependencies { get; set; }
 
-    public LibrarianShellViewModel(ISysExService sysEx, LocalLibraryCache cache, AppSettings settings, string host)
+    public LibrarianShellViewModel(ILibrarianService sysEx, LocalLibraryCache cache, AppSettings settings, string host)
     {
         _sysEx = sysEx;
         _cache = cache;
@@ -138,10 +138,18 @@ partial class LibrarianShellViewModel : ObservableObject
             ? new FileMergeCachePersistence(Path.Combine(Storage.DataDir, "merge_cache.json"))
             : new InMemoryMergeCachePersistence();
 
+    // Fires after EVERY local edit (NotifyLocalEditMade). Reads the op-log's in-memory display
+    // mirror, NOT the file (OpLog.ReadForDisplay): re-reading a growing oplog.jsonl over a
+    // possibly SMB-mounted DataDir on each edit was a UI-thread stall that grew with the log.
+    // The mirror is seeded from disk once (this call, at construction) and kept in step by every
+    // Append thereafter, so the per-edit refresh is now pure in-memory work. Stays synchronous
+    // on purpose — an off-thread read would leave unawaited background file I/O that races
+    // teardown (self-tests delete the library root out from under it). ReadForDisplay is distinct
+    // from ReadAll so the fold/recovery path keeps reading the durable on-disk log unchanged.
     void RefreshHistory()
     {
         History.Clear();
-        foreach (var entry in OpLog.ReadAll(_cache.Root).OrderByDescending(e => e.TimestampUtc))
+        foreach (var entry in OpLog.ReadForDisplay(_cache.Root).OrderByDescending(e => e.TimestampUtc))
             History.Add(new HistoryRow(entry));
     }
 
@@ -233,7 +241,8 @@ partial class LibrarianShellViewModel : ObservableObject
     void LoadPcgFromComputer(Window owner) => PcgPane.LoadFromComputer(owner);
 
     [RelayCommand]
-    async Task LoadPcgFromKronosAsync(Window owner) => await PcgPane.LoadFromKronosAsync(owner, _settings, _host);
+    async Task LoadPcgFromKronosAsync(Window owner) =>
+        await PcgPane.LoadFromKronosAsync(new KronosRemotePcgSource(owner, _settings, _host));
 
     // ── Cross-pane placement (PCG -> local), requirement 12 ──────────────────────────
     // Drop on a specific slot = exact placement. HW-write never happens here — this only

@@ -1,11 +1,11 @@
 namespace KronosScreenRemote;
 
 // The complete outbound command vocabulary of the KronosScreenRemote daemon's ctrl
-// port (CtrlClient.CtrlPort). Every string the client sends to the daemon is built
+// port (CtrlQuery.CtrlPort). Every string the client sends to the daemon is built
 // here, so the wire protocol is defined in exactly one place instead of being spelled
 // out as ad-hoc string literals at ~110 call sites.
 //
-// Builders return the command WITHOUT a trailing newline — CtrlClient.Send / QueryAsync
+// Builders return the command WITHOUT a trailing newline — CtrlClient.Send / CtrlQuery
 // append "\n" themselves. (CTRL_PERSIST is the one command CtrlClient writes to the
 // socket directly, and it adds the newline there.)
 static class DaemonCommand

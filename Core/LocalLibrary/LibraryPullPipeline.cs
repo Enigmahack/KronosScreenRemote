@@ -14,7 +14,7 @@ static class LibraryPullPipeline
     public sealed record PullResult(int BanksChecked, int ObjectsFetched, int Conflicts);
 
     public static async Task<PullResult> PullAsync(
-        ISysExService sysEx, LocalLibraryCache cache, bool full,
+        ILibrarianService sysEx, LocalLibraryCache cache, bool full,
         Action<string>? progress = null, CancellationToken ct = default)
     {
         var persisted = cache.BankDigestBaselineHex();

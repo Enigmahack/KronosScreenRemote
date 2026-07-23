@@ -44,7 +44,42 @@ static class PcgPaneLoadSelfTests
         Check("failed-load-clears-content", pane.Get(new ObjLoc(LibObj.Program, 0x00, 0)) == null);
         Check("failed-load-clears-tree", pane.Roots.Count == 0);
 
+        // ── "Load from Kronos" now goes through IRemotePcgSource, so the login/browse/download
+        //    branch that used to build a Window + hit the FTP server inline is finally reachable
+        //    off-hardware via an in-memory fake source. ──
+        var kpane = new PcgPaneViewModel();
+
+        // A successful remote pick loads exactly what the source handed back.
+        kpane.LoadFromKronosAsync(new FakeRemotePcgSource(
+            RemotePcgPick.Ok(BuildMinimalPcg("KRONOS PROG"), "remote.pcg"))).GetAwaiter().GetResult();
+        Check("kronos-pick-loads-name", kpane.LoadedFileName == "remote.pcg");
+        Check("kronos-pick-loads-content", kpane.Get(new ObjLoc(LibObj.Program, 0x00, 0))?.Name == "KRONOS PROG");
+
+        // A cancelled/failed pick sets the status and leaves the previously loaded file intact —
+        // "the previously loaded file (if any) is unchanged," never a silent wipe.
+        kpane.LoadFromKronosAsync(new FakeRemotePcgSource(
+            RemotePcgPick.Failed("Load from Kronos cancelled."))).GetAwaiter().GetResult();
+        Check("kronos-cancel-sets-status", kpane.StatusText == "Load from Kronos cancelled.");
+        Check("kronos-cancel-keeps-previous-file", kpane.LoadedFileName == "remote.pcg");
+        Check("kronos-cancel-keeps-previous-content", kpane.Get(new ObjLoc(LibObj.Program, 0x00, 0))?.Name == "KRONOS PROG");
+
+        // A pick that returns bytes which aren't a real .pcg clears the tree — same "last
+        // attempted load wins" rule the local path already honors.
+        kpane.LoadFromKronosAsync(new FakeRemotePcgSource(
+            RemotePcgPick.Ok(new byte[] { 1, 2, 3, 4 }, "bad.pcg"))).GetAwaiter().GetResult();
+        Check("kronos-bad-bytes-clears-name", kpane.LoadedFileName == null);
+        Check("kronos-bad-bytes-clears-tree", kpane.Roots.Count == 0);
+
         return fails;
+    }
+
+    // In-memory IRemotePcgSource for the from-Kronos self-test: hands back a pre-canned pick
+    // with no FTP connection or Window — the whole point of the seam.
+    sealed class FakeRemotePcgSource : IRemotePcgSource
+    {
+        readonly RemotePcgPick _result;
+        public FakeRemotePcgSource(RemotePcgPick result) => _result = result;
+        public Task<RemotePcgPick> PickAsync() => Task.FromResult(_result);
     }
 
     static byte[] BuildMinimalPcg(string programName)

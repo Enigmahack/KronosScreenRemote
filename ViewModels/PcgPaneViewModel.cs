@@ -44,30 +44,23 @@ partial class PcgPaneViewModel : ObservableObject
         }
     }
 
-    public async Task LoadFromKronosAsync(Window owner, AppSettings settings, string host)
+    // The remote (FTP) load's login, browse, and download all live behind IRemotePcgSource —
+    // the one librarian branch the self-tests otherwise couldn't reach, since it constructs a
+    // Window and talks to the Kronos's FTP server inline. The production source
+    // (KronosRemotePcgSource) owns those; a self-test injects an in-memory fake. A cancelled/
+    // failed pick just sets the status and leaves any previously loaded file untouched.
+    public async Task LoadFromKronosAsync(IRemotePcgSource source)
     {
-        if (!await KronosFtpSession.EnsureLoginAsync(owner, settings, host))
+        var pick = await source.PickAsync();
+        if (pick.File is not { } file)
         {
-            StatusText = "FTP login failed or was cancelled.";
-            return;
-        }
-
-        // The picker downloads the selected file itself, over the one connection it opened
-        // to browse — no second connection here. Opening a second one right after the first
-        // closes risked hanging: the Kronos's FTP server appears to hold a session open
-        // until its own timeout unless sent a clean QUIT (see RemoteFilePickerDialog's own
-        // comment), so a second connect could be left waiting for a session slot.
-        var picker = new RemoteFilePickerDialog(host, settings.FtpPort, settings.FtpUsername, settings.FtpPassword, ".pcg") { Owner = owner };
-        if (picker.ShowDialog() != true || picker.DownloadedTempPath == null)
-        {
-            StatusText = "Load from Kronos cancelled — the previously loaded file (if any) is unchanged.";
+            StatusText = pick.StatusMessage;
             return;
         }
 
         try
         {
-            var bytes = await File.ReadAllBytesAsync(picker.DownloadedTempPath);
-            Load(bytes, Path.GetFileName(picker.DownloadedTempPath));
+            Load(file.Bytes, file.FileName);
         }
         catch (Exception ex)
         {
@@ -127,79 +120,58 @@ partial class PcgPaneViewModel : ObservableObject
     // needing a real file dialog/FTP picker in between.
     internal void LoadBytesForTesting(byte[] bytes, string fileName) => Load(bytes, fileName);
 
+    // The Programs/Combis/Set Lists tree SHAPE is shared with the Local pane (ObjectTreeScaffold),
+    // including the Set-List "no inner bank node" rule that once regressed into a redundant nested
+    // "Set Lists" node. This pane supplies only what's PCG-specific: the objects come from the
+    // loaded view (grouped by bank), each leaf is a plain name label, and keepEmptyRoots: false
+    // hides a type root with nothing loaded under it (unlike Local, which always shows all three).
     void RefreshTree()
     {
-        var expandedKeys = ObjectTreeNode.CollectExpandedKeys(Roots);
-        Roots.Clear();
-        if (_view == null) { TreeRefreshed?.Invoke(); return; }
-
-        var programsRoot = new ObjectTreeNode("Programs");
-        var combisRoot = new ObjectTreeNode("Combis");
-        // Set Lists have no bank concept (a flat, single group, all bank 0) — unlike
-        // BuildTypeSubtree's Program/Combi banks, so the type root itself carries the bankRef
-        // identity and Set List objects nest directly underneath it, matching
-        // LocalLibraryPaneViewModel's own convention (see that file's BuildSetListSubtree)
-        // instead of routing through BuildTypeSubtree, which used to produce a redundant inner
-        // "Set Lists" bank node repeating the same label for no reason.
-        var setListsRoot = new ObjectTreeNode("Set Lists", bankRef: (LibObj.SetList, 0));
+        if (_view == null)
+        {
+            Roots.Clear();
+            TreeRefreshed?.Invoke();
+            return;
+        }
 
         var byType = _view.AllObjects.GroupBy(l => l.ObjType).ToDictionary(g => g.Key, g => g.ToList());
-
-        BuildTypeSubtree(programsRoot, LibObj.Program, byType);
-        BuildTypeSubtree(combisRoot, LibObj.Combi, byType);
-        BuildSetListSubtree(setListsRoot, byType);
-
-        if (programsRoot.Children.Count > 0) Roots.Add(programsRoot);
-        if (combisRoot.Children.Count > 0) Roots.Add(combisRoot);
-        if (setListsRoot.Children.Count > 0) Roots.Add(setListsRoot);
-        ObjectTreeNode.RestoreExpandedKeys(Roots, expandedKeys);
+        ObjectTreeScaffold.Rebuild(
+            Roots,
+            banksFor: objType => PcgBanksFor(objType, byType),
+            setListLocs: byType.TryGetValue(LibObj.SetList, out var sl) ? sl.OrderBy(l => l.Number).ToList() : Array.Empty<ObjLoc>(),
+            makeLeaf: MakeLeafNode,
+            bankLabel: BankNodeLabel,
+            keepEmptyRoots: false);
         TreeRefreshed?.Invoke();
     }
 
-    void BuildTypeSubtree(ObjectTreeNode typeRoot, int objType, Dictionary<int, List<ObjLoc>> byType)
-    {
-        if (!byType.TryGetValue(objType, out var locs)) return;
-        var descriptor = ObjectTypeRegistry.Get(objType);
+    // The populated banks of one Program/Combi object type from the loaded view, banks in numeric
+    // order and each bank's leaves in slot order — matching what the same objects look like once
+    // placed into Local Library.
+    IReadOnlyList<ObjectTreeScaffold.Bank> PcgBanksFor(int objType, Dictionary<int, List<ObjLoc>> byType) =>
+        byType.TryGetValue(objType, out var locs)
+            ? locs.GroupBy(l => l.Bank).OrderBy(g => g.Key)
+                  .Select(g => new ObjectTreeScaffold.Bank(g.Key, g.OrderBy(l => l.Number).ToList()))
+                  .ToList()
+            : Array.Empty<ObjectTreeScaffold.Bank>();
 
-        foreach (var bankGroup in locs.GroupBy(l => l.Bank).OrderBy(g => g.Key))
-        {
-            // bankRef makes this bank a selectable unit (LibrarianShellWindow.xaml.cs's
-            // PaneSelection) — same identity shape LocalLibraryPaneViewModel's own
-            // BuildTypeSubtree already gives its bank nodes.
-            var bankNode = new ObjectTreeNode(BankNodeLabel(objType, descriptor, bankGroup), bankRef: (objType, bankGroup.Key));
-            foreach (var loc in bankGroup.OrderBy(l => l.Number))
-            {
-                string name = _view!.GetName(loc) ?? "";
-                string label = string.IsNullOrEmpty(name) ? loc.Label() : $"{loc.Label()}  {name}";
-                bankNode.Children.Add(new ObjectTreeNode(label, loc));
-            }
-            typeRoot.Children.Add(bankNode);
-        }
-    }
-
-    // Mirrors LocalLibraryPaneViewModel.BuildSetListSubtree — Set Lists have no bank concept
-    // (a flat 128 numbered slots, all bank 0), so leaves nest directly under the type root
-    // instead of through an inner bank-grouping node.
-    void BuildSetListSubtree(ObjectTreeNode setListsRoot, Dictionary<int, List<ObjLoc>> byType)
+    ObjectTreeNode MakeLeafNode(ObjLoc loc)
     {
-        if (!byType.TryGetValue(LibObj.SetList, out var locs)) return;
-        foreach (var loc in locs.OrderBy(l => l.Number))
-        {
-            string name = _view!.GetName(loc) ?? "";
-            string label = string.IsNullOrEmpty(name) ? loc.Label() : $"{loc.Label()}  {name}";
-            setListsRoot.Children.Add(new ObjectTreeNode(label, loc));
-        }
+        string name = _view!.GetName(loc) ?? "";
+        string label = string.IsNullOrEmpty(name) ? loc.Label() : $"{loc.Label()}  {name}";
+        return new ObjectTreeNode(label, loc);
     }
 
     // Program banks are stored in a .pcg file as one whole-bank chunk tagged either MBK1
     // (EXi) or PBK1 (HD-1) — see PcgObjectExtractor/ProgramFormatConverter, since which one
     // a bank is also determines whether its bodies need truncating for the wire format.
     // Labeling it here surfaces that at a glance instead of it being an invisible internal
-    // detail (requested explicitly — the same info matters when dragging a Program out).
-    string BankNodeLabel(int objType, IObjectTypeDescriptor descriptor, IGrouping<int, ObjLoc> bankGroup)
+    // detail (requested explicitly — the same info matters when dragging a Program out). Only
+    // called for a populated bank (the scaffold skips empty ones), so bank.Locs[0] is safe.
+    string BankNodeLabel(int objType, ObjectTreeScaffold.Bank bank)
     {
-        string label = descriptor.BankLabel(bankGroup.Key);
-        if (objType == LibObj.Program && _view!.Get(bankGroup.First()) is { } entry)
+        string label = ObjectTypeRegistry.Get(objType).BankLabel(bank.Number);
+        if (objType == LibObj.Program && _view!.Get(bank.Locs[0]) is { } entry)
             label += entry.IsExi ? " (EXi)" : " (HD-1)";
         return label;
     }

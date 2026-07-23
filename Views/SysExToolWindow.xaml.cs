@@ -41,7 +41,7 @@ partial class SysExToolWindow : Window
     static readonly (Brush Bg, Brush Border, Brush Fg) StyleOff =
         (Frozen(0x2A, 0x15, 0x15), Frozen(0x6E, 0x2E, 0x2E), Frozen(0xCC, 0x66, 0x66));
 
-    readonly ISysExService _sysEx;
+    readonly IRawMidiSend _sysEx;
     readonly ObservableCollection<SysExMessageItem> _allItems = new();
     ICollectionView _view = null!;
 
@@ -77,7 +77,7 @@ partial class SysExToolWindow : Window
 
     public int SelectedChannel => CMB_OutChannel.SelectedIndex >= 0 ? CMB_OutChannel.SelectedIndex + 1 : 1;
 
-    public SysExToolWindow(ISysExService sysEx, int initialChannel = 1)
+    public SysExToolWindow(IRawMidiSend sysEx, int initialChannel = 1)
     {
         _sysEx = sysEx;
         InitializeComponent();

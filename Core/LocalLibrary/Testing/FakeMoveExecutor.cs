@@ -3,14 +3,18 @@ namespace KronosScreenRemote;
 using System.IO;
 using System.Security.Cryptography;
 
-// Real in-memory ISysExService fake for Phase 1+ async self-tests (Pull/Push pipeline).
+// Real in-memory ILibrarianService fake for Phase 1+ async self-tests (Pull/Push pipeline).
 // Unlike Tools/UiThemeSmokeTest.cs's FakeSysExService (construction-only stubs, every
 // hardware call a no-op), this one actually mutates state: WriteObjectAsync/StoreBankAsync
 // land in an in-memory bank store, DumpObjectAsync reads it back, and BankDigestAsync
 // computes a real SHA-1 over a bank's 128 slots — so a self-test can mutate "hardware"
 // mid-pipeline and observe the pipeline react (conflict detection, staleness gates), not
 // just replay canned responses.
-sealed class FakeMoveExecutor : ISysExService
+//
+// Implements only ILibrarianService — the instrument read+write slice the librarian pipelines
+// actually drive — NOT the whole ISysExService. The perf-follow / MIDI-backend / raw-send
+// roles it used to stub (~13 no-op members) are gone: nothing here exercises them.
+sealed class FakeMoveExecutor : ILibrarianService
 {
     // (Obj, Bank, Number) -> stored object. Missing = never written (DumpObjectAsync -> null).
     readonly Dictionary<(int Obj, int Bank, int Number), (byte Version, byte[] Body)> _objects = new();
@@ -23,6 +27,11 @@ sealed class FakeMoveExecutor : ISysExService
     // (returns empty, like a real USER-bank reject would look from the caller's side) —
     // lets a self-test exercise LibraryPullPipeline's per-object fallback path.
     public bool SimulateBulkDumpUnsupported { get; set; }
+
+    // Non-zero makes WriteObjectAsync return that Reply code WITHOUT storing the body —
+    // mirrors a real func-0x73 hardware reject (nothing lands on the instrument). Lets a
+    // self-test exercise ApplyMoveAsync's write-reject abort (aborts before any Store).
+    public int WriteRejectCode { get; set; }
 
     public void Seed(int obj, int bank, int number, byte version, byte[] body) =>
         _objects[(obj, bank, number)] = (version, body);
@@ -59,6 +68,9 @@ sealed class FakeMoveExecutor : ISysExService
     public Task<int> WriteObjectAsync(WriteOp op)
     {
         CallLog.Add("Write");
+        // Simulated hardware reject: return the Reply code and leave "hardware" untouched
+        // (a rejected write stores nothing), so ApplyMoveAsync must abort before any Store.
+        if (WriteRejectCode != 0) return Task.FromResult(WriteRejectCode);
         // Mirrors SysExService.WriteObjectAsync's real stamping — see LibObj.
         // CurrentObjectVersion's comment — so a self-test can verify a stale/placeholder
         // stored version never actually reaches "hardware".
@@ -75,6 +87,7 @@ sealed class FakeMoveExecutor : ISysExService
 
     public Task BackupObjectsAsync(IReadOnlyList<WriteOp> ops, string path)
     {
+        CallLog.Add("Backup");   // lets a self-test assert the pre-image backup fired BEFORE any Write
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         using var fs = new FileStream(path, FileMode.Create, FileAccess.Write);
         foreach (var op in ops) fs.Write(op.Body, 0, op.Body.Length);
@@ -83,26 +96,12 @@ sealed class FakeMoveExecutor : ISysExService
 
     public Task SendRawAsync(byte[] data) => Task.CompletedTask;
 
-    // ── Unused by Pull/Push self-tests — trivial stubs, same shape as
-    //    Tools/UiThemeSmokeTest.cs's FakeSysExService ──
-    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
-    public event Action<int>? ValueSliderChanged;
-    public event Action<SysExTrafficEntry>? SysExTraffic;
-    public string PerformanceDisplay => "";
-    public bool IsAvailable => true;
-    public int ValueSliderCc { get; set; } = 18;
-    public bool PullNamesOnChange { get; set; }
+    // ── Remaining IBankDumpService members unused by Pull/Push self-tests — trivial stubs ──
     public bool CanDump => true;
-    public void Start(IKronosMidiTransport transport) { }
-    public void Reset() { }
-    public void RefreshNow() { }
-    public void NotifyUserActivity() { }
     public Task<SetListData?> DumpSetListAsync(int number) => Task.FromResult<SetListData?>(null);
     public Task<SetListSyncResult> DumpAllSetListsAsync(IProgress<(int Done, int Total, int Found)>? progress, CancellationToken ct) =>
         Task.FromResult(new SetListSyncResult(new Dictionary<int, SetListData>(), Array.Empty<int>(), 0, false));
     public Task<int> SyncNamesAsync(IProgress<(int Done, int Total, int Names)>? progress, CancellationToken ct) => Task.FromResult(0);
-    public void ApplyMidiSettings(bool midiMonitorEnabled, bool proactivePoll, int pollIntervalSec, bool pollOnChanges) { }
-    public Task<bool> SendMidiAsync(string hexBytes) => Task.FromResult(false);
     public ObjLoc? CurrentPerformanceLoc() => null;
 
     // Settable by a self-test before constructing the ViewModel under test, to exercise

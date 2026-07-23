@@ -9,14 +9,22 @@ static class MidiHex
 {
     // "F0 42 30 68 12 F7" (space-separated, upper-case) — the wire format the
     // daemon's SYSEX / MIDI_SEND commands expect and the SysEx tool log shows.
-    public static string ToHex(byte[] bytes)
+    //
+    // maxBytes caps how many bytes are rendered, appending a " … (+N bytes)" tail when the
+    // input is longer — a bulk SysEx object (a Set List is ~79 KB) would otherwise build a
+    // ~200k-char string, expensive to allocate and to lay out in a wrapping TextBlock. The
+    // default renders everything, so wire-format callers (which must emit no ellipsis) are
+    // unaffected.
+    public static string ToHex(byte[] bytes, int maxBytes = int.MaxValue)
     {
-        var sb = new StringBuilder(bytes.Length * 3);
-        for (int i = 0; i < bytes.Length; i++)
+        int n = Math.Min(bytes.Length, maxBytes);
+        var sb = new StringBuilder(n * 3 + 20);
+        for (int i = 0; i < n; i++)
         {
             if (i > 0) sb.Append(' ');
             sb.Append(bytes[i].ToString("X2"));
         }
+        if (n < bytes.Length) sb.Append($" … (+{bytes.Length - n} bytes)");
         return sb.ToString();
     }
 

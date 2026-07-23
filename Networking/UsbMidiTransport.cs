@@ -259,7 +259,7 @@ sealed class UsbMidiTransport : IKronosMidiTransport
     }
 
     static bool IsKorgSysEx(byte[] m) =>
-        m.Length >= 5 && m[0] == 0xF0 && m[1] == 0x42 && (m[2] & 0xF0) == 0x30 && m[3] == 0x68;
+        KronosSysEx.HasKorgHeaderAt(m, 0) && m.Length >= 5;
 
     // ── Probe / round-trip ─────────────────────────────────────────────────────
 
@@ -269,7 +269,7 @@ sealed class UsbMidiTransport : IKronosMidiTransport
     public async Task<bool> ProbeAsync(int timeoutMs = 8000)
     {
         if (!_open) return false;
-        var req  = new byte[] { 0xF0, 0x42, 0x30, 0x68, 0x12, 0xF7 };
+        var req  = KronosSysEx.KorgMessage(0x12);
         var resp = await QueryAsync(req, 0x42, timeoutMs).ConfigureAwait(false);
         if (resp == null)
         {

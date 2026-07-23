@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using KronosScreenRemote.Tools;
 
 namespace KronosScreenRemote;
 
@@ -15,25 +16,20 @@ namespace KronosScreenRemote;
 //     plus a second per-slot edit dialog (the retired SetListSlotEditDialog).
 internal partial class PropertiesDialog : Window
 {
-    // 16-slot color palette (Kronos Set List slot colors, approximated) — moved here
-    // (not duplicated) from the now-retired SetListWindow, the only other place it lived.
+    // 16-slot color palette (Kronos Set List slot colors) — sourced from SetListColors
     static readonly Brush[] SlotColors = BuildPalette();
 
     static Brush[] BuildPalette()
     {
-        (byte r, byte g, byte b)[] rgb =
+        var brushes = new Brush[16];
+        for (int i = 0; i < 16; i++)
         {
-            (0x55, 0x55, 0x55), (0xC0, 0x40, 0x40), (0xC8, 0x78, 0x30), (0xC8, 0xB0, 0x30),
-            (0x88, 0xC0, 0x38), (0x40, 0xB0, 0x48), (0x38, 0xB0, 0x90), (0x40, 0x90, 0xC8),
-            (0x40, 0x60, 0xC8), (0x70, 0x50, 0xC8), (0xA0, 0x48, 0xC0), (0xC0, 0x48, 0x98),
-            (0x90, 0x90, 0x90), (0x80, 0x60, 0x40), (0x50, 0x70, 0x80), (0xD0, 0xD0, 0xD0),
-        };
-        var brushes = new Brush[rgb.Length];
-        for (int i = 0; i < rgb.Length; i++)
-        {
-            var b = new SolidColorBrush(Color.FromRgb(rgb[i].r, rgb[i].g, rgb[i].b));
-            b.Freeze();
-            brushes[i] = b;
+            if (SetListColors.TryGetByIndex(i, out var color))
+            {
+                var brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(color.R, color.G, color.B));
+                brush.Freeze();
+                brushes[i] = brush;
+            }
         }
         return brushes;
     }
@@ -77,12 +73,23 @@ internal partial class PropertiesDialog : Window
         dlg.CMB_SlotColor.ItemsSource = null;
         for (int i = 0; i < SlotColors.Length; i++)
         {
-            var item = new ComboBoxItem
+            // Swatch + its Kronos color name (Default, Charcoal, Brick…) so the dropdown —
+            // and the collapsed selected item — read exactly like the palette on the device,
+            // instead of an unlabeled colored bar. Names come from SetListColors, same source
+            // as SlotColors, so swatch and label can't drift.
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(new System.Windows.Shapes.Rectangle
             {
-                Content = new System.Windows.Shapes.Rectangle { Width = 40, Height = 12, Fill = SlotColors[i] },
-                Tag = i,
-            };
-            dlg.CMB_SlotColor.Items.Add(item);
+                Width = 28, Height = 12, Fill = SlotColors[i],
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            row.Children.Add(new TextBlock
+            {
+                Text = SetListColors.GetByIndexOrDefault(i).DisplayName,
+                Margin = new Thickness(8, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+            dlg.CMB_SlotColor.Items.Add(new ComboBoxItem { Content = row, Tag = i });
         }
         foreach (var slot in data.Slots)
         {

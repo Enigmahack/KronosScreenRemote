@@ -418,9 +418,14 @@ public partial class FileManagerWindow : Window
         await RunExclusive(() => UploadItemsAsync(items));
     }
 
-    async Task UploadItemsAsync(IList<FileEntry> items)
+    // Returns the items whose upload verifiably succeeded, so a cut/move can delete only those
+    // sources.  FluentFTP's UploadFile can report Failed/Skipped WITHOUT throwing, so success is
+    // gated on FtpStatus.Success — never on mere absence of an exception (that would still delete
+    // the source of a silently-failed upload).
+    async Task<List<FileEntry>> UploadItemsAsync(IList<FileEntry> items)
     {
-        if (!await EnsureConnectedAsync()) return;
+        var moved = new List<FileEntry>();
+        if (!await EnsureConnectedAsync()) return moved;
         var remoteNames = _remote.Items.Where(f => !f.IsDirectory)
             .Select(f => f.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
         SetBusy(true, $"Uploading {items.Count} file(s)…");
@@ -444,15 +449,17 @@ public partial class FileManagerWindow : Window
                     TransferProgress.Value = p.Progress;
                     SetStatus($"[{idx + 1}/{items.Count}] {local.Name} — {p.Progress:F0}%");
                 }));
-                await _ftp!.UploadFile(local.FullPath, dest, FtpRemoteExists.Overwrite,
-                                       createRemoteDir: true, progress: progress);
-                done++;
+                var st = await _ftp!.UploadFile(local.FullPath, dest, FtpRemoteExists.Overwrite,
+                                                createRemoteDir: true, progress: progress);
+                if (st == FtpStatus.Success) { done++; moved.Add(local); }
+                else SetStatus($"Upload of {local.Name} did not complete ({st}) — source kept");
             }
             catch (Exception ex) { SetStatus($"Failed {local.Name}: {ex.Message}"); }
         }
         await RefreshRemoteAsync();
         SetStatus($"Uploaded {done}/{items.Count} file(s) → {_remote.Dir}");
         SetBusy(false);
+        return moved;
     }
 
     // ── Download (Kronos → local) ─────────────────────────────────────────────
@@ -463,9 +470,12 @@ public partial class FileManagerWindow : Window
         await RunExclusive(() => DownloadItemsAsync(items));
     }
 
-    async Task DownloadItemsAsync(IList<FileEntry> items)
+    // Returns the items whose download verifiably succeeded (FtpStatus.Success only), so a
+    // remote→local cut deletes only those remote sources.  See UploadItemsAsync for the rationale.
+    async Task<List<FileEntry>> DownloadItemsAsync(IList<FileEntry> items)
     {
-        if (!await EnsureConnectedAsync()) return;
+        var moved = new List<FileEntry>();
+        if (!await EnsureConnectedAsync()) return moved;
         SetBusy(true, $"Downloading {items.Count} file(s)…");
         int done = 0;
         var resolve = MakeConflictResolver();
@@ -487,15 +497,17 @@ public partial class FileManagerWindow : Window
                     TransferProgress.Value = p.Progress;
                     SetStatus($"[{idx + 1}/{items.Count}] {remote.Name} — {p.Progress:F0}%");
                 }));
-                await _ftp!.DownloadFile(dest, remote.FullPath, FtpLocalExists.Overwrite,
-                                         FtpVerify.None, progress);
-                done++;
+                var st = await _ftp!.DownloadFile(dest, remote.FullPath, FtpLocalExists.Overwrite,
+                                                  FtpVerify.None, progress);
+                if (st == FtpStatus.Success) { done++; moved.Add(remote); }
+                else SetStatus($"Download of {remote.Name} did not complete ({st}) — source kept");
             }
             catch (Exception ex) { SetStatus($"Failed {remote.Name}: {ex.Message}"); }
         }
         RefreshLocal();
         SetStatus($"Downloaded {done}/{items.Count} file(s) → {_local.Dir}");
         SetBusy(false);
+        return moved;
     }
 
     // ── New Folder ────────────────────────────────────────────────────────────
@@ -1245,23 +1257,30 @@ public partial class FileManagerWindow : Window
             // Local → Remote
             var files = items.Where(f => !f.IsDirectory).ToList();
             var dirs  = items.Where(f =>  f.IsDirectory).ToList();
-            if (files.Count > 0) await UploadItemsAsync(files);
+            var movedFiles = files.Count > 0 ? await UploadItemsAsync(files) : new List<FileEntry>();
+            var movedDirs  = new List<FileEntry>();
             if (dirs.Count  > 0 && await EnsureConnectedAsync())
             {
                 foreach (var dir in dirs)
                 {
                     SetStatus($"Uploading folder {dir.Name}…");
-                    try { await _ftp!.UploadDirectory(dir.FullPath, $"{_remote.Dir.TrimEnd('/')}/{dir.Name}", FtpFolderSyncMode.Update); }
+                    try
+                    {
+                        var res = await _ftp!.UploadDirectory(dir.FullPath, $"{_remote.Dir.TrimEnd('/')}/{dir.Name}", FtpFolderSyncMode.Update);
+                        if (res.All(r => r.IsSuccess || r.IsSkipped)) movedDirs.Add(dir);
+                        else SetStatus($"{dir.Name}: some files failed to upload — source kept");
+                    }
                     catch (Exception ex) { SetStatus($"Failed {dir.Name}: {ex.Message}"); }
                 }
                 await RefreshRemoteAsync();
             }
             if (cb.IsCut)
             {
-                foreach (var f in files) try { File.Delete(f.FullPath); }            catch (Exception ex) { AppLog.Debug($"[fm] cut cleanup {f.Name}: {ex.Message}"); }
-                foreach (var d in dirs)  try { Directory.Delete(d.FullPath, true); } catch (Exception ex) { AppLog.Debug($"[fm] cut cleanup {d.Name}: {ex.Message}"); }
+                // Move semantics: delete only sources whose transfer verifiably succeeded.
+                foreach (var f in movedFiles) try { File.Delete(f.FullPath); }            catch (Exception ex) { AppLog.Debug($"[fm] cut cleanup {f.Name}: {ex.Message}"); }
+                foreach (var d in movedDirs)  try { Directory.Delete(d.FullPath, true); } catch (Exception ex) { AppLog.Debug($"[fm] cut cleanup {d.Name}: {ex.Message}"); }
                 RefreshLocal();
-                _clipboard = null;
+                RetainClipboardForUnmoved(cb, movedFiles, movedDirs);
             }
         }
         else
@@ -1269,28 +1288,47 @@ public partial class FileManagerWindow : Window
             // Remote → Local
             var files = items.Where(f => !f.IsDirectory).ToList();
             var dirs  = items.Where(f =>  f.IsDirectory).ToList();
-            if (files.Count > 0) await DownloadItemsAsync(files);
+            var movedFiles = files.Count > 0 ? await DownloadItemsAsync(files) : new List<FileEntry>();
+            var movedDirs  = new List<FileEntry>();
             if (dirs.Count  > 0 && await EnsureConnectedAsync())
             {
                 foreach (var dir in dirs)
                 {
                     SetStatus($"Downloading folder {dir.Name}…");
-                    try { await _ftp!.DownloadDirectory(Path.Combine(_local.Dir, dir.Name), dir.FullPath, FtpFolderSyncMode.Update); }
+                    try
+                    {
+                        var res = await _ftp!.DownloadDirectory(Path.Combine(_local.Dir, dir.Name), dir.FullPath, FtpFolderSyncMode.Update);
+                        if (res.All(r => r.IsSuccess || r.IsSkipped)) movedDirs.Add(dir);
+                        else SetStatus($"{dir.Name}: some files failed to download — source kept");
+                    }
                     catch (Exception ex) { SetStatus($"Failed {dir.Name}: {ex.Message}"); }
                 }
                 RefreshLocal();
             }
             if (cb.IsCut)
             {
+                // Move semantics: delete only remote sources whose download verifiably succeeded.
                 if (await EnsureConnectedAsync())
                 {
-                    foreach (var f in files) try { await _ftp!.DeleteFile(f.FullPath); }      catch (Exception ex) { AppLog.Debug($"[fm] cut cleanup {f.Name}: {ex.Message}"); }
-                    foreach (var d in dirs)  try { await _ftp!.DeleteDirectory(d.FullPath); } catch (Exception ex) { AppLog.Debug($"[fm] cut cleanup {d.Name}: {ex.Message}"); }
+                    foreach (var f in movedFiles) try { await _ftp!.DeleteFile(f.FullPath); }      catch (Exception ex) { AppLog.Debug($"[fm] cut cleanup {f.Name}: {ex.Message}"); }
+                    foreach (var d in movedDirs)  try { await _ftp!.DeleteDirectory(d.FullPath); } catch (Exception ex) { AppLog.Debug($"[fm] cut cleanup {d.Name}: {ex.Message}"); }
                     await RefreshRemoteAsync();
                 }
-                _clipboard = null;
+                RetainClipboardForUnmoved(cb, movedFiles, movedDirs);
             }
         }
+    }
+
+    // After a cut/move, keep only the sources that did NOT transfer on the clipboard so the user
+    // can retry them; clear it entirely once everything has moved.  `moved` items are the exact
+    // FileEntry instances taken from cb.Items, so reference/value identity both match here.
+    void RetainClipboardForUnmoved(ClipboardPayload cb, IEnumerable<FileEntry> movedFiles, IEnumerable<FileEntry> movedDirs)
+    {
+        var moved   = movedFiles.Concat(movedDirs).ToHashSet();
+        var unmoved = cb.Items.Where(i => !moved.Contains(i)).ToList();
+        if (unmoved.Count == 0) { _clipboard = null; return; }
+        _clipboard = cb with { Items = unmoved };
+        SetStatus($"Moved {moved.Count} item(s); kept {unmoved.Count} on clipboard (transfer skipped or failed).");
     }
 
     async Task CopyLocalItemsAsync(IList<FileEntry> items, string destFolder)

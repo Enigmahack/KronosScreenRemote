@@ -14,6 +14,12 @@ sealed class TcpMidiTransport : IKronosMidiTransport
     readonly string _host;
     readonly int    _ctrlPort;
     readonly KronosSysEx _sysEx;
+    // Guards the _monitor check-then-act. Start/Stop/SetStreamEnabled can be driven from
+    // different threads (coordinator vs. an ApplyMidiSettings on the UI thread), so an
+    // unguarded "if (_monitor != null) return; … _monitor = m" let two callers each create and
+    // start a monitor, orphaning one live socket + read loop. Snapshot reads elsewhere
+    // (CanStream, SendLargeSysExAsync) stay lock-free — a reference read is atomic.
+    readonly object _monitorLock = new();
     MidiStreamMonitor? _monitor;
     bool _streamEnabled = true;
 
@@ -55,24 +61,35 @@ sealed class TcpMidiTransport : IKronosMidiTransport
 
     void EnsureMonitor()
     {
-        if (_monitor != null) return;
-        var m = new MidiStreamMonitor(_host);
-        m.Traffic              += OnChildTraffic;
-        m.SysExMessageReceived += OnMonitorSysEx;
-        m.SysExActivity        += OnMonitorActivity;
-        _monitor = m;
-        m.Start();
+        // Whole check-then-act under the lock — including m.Start() — so a concurrent
+        // DisposeMonitor can't null/dispose the instance between assignment and start.
+        lock (_monitorLock)
+        {
+            if (_monitor != null) return;
+            var m = new MidiStreamMonitor(_host);
+            m.Traffic              += OnChildTraffic;
+            m.SysExMessageReceived += OnMonitorSysEx;
+            m.SysExActivity        += OnMonitorActivity;
+            _monitor = m;
+            m.Start();
+        }
     }
 
     void DisposeMonitor()
     {
-        var m = _monitor;
-        _monitor = null;
+        MidiStreamMonitor? m;
+        lock (_monitorLock)
+        {
+            m = _monitor;
+            _monitor = null;
+        }
         if (m == null) return;
+        // Unsubscribe + dispose outside the lock (Dispose cancels the read loop): a concurrent
+        // EnsureMonitor may create a fresh, independent monitor meanwhile — harmless.
         m.Traffic              -= OnChildTraffic;
         m.SysExMessageReceived -= OnMonitorSysEx;
         m.SysExActivity        -= OnMonitorActivity;
-        m.Stop();
+        m.Dispose();
     }
 
     void OnChildTraffic(SysExTrafficEntry e) => Traffic?.Invoke(e);
@@ -89,7 +106,7 @@ sealed class TcpMidiTransport : IKronosMidiTransport
 
     public async Task<bool> SendAsync(byte[] message)
     {
-        var resp = await CtrlClient.QueryAsync(_host, _ctrlPort, DaemonCommand.MidiSend(MidiHex.ToHex(message)), 2000)
+        var resp = await CtrlQuery.QueryAsync(_host, _ctrlPort, DaemonCommand.MidiSend(MidiHex.ToHex(message)), 2000)
             .ConfigureAwait(false);
         return resp?.TrimEnd() == "OK";
     }
@@ -128,7 +145,7 @@ sealed class TcpMidiTransport : IKronosMidiTransport
         {
             int len = Math.Min(MaxMidiSendBytes, sysex.Length - off);
             var chunk = sysex[off..(off + len)];
-            var resp = await CtrlClient.QueryAsync(_host, _ctrlPort,
+            var resp = await CtrlQuery.QueryAsync(_host, _ctrlPort,
                 DaemonCommand.MidiSend(MidiHex.ToHex(chunk)), 3000).ConfigureAwait(false);
             if (resp?.TrimEnd() != "OK")
             {

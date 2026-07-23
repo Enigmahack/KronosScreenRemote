@@ -27,7 +27,11 @@ sealed class SysExService : ISysExService
 
     IKronosMidiTransport? _transport;
     SysExDumpCollector? _dump;
-    volatile bool _dumping;   // pause perf polling while a bulk dump streams
+    // Pauses the func-33 perf-poll loop while a bulk dump/write streams (so the poll can't steal
+    // one of its replies). Epoch-guarded refcount — see DumpGate for why a plain bool was racy
+    // both across overlapping dumps and across a transport switch. Begin/End pair in each dump's
+    // finally; NewGeneration() on every transport (re)start / reset.
+    readonly DumpGate _dumpGate = new();
     CancellationTokenSource? _cts;
     CancellationTokenSource? _perfPollDelayCts;
     CancellationTokenSource? _refreshDebounceCts;
@@ -94,7 +98,13 @@ sealed class SysExService : ISysExService
     {
         _cts?.Cancel();
         _cts?.Dispose();
-        _dumping = false;   // a sweep orphaned by a transport switch must not pause the new perf loop
+        // New transport generation: a sweep orphaned by this switch must not pause the new perf
+        // loop, and its later End() is now a no-op (see DumpGate). NOTE (deferred, issue 8): this
+        // does not await an in-flight WriteObject/StoreBank — teardown below can still dispose the
+        // old transport mid-inject. Reads fail gracefully into a timeout; a torn write can leave a
+        // partial object on the Kronos. Closing that needs async-aware teardown, which couples with
+        // MidiTransportCoordinator's synchronous _gate — left for a dedicated pass.
+        _dumpGate.NewGeneration();
 
         // Cancel debounced work from the outgoing connection and flush its captured
         // names under the OLD cache key first — otherwise a still-pending PersistNames
@@ -159,7 +169,7 @@ sealed class SysExService : ISysExService
         _cts?.Cancel();
         _cts?.Dispose();
         _cts = null;
-        _dumping = false;
+        _dumpGate.NewGeneration();
         try { _refreshDebounceCts?.Cancel(); _refreshDebounceCts?.Dispose(); } catch { }
         _refreshDebounceCts = null;
         try { _persistDebounceCts?.Cancel(); _persistDebounceCts?.Dispose(); } catch { }
@@ -201,8 +211,7 @@ sealed class SysExService : ISysExService
         // (program write, PCG load, bank-type change). Invalidate just the named
         // bank so the rest of the persisted cache survives. Layout:
         //   F0 42 3g 68 38 obj bank <23-byte digest> F7
-        if (status == 0xF0 && raw.Length >= 7 &&
-            raw[1] == 0x42 && (raw[2] & 0xF0) == 0x30 && raw[3] == 0x68 && raw[4] == 0x38)
+        if (KronosSysEx.HasKorgHeaderAt(raw, 0, 0x38) && raw.Length >= 7)
         {
             int digObj  = raw[5];   // 0x00 = Program, 0x01 = Combi, …
             int digBank = raw[6];   // object bank number
@@ -230,8 +239,7 @@ sealed class SysExService : ISysExService
         // from ANY dump — a front-panel Global dump or our own Sync Names sweep.
         // The Name is offset 0 (24 bytes) of every object, full or name-only.
         //   F0 42 3g 68 73 obj bank idH idL version <data> F7
-        if (status == 0xF0 && raw.Length >= 11 &&
-            raw[1] == 0x42 && (raw[2] & 0xF0) == 0x30 && raw[3] == 0x68 && raw[4] == 0x73)
+        if (KronosSysEx.HasKorgHeaderAt(raw, 0, 0x73) && raw.Length >= 11)
         {
             int obj = raw[5];
             // 0x00 Program / 0x13 Program Name → program; 0x01 Combi / 0x12 Combi Name → combi.
@@ -268,8 +276,7 @@ sealed class SysExService : ISysExService
         // command is authoritative there — see MainWindow.Streaming.cs's ModePollLoop),
         // but it's still the freshest available seed for _stateMode, which
         // Program-Change stream decode below needs to resolve the right bank.
-        if (status == 0xF0 && raw.Length >= 7 &&
-            raw[1] == 0x42 && (raw[2] & 0xF0) == 0x30 && raw[3] == 0x68 && raw[4] == 0x4E)
+        if (KronosSysEx.HasKorgHeaderAt(raw, 0, 0x4E) && raw.Length >= 7)
         {
             var md = new SysExModeData(raw[5] & 0x0F, 0, 0, 0);
             int stateMode = md.ToStateMode();
@@ -364,7 +371,7 @@ sealed class SysExService : ISysExService
         cts.Dispose();
 
         // Never inject a single-name request into a bulk sweep's 0x73 stream.
-        if (_dumping) return;
+        if (_dumpGate.Active) return;
         var transport = _transport;
         if (transport?.CanStream != true) return;
 
@@ -458,7 +465,7 @@ sealed class SysExService : ISysExService
             return CurrentNameCount();
         }
 
-        _dumping = true;   // pause the func-33 perf loop for the whole sweep
+        int gateEpoch = _dumpGate.Begin();   // pause the func-33 perf loop for the whole sweep
         bool ledgerDirty = false;
         try
         {
@@ -531,7 +538,7 @@ sealed class SysExService : ISysExService
         }
         finally
         {
-            _dumping = false;
+            _dumpGate.End(gateEpoch);
             if (ledgerDirty) Storage.SaveDumpedBanks(_cacheKey, SnapshotDumped());
             PersistNames();
         }
@@ -578,18 +585,18 @@ sealed class SysExService : ISysExService
 
         // Pause perf polling so its func 0x33 (daemon SYSEX path) can't capture
         // one of this dump's 0x73 replies by mistake.
-        _dumping = true;
+        int gateEpoch = _dumpGate.Begin();
         try { return await DumpOneSetListAsync(dump, number).ConfigureAwait(false); }
         finally
         {
-            _dumping = false;
+            _dumpGate.End(gateEpoch);
             RefreshNow();   // resync the perf display after the dump window
         }
     }
 
-    // Sweep every set list (0..127) for "Sync All". A single _dumping toggle spans
+    // Sweep every set list (0..127) for "Sync All". A single DumpGate scope spans
     // the whole pass (not 128 on/off cycles), and DumpOneSetListAsync touches the
-    // flag not at all, so the two wrappers own it cleanly. Cancellable between set
+    // gate not at all, so the two wrappers own it cleanly. Cancellable between set
     // lists; whatever completed before a cancel is returned. A no-response set list
     // is reported as neither Found nor ConfirmedEmpty, so the caller never deletes a
     // good cached entry over one transient miss.
@@ -608,7 +615,7 @@ sealed class SysExService : ISysExService
 
         const int total = SetListData.MaxCount;
         int attempted = 0;
-        _dumping = true;
+        int gateEpoch = _dumpGate.Begin();
         try
         {
             for (int n = 0; n < total; n++)
@@ -632,7 +639,7 @@ sealed class SysExService : ISysExService
         }
         finally
         {
-            _dumping = false;
+            _dumpGate.End(gateEpoch);
             RefreshNow();   // resync the perf display once after the whole sweep
         }
 
@@ -642,7 +649,7 @@ sealed class SysExService : ISysExService
     }
 
     // Core one-set-list collection, shared by the single dump and the sweep. Does NOT
-    // touch _dumping — the caller owns that so the sweep can hold it across all 128.
+    // touch the DumpGate — the caller owns that so the sweep can hold it across all 128.
     // A Set List is a single ~79 KB object; the Kronos can take several seconds to
     // serialize it before the first byte streams, so the "no activity at all" window
     // gets generous headroom (the 4 s default would give up before transmission even
@@ -725,7 +732,7 @@ sealed class SysExService : ISysExService
         while (!ct.IsCancellationRequested)
         {
             var transport = _transport;
-            if (transport != null && _isAvailable && !_dumping)
+            if (transport != null && _isAvailable && !_dumpGate.Active)
             {
                 try
                 {
@@ -813,14 +820,14 @@ sealed class SysExService : ISysExService
 
     // ── Librarian primitives (ISysExService + IMoveExecutor) ────────────────────
     // Bulk read/write over the live stream; each pauses the func-33 perf loop
-    // (_dumping) so it can't steal one of our 0x73/0x24 replies, mirroring the
+    // (via the DumpGate) so it can't steal one of our 0x73/0x24 replies, mirroring the
     // existing DumpSetListAsync / WriteSetListSlotAsync pattern.
 
     public async Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index)
     {
         var dump = _dump;
         if (dump == null || _transport?.CanStream != true) return null;
-        _dumping = true;
+        int gateEpoch = _dumpGate.Begin();
         try
         {
             var req  = SysExDumpCollector.ObjectDumpRequest(obj, bank, index);
@@ -830,7 +837,7 @@ sealed class SysExService : ISysExService
             var msg = msgs.Count > 0 ? msgs[0] : null;
             return msg != null ? KronosSysEx.ParseObjectDump(msg) : null;
         }
-        finally { _dumping = false; }
+        finally { _dumpGate.End(gateEpoch); }
     }
 
     public async Task<Dictionary<int, ObjectDump>> DumpBankBulkAsync(int obj, int bank, int count)
@@ -838,7 +845,7 @@ sealed class SysExService : ISysExService
         var result = new Dictionary<int, ObjectDump>();
         var dump = _dump;
         if (dump == null || _transport?.CanStream != true) return result;
-        _dumping = true;
+        int gateEpoch = _dumpGate.Begin();
         try
         {
             var req = SysExDumpCollector.DumpBankRequest(obj, bank);
@@ -856,7 +863,7 @@ sealed class SysExService : ISysExService
                 if (parsed != null) result[parsed.Index] = parsed;
             }
         }
-        finally { _dumping = false; }
+        finally { _dumpGate.End(gateEpoch); }
         return result;
     }
 
@@ -864,7 +871,7 @@ sealed class SysExService : ISysExService
     {
         var dump = _dump;
         if (dump == null || _transport?.CanStream != true) return -1;
-        _dumping = true;
+        int gateEpoch = _dumpGate.Begin();
         try
         {
             // Stamp the CURRENT, correct object-version byte at the moment of the actual
@@ -879,76 +886,50 @@ sealed class SysExService : ISysExService
             var code = await dump.SendLargeObjectDumpAndAwaitReplyAsync(msg).ConfigureAwait(false);
             return code ?? -1;
         }
-        finally { _dumping = false; }
+        finally { _dumpGate.End(gateEpoch); }
     }
 
     public async Task<int> StoreBankAsync(int obj, int bank)
     {
         var dump = _dump;
         if (dump == null || _transport?.CanStream != true) return -1;
-        _dumping = true;
+        int gateEpoch = _dumpGate.Begin();
         try
         {
             var code = await dump.SendStoreBankRequestAsync(obj, bank, timeoutMs: 20000).ConfigureAwait(false);
             return code ?? -1;
         }
-        finally { _dumping = false; }
+        finally { _dumpGate.End(gateEpoch); }
     }
 
     public async Task<byte[]?> BankDigestAsync(int obj, int bank)
     {
         var transport = _transport;
         if (transport?.CanStream != true) return null;
-        _dumping = true;
-        var tcs = new TaskCompletionSource<byte[]?>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        void OnMsg(byte[] m)
-        {
-            var d = KronosSysEx.ParseBankDigest(m);
-            if (d is { } bd && bd.Obj == obj && bd.Bank == bank) tcs.TrySetResult(bd.Sha1);
-        }
-
-        transport.SysExMessageReceived += OnMsg;
+        int gateEpoch = _dumpGate.Begin();
         try
         {
-            if (!await transport.SendAsync(KronosSysEx.BuildBankDigestRequest(obj, bank)).ConfigureAwait(false))
-                return null;
-            var winner = await Task.WhenAny(tcs.Task, Task.Delay(5000)).ConfigureAwait(false);
-            return winner == tcs.Task ? tcs.Task.Result : null;
+            return await transport.AwaitReplyAsync<byte[]>(
+                () => transport.SendAsync(KronosSysEx.BuildBankDigestRequest(obj, bank)),
+                m => KronosSysEx.ParseBankDigest(m) is { } bd && bd.Obj == obj && bd.Bank == bank ? bd.Sha1 : null,
+                5000).ConfigureAwait(false);
         }
-        finally
-        {
-            transport.SysExMessageReceived -= OnMsg;
-            _dumping = false;
-        }
+        finally { _dumpGate.End(gateEpoch); }
     }
 
     public async Task<ProgramBankTypes?> RequestProgramBankTypesAsync()
     {
         var transport = _transport;
         if (transport?.CanStream != true) return null;
-        _dumping = true;
-        var tcs = new TaskCompletionSource<ProgramBankTypes?>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        void OnMsg(byte[] m)
-        {
-            var d = KronosSysEx.ParseProgramBankTypes(m);
-            if (d != null) tcs.TrySetResult(d);
-        }
-
-        transport.SysExMessageReceived += OnMsg;
+        int gateEpoch = _dumpGate.Begin();
         try
         {
-            if (!await transport.SendAsync(KronosSysEx.BuildProgramBankTypesRequest()).ConfigureAwait(false))
-                return null;
-            var winner = await Task.WhenAny(tcs.Task, Task.Delay(5000)).ConfigureAwait(false);
-            return winner == tcs.Task ? tcs.Task.Result : null;
+            return await transport.AwaitReplyAsync<ProgramBankTypes>(
+                () => transport.SendAsync(KronosSysEx.BuildProgramBankTypesRequest()),
+                KronosSysEx.ParseProgramBankTypes,
+                5000).ConfigureAwait(false);
         }
-        finally
-        {
-            transport.SysExMessageReceived -= OnMsg;
-            _dumping = false;
-        }
+        finally { _dumpGate.End(gateEpoch); }
     }
 
     public async Task BackupObjectsAsync(IReadOnlyList<WriteOp> ops, string path)

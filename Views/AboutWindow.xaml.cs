@@ -25,7 +25,7 @@ public partial class AboutWindow : Window
     {
         try
         {
-            var resp = await CtrlClient.QueryAsync(host, port, "VERSION", timeoutMs: 2000);
+            var resp = await CtrlQuery.QueryAsync(host, port, "VERSION", timeoutMs: 2000);
 
             await Dispatcher.InvokeAsync(() =>
             {

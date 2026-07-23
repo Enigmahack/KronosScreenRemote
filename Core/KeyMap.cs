@@ -59,6 +59,7 @@ static class KeyMap
     //   Shift kept (KeepShift=true):       ? = Shift+KEY_EQUAL(13)
     //
     // Unavailable in Kronos text input: ~  =  _  `
+
     static readonly Dictionary<Key, (int Code, bool KeepShift)> _shifted = new()
     {
         { Key.D8,          (55, false) },  // Shift+8   → * (KEY_KPASTERISK, no Shift needed)

@@ -18,7 +18,7 @@ namespace KronosScreenRemote;
 static class ChangesetBuilder
 {
     public static async Task<(ChangesetPlan Plan, List<ObjLoc> Conflicted)> BuildAsync(
-        LocalLibraryCache cache, ISysExService sysEx, SessionDependencyClipboard sessionClip)
+        LocalLibraryCache cache, ILibrarianService sysEx, SessionDependencyClipboard sessionClip)
     {
         var plan = new ChangesetPlan();
         var conflicted = new List<ObjLoc>();

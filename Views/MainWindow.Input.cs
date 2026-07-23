@@ -149,7 +149,9 @@ public partial class MainWindow
 
         _trayIcon?.Dispose();
         CompositionTarget.Rendering -= RenderTick;
-        if (_ctrlErrorHandler != null) { CtrlClient.OnCtrlError -= _ctrlErrorHandler; _ctrlErrorHandler = null; }
+        if (_ctrl != null && _ctrlErrorHandler != null) _ctrl.CtrlError -= _ctrlErrorHandler;
+        _ctrlErrorHandler = null;
+        (_ctrl as IDisposable)?.Dispose();
         _midiCoord?.Dispose();
         _sysExService?.Reset();
         CleanupAudio();
@@ -339,37 +341,34 @@ public partial class MainWindow
             Ctrl(DaemonCommand.Button(PanelButton.Enter)); return;
         }
 
-        // Mode select (rebindable; default F2–F8; F1 reserved for Help above)
-        if (IsAction("Mode Setlist",  e)) { SendMode(Mode.Setlist);  return; }
-        if (IsAction("Mode Combi",    e)) { SendMode(Mode.Combi);    return; }
-        if (IsAction("Mode Program",  e)) { SendMode(Mode.Program);  return; }
-        if (IsAction("Mode Sequence", e)) { SendMode(Mode.Sequence); return; }
-        if (IsAction("Mode Sampling", e)) { SendMode(Mode.Sampling); return; }
-        if (IsAction("Mode Global",   e)) { SendMode(Mode.Global);   return; }
-        if (IsAction("Mode Disk",     e)) { SendMode(Mode.Disk);     return; }
+        // Mode select (rebindable; default F2–F8; F1 reserved for Help above). Action defined
+        // once in the command registry (BuildCommandRegistry); the keybind just routes to it by Id.
+        foreach (var modeId in ModeCommandIds)
+            if (IsAction(modeId, e)) { RunCommand(modeId); return; }
 
-        // Bank select (unassigned by default; rebindable in Settings)
+        // Bank select (unassigned by default; rebindable in Settings) — same "Bank …" registry Ids.
         foreach (char b in new[] { 'A', 'B', 'C', 'D', 'E', 'F', 'G' })
         {
-            if (IsAction($"Bank I-{b}",    e)) { Ctrl(DaemonCommand.BankButton(BankGroup.Internal, b)); return; }
-            if (IsAction($"Bank U-{b}",    e)) { Ctrl(DaemonCommand.BankButton(BankGroup.User, b));     return; }
-            if (IsAction($"Bank U-{b}{b}", e)) { Ctrl(DaemonCommand.DoubleUserBank(b));                 return; }
+            if (IsAction($"Bank I-{b}",    e)) { RunCommand($"Bank I-{b}");    return; }
+            if (IsAction($"Bank U-{b}",    e)) { RunCommand($"Bank U-{b}");    return; }
+            if (IsAction($"Bank U-{b}{b}", e)) { RunCommand($"Bank U-{b}{b}"); return; }
         }
 
         // Sequencer transport (unassigned by default; rebindable in Settings) — gated the
         // same way as the footer buttons' IsEnabled, so a shortcut can't do anything the
         // greyed-out button itself couldn't. Falls through (not "handled") when the current
-        // mode doesn't support it, same as any other unmatched key.
+        // mode doesn't support it, same as any other unmatched key. The gate stays HERE; the
+        // registry only owns the action, not when the keybind is allowed to fire it.
         if (_seqTransport.IsTransportEnabled)
         {
-            if (IsAction("Seq Locate",  e)) { Ctrl(DaemonCommand.Button(PanelButton.SeqLocate));  return; }
-            if (IsAction("Seq Rewind",  e)) { Ctrl(DaemonCommand.Button(PanelButton.SeqRewind));  return; }
-            if (IsAction("Seq Forward", e)) { Ctrl(DaemonCommand.Button(PanelButton.SeqForward)); return; }
-            if (IsAction("Seq Pause",   e)) { Ctrl(DaemonCommand.Button(PanelButton.SeqPause));   return; }
-            if (IsAction("Seq Record",  e)) { _seqTransport.RecordCommand.Execute(null);          return; }
-            if (IsAction("Seq Start",   e)) { _seqTransport.StartStopCommand.Execute(null);       return; }
+            if (IsAction("Seq Locate",  e)) { RunCommand("Seq Locate");  return; }
+            if (IsAction("Seq Rewind",  e)) { RunCommand("Seq Rewind");  return; }
+            if (IsAction("Seq Forward", e)) { RunCommand("Seq Forward"); return; }
+            if (IsAction("Seq Pause",   e)) { RunCommand("Seq Pause");   return; }
+            if (IsAction("Seq Record",  e)) { RunCommand("Seq Record");  return; }
+            if (IsAction("Seq Start",   e)) { RunCommand("Seq Start");   return; }
         }
-        if (_seqTransport.IsSaveEnabled && IsAction("Seq Save", e)) { _seqTransport.RecordCommand.Execute(null); return; }
+        if (_seqTransport.IsSaveEnabled && IsAction("Seq Save", e)) { RunCommand("Seq Save"); return; }
 
         if (IsAction("Calibrate", e))
         {

@@ -17,14 +17,14 @@ using System.Windows.Threading;
 // selection.
 sealed class MidiTransportCoordinator : IDisposable
 {
-    readonly ISysExService _sysEx;
+    readonly IMidiBackendControl _sysEx;
     readonly DispatcherTimer _hotplug;
     readonly object _gate = new();
 
     MidiTransportMode _mode = MidiTransportMode.Auto;
     string _usbMatch = KronosMidiDevices.DefaultMatch;
     string _host = "";
-    int    _ctrlPort = CtrlClient.CtrlPort;
+    int    _ctrlPort = CtrlQuery.CtrlPort;
     bool   _screenConnected;
 
     string? _usbDevice;                     // resolved Kronos USB name, or null
@@ -54,7 +54,7 @@ sealed class MidiTransportCoordinator : IDisposable
     // network/auth, so the screen becomes opt-in via an explicit Connect.
     public bool UsingUsb { get { lock (_gate) return _current?.Kind == "usb"; } }
 
-    public MidiTransportCoordinator(ISysExService sysEx)
+    public MidiTransportCoordinator(IMidiBackendControl sysEx)
     {
         _sysEx   = sysEx;
         _hotplug = new DispatcherTimer(DispatcherPriority.Background)

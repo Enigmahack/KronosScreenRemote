@@ -32,7 +32,15 @@ internal partial class LibrarianShellWindow : Window
     readonly PaneSelection _pcgSelection;
     readonly PaneSelection _mergeSelection;
 
-    public LibrarianShellWindow(ISysExService sysEx, LocalLibraryCache cache, AppSettings settings, string host)
+    // Per-pane mouse-gesture plumbing (click / right-click / mouse-up + drag-arm) — see
+    // PaneInteraction, which holds the one shared copy of that logic. Each wraps its matching
+    // selection above; both are kept because the rest of this file reads the selections directly
+    // (SelectedLocs, toolbar/context-menu enabled-state).
+    readonly PaneInteraction _local;
+    readonly PaneInteraction _pcg;
+    readonly PaneInteraction _merge;
+
+    public LibrarianShellWindow(ILibrarianService sysEx, LocalLibraryCache cache, AppSettings settings, string host)
     {
         InitializeComponent();
         WindowTheme.ApplyDarkCaption(this);
@@ -83,8 +91,17 @@ internal partial class LibrarianShellWindow : Window
         _pcgSelection.SelectionChanged += UpdateObjectDependencies;
         _mergeSelection.SelectionChanged += UpdateObjectDependencies;
 
+        // Local/PCG share the same "leaf or bank" selectability rule; Merge's leaves are keyed by
+        // content hash instead of Loc. Only the Local pane has a toolbar to refresh after a click.
+        _local = new PaneInteraction(_localSelection, IsLibrarySelectable, UpdateToolbarEnabled);
+        _pcg = new PaneInteraction(_pcgSelection, IsLibrarySelectable);
+        _merge = new PaneInteraction(_mergeSelection, IsMergeSelectable);
+
         UpdateToolbarEnabled();
     }
+
+    static bool IsLibrarySelectable(ObjectTreeNode n) => n.Loc != null || n.BankRef != null;
+    static bool IsMergeSelectable(ObjectTreeNode n) => n.MergeContentHash != null || n.BankRef != null;
 
     void UpdateObjectDependencies()
     {
@@ -156,39 +173,13 @@ internal partial class LibrarianShellWindow : Window
         UpdateToolbarEnabled();
     }
 
-    void OnLocalNodePreviewMouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is not FrameworkElement fe || fe.DataContext is not ObjectTreeNode node) return;
-        if (node.Loc == null && node.BankRef == null) return;   // type-root itself isn't selectable
-
-        _localSelection.HandleClick(node, Keyboard.Modifiers);
-
-        _localDragStart = e.GetPosition(null);
-        _localDragArmed = true;
-        UpdateToolbarEnabled();
-        // Deliberately leaves e.Handled unset — double-click-to-open-properties must still fire.
-    }
-
-    void OnLocalNodeMouseUp(object sender, MouseButtonEventArgs e)
-    {
-        if (_localDragArmed && sender is FrameworkElement { DataContext: ObjectTreeNode node })
-        {
-            _localSelection.HandleMouseUpWithoutDrag(node, Keyboard.Modifiers);
-            UpdateToolbarEnabled();
-        }
-        _localDragArmed = false;
-    }
-
-    // Right-click selects first (Explorer convention), same as a left-click, before the
-    // ContextMenu opens (OnLocalContextMenuOpening) — so Cut/Copy/Delete/etc. always act on
-    // whatever was actually right-clicked instead of a stale, unrelated prior selection.
-    void OnLocalNodePreviewRightDown(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is not FrameworkElement fe || fe.DataContext is not ObjectTreeNode node) return;
-        if (node.Loc == null && node.BankRef == null) return;
-        _localSelection.HandleRightClick(node);
-        UpdateToolbarEnabled();
-    }
+    // Click / mouse-up / right-click all delegate to the shared PaneInteraction (which selects,
+    // arms a drag, and refreshes the toolbar) — see its own doc comment. Right-click selecting
+    // first (Explorer convention) is what makes Cut/Copy/Delete act on the actually-clicked node,
+    // not a stale prior selection, by the time OnLocalContextMenuOpening runs.
+    void OnLocalNodePreviewMouseDown(object sender, MouseButtonEventArgs e) => _local.OnPreviewMouseDown(sender, e);
+    void OnLocalNodeMouseUp(object sender, MouseButtonEventArgs e) => _local.OnMouseUp(sender, e);
+    void OnLocalNodePreviewRightDown(object sender, MouseButtonEventArgs e) => _local.OnPreviewRightDown(sender, e);
 
     void OnTreeDoubleClick(object sender, MouseButtonEventArgs e)
     {
@@ -400,14 +391,6 @@ internal partial class LibrarianShellWindow : Window
     // PlaceMergeGroupSequentially instead — see OnMergeToLocalDrop).
     sealed record MergeDragPayload(IReadOnlyList<string> ContentHashes);
 
-    Point _pcgDragStart;
-    bool _pcgDragArmed;
-
-    Point _localDragStart;
-    bool _localDragArmed;
-
-    Point _mergeDragStart;
-    bool _mergeDragArmed;
 
     // ── PCG pane: selection (mirrors the Local pane's own — see its class-doc comment for
     // why this lives in code-behind, not a binding) ─────────────────────────────────────────
@@ -420,33 +403,12 @@ internal partial class LibrarianShellWindow : Window
 
     List<ObjLoc> PcgSelectedLocs() => _pcgSelection.Items.SelectMany(n => n.LeafLocs()).ToList();
 
-    void OnPcgPreviewMouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is not FrameworkElement fe || fe.DataContext is not ObjectTreeNode node) return;
-        if (node.Loc == null && node.BankRef == null) return;   // type-root itself isn't selectable
-
-        _pcgSelection.HandleClick(node, Keyboard.Modifiers);
-
-        _pcgDragStart = e.GetPosition(null);
-        _pcgDragArmed = true;
-    }
-
-    void OnPcgNodeMouseUp(object sender, MouseButtonEventArgs e)
-    {
-        if (_pcgDragArmed && sender is FrameworkElement { DataContext: ObjectTreeNode node })
-            _pcgSelection.HandleMouseUpWithoutDrag(node, Keyboard.Modifiers);
-        _pcgDragArmed = false;
-    }
-
-    // Right-click selects first (Explorer convention), before the ContextMenu opens
-    // (OnPcgContextMenuOpening) — "Move to Merge Window" always acts on whatever was actually
-    // right-clicked instead of a stale, unrelated prior selection.
-    void OnPcgNodePreviewRightDown(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is not FrameworkElement fe || fe.DataContext is not ObjectTreeNode node) return;
-        if (node.Loc == null && node.BankRef == null) return;
-        _pcgSelection.HandleRightClick(node);
-    }
+    // Delegated to the shared PaneInteraction (no toolbar hook — only the Local pane has one).
+    // Right-click selects first (Explorer convention) so "Move to Merge Window" acts on whatever
+    // was actually right-clicked, not a stale prior selection, by OnPcgContextMenuOpening.
+    void OnPcgPreviewMouseDown(object sender, MouseButtonEventArgs e) => _pcg.OnPreviewMouseDown(sender, e);
+    void OnPcgNodeMouseUp(object sender, MouseButtonEventArgs e) => _pcg.OnMouseUp(sender, e);
+    void OnPcgNodePreviewRightDown(object sender, MouseButtonEventArgs e) => _pcg.OnPreviewRightDown(sender, e);
 
     void OnPcgContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
@@ -469,13 +431,13 @@ internal partial class LibrarianShellWindow : Window
 
     void OnPcgPreviewMouseMove(object sender, MouseEventArgs e)
     {
-        if (e.LeftButton != MouseButtonState.Pressed || !_pcgDragArmed) return;
+        if (e.LeftButton != MouseButtonState.Pressed || !_pcg.DragArmed) return;
         if (sender is not FrameworkElement { DataContext: ObjectTreeNode { Loc: { } } or ObjectTreeNode { BankRef: { } } }) return;
         var pos = e.GetPosition(null);
-        if (Math.Abs(pos.X - _pcgDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
-            Math.Abs(pos.Y - _pcgDragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+        if (Math.Abs(pos.X - _pcg.DragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(pos.Y - _pcg.DragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
 
-        _pcgDragArmed = false;
+        _pcg.DragArmed = false;
         var locs = PcgSelectedLocs();
         if (locs.Count == 0) return;
         var data = new DataObject(PcgDragFormat, new PcgDragPayload(locs));
@@ -484,13 +446,13 @@ internal partial class LibrarianShellWindow : Window
 
     void OnLocalNodePreviewMouseMove(object sender, MouseEventArgs e)
     {
-        if (e.LeftButton != MouseButtonState.Pressed || !_localDragArmed) return;
+        if (e.LeftButton != MouseButtonState.Pressed || !_local.DragArmed) return;
         if (sender is not FrameworkElement { DataContext: ObjectTreeNode { Loc: { } } or ObjectTreeNode { BankRef: { } } }) return;
         var pos = e.GetPosition(null);
-        if (Math.Abs(pos.X - _localDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
-            Math.Abs(pos.Y - _localDragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+        if (Math.Abs(pos.X - _local.DragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(pos.Y - _local.DragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
 
-        _localDragArmed = false;
+        _local.DragArmed = false;
         var locs = SelectedLocs();
         if (locs.Count == 0) return;
         var data = new DataObject(LocalDragFormat, new LocalDragPayload(locs));
@@ -630,33 +592,12 @@ internal partial class LibrarianShellWindow : Window
     // group) means "auto-fill sequentially from the target bank's first free slot" — see
     // OnMergeToLocalDrop.
 
-    void OnMergePreviewMouseDown(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is not FrameworkElement fe || fe.DataContext is not ObjectTreeNode node) return;
-        if (node.MergeContentHash == null && node.BankRef == null) return;
-
-        _mergeSelection.HandleClick(node, Keyboard.Modifiers);
-
-        _mergeDragStart = e.GetPosition(null);
-        _mergeDragArmed = true;
-    }
-
-    void OnMergeNodeMouseUp(object sender, MouseButtonEventArgs e)
-    {
-        if (_mergeDragArmed && sender is FrameworkElement { DataContext: ObjectTreeNode node })
-            _mergeSelection.HandleMouseUpWithoutDrag(node, Keyboard.Modifiers);
-        _mergeDragArmed = false;
-    }
-
-    // Right-click selects first (Explorer convention), before the ContextMenu opens
-    // (OnMergeContextMenuOpening) — "Remove" always acts on whatever was actually right-clicked
-    // instead of a stale, unrelated prior selection.
-    void OnMergeNodePreviewRightDown(object sender, MouseButtonEventArgs e)
-    {
-        if (sender is not FrameworkElement fe || fe.DataContext is not ObjectTreeNode node) return;
-        if (node.MergeContentHash == null && node.BankRef == null) return;
-        _mergeSelection.HandleRightClick(node);
-    }
+    // Delegated to the shared PaneInteraction (no toolbar hook). Right-click selects first so
+    // "Remove" acts on the actually-clicked node, not a stale prior selection, by
+    // OnMergeContextMenuOpening.
+    void OnMergePreviewMouseDown(object sender, MouseButtonEventArgs e) => _merge.OnPreviewMouseDown(sender, e);
+    void OnMergeNodeMouseUp(object sender, MouseButtonEventArgs e) => _merge.OnMouseUp(sender, e);
+    void OnMergeNodePreviewRightDown(object sender, MouseButtonEventArgs e) => _merge.OnPreviewRightDown(sender, e);
 
     void OnMergeContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
@@ -690,13 +631,13 @@ internal partial class LibrarianShellWindow : Window
 
     void OnMergePreviewMouseMove(object sender, MouseEventArgs e)
     {
-        if (e.LeftButton != MouseButtonState.Pressed || !_mergeDragArmed) return;
+        if (e.LeftButton != MouseButtonState.Pressed || !_merge.DragArmed) return;
         if (_mergeSelection.Items.Count == 0) return;
         var pos = e.GetPosition(null);
-        if (Math.Abs(pos.X - _mergeDragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
-            Math.Abs(pos.Y - _mergeDragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
+        if (Math.Abs(pos.X - _merge.DragStart.X) < SystemParameters.MinimumHorizontalDragDistance &&
+            Math.Abs(pos.Y - _merge.DragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
 
-        _mergeDragArmed = false;
+        _merge.DragArmed = false;
         var hashes = _mergeSelection.Items.SelectMany(MergeContentHashes).Distinct().ToList();
         if (hashes.Count == 0) return;
         var data = new DataObject(MergeDragFormat, new MergeDragPayload(hashes));
@@ -738,208 +679,6 @@ internal partial class LibrarianShellWindow : Window
         {
             if (hit is TreeViewItem tvi) return tvi.DataContext as ObjectTreeNode;
             hit = VisualTreeHelper.GetParent(hit);
-        }
-        return null;
-    }
-}
-
-// Selection tracking for one pane's tree (Local, PCG, or Merge) — click/Ctrl+click/Shift-range
-// mechanics identical across all three, generalized to treat a BankRef node (a bank, or Merge
-// Window's own type-grouping "bank-equivalent" — see MergePaneViewModel.RefreshTree) the same
-// way a leaf node (Loc, or Merge's MergeContentHash) is treated. Kept as one shared class
-// instead of three near-identical copies, which is exactly how the bug this replaces started:
-// Merge Window used to have no selection tracking at all (nothing ever set IsSelected), while
-// Local/PCG's own hand-duplicated copies quietly drifted — neither survived a RefreshTree()
-// rebuild (which throws away every ObjectTreeNode and builds fresh ones), leaving a stale
-// selection pointing at orphaned objects nothing on screen still represents.
-sealed class PaneSelection
-{
-    public readonly HashSet<ObjectTreeNode> Items = new();
-    public ObjectTreeNode? Anchor;
-
-    readonly Func<ObjectTreeNode, ObjectTreeNode?> _findParent;
-    readonly Action<string> _reportStatus;
-
-    // Extra pane-specific refusal layered on top of the universal bank-vs-leaf check below
-    // (PCG's own "can't mix Programs, Combis, and Set Lists"). Given (any current member,
-    // candidate) -> a refusal message, or null to allow.
-    public Func<ObjectTreeNode, ObjectTreeNode, string?>? ExtraMixCheck;
-
-    // The other two panes' selections — clearing THIS pane's selection also clears these
-    // (cross-pane exclusivity: only one pane's selection is ever active at a time). Set once,
-    // right after all three are constructed (see LibrarianShellWindow's own constructor).
-    public PaneSelection[] Others = Array.Empty<PaneSelection>();
-
-    // Fired at the end of every public entry point that can change Items — the "Object
-    // Dependencies" panel subscribes on all three panes' instances (see LibrarianShellWindow's
-    // own constructor) to recompute from whichever pane currently holds the selection.
-    public event Action? SelectionChanged;
-
-    public PaneSelection(Func<ObjectTreeNode, ObjectTreeNode?> findParent, Action<string> reportStatus)
-    {
-        _findParent = findParent;
-        _reportStatus = reportStatus;
-    }
-
-    static bool IsBank(ObjectTreeNode n) => n.BankRef != null;
-
-    public void Clear()
-    {
-        if (Items.Count == 0) return;
-        foreach (var n in Items) n.IsSelected = false;
-        Items.Clear();
-        Anchor = null;
-        SelectionChanged?.Invoke();
-    }
-
-    void ClearOthers()
-    {
-        foreach (var other in Others) other.Clear();
-    }
-
-    void ReplaceWith(ObjectTreeNode node)
-    {
-        Clear();
-        Items.Add(node);
-        node.IsSelected = true;
-        Anchor = node;
-    }
-
-    // Plain click / Ctrl+click / Shift-range — the click-down gesture. `modifiers` is passed in
-    // (rather than read from Keyboard.Modifiers directly) so this class stays independent of
-    // WPF's global input state.
-    public void HandleClick(ObjectTreeNode node, ModifierKeys modifiers)
-    {
-        ClearOthers();
-
-        if (modifiers.HasFlag(ModifierKeys.Shift) && Anchor != null)
-        {
-            SelectRange(Anchor, node);
-        }
-        else if (modifiers.HasFlag(ModifierKeys.Control))
-        {
-            if (Items.Contains(node)) { Items.Remove(node); node.IsSelected = false; }
-            else if (Items.Count > 0 && IsBank(Items.First()) != IsBank(node))
-                _reportStatus("Can't mix a bank with individual items in one selection.");
-            else if (Items.Count > 0 && ExtraMixCheck?.Invoke(Items.First(), node) is { } refusal)
-                _reportStatus(refusal);
-            else { Items.Add(node); node.IsSelected = true; }
-            Anchor = node;
-        }
-        else if (Items.Contains(node) && Items.Count > 1)
-        {
-            // Leave the multi-selection intact for now — dragging one of several selected
-            // items should move/copy the whole group; HandleMouseUpWithoutDrag collapses to
-            // just this node if no drag actually happened.
-        }
-        else
-        {
-            ReplaceWith(node);
-        }
-        SelectionChanged?.Invoke();
-    }
-
-    // Mouse-up without an intervening drag: a plain click-and-release on a node already part of
-    // a multi-selection collapses to just that node (matches Explorer — mouse-down alone keeps
-    // the group armed in case you drag it; releasing without dragging narrows to just this one).
-    public void HandleMouseUpWithoutDrag(ObjectTreeNode node, ModifierKeys modifiers)
-    {
-        if (!modifiers.HasFlag(ModifierKeys.Control) && !modifiers.HasFlag(ModifierKeys.Shift)
-            && Items.Count > 1 && Items.Contains(node))
-            ReplaceWith(node);
-        SelectionChanged?.Invoke();
-    }
-
-    // Right-click: selects first (Explorer convention), then the caller opens its ContextMenu.
-    // Keeps an existing multi-selection intact if the target is already part of it; otherwise
-    // replaces the selection with just the target.
-    public void HandleRightClick(ObjectTreeNode node)
-    {
-        ClearOthers();
-        if (Items.Contains(node)) { SelectionChanged?.Invoke(); return; }
-        ReplaceWith(node);
-        SelectionChanged?.Invoke();
-    }
-
-    void SelectRange(ObjectTreeNode anchor, ObjectTreeNode target)
-    {
-        var parent = _findParent(anchor);
-        if (parent == null || _findParent(target) != parent)
-        {
-            ReplaceWith(target);
-            return;
-        }
-
-        Clear();
-        int ai = parent.Children.IndexOf(anchor), ti = parent.Children.IndexOf(target);
-        int lo = Math.Min(ai, ti), hi = Math.Max(ai, ti);
-        for (int i = lo; i <= hi; i++)
-        {
-            var n = parent.Children[i];
-            Items.Add(n);
-            n.IsSelected = true;
-        }
-        Anchor = anchor;
-    }
-
-    // Re-binds this selection to the tree's NEW node instances after a RefreshTree() rebuild,
-    // matched by stable identity (Loc/BankRef/MergeContentHash — never the old object
-    // reference, which RefreshTree just discarded). This is what actually fixes selection
-    // surviving an edit: without it, a deleted-then-reselected row (or any post-edit click)
-    // would silently act on stale, orphaned node objects nothing on screen still represents.
-    public void ReconcileAfterRefresh(IEnumerable<ObjectTreeNode> newRoots)
-    {
-        if (Items.Count == 0) return;
-
-        var wantedLocs = new HashSet<ObjLoc>(Items.Where(n => n.Loc != null).Select(n => n.Loc!.Value));
-        var wantedBanks = new HashSet<(int, int)>(Items.Where(n => n.BankRef != null).Select(n => n.BankRef!.Value));
-        var wantedHashes = new HashSet<string>(Items.Where(n => n.MergeContentHash != null).Select(n => n.MergeContentHash!));
-        var anchorLoc = Anchor?.Loc;
-        var anchorBank = Anchor?.BankRef;
-        var anchorHash = Anchor?.MergeContentHash;
-
-        Items.Clear();
-        Anchor = null;
-        foreach (var root in newRoots) Walk(root);
-
-        void Walk(ObjectTreeNode node)
-        {
-            bool matches = (node.Loc is { } l && wantedLocs.Contains(l))
-                || (node.BankRef is { } b && wantedBanks.Contains(b))
-                || (node.MergeContentHash is { } h && wantedHashes.Contains(h));
-            if (matches)
-            {
-                Items.Add(node);
-                node.IsSelected = true;
-                bool wasAnchor = (node.Loc is { } l2 && anchorLoc == l2)
-                    || (node.BankRef is { } b2 && anchorBank == b2)
-                    || (node.MergeContentHash is { } h2 && anchorHash == h2);
-                if (wasAnchor) Anchor = node;
-            }
-            foreach (var child in node.Children) Walk(child);
-        }
-        SelectionChanged?.Invoke();
-    }
-
-    // The tree is at most a few thousand leaves — a linear walk per Shift-click is fine and
-    // avoids needing a back-reference on ObjectTreeNode just for this.
-    public static ObjectTreeNode? FindParent(IEnumerable<ObjectTreeNode> roots, ObjectTreeNode node)
-    {
-        foreach (var root in roots)
-        {
-            var found = FindParentRecursive(root, node);
-            if (found != null) return found;
-        }
-        return null;
-    }
-
-    static ObjectTreeNode? FindParentRecursive(ObjectTreeNode candidate, ObjectTreeNode target)
-    {
-        if (candidate.Children.Contains(target)) return candidate;
-        foreach (var child in candidate.Children)
-        {
-            var found = FindParentRecursive(child, target);
-            if (found != null) return found;
         }
         return null;
     }

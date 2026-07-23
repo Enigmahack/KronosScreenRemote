@@ -60,7 +60,7 @@ static class UiThemeSmokeTest
                 : $"FOUND, Setters={appWindowStyle.Setters.Count}, TargetType={appWindowStyle.TargetType}"));
 
         Try("AboutWindow",            () => new AboutWindow(null, 0));
-        Try("CommandPaletteWindow",   () => new CommandPaletteWindow(new List<CommandEntry> { new("Test", "", () => { }) }));
+        Try("CommandPaletteWindow",   () => new CommandPaletteWindow(new List<CommandEntry> { new("test", "Test", "", () => { }) }));
         Try("FileManagerWindow",      () => new FileManagerWindow("", 21, "", ""));
         Try("HelpWindow",             () => new HelpWindow(settings));
         Try("InputTesterWindow",      () => new InputTesterWindow(fakeCtrl));

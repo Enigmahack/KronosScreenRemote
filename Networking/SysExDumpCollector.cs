@@ -47,8 +47,7 @@ sealed class SysExDumpCollector
 
         void OnMsg(byte[] m)
         {
-            if (m.Length >= 6 && m[0] == 0xF0 && m[1] == 0x42 && (m[2] & 0xF0) == 0x30 &&
-                m[3] == 0x68 && m[4] == 0x73 && m[5] == expectObj)
+            if (KronosSysEx.HasKorgHeaderAt(m, 0, 0x73) && m.Length >= 6 && m[5] == expectObj)
             {
                 lock (results) results.Add(m);
                 Volatile.Write(ref lastMatchTicks, DateTime.Now.Ticks);
@@ -57,8 +56,7 @@ sealed class SysExDumpCollector
             // Reply (func 0x24): the Kronos rejects a dump request with a code —
             // 4 = "target object not found" (empty/absent bank). Capturing it makes
             // "rejected" distinct from "silent" in the sweep log.
-            else if (m.Length >= 6 && m[0] == 0xF0 && m[1] == 0x42 && (m[2] & 0xF0) == 0x30 &&
-                     m[3] == 0x68 && m[4] == 0x24)
+            else if (KronosSysEx.HasKorgHeaderAt(m, 0, 0x24) && m.Length >= 6)
                 Volatile.Write(ref rejectCode, m[5] & 0x7F);
         }
         void OnActivity()
@@ -150,8 +148,7 @@ sealed class SysExDumpCollector
         void OnMsg(byte[] m)
         {
             // Object Dump reply: F0 42 3g 68 73 <obj> <bank> <idH> <idL> …
-            if (m.Length >= 9 && m[0] == 0xF0 && m[1] == 0x42 && (m[2] & 0xF0) == 0x30 &&
-                m[3] == 0x68 && m[4] == 0x73 && m[5] == obj && m[6] == bank)
+            if (KronosSysEx.HasKorgHeaderAt(m, 0, 0x73) && m.Length >= 9 && m[5] == obj && m[6] == bank)
             {
                 int idx = (m[7] << 7) | (m[8] & 0x7F);
                 bool added;
@@ -256,28 +253,14 @@ sealed class SysExDumpCollector
     public async Task<int?> SendAndAwaitReplyAsync(byte[] message, int timeoutMs = 4000)
     {
         await _gate.WaitAsync().ConfigureAwait(false);
-        var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        void OnMsg(byte[] m)
-        {
-            var code = KronosSysEx.ParseReply(m);
-            if (code != null) tcs.TrySetResult(code.Value);
-        }
-
-        _transport.SysExMessageReceived += OnMsg;
         try
         {
-            bool sent = await _transport.SendAsync(message).ConfigureAwait(false);
-            if (!sent) return null;
-
-            var winner = await Task.WhenAny(tcs.Task, Task.Delay(timeoutMs)).ConfigureAwait(false);
-            return winner == tcs.Task ? tcs.Task.Result : null;
+            return await _transport.AwaitReplyAsync<int>(
+                () => _transport.SendAsync(message),
+                KronosSysEx.ParseReply,
+                timeoutMs).ConfigureAwait(false);
         }
-        finally
-        {
-            _transport.SysExMessageReceived -= OnMsg;
-            _gate.Release();
-        }
+        finally { _gate.Release(); }
     }
 
     // Object Dump write (func 0x73) for a small, directly-addressed sub-object.
@@ -293,28 +276,14 @@ sealed class SysExDumpCollector
     public async Task<int?> SendLargeObjectDumpAndAwaitReplyAsync(byte[] message, int timeoutMs = 8000)
     {
         await _gate.WaitAsync().ConfigureAwait(false);
-        var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        void OnMsg(byte[] m)
-        {
-            var code = KronosSysEx.ParseReply(m);
-            if (code != null) tcs.TrySetResult(code.Value);
-        }
-
-        _transport.SysExMessageReceived += OnMsg;
         try
         {
-            bool sent = await _transport.SendLargeSysExAsync(message).ConfigureAwait(false);
-            if (!sent) return null;
-
-            var winner = await Task.WhenAny(tcs.Task, Task.Delay(timeoutMs)).ConfigureAwait(false);
-            return winner == tcs.Task ? tcs.Task.Result : null;
+            return await _transport.AwaitReplyAsync<int>(
+                () => _transport.SendLargeSysExAsync(message),
+                KronosSysEx.ParseReply,
+                timeoutMs).ConfigureAwait(false);
         }
-        finally
-        {
-            _transport.SysExMessageReceived -= OnMsg;
-            _gate.Release();
-        }
+        finally { _gate.Release(); }
     }
 
     // Store Bank Request (func 0x76) — commits previously-sent Object Dump data.

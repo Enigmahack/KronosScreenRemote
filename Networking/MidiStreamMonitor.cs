@@ -1,5 +1,4 @@
 using System.Net.Sockets;
-using System.Text;
 using System.Threading.Channels;
 
 namespace KronosScreenRemote;
@@ -10,11 +9,19 @@ namespace KronosScreenRemote;
 //
 // Fires SysExTrafficEntry(IsMidi=true, IsSend=false) for each received message.
 // Auto-reconnects with exponential backoff on disconnect.
-sealed class MidiStreamMonitor
+sealed class MidiStreamMonitor : IDisposable
 {
     const int MidiPort = 9875;
 
     readonly string _host;
+
+    // Guards the _cts swap. The RUN LOOP owns disposal of its own CTS (in RunLoopAsync's
+    // finally), never Start/Stop — disposing here while the loop still holds the token let a
+    // just-ended loop hit `Task.Delay(retryMs, ct)` on a disposed source and throw an
+    // ObjectDisposedException the loop doesn't catch (unobserved task exception). Start/Stop
+    // only Cancel + repoint the field under this lock; the loop nulls the field (if it still
+    // points at its own CTS) and disposes it as it unwinds.
+    readonly object _lifecycleLock = new();
     CancellationTokenSource? _cts;
 
     // The 9875 bridge is BIDIRECTIONAL: whatever a client writes, the daemon
@@ -65,42 +72,66 @@ sealed class MidiStreamMonitor
 
     public void Start()
     {
-        _cts?.Cancel();
-        _cts?.Dispose();
-        _cts = new CancellationTokenSource();
-        _ = RunLoopAsync(_cts.Token);
+        lock (_lifecycleLock)
+        {
+            _cts?.Cancel();          // signal the previous loop; it disposes its OWN cts as it exits
+            var cts = new CancellationTokenSource();
+            _cts = cts;
+            _ = RunLoopAsync(cts);   // hand the cts to the loop, which owns its disposal
+        }
     }
 
     public void Stop()
     {
-        _cts?.Cancel();
-        _cts?.Dispose();
-        _cts = null;
+        lock (_lifecycleLock)
+        {
+            _cts?.Cancel();
+            _cts = null;             // never Dispose here — the running loop owns that (see field note)
+        }
     }
 
-    async Task RunLoopAsync(CancellationToken ct)
+    public void Dispose()
     {
-        int retryMs = 2000;
-        while (!ct.IsCancellationRequested)
-        {
-            try
-            {
-                using var tcp = new TcpClient { NoDelay = true };
-                await tcp.ConnectAsync(_host, MidiPort, ct).ConfigureAwait(false);
-                AppLog.Info($"[midi-mon] connected to {_host}:{MidiPort}");
-                retryMs = 2000;
-                await ReadAsync(tcp.GetStream(), ct).ConfigureAwait(false);
-                AppLog.Debug("[midi-mon] stream ended");
-            }
-            catch (OperationCanceledException) { return; }
-            catch (Exception ex)
-            {
-                AppLog.Debug($"[midi-mon] {ex.Message}");
-            }
+        Stop();
+        _writeGate.Dispose();
+    }
 
-            try { await Task.Delay(retryMs, ct).ConfigureAwait(false); }
-            catch (OperationCanceledException) { return; }
-            retryMs = Math.Min(retryMs * 2, 30_000);
+    async Task RunLoopAsync(CancellationTokenSource cts)
+    {
+        var ct = cts.Token;
+        try
+        {
+            int retryMs = 2000;
+            while (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    using var tcp = new TcpClient { NoDelay = true };
+                    await tcp.ConnectAsync(_host, MidiPort, ct).ConfigureAwait(false);
+                    AppLog.Info($"[midi-mon] connected to {_host}:{MidiPort}");
+                    retryMs = 2000;
+                    await ReadAsync(tcp.GetStream(), ct).ConfigureAwait(false);
+                    AppLog.Debug("[midi-mon] stream ended");
+                }
+                catch (OperationCanceledException) { return; }
+                catch (Exception ex)
+                {
+                    AppLog.Debug($"[midi-mon] {ex.Message}");
+                }
+
+                try { await Task.Delay(retryMs, ct).ConfigureAwait(false); }
+                catch (OperationCanceledException) { return; }
+                retryMs = Math.Min(retryMs * 2, 30_000);
+            }
+        }
+        finally
+        {
+            // This loop owns this cts. Clear the field only if it still points at us (a newer
+            // Start may have already repointed it at its own cts), then dispose — safe now
+            // because Start/Stop never dispose, so no other path can race this disposal.
+            lock (_lifecycleLock)
+                if (ReferenceEquals(_cts, cts)) _cts = null;
+            cts.Dispose();
         }
     }
 
@@ -205,16 +236,8 @@ sealed class MidiStreamMonitor
     // Decode a hex string (e.g. "90 3C 64") to a human-readable MIDI description.
     internal static string DecodeHex(string hex)
     {
-        var clean = hex.Replace(" ", "");
-        if (clean.Length % 2 != 0 || clean.Length == 0) return hex;
-        try
-        {
-            var bytes = new byte[clean.Length / 2];
-            for (int i = 0; i < bytes.Length; i++)
-                bytes[i] = Convert.ToByte(clean.Substring(i * 2, 2), 16);
-            return DecodeMidi(bytes);
-        }
-        catch { return hex; }
+        var bytes = MidiHex.ToBytes(hex);
+        return bytes == null ? hex : DecodeMidi(bytes);
     }
 
     // maxHexBytes caps how many bytes are rendered into the embedded hex preview.
@@ -229,14 +252,14 @@ sealed class MidiStreamMonitor
 
         if (status == 0xF0)
         {
-            string raw = BytesToHex(msg, maxHexBytes);
+            string raw = MidiHex.ToHex(msg, maxHexBytes);
             // Korg SysEx: F0 42 3g 68 <func>
-            if (msg.Length >= 5 && msg[1] == 0x42 && (msg[2] & 0xF0) == 0x30 && msg[3] == 0x68)
+            if (KronosSysEx.HasKorgHeaderAt(msg, 0) && msg.Length >= 5)
                 return $"SysEx Korg func={msg[4]:X2} [{msg.Length}B]  [{raw}]";
             return $"SysEx [{msg.Length}B]  [{raw}]";
         }
 
-        string hex = $"[{BytesToHex(msg)}]";
+        string hex = $"[{MidiHex.ToHex(msg)}]";
 
         // System real-time
         return status switch
@@ -282,19 +305,6 @@ sealed class MidiStreamMonitor
     }
 
     static int PitchBend(byte lsb, byte msb) => ((msb << 7) | lsb) - 8192;
-
-    static string BytesToHex(byte[] bytes, int maxBytes = int.MaxValue)
-    {
-        int n = Math.Min(bytes.Length, maxBytes);
-        var sb = new StringBuilder(n * 3 + 20);
-        for (int i = 0; i < n; i++)
-        {
-            if (i > 0) sb.Append(' ');
-            sb.Append(bytes[i].ToString("X2"));
-        }
-        if (n < bytes.Length) sb.Append($" … (+{bytes.Length - n} bytes)");
-        return sb.ToString();
-    }
 }
 
 // Stateful MIDI byte stream parser with running status support.
@@ -409,7 +419,7 @@ sealed class MidiStreamParser
     {
         _status    = b;
         _dataCount = 0;
-        _dataNeeded = DataBytesFor(b);
+        _dataNeeded = MidiHex.DataBytesFor(b);
 
         if (_dataNeeded == 0)
         {
@@ -422,16 +432,4 @@ sealed class MidiStreamParser
             _state = State.NeedData;
         }
     }
-
-    static int DataBytesFor(int status) => (status & 0xF0) switch
-    {
-        0x80 or 0x90 or 0xA0 or 0xB0 or 0xE0 => 2,
-        0xC0 or 0xD0 => 1,
-        _ => status switch
-        {
-            0xF1 or 0xF3 => 1,   // MTC quarter-frame, song select
-            0xF2         => 2,   // song position pointer
-            _            => 0
-        }
-    };
 }

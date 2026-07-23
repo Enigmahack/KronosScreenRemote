@@ -197,92 +197,28 @@ static class Storage
     // the Kronos. Stored as host → (set list number → data).
 
     static string SetListCachePath => Path.Combine(DataDir, "setlist_cache.json");
-    static readonly object _setListFileLock = new();
+    static readonly HostKeyedCache<Dictionary<int, SetListData>> _setLists = new(() => SetListCachePath, "setlist-cache");
 
-    // NOTE: this reads + JSON-deserializes the whole cache file. Callers on the UI
-    // thread (viewer open, load/refresh, sync) MUST wrap it in Task.Run — a full Set
-    // List is ~79 KB of decoded data, so a populated cache is heavy to (de)serialize
-    // and would freeze the window. The lock serializes it against SaveSetLists.
-    public static Dictionary<int, SetListData> LoadSetLists(string host)
-    {
-        lock (_setListFileLock)
-        {
-            try
-            {
-                if (!File.Exists(SetListCachePath)) return new();
-                var all = JsonSerializer.Deserialize<Dictionary<string, Dictionary<int, SetListData>>>(
-                    File.ReadAllText(SetListCachePath));
-                if (all != null && all.TryGetValue(host, out var lists) && lists != null)
-                    return lists;
-            }
-            catch (Exception ex) { AppLog.Warn($"[setlist-cache] load failed: {ex.Message}"); }
-            return new();
-        }
-    }
+    // NOTE: Load/Save read + JSON-(de)serialize the whole cache file. Callers on the UI
+    // thread (viewer open, load/refresh, sync) MUST wrap them in Task.Run — a full Set
+    // List is ~79 KB of decoded data, so a populated cache is heavy to (de)serialize and
+    // would freeze the window. HostKeyedCache serializes both against each other under one
+    // lock (Save is an atomic read-modify-write), so a UI-thread save racing a background
+    // one can no longer interleave and corrupt the file.
+    public static Dictionary<int, SetListData> LoadSetLists(string host) => _setLists.Load(host) ?? new();
 
-    // Read-modify-write of the whole multi-host cache file. Heavy (see LoadSetLists)
-    // AND now lock-guarded — it previously had no file lock, so a UI-thread save
-    // racing a background one could interleave and corrupt the file. Never call on
-    // the UI thread; wrap in Task.Run.
-    public static void SaveSetLists(string host, Dictionary<int, SetListData> lists)
-    {
-        lock (_setListFileLock)
-        {
-            try
-            {
-                var all = File.Exists(SetListCachePath)
-                    ? JsonSerializer.Deserialize<Dictionary<string, Dictionary<int, SetListData>>>(
-                          File.ReadAllText(SetListCachePath)) ?? new()
-                    : new();
-                all[host] = lists;
-                File.WriteAllText(SetListCachePath, JsonSerializer.Serialize(all));
-            }
-            catch (Exception ex) { AppLog.Warn($"[setlist-cache] save failed: {ex.Message}"); }
-        }
-    }
+    public static void SaveSetLists(string host, Dictionary<int, SetListData> lists) => _setLists.Save(host, lists);
 
     // ── Program/Combi name cache ───────────────────────────────────────────────
     // Bulk-dumped names persisted per host so program-change follow is flash-free
     // after the first session. Invalidated per bank on a Bank Digest (func 0x38).
 
     static string NameCachePath => Path.Combine(DataDir, "name_cache.json");
-    static readonly object _nameCacheFileLock = new();
+    static readonly HostKeyedCache<List<CachedName>> _names = new(() => NameCachePath, "name-cache");
 
-    public static List<CachedName> LoadNames(string host)
-    {
-        try
-        {
-            // Same lock as SaveNames — an unlocked read racing a save hits a sharing
-            // violation, lands in the catch, and silently reports an EMPTY cache.
-            lock (_nameCacheFileLock)
-            {
-                if (!File.Exists(NameCachePath)) return new();
-                var all = JsonSerializer.Deserialize<Dictionary<string, List<CachedName>>>(
-                    File.ReadAllText(NameCachePath));
-                if (all != null && all.TryGetValue(host, out var list) && list != null)
-                    return list;
-            }
-        }
-        catch (Exception ex) { AppLog.Warn($"[name-cache] load failed: {ex.Message}"); }
-        return new();
-    }
+    public static List<CachedName> LoadNames(string host) => _names.Load(host) ?? new();
 
-    public static void SaveNames(string host, List<CachedName> entries)
-    {
-        try
-        {
-            lock (_nameCacheFileLock)
-            {
-                var all = File.Exists(NameCachePath)
-                    ? JsonSerializer.Deserialize<Dictionary<string, List<CachedName>>>(
-                          File.ReadAllText(NameCachePath)) ?? new()
-                    : new();
-                all[host] = entries;
-                File.WriteAllText(NameCachePath, JsonSerializer.Serialize(all));
-            }
-        }
-        catch (Exception ex) { AppLog.Warn($"[name-cache] save failed: {ex.Message}"); }
-    }
+    public static void SaveNames(string host, List<CachedName> entries) => _names.Save(host, entries);
 
     // ── Dumped-bank ledger ─────────────────────────────────────────────────────
     // Which (type, objBank) name-dumps have already been collected, persisted per
@@ -295,52 +231,27 @@ static class Storage
     // Invalidated per bank on a Bank Digest (func 0x38), same as the name cache.
 
     static string DumpedBanksPath => Path.Combine(DataDir, "dumped_banks.json");
-    static readonly object _dumpedFileLock = new();
+    // Stored on disk as "type:objBank" hex strings, e.g. "1:47"; decoded to/from
+    // (Type, Bank) tuples at the boundary here so the ledger stays a plain List<string>
+    // the shared cache can (de)serialize without knowing the encoding.
+    static readonly HostKeyedCache<List<string>> _dumpedBanks = new(() => DumpedBanksPath, "dumped-banks");
 
-    // Stored as "type:objBank" hex strings, e.g. "1:47".
     public static HashSet<(int Type, int Bank)> LoadDumpedBanks(string host)
     {
         var set = new HashSet<(int, int)>();
-        try
+        foreach (var s in _dumpedBanks.Load(host) ?? new())
         {
-            // Same lock as SaveDumpedBanks — an unlocked read racing a save hits a
-            // sharing violation, lands in the catch, and silently reports NO banks dumped.
-            lock (_dumpedFileLock)
-            {
-                if (!File.Exists(DumpedBanksPath)) return set;
-                var all = JsonSerializer.Deserialize<Dictionary<string, List<string>>>(
-                    File.ReadAllText(DumpedBanksPath));
-                if (all != null && all.TryGetValue(host, out var list) && list != null)
-                    foreach (var s in list)
-                    {
-                        var parts = s.Split(':');
-                        if (parts.Length == 2 &&
-                            int.TryParse(parts[0], out var t) &&
-                            int.TryParse(parts[1], System.Globalization.NumberStyles.HexNumber, null, out var b))
-                            set.Add((t, b));
-                    }
-            }
+            var parts = s.Split(':');
+            if (parts.Length == 2 &&
+                int.TryParse(parts[0], out var t) &&
+                int.TryParse(parts[1], System.Globalization.NumberStyles.HexNumber, null, out var b))
+                set.Add((t, b));
         }
-        catch (Exception ex) { AppLog.Warn($"[dumped-banks] load failed: {ex.Message}"); }
         return set;
     }
 
     public static void SaveDumpedBanks(string host, HashSet<(int Type, int Bank)> set)
-    {
-        try
-        {
-            lock (_dumpedFileLock)
-            {
-                var all = File.Exists(DumpedBanksPath)
-                    ? JsonSerializer.Deserialize<Dictionary<string, List<string>>>(
-                          File.ReadAllText(DumpedBanksPath)) ?? new()
-                    : new();
-                all[host] = set.Select(k => $"{k.Type}:{k.Bank:X2}").ToList();
-                File.WriteAllText(DumpedBanksPath, JsonSerializer.Serialize(all));
-            }
-        }
-        catch (Exception ex) { AppLog.Warn($"[dumped-banks] save failed: {ex.Message}"); }
-    }
+        => _dumpedBanks.Save(host, set.Select(k => $"{k.Type}:{k.Bank:X2}").ToList());
 
     // ── Librarian reference-graph cache ───────────────────────────────────────
     // ── Librarian clipboard (Core/BatchMoveModel.cs's BatchClipboard) ───────────
@@ -357,30 +268,13 @@ static class Storage
         int? PastedBank, int? PastedNumber, DateTime? PastedAt, Guid? BankCopyGroup = null);
 
     static string ClipboardGlobalPath => Path.Combine(DataDir, "local_library_clipboard.json");
-    static readonly object _clipboardGlobalFileLock = new();
+    // Flat, not host-keyed (see the note above), so it rides the JsonFileCache base directly
+    // rather than HostKeyedCache — same lock/I/O plumbing, whole-file value.
+    static readonly JsonFileCache<List<ClipboardEntryDto>> _clipboard = new(() => ClipboardGlobalPath, "local-library-clipboard");
 
-    public static List<ClipboardEntryDto> LoadClipboardGlobal()
-    {
-        lock (_clipboardGlobalFileLock)
-        {
-            try
-            {
-                if (!File.Exists(ClipboardGlobalPath)) return new();
-                return JsonSerializer.Deserialize<List<ClipboardEntryDto>>(File.ReadAllText(ClipboardGlobalPath)) ?? new();
-            }
-            catch (Exception ex) { AppLog.Warn($"[local-library-clipboard] load failed: {ex.Message}"); }
-            return new();
-        }
-    }
+    public static List<ClipboardEntryDto> LoadClipboardGlobal() => _clipboard.Read() ?? new();
 
-    public static void SaveClipboardGlobal(List<ClipboardEntryDto> entries)
-    {
-        lock (_clipboardGlobalFileLock)
-        {
-            try { File.WriteAllText(ClipboardGlobalPath, JsonSerializer.Serialize(entries)); }
-            catch (Exception ex) { AppLog.Warn($"[local-library-clipboard] save failed: {ex.Message}"); }
-        }
-    }
+    public static void SaveClipboardGlobal(List<ClipboardEntryDto> entries) => _clipboard.Write(entries);
 
     // ── Program bank type cache ───────────────────────────────────────────────
     // Persists the func-0x61 Program Bank Types bitmap (HD-1 vs EXi) per host. Currently
@@ -392,38 +286,12 @@ static class Storage
     // fix would need.
 
     static string ProgramBankTypesPath => Path.Combine(DataDir, "program_bank_types_cache.json");
-    static readonly object _programBankTypesFileLock = new();
+    static readonly HostKeyedCache<bool[]> _programBankTypes = new(() => ProgramBankTypesPath, "program-bank-types");
 
-    public static bool[]? LoadProgramBankTypes(string host)
-    {
-        lock (_programBankTypesFileLock)
-        {
-            try
-            {
-                if (!File.Exists(ProgramBankTypesPath)) return null;
-                var all = JsonSerializer.Deserialize<Dictionary<string, bool[]>>(File.ReadAllText(ProgramBankTypesPath));
-                if (all != null && all.TryGetValue(host, out var flags) && flags != null) return flags;
-            }
-            catch (Exception ex) { AppLog.Warn($"[program-bank-types] load failed: {ex.Message}"); }
-            return null;
-        }
-    }
+    // Null (not empty) when the host was never dumped — callers distinguish the two.
+    public static bool[]? LoadProgramBankTypes(string host) => _programBankTypes.Load(host);
 
-    public static void SaveProgramBankTypes(string host, bool[] flags)
-    {
-        lock (_programBankTypesFileLock)
-        {
-            try
-            {
-                var all = File.Exists(ProgramBankTypesPath)
-                    ? JsonSerializer.Deserialize<Dictionary<string, bool[]>>(File.ReadAllText(ProgramBankTypesPath)) ?? new()
-                    : new();
-                all[host] = flags;
-                File.WriteAllText(ProgramBankTypesPath, JsonSerializer.Serialize(all));
-            }
-            catch (Exception ex) { AppLog.Warn($"[program-bank-types] save failed: {ex.Message}"); }
-        }
-    }
+    public static void SaveProgramBankTypes(string host, bool[] flags) => _programBankTypes.Save(host, flags);
 
     // ── Librarian backups ──────────────────────────────────────────────────────
     // Shared by the move feature (Librarian.ApplyMoveAsync) and the Store-Bank

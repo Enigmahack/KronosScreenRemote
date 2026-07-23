@@ -15,7 +15,7 @@ public partial class MainWindow : Window, ICtrlSender
     // ── Connection settings ───────────────────────────────────────────────────
     string _host     = "";
     int    _port     = StreamReceiver.StreamPort;
-    int    _ctrlPort = CtrlClient.CtrlPort;
+    int    _ctrlPort = CtrlQuery.CtrlPort;
     bool   _pullMode = false;
     int    _fps      = 15;
 
@@ -107,7 +107,7 @@ public partial class MainWindow : Window, ICtrlSender
     CancellationTokenSource? _connectCts;
     IStreamReceiver? _receiver;
     ICtrlClient      _ctrl        = null!;
-    Action<string>?  _ctrlErrorHandler;   // held so OnClosing can detach from the STATIC CtrlClient.OnCtrlError
+    Action<string>?  _ctrlErrorHandler;   // held so SetCtrlClient/OnClosing can move or detach the instance CtrlError subscription
     readonly SeqTransportViewModel _seqTransport;
     double           _pixPerDip   = 1.0;
     bool             _shiftHeld   = false;
@@ -166,7 +166,16 @@ public partial class MainWindow : Window, ICtrlSender
         _fps      = _settings.MaxFps;
         ParseArgs();  // CLI args still win
 
-        _ctrl = new CtrlClientAdapter(_host, _ctrlPort);
+        // Log daemon-side ERR responses and surface them in the notification bubble. Fires on
+        // a background thread; SetNotification handles its own dispatch. Held in a field so
+        // SetCtrlClient can move the subscription to each new CtrlClient instance (a host change
+        // creates a fresh instance) and OnClosing can detach it.
+        _ctrlErrorHandler = msg =>
+        {
+            AppLog.Warn($"[ctrl] daemon error: {msg}");
+            SetNotification(msg, isError: true);
+        };
+        SetCtrlClient(_host, _ctrlPort);
         _sysExService = new SysExService(Dispatcher);
         _sysExService.ValueSliderCc = _settings.ValueSliderCc;
         _sysExService.PullNamesOnChange = _settings.PullNamesOnChange;
@@ -189,17 +198,6 @@ public partial class MainWindow : Window, ICtrlSender
         _midiCoord.ApplySettings(_settings.MidiTransport, _settings.UsbMidiDeviceName);
         _midiCoord.Start();
         _sysExDimTimer.Tick += (_, _) => UpdateSysExDots();
-
-        // Log daemon-side ERR responses and surface them in the notification bubble.
-        // Fires on a background thread; SetNotification handles its own dispatch.
-        // Kept in a field so OnClosing can unsubscribe — OnCtrlError is STATIC, so an
-        // anonymous handler would root this window on the type for the process lifetime.
-        _ctrlErrorHandler = msg =>
-        {
-            AppLog.Warn($"[ctrl] daemon error: {msg}");
-            SetNotification(msg, isError: true);
-        };
-        CtrlClient.OnCtrlError += _ctrlErrorHandler;
 
         NotifyBubble.MouseLeftButtonDown += (_, _) => OnNotifyBubbleClick();
         KbdInfoBtn.MouseLeftButtonDown   += (_, _) => OpenKeyboardInfoWindow();
@@ -235,6 +233,9 @@ public partial class MainWindow : Window, ICtrlSender
         FrameImage.LostMouseCapture += OnFrameLostMouseCapture;
         SizeChanged += (sender, e) => RefreshFrameRect();
 
+        // Build the command registry BEFORE any surface wires to it (WireButtons here, WireMenu in
+        // OnLoaded). ToDictionary fails fast on a duplicate Id — a launch is what trips it.
+        _commands = BuildCommandRegistry().ToDictionary(c => c.Id);
         WireButtons();
         InitWheelDrag();
         InitValueSlider();
@@ -286,15 +287,15 @@ public partial class MainWindow : Window, ICtrlSender
 
     void WireButtons()
     {
-        // Mode buttons — send the hardware packet and record pending mode.
-        // Icon only lights up once detection confirms (or timeout fallback fires).
-        BTN_Setlist.Click  += (sender, e) => SendMode(Mode.Setlist);
-        BTN_Combi.Click    += (sender, e) => SendMode(Mode.Combi);
-        BTN_Program.Click  += (sender, e) => SendMode(Mode.Program);
-        BTN_Sequence.Click += (sender, e) => SendMode(Mode.Sequence);
-        BTN_Sampling.Click += (sender, e) => SendMode(Mode.Sampling);
-        BTN_Global.Click   += (sender, e) => SendMode(Mode.Global);
-        BTN_Disk.Click     += (sender, e) => SendMode(Mode.Disk);
+        // Mode buttons — send the hardware packet and record pending mode (via the shared "Mode …"
+        // registry commands). Icon only lights up once detection confirms (or timeout fallback fires).
+        WireCommand(BTN_Setlist,  "Mode Setlist");
+        WireCommand(BTN_Combi,    "Mode Combi");
+        WireCommand(BTN_Program,  "Mode Program");
+        WireCommand(BTN_Sequence, "Mode Sequence");
+        WireCommand(BTN_Sampling, "Mode Sampling");
+        WireCommand(BTN_Global,   "Mode Global");
+        WireCommand(BTN_Disk,     "Mode Disk");
 
         // Toggle buttons
         BTN_Help.Click    += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Help));
@@ -325,10 +326,10 @@ public partial class MainWindow : Window, ICtrlSender
         // Sequencer transport — daemon maps each to a front-panel SEQUENCER key press.
         // Record/Start are handled by SeqTransportBarItem's DataContext (SeqTransportViewModel)
         // via Command/IsChecked bindings in XAML instead of code-behind — see _seqTransport.
-        BTN_SeqLocate.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.SeqLocate));
-        BTN_SeqRew.Click    += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.SeqRewind));
-        BTN_SeqFf.Click     += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.SeqForward));
-        BTN_SeqPause.Click  += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.SeqPause));
+        WireCommand(BTN_SeqLocate, "Seq Locate");
+        WireCommand(BTN_SeqRew,    "Seq Rewind");
+        WireCommand(BTN_SeqFf,     "Seq Forward");
+        WireCommand(BTN_SeqPause,  "Seq Pause");
 
         // Right-click context menus on mode and toggle buttons
         foreach (var btn in new KronosButton[] { BTN_Setlist, BTN_Combi, BTN_Program, BTN_Sequence,
@@ -525,7 +526,7 @@ public partial class MainWindow : Window, ICtrlSender
             {
                 var host = h;
                 var mi = new MenuItem { Header = host };
-                mi.Click += (_, _) => { _host = host; _settings.KronosHost = host; Storage.SaveSettings(_settings); _ctrl = new CtrlClientAdapter(_host, _ctrlPort); TriggerReconnect(); };
+                mi.Click += (_, _) => { _host = host; _settings.KronosHost = host; Storage.SaveSettings(_settings); SetCtrlClient(_host, _ctrlPort); TriggerReconnect(); };
                 MENU_RecentHosts.Items.Add(mi);
             }
             MENU_RecentHosts.Items.Add(new Separator());
@@ -634,7 +635,7 @@ public partial class MainWindow : Window, ICtrlSender
         foreach (var letter in bankLetters)
         {
             var mi = new MenuItem { Header = $"_{letter}" };
-            mi.Click += (sender, e) => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, letter));
+            WireCommand(mi, $"Bank I-{letter}");
             bankInternal.Items.Add(mi);
         }
         MENU_BankSelect.Items.Add(bankInternal);
@@ -643,7 +644,7 @@ public partial class MainWindow : Window, ICtrlSender
         foreach (var letter in bankLetters)
         {
             var mi = new MenuItem { Header = $"_{letter}" };
-            mi.Click += (sender, e) => Ctrl(DaemonCommand.BankButton(BankGroup.User, letter));
+            WireCommand(mi, $"Bank U-{letter}");
             bankUser.Items.Add(mi);
         }
         MENU_BankSelect.Items.Add(bankUser);
@@ -652,19 +653,19 @@ public partial class MainWindow : Window, ICtrlSender
         foreach (var letter in bankLetters)
         {
             var mi = new MenuItem { Header = $"_{letter}{letter}" };
-            mi.Click += (sender, e) => Ctrl(DaemonCommand.DoubleUserBank(letter));
+            WireCommand(mi, $"Bank U-{letter}{letter}");
             bankUUser.Items.Add(mi);
         }
         MENU_BankSelect.Items.Add(bankUUser);
 
         // Mode Select
-        MNU_Mode_Setlist.Click  += (sender, e) => SendMode(Mode.Setlist);
-        MNU_Mode_Combi.Click    += (sender, e) => SendMode(Mode.Combi);
-        MNU_Mode_Program.Click  += (sender, e) => SendMode(Mode.Program);
-        MNU_Mode_Sequence.Click += (sender, e) => SendMode(Mode.Sequence);
-        MNU_Mode_Sampling.Click += (sender, e) => SendMode(Mode.Sampling);
-        MNU_Mode_Global.Click   += (sender, e) => SendMode(Mode.Global);
-        MNU_Mode_Disk.Click     += (sender, e) => SendMode(Mode.Disk);
+        WireCommand(MNU_Mode_Setlist,  "Mode Setlist");
+        WireCommand(MNU_Mode_Combi,    "Mode Combi");
+        WireCommand(MNU_Mode_Program,  "Mode Program");
+        WireCommand(MNU_Mode_Sequence, "Mode Sequence");
+        WireCommand(MNU_Mode_Sampling, "Mode Sampling");
+        WireCommand(MNU_Mode_Global,   "Mode Global");
+        WireCommand(MNU_Mode_Disk,     "Mode Disk");
 
         // Calibration grid size
         MENU_CalGrid.SubmenuOpened += (sender, e) =>
@@ -750,13 +751,13 @@ public partial class MainWindow : Window, ICtrlSender
         CTX_KbdEnable.Click         += (sender, e) => { _kbdSendEnabled = true;  _instantKeys.Clear(); StopRepeat(); UpdateKbdStatus(); OverlayLayer.InvalidateVisual(); };
         CTX_KbdDisable.Click        += (sender, e) => { _kbdSendEnabled = false; _instantKeys.Clear(); StopRepeat(); ReleaseActiveRawKeys(); UpdateKbdStatus(); OverlayLayer.InvalidateVisual(); };
         CTX_SetMaxFps.Click         += (sender, e) => OpenSettingsDialog(SettingsTab.Streaming);
-        CTX_Mode_Setlist.Click      += (sender, e) => SendMode(Mode.Setlist);
-        CTX_Mode_Combi.Click        += (sender, e) => SendMode(Mode.Combi);
-        CTX_Mode_Program.Click      += (sender, e) => SendMode(Mode.Program);
-        CTX_Mode_Sequence.Click     += (sender, e) => SendMode(Mode.Sequence);
-        CTX_Mode_Sampling.Click     += (sender, e) => SendMode(Mode.Sampling);
-        CTX_Mode_Global.Click       += (sender, e) => SendMode(Mode.Global);
-        CTX_Mode_Disk.Click         += (sender, e) => SendMode(Mode.Disk);
+        WireCommand(CTX_Mode_Setlist,  "Mode Setlist");
+        WireCommand(CTX_Mode_Combi,    "Mode Combi");
+        WireCommand(CTX_Mode_Program,  "Mode Program");
+        WireCommand(CTX_Mode_Sequence, "Mode Sequence");
+        WireCommand(CTX_Mode_Sampling, "Mode Sampling");
+        WireCommand(CTX_Mode_Global,   "Mode Global");
+        WireCommand(CTX_Mode_Disk,     "Mode Disk");
         CTX_OpenLogFile.Click       += (sender, e) => OnNotifyBubbleClick();
         CTX_ClearNotification.Click += (sender, e) => ClearNotification();
 
@@ -986,7 +987,7 @@ public partial class MainWindow : Window, ICtrlSender
         _fps      = _settings.MaxFps;
         _hideDataInput  = _settings.HideDataInput;
         _hideValueInput = _settings.HideValueInput;
-        _ctrl = new CtrlClientAdapter(_host, _ctrlPort);
+        SetCtrlClient(_host, _ctrlPort);
         Storage.SaveSettings(_settings);
 
         // Apply image-quality settings immediately: scaling filter, then re-bake the tone LUT and
@@ -1147,6 +1148,24 @@ public partial class MainWindow : Window, ICtrlSender
         AppLog.Debug($"[ctrl] {cmd}");
         _sysExService.NotifyUserActivity();
         _ctrl.Send(cmd);
+    }
+
+    // Single funnel for (re)pointing the ctrl client at an endpoint. CtrlClient is now a
+    // per-endpoint instance (not a process-global static), so every create/swap MUST move the
+    // ERR-error subscription to the new instance and dispose the old one — otherwise a host
+    // change leaks a send loop + socket and daemon ERR responses stop surfacing. All four call
+    // sites (ctor + settings-apply + recent-host pick) go through here.
+    void SetCtrlClient(string host, int port)
+    {
+        var old = _ctrl;
+        if (old != null)
+        {
+            if (_ctrlErrorHandler != null) old.CtrlError -= _ctrlErrorHandler;
+            (old as IDisposable)?.Dispose();
+        }
+        var next = new CtrlClient(host, port);
+        if (_ctrlErrorHandler != null) next.CtrlError += _ctrlErrorHandler;
+        _ctrl = next;
     }
 
     void ICtrlSender.Send(string cmd) => Ctrl(cmd);
@@ -1462,85 +1481,119 @@ public partial class MainWindow : Window, ICtrlSender
     void OpenCommandPalette()
     {
         AppLog.Info("[palette] opening");
-        var pal = new CommandPaletteWindow(BuildCommandEntries()) { Owner = this };
+        // Fresh build so KeyHints reflect the current keybinds (a rebind since launch shows up
+        // immediately) — same behaviour as before the registry existed.
+        var pal = new CommandPaletteWindow(BuildCommandRegistry()) { Owner = this };
         pal.Show();
     }
 
-    List<CommandEntry> BuildCommandEntries()
+    // THE command table — one definition per action. The palette consumes the whole list; the
+    // buttons, menu items, context items, and keybind chain each consume the subset they expose,
+    // by Id (see WireCommand / RunCommand), so an action like SendMode(Setlist) is defined here
+    // ONCE instead of hand-wired into five parallel dispatch tables. For rebindable actions the
+    // Id is the same action-name string IsAction / GetKeyName key off ("Mode Setlist", "Bank
+    // I-A", "Seq Locate", …); palette-only entries get a unique synthetic Id. Ids MUST be unique
+    // — the ctor's ToDictionary fails fast on a duplicate.
+    List<CommandEntry> BuildCommandRegistry()
     {
         string K(string action) => _settings.GetKeyName(action);
         return
         [
             // ── Connection
-            new("Reconnect",                        "",              () => TriggerReconnect()),
-            new("Refresh Display",                  "",              () => Ctrl(DaemonCommand.RefreshDisplay)),
-            new("Disconnect",                       "",              () => Disconnect()),
-            new("Settings…",                        "",              () => OpenSettingsDialog()),
+            new("Reconnect",       "Reconnect",       "",              () => TriggerReconnect()),
+            new("RefreshDisplay",  "Refresh Display", "",              () => Ctrl(DaemonCommand.RefreshDisplay)),
+            new("Disconnect",      "Disconnect",      "",              () => Disconnect()),
+            new("Settings",        "Settings…",       "",              () => OpenSettingsDialog()),
             // ── View
-            new("Toggle Fullscreen",                K("Fullscreen"),    () => ToggleFullscreen()),
-            new("Toggle Aspect Lock",               K("AspectLock"),    () => { _aspectLock = !_aspectLock; RefreshFrameRect(); }),
-            new("Toggle Zoom Window",               K("Zoom Window"),   () => { _zoomOn = !_zoomOn; OverlayLayer.InvalidateVisual(); }),
-            new("Zoom In",                          K("Zoom In"),       () => DoZoomIn()),
-            new("Zoom Out",                         K("Zoom Out"),      () => DoZoomOut()),
-            new("Window Size: Small (75%)",         "Ctrl+1",           () => SetWindowSize(0.75)),
-            new("Window Size: Normal (100%)",       "Ctrl+2",           () => SetWindowSize(1.0)),
-            new("Window Size: Large (125%)",        "Ctrl+3",           () => SetWindowSize(1.25)),
-            new("Window Size: Extra Large (150%)",  "Ctrl+4",           () => SetWindowSize(1.50)),
-            new("Window Size: Huge (200%)",         "Ctrl+5",           () => SetWindowSize(2.00)),
-            new("Hide/Show Data Input",              K("HideDataInput"),  () => ToggleHideDataInput()),
-            new("Hide/Show Value Input",             K("HideValueInput"), () => ToggleHideValueInput()),
-            new("Layout: Full",    "", () => ApplyLayoutPreset(LayoutPreset.Full)),
-            new("Layout: Focused", "", () => ApplyLayoutPreset(LayoutPreset.Focused)),
+            new("Fullscreen",      "Toggle Fullscreen",  K("Fullscreen"),    () => ToggleFullscreen()),
+            new("AspectLock",      "Toggle Aspect Lock", K("AspectLock"),    () => { _aspectLock = !_aspectLock; RefreshFrameRect(); }),
+            new("Zoom Window",     "Toggle Zoom Window", K("Zoom Window"),   () => { _zoomOn = !_zoomOn; OverlayLayer.InvalidateVisual(); }),
+            new("Zoom In",         "Zoom In",            K("Zoom In"),       () => DoZoomIn()),
+            new("Zoom Out",        "Zoom Out",           K("Zoom Out"),      () => DoZoomOut()),
+            new("WindowSize75",    "Window Size: Small (75%)",        "Ctrl+1", () => SetWindowSize(0.75)),
+            new("WindowSize100",   "Window Size: Normal (100%)",      "Ctrl+2", () => SetWindowSize(1.0)),
+            new("WindowSize125",   "Window Size: Large (125%)",       "Ctrl+3", () => SetWindowSize(1.25)),
+            new("WindowSize150",   "Window Size: Extra Large (150%)", "Ctrl+4", () => SetWindowSize(1.50)),
+            new("WindowSize200",   "Window Size: Huge (200%)",        "Ctrl+5", () => SetWindowSize(2.00)),
+            new("HideDataInput",   "Hide/Show Data Input",  K("HideDataInput"),  () => ToggleHideDataInput()),
+            new("HideValueInput",  "Hide/Show Value Input", K("HideValueInput"), () => ToggleHideValueInput()),
+            new("LayoutFull",      "Layout: Full",    "", () => ApplyLayoutPreset(LayoutPreset.Full)),
+            new("LayoutFocused",   "Layout: Focused", "", () => ApplyLayoutPreset(LayoutPreset.Focused)),
             // ── Tools
-            new("Keyboard Info",                    "",              () => OpenKeyboardInfoWindow()),
-            new("Toggle VGA Mirror",                K("Mirror"),        () => { _mirrorState = !_mirrorState; Ctrl(DaemonCommand.VgaMirror(_mirrorState)); }),
-            new("Toggle Calibration Mode",          K("Calibrate"),     () => { _cal.Mode = !_cal.Mode; if (_cal.Mode) EnterCalMode(); else ExitCalMode(); OverlayLayer.InvalidateVisual(); }),
-            new("Save Screenshot…",                 "",              () => SaveScreenshot()),
-            new("Toggle Keyboard Send",             "",              () => { _kbdSendEnabled = !_kbdSendEnabled; _instantKeys.Clear(); StopRepeat(); ReleaseActiveRawKeys(); UpdateKbdStatus(); OverlayLayer.InvalidateVisual(); }),
-            // ── Mode select
-            new("Mode: Setlist",  K("Mode Setlist"),  () => SendMode(Mode.Setlist)),
-            new("Mode: Combi",    K("Mode Combi"),    () => SendMode(Mode.Combi)),
-            new("Mode: Program",  K("Mode Program"),  () => SendMode(Mode.Program)),
-            new("Mode: Sequence", K("Mode Sequence"), () => SendMode(Mode.Sequence)),
-            new("Mode: Sampling", K("Mode Sampling"), () => SendMode(Mode.Sampling)),
-            new("Mode: Global",   K("Mode Global"),   () => SendMode(Mode.Global)),
-            new("Mode: Disk",     K("Mode Disk"),     () => SendMode(Mode.Disk)),
-            // ── Bank select
-            new("Bank I-A",  K("Bank I-A"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'A'))),
-            new("Bank I-B",  K("Bank I-B"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'B'))),
-            new("Bank I-C",  K("Bank I-C"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'C'))),
-            new("Bank I-D",  K("Bank I-D"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'D'))),
-            new("Bank I-E",  K("Bank I-E"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'E'))),
-            new("Bank I-F",  K("Bank I-F"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'F'))),
-            new("Bank I-G",  K("Bank I-G"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'G'))),
-            new("Bank U-A",  K("Bank U-A"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.User, 'A'))),
-            new("Bank U-B",  K("Bank U-B"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.User, 'B'))),
-            new("Bank U-C",  K("Bank U-C"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.User, 'C'))),
-            new("Bank U-D",  K("Bank U-D"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.User, 'D'))),
-            new("Bank U-E",  K("Bank U-E"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.User, 'E'))),
-            new("Bank U-F",  K("Bank U-F"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.User, 'F'))),
-            new("Bank U-G",  K("Bank U-G"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.User, 'G'))),
-            new("Bank U-AA", K("Bank U-AA"), () => Ctrl(DaemonCommand.DoubleUserBank('A'))),
-            new("Bank U-BB", K("Bank U-BB"), () => Ctrl(DaemonCommand.DoubleUserBank('B'))),
-            new("Bank U-CC", K("Bank U-CC"), () => Ctrl(DaemonCommand.DoubleUserBank('C'))),
-            new("Bank U-DD", K("Bank U-DD"), () => Ctrl(DaemonCommand.DoubleUserBank('D'))),
-            new("Bank U-EE", K("Bank U-EE"), () => Ctrl(DaemonCommand.DoubleUserBank('E'))),
-            new("Bank U-FF", K("Bank U-FF"), () => Ctrl(DaemonCommand.DoubleUserBank('F'))),
-            new("Bank U-GG", K("Bank U-GG"), () => Ctrl(DaemonCommand.DoubleUserBank('G'))),
-            // ── Sequencer transport
-            new("Seq: Locate",       K("Seq Locate"),  () => Ctrl(DaemonCommand.Button(PanelButton.SeqLocate))),
-            new("Seq: Rewind",       K("Seq Rewind"),  () => Ctrl(DaemonCommand.Button(PanelButton.SeqRewind))),
-            new("Seq: Fast-Forward", K("Seq Forward"), () => Ctrl(DaemonCommand.Button(PanelButton.SeqForward))),
-            new("Seq: Pause",        K("Seq Pause"),   () => Ctrl(DaemonCommand.Button(PanelButton.SeqPause))),
-            new("Seq: Record",       K("Seq Record"),  () => _seqTransport.RecordCommand.Execute(null)),
-            new("Seq: Start/Stop",   K("Seq Start"),   () => _seqTransport.StartStopCommand.Execute(null)),
-            new("Write / Save",      K("Seq Save"),    () => _seqTransport.RecordCommand.Execute(null)),
+            new("KeyboardInfo",    "Keyboard Info",           "",              () => OpenKeyboardInfoWindow()),
+            new("Mirror",          "Toggle VGA Mirror",       K("Mirror"),        () => { _mirrorState = !_mirrorState; Ctrl(DaemonCommand.VgaMirror(_mirrorState)); }),
+            new("Calibrate",       "Toggle Calibration Mode", K("Calibrate"),     () => { _cal.Mode = !_cal.Mode; if (_cal.Mode) EnterCalMode(); else ExitCalMode(); OverlayLayer.InvalidateVisual(); }),
+            new("SaveScreenshot",  "Save Screenshot…",        "",              () => SaveScreenshot()),
+            new("ToggleKeyboardSend", "Toggle Keyboard Send", "",              () => { _kbdSendEnabled = !_kbdSendEnabled; _instantKeys.Clear(); StopRepeat(); ReleaseActiveRawKeys(); UpdateKbdStatus(); OverlayLayer.InvalidateVisual(); }),
+            // ── Mode select (Id = action name; also wired to mode buttons + menu + context menu + keybinds)
+            new("Mode Setlist",  "Mode: Setlist",  K("Mode Setlist"),  () => SendMode(Mode.Setlist)),
+            new("Mode Combi",    "Mode: Combi",    K("Mode Combi"),    () => SendMode(Mode.Combi)),
+            new("Mode Program",  "Mode: Program",  K("Mode Program"),  () => SendMode(Mode.Program)),
+            new("Mode Sequence", "Mode: Sequence", K("Mode Sequence"), () => SendMode(Mode.Sequence)),
+            new("Mode Sampling", "Mode: Sampling", K("Mode Sampling"), () => SendMode(Mode.Sampling)),
+            new("Mode Global",   "Mode: Global",   K("Mode Global"),   () => SendMode(Mode.Global)),
+            new("Mode Disk",     "Mode: Disk",     K("Mode Disk"),     () => SendMode(Mode.Disk)),
+            // ── Bank select (Id = action name; also wired to the Bank Select menu + keybinds)
+            new("Bank I-A",  "Bank I-A",  K("Bank I-A"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'A'))),
+            new("Bank I-B",  "Bank I-B",  K("Bank I-B"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'B'))),
+            new("Bank I-C",  "Bank I-C",  K("Bank I-C"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'C'))),
+            new("Bank I-D",  "Bank I-D",  K("Bank I-D"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'D'))),
+            new("Bank I-E",  "Bank I-E",  K("Bank I-E"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'E'))),
+            new("Bank I-F",  "Bank I-F",  K("Bank I-F"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'F'))),
+            new("Bank I-G",  "Bank I-G",  K("Bank I-G"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'G'))),
+            new("Bank U-A",  "Bank U-A",  K("Bank U-A"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.User, 'A'))),
+            new("Bank U-B",  "Bank U-B",  K("Bank U-B"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.User, 'B'))),
+            new("Bank U-C",  "Bank U-C",  K("Bank U-C"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.User, 'C'))),
+            new("Bank U-D",  "Bank U-D",  K("Bank U-D"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.User, 'D'))),
+            new("Bank U-E",  "Bank U-E",  K("Bank U-E"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.User, 'E'))),
+            new("Bank U-F",  "Bank U-F",  K("Bank U-F"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.User, 'F'))),
+            new("Bank U-G",  "Bank U-G",  K("Bank U-G"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.User, 'G'))),
+            new("Bank U-AA", "Bank U-AA", K("Bank U-AA"), () => Ctrl(DaemonCommand.DoubleUserBank('A'))),
+            new("Bank U-BB", "Bank U-BB", K("Bank U-BB"), () => Ctrl(DaemonCommand.DoubleUserBank('B'))),
+            new("Bank U-CC", "Bank U-CC", K("Bank U-CC"), () => Ctrl(DaemonCommand.DoubleUserBank('C'))),
+            new("Bank U-DD", "Bank U-DD", K("Bank U-DD"), () => Ctrl(DaemonCommand.DoubleUserBank('D'))),
+            new("Bank U-EE", "Bank U-EE", K("Bank U-EE"), () => Ctrl(DaemonCommand.DoubleUserBank('E'))),
+            new("Bank U-FF", "Bank U-FF", K("Bank U-FF"), () => Ctrl(DaemonCommand.DoubleUserBank('F'))),
+            new("Bank U-GG", "Bank U-GG", K("Bank U-GG"), () => Ctrl(DaemonCommand.DoubleUserBank('G'))),
+            // ── Sequencer transport (Id = action name; also wired to seq buttons + keybinds)
+            new("Seq Locate",  "Seq: Locate",       K("Seq Locate"),  () => Ctrl(DaemonCommand.Button(PanelButton.SeqLocate))),
+            new("Seq Rewind",  "Seq: Rewind",       K("Seq Rewind"),  () => Ctrl(DaemonCommand.Button(PanelButton.SeqRewind))),
+            new("Seq Forward", "Seq: Fast-Forward", K("Seq Forward"), () => Ctrl(DaemonCommand.Button(PanelButton.SeqForward))),
+            new("Seq Pause",   "Seq: Pause",        K("Seq Pause"),   () => Ctrl(DaemonCommand.Button(PanelButton.SeqPause))),
+            new("Seq Record",  "Seq: Record",       K("Seq Record"),  () => _seqTransport.RecordCommand.Execute(null)),
+            new("Seq Start",   "Seq: Start/Stop",   K("Seq Start"),   () => _seqTransport.StartStopCommand.Execute(null)),
+            new("Seq Save",    "Write / Save",      K("Seq Save"),    () => _seqTransport.RecordCommand.Execute(null)),
             // ── Help
-            new("Show Help",           K("Help"), () => OpenHelpWindow()),
-            new("About",               "",        () => OpenAboutWindow()),
-            new("Quit",                K("Quit"),  () => TryQuit()),
+            new("Help",  "Show Help", K("Help"), () => OpenHelpWindow()),
+            new("About", "About",     "",        () => OpenAboutWindow()),
+            new("Quit",  "Quit",      K("Quit"),  () => TryQuit()),
         ];
     }
+
+    // ── Command registry dispatch ──────────────────────────────────────────────
+    // Built once (ctor, before WireButtons) from BuildCommandRegistry. Lookup is BY ID AT
+    // INVOCATION so a keybind rebind — or any future registry rebuild — can never stale the
+    // wiring that buttons/menus captured. Buttons/menus/context/keybinds all reach the action
+    // through here; only the palette holds its own freshly-built entries (for live KeyHints).
+    Dictionary<string, CommandEntry> _commands = new();
+
+    void RunCommand(string id)
+    {
+        if (_commands.TryGetValue(id, out var cmd)) cmd.Execute();
+        else AppLog.Warn($"[cmd] unknown command id '{id}'");
+    }
+
+    // Wire a button / menu item's click straight to a registry command by Id. REPLACES the
+    // old inline lambda — never add alongside one, or the command double-fires.
+    void WireCommand(System.Windows.Controls.Primitives.ButtonBase btn, string id)
+        => btn.Click += (_, _) => RunCommand(id);
+    void WireCommand(MenuItem mi, string id)
+        => mi.Click += (_, _) => RunCommand(id);
+
+    // The mode-select registry Ids, in button/menu order — the keybind chain iterates these so
+    // adding a mode is a one-line registry change, not a new hand-wired IsAction branch.
+    static readonly string[] ModeCommandIds =
+        ["Mode Setlist", "Mode Combi", "Mode Program", "Mode Sequence", "Mode Sampling", "Mode Global", "Mode Disk"];
 
     // ── Layout presets ────────────────────────────────────────────────────────
 
