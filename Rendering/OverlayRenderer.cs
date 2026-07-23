@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Windows;
 using System.Windows.Media;
-using System.Windows.Media.Imaging;
 
 namespace KronosScreenRemote;
 
@@ -228,48 +227,6 @@ static class OverlayRenderer
             new SolidColorBrush(Color.FromArgb(fillA, 195, 195, 195)),
             new Pen(new SolidColorBrush(Color.FromArgb(ringA, 65, 65, 65)), 1.5),
             pos, r, r);
-    }
-
-    // ── Boot splash overlay ───────────────────────────────────────────────────
-    //
-    // splash is drawn scaled to frameRect regardless of its pixel dimensions.
-    // fillFraction (0..1) positions the red/grey split within the bar range.
-    // Bar geometry is expressed as fractions of the image so any splash resolution works.
-
-    static readonly Brush BootBarRedBrush  = new SolidColorBrush(Color.FromRgb(0xFF, 0x00, 0x00));
-    static readonly Brush BootBarGreyBrush = new SolidColorBrush(Color.FromRgb(0x96, 0x96, 0x96));
-
-    // Bar bounds as fractions of the splash image dimensions (derived from 1600×1200 reference)
-    const double BootBarFx0 = 140.0  / 1600;  // 0.0875   — left  edge of bar
-    const double BootBarFx1 = 1442.0 / 1600;  // 0.90125  — right edge of bar
-    const double BootBarFy0 = 859.0  / 1200;  // 0.71583  — top   of bar
-    const double BootBarFy1 = 865.0  / 1200;  // 0.72083  — bottom of bar (6 px at 1200 h)
-
-    public static void DrawBootOverlay(DrawingContext dc, Rect fr, BitmapSource splash, double fillFraction)
-    {
-        if (fr.Width <= 0 || fr.Height <= 0) return;
-
-        dc.DrawImage(splash, fr);
-
-        double ry = fr.Y + BootBarFy0 * fr.Height;
-        double rh = (BootBarFy1 - BootBarFy0) * fr.Height;
-
-        double clipped = Math.Clamp(fillFraction, 0.0, 1.0);
-        double fillFx  = BootBarFx0 + clipped * (BootBarFx1 - BootBarFx0);
-
-        if (fillFx < BootBarFx1)
-        {
-            double gx = fr.X + fillFx * fr.Width;
-            double gw = (BootBarFx1 - fillFx) * fr.Width;
-            dc.DrawRectangle(BootBarGreyBrush, null, new Rect(gx, ry, gw, rh));
-        }
-
-        if (fillFx > BootBarFx0)
-        {
-            double rx = fr.X + BootBarFx0 * fr.Width;
-            double rw = (fillFx - BootBarFx0) * fr.Width;
-            dc.DrawRectangle(BootBarRedBrush, null, new Rect(rx, ry, rw, rh));
-        }
     }
 
     static readonly Typeface MonoLg = new("Consolas");

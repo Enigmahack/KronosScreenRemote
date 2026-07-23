@@ -1,5 +1,6 @@
 using System.IO;
 using System.Windows;
+using KronosScreenRemote.ViewModels;
 
 namespace KronosScreenRemote;
 
@@ -15,8 +16,20 @@ public partial class App : Application
         if (e.Args.Contains("--librarian-selftest"))
         {
             var fails = Librarian.SelfTest();
-            fails.AddRange(LibraryRepository.SelfTest());
             fails.AddRange(BatchLibrarian.SelfTest());
+            fails.AddRange(ObjectBodySelfTests.SelfTest());
+            fails.AddRange(LocalLibrarySelfTests.SelfTest());
+            fails.AddRange(LocalLibrarySelfTests.SelfTestAsync().GetAwaiter().GetResult());
+            fails.AddRange(LocalEditOpsSelfTests.SelfTestAsync().GetAwaiter().GetResult());
+            fails.AddRange(SyncPipelineSelfTests.SelfTestAsync().GetAwaiter().GetResult());
+            fails.AddRange(PcgFileSelfTests.SelfTest());
+            fails.AddRange(PcgPaneLoadSelfTests.SelfTest());
+            fails.AddRange(CrossPanePlacementSelfTests.SelfTestAsync().GetAwaiter().GetResult());
+            fails.AddRange(LocalCutCopyPasteSelfTests.SelfTestAsync().GetAwaiter().GetResult());
+            fails.AddRange(MergeCacheSelfTests.SelfTest());
+            fails.AddRange(DependencyResolutionSelfTests.SelfTestAsync().GetAwaiter().GetResult());
+            fails.AddRange(MergeTreeVisibilitySelfTests.SelfTest());
+            fails.AddRange(MergeGroupPlacementSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             var outPath = Path.Combine(Path.GetTempPath(), "kronos_librarian_selftest.txt");
             File.WriteAllText(outPath, fails.Count == 0 ? "OK" : "FAIL: " + string.Join(", ", fails));
             Environment.Exit(fails.Count == 0 ? 0 : 1);
@@ -28,6 +41,16 @@ public partial class App : Application
         if (e.Args.Contains("--ui-theme-smoketest"))
         {
             UiThemeSmokeTest.Run();
+        }
+
+        // Headless diagnostic: `--dump-pcg-refs <path-to.pcg> [name filter]` — see
+        // Tools/PcgRefDump.cs for why this exists (settling a suspected Program-bank
+        // off-by-one in Combi timbre reference decoding using a real file's own bytes).
+        int dumpRefsIdx = Array.IndexOf(e.Args, "--dump-pcg-refs");
+        if (dumpRefsIdx >= 0 && dumpRefsIdx + 1 < e.Args.Length)
+        {
+            string? filter = dumpRefsIdx + 2 < e.Args.Length ? e.Args[dumpRefsIdx + 2] : null;
+            PcgRefDump.Run(e.Args[dumpRefsIdx + 1], filter);
         }
 
         // Single source of truth for the app directory (settings, palette, cal, log all colocate).

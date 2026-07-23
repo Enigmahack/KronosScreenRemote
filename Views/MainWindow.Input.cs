@@ -149,6 +149,7 @@ public partial class MainWindow
 
         _trayIcon?.Dispose();
         CompositionTarget.Rendering -= RenderTick;
+        if (_ctrlErrorHandler != null) { CtrlClient.OnCtrlError -= _ctrlErrorHandler; _ctrlErrorHandler = null; }
         _midiCoord?.Dispose();
         _sysExService?.Reset();
         CleanupAudio();

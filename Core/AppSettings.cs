@@ -24,10 +24,10 @@ public class AppSettings
     public bool FocusedDataExpanded  { get; set; } = false;
     public bool FocusedValueExpanded { get; set; } = false;
 
-    public int  BootScreenThreshold { get; set; } = 60;
-    public bool DisableBootScreen   { get; set; } = false;
-
     public bool DebugLogging { get; set; } = false;
+
+    // Librarian: Merge Window staging cache — see MergeCacheBehavior's own doc comment.
+    public MergeCacheBehavior MergeBehavior { get; set; } = MergeCacheBehavior.TemporaryMemory;
 
     // MIDI / SysEx
     // Which backend carries MIDI/SysEx to the Kronos (screen/video stays TCP).

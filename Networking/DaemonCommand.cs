@@ -68,7 +68,7 @@ static class DaemonCommand
 
     // ── Queries (expect a response) ─────────────────────────────────────────────
 
-    public const string QueryState      = "STATE";       // reply: "MODE=<n> EDITCTX=<e>"
+    public const string QueryState      = "STATE";       // reply: "MODE=<n> EDITCTX=<e> BOOT=<0|1>"
     public const string QueryMidiStatus = "MIDI_STATUS";
     public const string QuerySysInfo    = "SYSINFO";
 

@@ -1,0 +1,70 @@
+<Window x:Class="KronosScreenRemote.PropertiesDialog"
+        x:ClassModifier="internal"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        SizeToContent="Height" Width="420"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Background="{StaticResource WindowBackgroundBrush}"
+        Foreground="{StaticResource TextBrush}">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="6"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="12"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" x:Name="TXT_Heading" FontWeight="Bold" Margin="0 0 0 8"/>
+
+        <TextBlock Grid.Row="1" Text="Name"/>
+        <TextBox Grid.Row="3" x:Name="TXT_Name" MaxLength="24"/>
+
+        <!-- Program/Combi: Category & Sub-Category (numeric — no name table exists for
+             these values anywhere in the documented format, see the plan's flagged gap). -->
+        <StackPanel Grid.Row="4" x:Name="PNL_Category" Orientation="Horizontal" Margin="0 10 0 0" Visibility="Collapsed">
+            <TextBlock Text="Category" VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+            <ComboBox x:Name="CMB_Category" Width="70" Margin="8 0 0 0"/>
+            <TextBlock Text="Sub-Category" VerticalAlignment="Center" Margin="16 0 0 0" Foreground="{StaticResource MutedTextBrush}"/>
+            <ComboBox x:Name="CMB_SubCategory" Width="60" Margin="8 0 0 0"/>
+        </StackPanel>
+
+        <!-- Set List: browse its slots and edit whichever one is selected (Name/Color/
+             Comments) — this absorbs Views/SetListWindow.xaml's functionality into one
+             dialog instead of a separate window + a second edit dialog. -->
+        <Grid Grid.Row="4" x:Name="PNL_SetList" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" Text="Slots" Margin="0 10 0 4" Foreground="{StaticResource MutedTextBrush}"/>
+            <ListBox Grid.Row="1" x:Name="LST_Slots" Height="140" FontFamily="Consolas" FontSize="12"/>
+
+            <TextBlock Grid.Row="2" Text="Slot Name" Margin="0 10 0 0"/>
+            <TextBox Grid.Row="3" x:Name="TXT_SlotName" MaxLength="24" IsEnabled="False"/>
+
+            <StackPanel Grid.Row="4" Orientation="Horizontal" Margin="0 10 0 0">
+                <TextBlock Text="Color" VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                <ComboBox x:Name="CMB_SlotColor" Width="90" Margin="8 0 0 0" IsEnabled="False"/>
+            </StackPanel>
+
+            <TextBlock Grid.Row="5" Text="Comments" Margin="0 10 0 0"/>
+            <TextBox Grid.Row="6" x:Name="TXT_SlotComments" MaxLength="512" Height="70"
+                     TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" IsEnabled="False"/>
+        </Grid>
+
+        <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="BTN_Cancel" Content="Cancel" IsCancel="True" Click="OnCancel" Margin="0 0 8 0" MinWidth="75"/>
+            <Button x:Name="BTN_Ok" Content="OK" IsDefault="True" Click="OnOk" MinWidth="75"/>
+        </StackPanel>
+    </Grid>
+</Window>

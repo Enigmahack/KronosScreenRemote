@@ -32,16 +32,5 @@ public partial class MainWindow
                 : Math.Clamp((DateTime.Now - _drag.Marker.Value.t).TotalSeconds / 0.6, 0, 1.0);
             OverlayRenderer.DrawTouchMarker(dc, _drag.Marker.Value.pos, t);
         }
-
-        // Boot splash — shown during boot/update; dismissed immediately when a mode is confirmed.
-        // _frameIsLikelyBootScreen (≥60% black) prevents the splash from overlaying real UI content
-        // when mode detection fails due to a popup (e.g. Category/Program select) covering the
-        // mode indicator, which can happen during reconnect or streaming-mode changes.
-        if (_boot.Phase && !_settings.DisableBootScreen && _frameRect.Width > 0 && IsConnected && _frameIsLikelyBootScreen)
-        {
-            var splash = GetBootSplash();
-            if (splash != null)
-                OverlayRenderer.DrawBootOverlay(dc, _frameRect, splash, ComputeBootFillFraction());
-        }
     }
 }

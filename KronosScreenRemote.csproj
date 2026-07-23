@@ -37,7 +37,6 @@
   <ItemGroup>
     <Resource Include="Resources\Images\*.png" />
     <Resource Include="Resources\Refs\*.png" />
-    <Resource Include="Resources\BootPhase\*.png" />
   </ItemGroup>
 
   <ItemGroup>

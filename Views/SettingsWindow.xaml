@@ -188,23 +188,6 @@
                     <TextBlock Margin="0 6 0 0" Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
                                Text="Change-driven mode consumes no CPU when the Kronos screen is idle. Pull mode may help if frames are occasionally missed. Streaming changes take effect on the next connect."/>
 
-                    <Border Background="#FF444444" Margin="0 18 0 12" Height="1"/>
-                    <CheckBox x:Name="ChkDisableBootScreen" Content="Disable boot screen graphics" Margin="0 0 0 6"
-                              ToolTip="Suppresses the animated splash overlay shown while the Kronos is booting. The raw boot frames are still displayed — only the decorative overlay is removed."/>
-                    <TextBlock Margin="0 0 0 0" Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
-                               Text="When enabled, the animated boot splash overlay is not drawn. You will still see the raw Kronos boot frames as they stream in."/>
-
-                    <TextBlock Text="Boot screen detection" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 18 0 8"/>
-                    <DockPanel LastChildFill="True">
-                        <TextBlock x:Name="TxtBootThreshLabel" DockPanel.Dock="Right" Width="50"
-                                   VerticalAlignment="Center" TextAlignment="Right"/>
-                        <Slider x:Name="SlBootThresh" Minimum="10" Maximum="95"
-                                TickFrequency="5" IsSnapToTickEnabled="True"
-                                ValueChanged="SlBootThresh_ValueChanged"
-                                ToolTip="Percentage of black pixels required before the boot splash animation is shown. Raise this if the boot screen appears during normal use (e.g. calibration mode)."/>
-                    </DockPanel>
-                    <TextBlock Margin="0 6 0 0" Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
-                               Text="Percentage of the frame that must be black before the boot splash overlay is displayed. Raise this value if the splash appears during normal use (e.g. Kronos calibration mode with a dark screen). Default: 60%."/>
                 </StackPanel>
             </TabItem>
 
@@ -711,6 +694,27 @@
                     </Grid>
                     <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap" Margin="0 6 0 0"
                                Text="Keeps the on-screen value slider in sync with physical VALUE slider moves on the Kronos. Requires Monitor MIDI and SysEx transmit enabled on the Kronos."/>
+                </StackPanel>
+            </TabItem>
+
+            <TabItem Header="Librarian">
+                <StackPanel Margin="0 4 0 0">
+                    <Grid Margin="0 0 0 6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="110"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Merge behavior" VerticalAlignment="Center"
+                                   Foreground="#FF888888" FontSize="11"/>
+                        <ComboBox Grid.Column="1" x:Name="CMB_MergeBehavior" BorderBrush="#FF555555" Width="200">
+                            <ComboBoxItem Content="Temporary Memory"
+                                          ToolTip="Will store in memory only. Restarting the app clears the merge data."/>
+                            <ComboBoxItem Content="Local Storage"
+                                          ToolTip="Stores on local drive — persists reboots but could be slower."/>
+                        </ComboBox>
+                    </Grid>
+                    <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
+                               Text="Controls whether the Librarian's Merge Window (a staging area for objects pulled from loaded PCG files, before they're placed into your Local Library) survives an app restart or crash."/>
                 </StackPanel>
             </TabItem>
 

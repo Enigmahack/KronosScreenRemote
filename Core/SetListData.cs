@@ -1,6 +1,5 @@
 namespace KronosScreenRemote;
 
-using System.Text;
 using System.Text.Json.Serialization;
 
 // One Set List slot, decoded from a Set List object (obj 0x0D) dump.
@@ -28,8 +27,8 @@ readonly record struct SetListSlot(
     [JsonIgnore]
     public string TypeLabel => Type switch { 0 => "Combi", 1 => "Prog", 2 => "Song", _ => "?" };
 
-    // Type IS the ResolveBankLabel convention (0=combi → CombiBanks, 1=program →
-    // ProgramBanks), so resolve directly — no cross-mapping. Combis carry I-G at bank 6.
+    // Type IS the ResolveBankLabel convention (0=combi, 1=program), so resolve
+    // directly — no cross-mapping. Combis carry I-G at bank 6; programs have none.
     [JsonIgnore]
     public string PerformanceLabel =>
         Type == 2 ? $"Song {Index:D3}"
@@ -45,14 +44,14 @@ sealed record SetListData(int Number, string Name, IReadOnlyList<SetListSlot> Sl
 {
     public const int SlotCount   = 128;   // slots per set list
     public const int MaxCount    = 128;   // number of set lists on the Kronos (0..127)
-    const int NameLen   = 24;
-    const int SlotBase  = 24;
-    const int SlotSize  = 542;
-    const int CommentLen = 512;
 
     // Decode a func 0x73 Object Dump for obj 0x0D into a SetListData.
     // Message: F0 42 3g 68 73 0D bank idH idL version <data 8→7> F7.
     // Returns null if the message isn't a Set List dump or is too short.
+    // Field-level decode lives in Core/ObjectBody/SetListBody.cs (FromRawBody), so a
+    // .pcg-sourced raw body (byte-identical layout, no 8-to-7 step needed) reuses the
+    // exact same decoder instead of a second copy — this method only handles the
+    // wire-message-specific parts (header validation, 8-to-7 decode).
     public static SetListData? FromObjectDump(byte[] msg)
     {
         // Header (10 bytes) + at least an F7.
@@ -67,30 +66,7 @@ sealed record SetListData(int Number, string Name, IReadOnlyList<SetListSlot> Sl
         if (dataEnd < 0) dataEnd = msg.Length;
 
         var bin = KronosSysEx.Decode8to7(msg, dataStart, dataEnd - dataStart);
-        if (bin.Length < SlotBase) return null;
-
-        string name = Ascii(bin, 0, NameLen);
-        var slots = new List<SetListSlot>(SlotCount);
-        for (int n = 0; n < SlotCount; n++)
-        {
-            int b = SlotBase + n * SlotSize;
-            if (b + 30 > bin.Length) break;   // truncated dump — keep what decoded
-
-            string slotName = Ascii(bin, b, NameLen);
-            int packed  = bin[b + 24];
-            int type    = packed & 0x03;
-            int color   = (packed >> 2) & 0x0F;
-            int bank    = bin[b + 25] & 0x1F;
-            int index   = bin[b + 26];
-            int hold    = bin[b + 27];
-            int volume  = bin[b + 28];
-            int comLen  = Math.Min(CommentLen, bin.Length - (b + 30));
-            string comments = comLen > 0 ? Ascii(bin, b + 30, comLen) : "";
-
-            slots.Add(new SetListSlot(n, slotName, type, bank, index, color, hold, volume, comments));
-        }
-
-        return new SetListData(number, name, slots);
+        return SetListBody.FromRawBody(number, bin);
     }
 
     // A set list with no filled slots has nothing the viewer can show — treat it as
@@ -99,21 +75,6 @@ sealed record SetListData(int Number, string Name, IReadOnlyList<SetListSlot> Sl
     // untouched set list carries a blank name or a default label is unverified.
     [JsonIgnore]
     public bool IsEmpty => Slots.Count == 0 || Slots.All(s => s.IsEmpty);
-
-    static string Ascii(byte[] data, int offset, int len)
-    {
-        int end = Math.Min(offset + len, data.Length);
-        if (end <= offset) return "";
-        // Kronos names are space/nul padded and may embed control bytes; keep
-        // printable ASCII only, then trim trailing padding.
-        var sb = new StringBuilder(end - offset);
-        for (int i = offset; i < end; i++)
-        {
-            byte c = data[i];
-            sb.Append(c is >= 0x20 and < 0x7F ? (char)c : c == 0 ? '\0' : ' ');
-        }
-        return sb.ToString().TrimEnd('\0', ' ');
-    }
 }
 
 // Result of a full Set List sweep (ISysExService.DumpAllSetListsAsync / "Sync All").
@@ -127,11 +88,3 @@ sealed record SetListSyncResult(
     IReadOnlyDictionary<int, SetListData> Found,
     IReadOnlyCollection<int> ConfirmedEmpty,
     int Attempted, bool Cancelled);
-
-// Result of ISysExService.WriteSetListSlotAsync. Error is a user-facing reason,
-// set only when Success is false.
-readonly record struct SetListSlotWriteResult(bool Success, string? Error)
-{
-    public static SetListSlotWriteResult Ok() => new(true, null);
-    public static SetListSlotWriteResult Fail(string error) => new(false, error);
-}

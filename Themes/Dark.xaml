@@ -522,21 +522,37 @@
     <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}"                    Color="#FF232323"/>
     <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#FF1A4E6E"/>
 
-    <!-- Same color as the SystemColors selection highlight above, named for direct use by custom
-         (non-native) multi-select highlighting — e.g. the Librarian's TV_Objects, which drives its
-         own IsBatchSelected-bound highlight instead of relying on TreeViewItem.IsSelected (that
-         native, single-item-only highlight is deliberately neutralized just for that tree; see
-         LibrarianWindow.xaml). Reusing this color keeps every selection highlight in the app
-         visually consistent even where the highlighting mechanism differs. -->
-    <SolidColorBrush x:Key="SelectionHighlightBrush" Color="#FF1A4E6E"/>
+    <!-- Named for direct use by custom (non-native) selection highlighting — e.g. the
+         Librarian's TV_Local/TV_Pcg (Views/LibrarianShellWindow.xaml), which drive their own
+         IsSelected-bound highlight (shared TreeNodeSelectionStyle, that file's Resources) instead
+         of relying on TreeViewItem.IsSelected (that native, single-item-only highlight is
+         deliberately neutralized for those trees). Deliberately the SAME color as AccentBrush
+         above, not just "a blue" — user feedback (2026-07-20) was that the previous dark navy
+         (#FF1A4E6E, still used by the raw SystemColors.HighlightBrushKey override below for
+         native controls elsewhere) barely read as a highlight at all, and didn't match the blue
+         used for text (StatusText etc.) elsewhere in the app. TreeNodeSelectionStyle also flips
+         selected-row text to a dark color for contrast against this lighter fill. -->
+    <SolidColorBrush x:Key="SelectionHighlightBrush" Color="#FF88AADD"/>
 
-    <!-- Git-style staging color for the Librarian's object browser (TV_Objects in
-         LibrarianWindow.xaml) — Staged = a paste/swap has queued a write here but Commit hasn't
-         run yet (dirty/uncommitted); Committed = this session's Commit wrote it. Same content-
-         level-Border technique as SelectionHighlightBrush, for the same reason (the stock
-         TreeViewItem template's own IsSelected trigger would otherwise win). -->
+    <!-- Git-style staging color for the Librarian's local pane (TV_Local in Views/
+         LibrarianShellWindow.xaml) — Staged/red = a local edit hasn't been pushed yet;
+         Committed/green = this session's Sync/Commit wrote it. Same content-level-Border
+         technique as SelectionHighlightBrush, for the same reason (the stock TreeViewItem
+         template's own IsSelected trigger would otherwise win). -->
     <SolidColorBrush x:Key="StagedHighlightBrush" Color="#FF6E1A1A"/>
     <SolidColorBrush x:Key="CommittedHighlightBrush" Color="#FF1A6E2A"/>
+
+    <!-- New Librarian rebuild (Views/LibrarianShellWindow.xaml): a local edit whose bank
+         changed on hardware since baseline — flagged, distinct from the plain "dirty/
+         uncommitted" red above, since it needs the user's attention before it can push.
+         Same content-level-Border technique, same reason. -->
+    <SolidColorBrush x:Key="ConflictHighlightBrush" Color="#FFC08A20"/>
+
+    <!-- Local-only "marked for deletion, pending Commit" (Views/LibrarianShellWindow.xaml,
+         ObjectTreeNode.IsPendingDelete) — a muted grey rather than a color used for anything
+         else here, paired with reduced Opacity on the row so it visibly fades in place instead
+         of just disappearing. Same content-level-Border technique, same reason. -->
+    <SolidColorBrush x:Key="PendingDeleteHighlightBrush" Color="#FF3A3A3A"/>
 
     <Style TargetType="TreeView">
         <Setter Property="Background"  Value="{StaticResource PanelBackgroundBrush}"/>
@@ -549,6 +565,14 @@
         <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="Padding"    Value="2 2"/>
+        <!-- Explicit values, not just left to the (OverridesDefaultStyle=false) theme fallback
+             above — the stock theme style's own Setters for these two bind via
+             RelativeSource FindAncestor/AncestorType=ItemsControl, which reliably fails to
+             resolve for a TreeViewItem ("Cannot find source" binding error) and floods the
+             output window; a real Setter here is evaluated instead of that binding, at no
+             visual cost since Stretch/Center is what it always resolved to anyway. -->
+        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+        <Setter Property="VerticalContentAlignment"   Value="Center"/>
     </Style>
 
     <!-- ══════════════════════════════════════════════════════════════════

@@ -20,6 +20,26 @@ static class LibObj
     public const int Program = 0x00;
     public const int Combi   = 0x01;
     public const int SetList = 0x0D;
+
+    // The func-0x73 Object Dump "version" byte the CURRENT Kronos OS's documented structure
+    // uses per type (Documentation/MIDI implementation/SysExDumps/{Prog_HD-1,
+    // Prog_EXi_Common,CombiAndSongTimbreSet,SetList}.txt, each headed "Object Version: N" —
+    // Program is 5 for both HD-1 and EXi, Combi is 3, Set List is 0). This is a fixed
+    // constant per type, not something a .pcg file carries (it has no such field) or that
+    // should be preserved from wherever an entry happened to originate — every PCG-import
+    // path (MergeCache.PullRecursive, LibrarianShellViewModel.PlaceFromPcg/BatchPlaceFromPcg)
+    // used to default this to a placeholder 0, which is wrong for Program (0 was coincidentally
+    // right only for Set List) and produced a func-0x24 Reply Code 3 ("short or otherwise
+    // mangled message") on a real hardware Program write despite a byte-perfect body. Null for
+    // object types outside the Librarian's 3 known ones (e.g. name-only sub-dumps), which keep
+    // whatever version they already carry.
+    public static byte? CurrentObjectVersion(int objType) => objType switch
+    {
+        Program => 5,
+        Combi   => 3,
+        SetList => 0,
+        _       => null,
+    };
 }
 
 // A movable object location, addressed in object-dump (header) encoding.
@@ -166,68 +186,6 @@ static class LibRefs
             var (t, bk, ix) = SetListSlotRef(body, s);
             yield return (s, t, bk, ix);
         }
-    }
-}
-
-// Lightweight reference index — only the reference tuples, not full bodies. Cheap
-// to build in a scan and fast to query; full bodies are re-dumped on demand for the
-// few objects a move actually rewrites (which also closes the body-staleness window).
-sealed class RefIndex
-{
-    public readonly Dictionary<(int Bank, int Index), List<(int Bank, int Number)>> CombiRefs = new();
-    public readonly Dictionary<int, List<(int Slot, int Type, int Bank, int Index)>> SetlistRefs = new();
-    // (obj, bank) -> SHA-1 digest captured AT SCAN TIME (freshness gate for discovery).
-    public readonly Dictionary<(int Obj, int Bank), byte[]> ScanDigests = new();
-
-    public void AddCombi(ObjectDump d) =>
-        CombiRefs[(d.Bank, d.Index)] = LibRefs.IterCombiTimbreRefs(d.Body).Select(r => (r.Bank, r.Number)).ToList();
-
-    public void AddSetlist(ObjectDump d) =>
-        SetlistRefs[d.Index] = LibRefs.IterSetListSlotRefs(d.Body).Select(r => (r.S, r.Type, r.Bank, r.Index)).ToList();
-
-    public List<ReferrerSite> ReferrersOf(ObjLoc loc)
-    {
-        var outp = new List<ReferrerSite>();
-        if (loc.ObjType == LibObj.SetList) return outp;   // nothing ever references a Set List
-
-        int refType = loc.ObjType == LibObj.Program ? 1 : 0;
-        int wantBank = KronosBanks.ObjBankToFunc33(refType, loc.Bank);
-        if (wantBank < 0) return outp;
-
-        if (loc.ObjType == LibObj.Program)
-            foreach (var ((bank, index), refs) in CombiRefs)
-                for (int t = 0; t < refs.Count; t++)
-                    if (refs[t].Bank == wantBank && refs[t].Number == loc.Number)
-                        outp.Add(new ReferrerSite("combi_timbre", LibObj.Combi, bank, index, t, refs[t].Bank, refs[t].Number));
-
-        foreach (var (number, slots) in SetlistRefs)
-            foreach (var (slot, type, fbank, idx) in slots)
-                if (type == refType && fbank == wantBank && idx == loc.Number)
-                    outp.Add(new ReferrerSite("setlist_slot", LibObj.SetList, 0, number, slot, fbank, idx));
-        return outp;
-    }
-
-    public int UsageCount(ObjLoc loc) => ReferrersOf(loc).Count;
-
-    public HashSet<(int Obj, int Bank, int Index)> ReferrerObjectIds(ObjLoc loc) =>
-        ReferrersOf(loc).Select(r => (r.RefObj, r.RefBank, r.RefIndex)).ToHashSet();
-
-    public void RecordDigest(int obj, int bank, byte[]? sha1)
-    {
-        if (sha1 != null) ScanDigests[(obj, bank)] = sha1;
-    }
-
-    // Re-read scan-time digests via reader(obj,bank) and return banks that changed
-    // since the scan — meaning the index may have MISSED a newly-created referrer.
-    public async Task<List<(int Obj, int Bank)>> StaleBanksAsync(Func<int, int, Task<byte[]?>> reader)
-    {
-        var stale = new List<(int, int)>();
-        foreach (var ((obj, bank), baseline) in ScanDigests)
-        {
-            var cur = await reader(obj, bank).ConfigureAwait(false);
-            if (cur != null && !cur.AsSpan().SequenceEqual(baseline)) stale.Add((obj, bank));
-        }
-        return stale;
     }
 }
 
@@ -507,6 +465,18 @@ static class Librarian
             if (ob >= 0) Check($"combi-inv-{idx}", KronosBanks.ObjBankToFunc33(0, ob) == idx);
         }
 
+        // 2b. Program has only SIX internal banks (I-A..I-F) in this encoding, not seven —
+        // pinned against ground truth pulled directly from a real .pcg file's own Combi
+        // timbre reference bytes (raw byte 28 -> U-EE, byte 26 -> U-CC; see KronosBanks.
+        // Func33ToObjBank's own comment for the investigation this fixed). A regression back
+        // to the old 7-internal-bank table would silently shift every GM/g/USER Program
+        // reference one bank low again.
+        Check("prog-no-int-g", KronosBanks.Func33ToObjBank(1, 6) == 0x10);            // idx 6 is GM, not "I-G"
+        Check("prog-gm-boundary", KronosBanks.ObjBankToFunc33(1, 0x10) == 6);
+        Check("prog-user-a-starts-at-17", KronosBanks.Func33ToObjBank(1, 17) == 0x40); // U-A
+        Check("prog-real-byte-28-is-u-ee", KronosBanks.Func33ToObjBank(1, 28) == 0x4B); // U-EE, confirmed on real hardware data
+        Check("prog-real-byte-26-is-u-cc", KronosBanks.Func33ToObjBank(1, 26) == 0x49); // U-CC, confirmed on real hardware data
+
         // 3. Combi timbre reference patch round-trip + timbre-15 offset.
         var combi = new byte[7810];
         for (int t = 0; t < LibRefs.TimbreCount; t++)
@@ -535,7 +505,7 @@ static class Librarian
         // 5. Full plan: swap program I-A:007 <-> U-A:005 with a combi + set-list referrer.
         var cat = new LibraryCatalog();
         int fbSrc = KronosBanks.ObjBankToFunc33(1, 0x00);   // 0
-        int fbDst = KronosBanks.ObjBankToFunc33(1, 0x40);   // 18
+        int fbDst = KronosBanks.ObjBankToFunc33(1, 0x40);   // 17
         var src = new ObjLoc(LibObj.Program, 0x00, 7);
         var dst = new ObjLoc(LibObj.Program, 0x40, 5);
         var cbody = new byte[7810];
@@ -571,14 +541,6 @@ static class Librarian
                                      new ObjectDump(LibObj.Program, 0x10, 0, 5, Array.Empty<byte>()));
         Check("refuse-readonly", bad.IsRefusable);
 
-        // 6. RefIndex agrees with the catalog + freshness gate flags a changed digest.
-        var ri = new RefIndex();
-        ri.AddCombi(new ObjectDump(LibObj.Combi, 0x00, 0, 3, cbody));
-        ri.AddSetlist(new ObjectDump(LibObj.SetList, 0, 0, 0, slbody));
-        Check("refindex-usage", ri.UsageCount(src) == 2 && ri.UsageCount(dst) == 1);
-        Check("refindex-ids", ri.ReferrerObjectIds(src).SetEquals(
-            new HashSet<(int, int, int)> { (LibObj.Combi, 0x00, 0), (LibObj.SetList, 0, 0) }));
-
         // 7. Name-field helpers: rename touches only the first 24 bytes, PadAscii
         // truncates/pads correctly (migrated from the retired StoreBankVerification tool).
         var nameOriginal = new byte[200];
@@ -589,6 +551,15 @@ static class Librarian
         Check("rename-same-length", renamed.Length == nameOriginal.Length);
         Check("padascii-truncate", PadAscii("THIS NAME IS DEFINITELY TOO LONG", 8).Length == 8);
         Check("padascii-pad", PadAscii("AB", 4).AsSpan().SequenceEqual(new byte[] { 0x41, 0x42, 0x20, 0x20 }));
+
+        // 8. Object-version constants (Documentation/MIDI implementation/SysExDumps/*.txt,
+        // each headed "Object Version: N") — the fix for the Reply-3 "mangled message"
+        // Program write bug: PCG-imported entries used to default this to a placeholder 0,
+        // wrong for Program/Combi (only coincidentally right for Set List).
+        Check("objver-program", LibObj.CurrentObjectVersion(LibObj.Program) == 5);
+        Check("objver-combi", LibObj.CurrentObjectVersion(LibObj.Combi) == 3);
+        Check("objver-setlist", LibObj.CurrentObjectVersion(LibObj.SetList) == 0);
+        Check("objver-unknown-null", LibObj.CurrentObjectVersion(0x13) == null);
 
         return fails;
     }

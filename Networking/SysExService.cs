@@ -656,59 +656,6 @@ sealed class SysExService : ISysExService
         return msg != null ? SetListData.FromObjectDump(msg) : null;
     }
 
-    // Write a Set List slot's Name and/or Notes, then commit. See ISysExService
-    // for why Performance isn't offered here. Pauses perf polling for the same
-    // reason DumpSetListAsync does — its func 0x33 query could otherwise steal
-    // one of our func 0x24 Replies.
-    public async Task<SetListSlotWriteResult> WriteSetListSlotAsync(int setListNumber, int slotNumber, string? name, string? comments)
-    {
-        var dump = _dump;
-        if (dump == null || _transport?.CanStream != true)
-            return SetListSlotWriteResult.Fail("MIDI monitoring is off — enable it in Settings → MIDI/SysEx");
-        if (name == null && comments == null)
-            return SetListSlotWriteResult.Fail("Nothing to save");
-
-        _dumping = true;
-        try
-        {
-            if (name != null)
-            {
-                var code = await dump.SendObjectDumpAsync(0x11, setListNumber, slotNumber, 0, PadAscii(name, 24)).ConfigureAwait(false);
-                if (code == null) return SetListSlotWriteResult.Fail("No response writing the name — is SysEx receive enabled on the Kronos?");
-                if (code != 0)    return SetListSlotWriteResult.Fail($"Kronos rejected the name write (code {code})");
-            }
-
-            if (comments != null)
-            {
-                var code = await dump.SendObjectDumpAsync(0x10, setListNumber, slotNumber, 0, PadAscii(comments, 512)).ConfigureAwait(false);
-                if (code == null) return SetListSlotWriteResult.Fail("No response writing the notes — is SysEx receive enabled on the Kronos?");
-                if (code != 0)    return SetListSlotWriteResult.Fail($"Kronos rejected the notes write (code {code})");
-            }
-
-            var storeCode = await dump.SendStoreBankRequestAsync(0x0D, 0).ConfigureAwait(false);
-            if (storeCode == null) return SetListSlotWriteResult.Fail("No response committing to storage — the edit may be lost on power-off");
-            if (storeCode != 0)    return SetListSlotWriteResult.Fail($"Kronos rejected the store request (code {storeCode})");
-
-            return SetListSlotWriteResult.Ok();
-        }
-        finally
-        {
-            _dumping = false;
-            RefreshNow();
-        }
-    }
-
-    // Space-pad (Kronos convention for these ASCII fields) or truncate to exactly
-    // len bytes.
-    static byte[] PadAscii(string s, int len)
-    {
-        var data = new byte[len];
-        Array.Fill(data, (byte)0x20);
-        var bytes = System.Text.Encoding.ASCII.GetBytes(s);
-        Array.Copy(bytes, data, Math.Min(bytes.Length, len));
-        return data;
-    }
-
     // Coalescing debounce: each Program/Bank message restarts a short timer, so
     // a CC0+CC32+PC burst fires a single refresh ~PerfRefreshDebounceMs later.
     // The user-activity guard still skips refreshes during active app-driven
@@ -886,6 +833,33 @@ sealed class SysExService : ISysExService
         finally { _dumping = false; }
     }
 
+    public async Task<Dictionary<int, ObjectDump>> DumpBankBulkAsync(int obj, int bank, int count)
+    {
+        var result = new Dictionary<int, ObjectDump>();
+        var dump = _dump;
+        if (dump == null || _transport?.CanStream != true) return result;
+        _dumping = true;
+        try
+        {
+            var req = SysExDumpCollector.DumpBankRequest(obj, bank);
+            // Generously sized for the largest case this can be asked to cover — a
+            // Set List bulk-bank request is up to 128 x ~79 KB (~10 MB total); a full
+            // Combi bank is ~1.1 MB. Far larger than the Name-enum's tuning (SysExService's
+            // SyncNamesAsync path), which only ever moves ~128 short names. A rejected or
+            // genuinely-empty bank still exits promptly via CollectAsync's idle/reject
+            // fast-paths, so the generous cap only matters when data is actually flowing.
+            var msgs = await dump.CollectAsync(req, (byte)obj, expectedCount: count,
+                idleMs: 2000, noResponseMs: 3000, stallMs: 15000, overallMs: 300000).ConfigureAwait(false);
+            foreach (var m in msgs)
+            {
+                var parsed = KronosSysEx.ParseObjectDump(m);
+                if (parsed != null) result[parsed.Index] = parsed;
+            }
+        }
+        finally { _dumping = false; }
+        return result;
+    }
+
     public async Task<int> WriteObjectAsync(WriteOp op)
     {
         var dump = _dump;
@@ -893,7 +867,15 @@ sealed class SysExService : ISysExService
         _dumping = true;
         try
         {
-            var msg  = KronosSysEx.BuildObjectDumpMessage(op.Obj, op.Bank, op.Index, op.Version, op.Body);
+            // Stamp the CURRENT, correct object-version byte at the moment of the actual
+            // hardware write — never trust whatever's stored on op.Version. This is the one
+            // choke point every push goes through, so it retroactively heals any object
+            // already sitting in Local Library or the Merge Window with a stale/placeholder
+            // version (e.g. every PCG-imported Program used to carry 0 instead of 5) without
+            // needing to re-place or re-pull anything. See LibObj.CurrentObjectVersion.
+            byte version = LibObj.CurrentObjectVersion(op.Obj) ?? op.Version;
+            var msg  = KronosSysEx.BuildObjectDumpMessage(op.Obj, op.Bank, op.Index, version, op.Body);
+            AppLog.Debug($"[sysex] WriteObjectAsync obj=0x{op.Obj:X2} bank=0x{op.Bank:X2} idx={op.Index} version={version} bodyLen={op.Body.Length}");
             var code = await dump.SendLargeObjectDumpAndAwaitReplyAsync(msg).ConfigureAwait(false);
             return code ?? -1;
         }

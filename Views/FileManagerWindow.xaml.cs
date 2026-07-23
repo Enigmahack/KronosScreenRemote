@@ -298,6 +298,11 @@ public partial class FileManagerWindow : Window
         // when this window had focus (known WPF owner-activation bug).
         Owner = null;
 
+        // Closing mid file-drag: both timers would otherwise keep ticking and root
+        // this window via the dispatcher.
+        StopDragScroll();
+        CancelDwell();
+
         // Hand the client off to a background thread so the UI thread isn't blocked.
         // Send QUIT first so BusyBox ftpd cleanly removes the session — without it the
         // server holds the session open until its own timeout, accumulating ghost sessions.

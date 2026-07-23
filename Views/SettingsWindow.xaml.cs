@@ -80,8 +80,6 @@ public partial class SettingsWindow : Window
         RbChange.IsChecked  = !Result.PullMode;
         RbPull.IsChecked    = Result.PullMode;
         SlFps.Value         = Result.MaxFps;
-        SlBootThresh.Value  = Result.BootScreenThreshold;
-        ChkDisableBootScreen.IsChecked = Result.DisableBootScreen;
 
         // General
         ChkPromptQuit.IsChecked   = Result.PromptBeforeQuitting;
@@ -113,6 +111,9 @@ public partial class SettingsWindow : Window
         CMB_PollInterval.SelectedIndex = pollIdx >= 0 ? pollIdx : 2;
         CMB_PollInterval.IsEnabled     = Result.ProactiveSysExPolling;
         TXT_ValueSliderCc.Text         = Result.ValueSliderCc.ToString();
+
+        // Librarian
+        CMB_MergeBehavior.SelectedIndex = Result.MergeBehavior == MergeCacheBehavior.LocalStorage ? 1 : 0;
 
         // View
         SlZoomLevel.Value      = Result.ZoomDefaultLevel;
@@ -161,12 +162,6 @@ public partial class SettingsWindow : Window
     {
         if (TxtFpsLabel != null)
             TxtFpsLabel.Text = $"{(int)SlFps.Value} fps";
-    }
-
-    void SlBootThresh_ValueChanged(object s, RoutedPropertyChangedEventArgs<double> e)
-    {
-        if (TxtBootThreshLabel != null)
-            TxtBootThreshLabel.Text = $"{(int)SlBootThresh.Value}%";
     }
 
     void SlZoomLevel_ValueChanged(object s, RoutedPropertyChangedEventArgs<double> e)
@@ -322,8 +317,6 @@ public partial class SettingsWindow : Window
         // Streaming
         Result.PullMode             = RbPull.IsChecked == true;
         Result.MaxFps               = (int)SlFps.Value;
-        Result.BootScreenThreshold  = (int)SlBootThresh.Value;
-        Result.DisableBootScreen    = ChkDisableBootScreen.IsChecked == true;
 
         // General
         Result.PromptBeforeQuitting = ChkPromptQuit.IsChecked == true;
@@ -360,6 +353,9 @@ public partial class SettingsWindow : Window
         Result.ValueSliderCc = int.TryParse(TXT_ValueSliderCc.Text, out int vsCc)
             && vsCc is >= 0 and <= 119 && vsCc != 0 && vsCc != 32
             ? vsCc : 18;
+
+        // Librarian
+        Result.MergeBehavior = CMB_MergeBehavior.SelectedIndex == 1 ? MergeCacheBehavior.LocalStorage : MergeCacheBehavior.TemporaryMemory;
 
         // View
         Result.ZoomDefaultLevel = SlZoomLevel.Value;
@@ -885,4 +881,5 @@ public enum SettingsTab
     Macros      = 7,
     Debug       = 8,
     MidiSysEx   = 9,
+    Librarian   = 10,
 }

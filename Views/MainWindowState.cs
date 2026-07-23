@@ -1,5 +1,4 @@
 using System.Windows;
-using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
 namespace KronosScreenRemote;
@@ -108,29 +107,3 @@ sealed class FullscreenState
     public ResizeMode  SavedResize = ResizeMode.CanResize;
 }
 
-// Boot-splash overlay + load-phase progress bar state.  (Cross-cutting frame-classification flags
-// — _frameIsMostlyBlack / _frameIsLikelyBootScreen / _detectedModeEver — stay in MainWindow, since
-// mode and combi-edit detection read them too.)  The preload-schedule and fill-fraction math live
-// in MainWindow.BootSplash.cs.
-sealed class BootState
-{
-    public const double EntryDelaySec = 0.5;   // show overlay only after this long with no mode
-
-    // Bar fill fractions (0..1) — resolution-independent, from the 1600-wide splash reference.
-    public const double BarStaticEnd  = 724.0  / 1302;
-    public const double BarPreloadEnd = 1190.0 / 1302;
-    public const double BarBankStart  = BarPreloadEnd;   // bank fill begins where preload ends
-    public const double BarBankEnd    = 1.0;
-
-    public BitmapSource? Splash;
-    public bool          Phase;                 // boot overlay active
-    public DateTime      FirstFrame = DateTime.MinValue;
-
-    public BootPhaseDetector.Phase LoadPhase = BootPhaseDetector.Phase.None;
-    public DateTime      PreloadTimerStart  = DateTime.MinValue; // latched at boot entry
-    public DateTime      BankDataDetectedAt = DateTime.MinValue;
-    public double        FinishingFillFrac  = BarStaticEnd;      // snapshotted on Finishing detect
-
-    // (WallEnd, ProgressEnd) pairs per active/pause segment; built once at boot entry, null until then.
-    public (double WallEnd, double ProgressEnd)[]? PreloadSchedule;
-}

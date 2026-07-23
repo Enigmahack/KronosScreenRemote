@@ -400,10 +400,9 @@ sealed class KronosSysEx
     // payload layouts that would otherwise surface as "?<bank>:<number>".
     static bool IsValidPerformance(int type, int bank, int number) => type switch
     {
-        0 => bank < CombiBanks.Length   && number <= 127,   // combi
-        1 => bank < ProgramBanks.Length && number <= 127,   // program
-        2 => number <= 199,                                 // song (no bank)
-        _ => false,
+        0 or 1 => KronosBanks.Func33ToObjBank(type, bank) >= 0 && number <= 127,
+        2      => number <= 199,                            // song (no bank)
+        _      => false,
     };
 
     // Parse Current Object Dump (func 0x75) for a name-only object.
@@ -639,35 +638,22 @@ sealed class KronosSysEx
         return dst;
     }
 
-    // ── Bank label tables ────────────────────────────────────────────────────
-    // Numbering from KRONOS_MIDI_SysEx.txt / SysExParams/SetList.txt.
-
-    // Combis have SEVEN internal banks (I-A…I-G) — one more than programs (I-A…I-F).
-    // KRONOS_MIDI_SysEx.txt *2: combi bank 0-6 = INT-A…G, then USER-A…G. The linear
-    // index here (used by func-0x33 perf-id AND the Set List slot decoder) must
-    // include I-G at index 6, or every combi from I-G onward is off by one — e.g. a
-    // slot referencing I-G:007 renders as U-A:007. (Programs skip straight to GM.)
-    static readonly string[] CombiBanks =
-        ["I-A", "I-B", "I-C", "I-D", "I-E", "I-F", "I-G",
-         "U-A", "U-B", "U-C", "U-D", "U-E", "U-F", "U-G"];
-
-    // Linear PROGRAM-bank numbering (func-33 / Set List program slots). This Kronos
-    // has SEVEN internal program banks (I-A…I-G, per the user's bank list), then the
-    // read-only GM/g banks, then USER (U-A…U-G, U-AA…U-GG). Index 6 = I-G.
-    static readonly string[] ProgramBanks =
-        ["I-A", "I-B", "I-C", "I-D", "I-E", "I-F", "I-G",
-         "GM", "g(1)", "g(2)", "g(3)", "g(4)", "g(5)", "g(6)", "g(7)",
-         "g(8)", "g(9)", "g(d)",
-         "U-A", "U-B", "U-C", "U-D", "U-E", "U-F", "U-G",
-         "U-AA", "U-BB", "U-CC", "U-DD", "U-EE", "U-FF", "U-GG"];
-
+    // ── Bank label resolution ────────────────────────────────────────────────
     // type: 0=Combi, 1=Program, 2=Song. Public so the Set List decoder can
-    // resolve slot performance banks with the same tables.
-    public static string ResolveBankLabel(int type, int bank) => type switch
+    // resolve slot performance banks with the same mapping.
+    //
+    // Delegates to KronosBanks.Func33ToObjBank + ProgramLabel/CombiLabel — the
+    // hardware-validated linear↔objbank mapping the move engine itself uses — so a
+    // func-33 bank index can never LABEL one bank while the Librarian's reference
+    // math TARGETS another. This file previously carried its own label tables with
+    // seven internal program banks; Program has no real I-G (see KronosBanks'
+    // header), which shifted every program label from GM onward one bank off.
+    // Combi genuinely has I-G at linear index 6 and is unaffected.
+    public static string ResolveBankLabel(int type, int bank)
     {
-        0 => bank < CombiBanks.Length ? CombiBanks[bank] : $"?{bank}",
-        1 => bank < ProgramBanks.Length ? ProgramBanks[bank] : $"?{bank}",
-        2 => "",
-        _ => $"?{bank}"
-    };
+        if (type == 2) return "";
+        int objBank = KronosBanks.Func33ToObjBank(type, bank);
+        if (objBank < 0) return $"?{bank}";
+        return type == 1 ? KronosBanks.ProgramLabel(objBank) : KronosBanks.CombiLabel(objBank);
+    }
 }

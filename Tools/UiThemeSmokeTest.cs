@@ -65,39 +65,34 @@ static class UiThemeSmokeTest
         Try("HelpWindow",             () => new HelpWindow(settings));
         Try("InputTesterWindow",      () => new InputTesterWindow(fakeCtrl));
         Try("KeyboardInfoWindow",     () => new KeyboardInfoWindow("", 0, null));
-        Try("LibrarianWindow",        () =>
+        Try("LibrarianShellWindow",   () =>
         {
-            var w = new LibrarianWindow(fakeSysEx, "");
-            if (w.FindName("BTN_Scan") is System.Windows.Controls.Button btn)
+            var scratch = Path.Combine(Path.GetTempPath(), "kronos_ui_smoketest_local_library");
+            if (Directory.Exists(scratch)) Directory.Delete(scratch, recursive: true);
+            var cache = new LocalLibraryCache(scratch);
+            var w = new LibrarianShellWindow(fakeSysEx, cache, settings, "");
+            if (w.FindName("TV_Local") is System.Windows.Controls.TreeView tv)
             {
-                results.Add(("  BTN_Scan (control-level check)", true,
-                    $"Background={Describe(btn.Background)} Foreground={Describe(btn.Foreground)} " +
-                    $"HasTemplate={(btn.Template != null)} StyleIsNull={(btn.Style == null)}"));
-            }
-            if (w.FindName("TV_Objects") is System.Windows.Controls.TreeView tv)
-            {
+                // Force the ItemsSource binding to flush before reading Items.Count — an
+                // unshown window (never pumped through Show()/the message loop) doesn't
+                // guarantee a pending binding update has applied yet. Same technique the
+                // old LibrarianWindow check above uses for TV_Objects, same reason.
                 tv.Measure(new Size(400, 400));
                 tv.Arrange(new Rect(0, 0, 400, 400));
                 tv.UpdateLayout();
-                if (tv.ItemContainerGenerator.ContainerFromIndex(0) is System.Windows.Controls.TreeViewItem tvi)
-                    results.Add(("  TV_Objects root item (control-level check)", true,
-                        $"Background={Describe(tvi.Background)} Foreground={Describe(tvi.Foreground)} Roots={tv.Items.Count}"));
-                else
-                    results.Add(("  TV_Objects root item (control-level check)", true,
-                        $"(no container realized off-screen — Roots={tv.Items.Count}, TreeView.Background={Describe(tv.Background)})"));
+                results.Add(("  TV_Local (control-level check)", true,
+                    $"Background={Describe(tv.Background)} Foreground={Describe(tv.Foreground)} Roots={tv.Items.Count}"));
             }
-            if (w.FindName("GRP_Clipboard") is System.Windows.Controls.GroupBox grp)
-                results.Add(("  GRP_Clipboard (control-level check)", true,
-                    $"Background={Describe(grp.Background)} Foreground={Describe(grp.Foreground)}"));
-            if (w.FindName("TV_Clipboard") is System.Windows.Controls.TreeView clipTv)
-                results.Add(("  TV_Clipboard (control-level check)", true,
-                    $"Background={Describe(clipTv.Background)} Foreground={Describe(clipTv.Foreground)}"));
             return w;
         });
         Try("LoginDialog",            () => new LoginDialog("", 0));
         Try("PromptDialog",           () => new PromptDialog("test"));
-        Try("SetListSlotEditDialog",  () => new SetListSlotEditDialog(new SetListSlot(0, "Test", 0, 0, 0, 0, 0, 0, "")));
-        Try("SetListWindow",          () => new SetListWindow(fakeSysEx, ""));
+        Try("PropertiesDialog (Program/Combi)", () => PropertiesDialog.ForProgramOrCombi("Test Properties", "Test Name", 0, 0));
+        Try("PropertiesDialog (Set List)",      () => PropertiesDialog.ForSetList("Test Properties", "Test Name", new SetListData(0, "Test", Array.Empty<SetListSlot>())));
+        Try("UnresolvedDependenciesDialog",     () => UnresolvedDependenciesDialog.For(new[]
+        {
+            new SessionDependencyEntry(new ObjLoc(LibObj.Program, 0x00, 0), "timbre 1", 0, new ObjLoc(LibObj.Combi, 0x00, 0), null),
+        }));
         Try("SettingsWindow",         () => new SettingsWindow(settings));
         Try("SysExToolWindow",        () => new SysExToolWindow(fakeSysEx));
         // MainWindow deliberately excluded: parameterless ctor starts real timers/services/
@@ -110,7 +105,11 @@ static class UiThemeSmokeTest
     }
 }
 
-file sealed class FakeSysExService : ISysExService
+// Promoted from `file`-scoped to `internal` so later self-tests (Core/LocalLibrary) can
+// reuse this construction-only stub instead of writing a second copy. FakeMoveExecutor
+// (Core/LocalLibrary/Testing) is a separate, stateful fake for a different purpose (real
+// Pull/Push behavior, not just XAML-construction stubs) — the two are not merged.
+internal sealed class FakeSysExService : ISysExService
 {
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
     public event Action<int>? ValueSliderChanged;
@@ -129,12 +128,11 @@ file sealed class FakeSysExService : ISysExService
     public Task<SetListData?> DumpSetListAsync(int number) => Task.FromResult<SetListData?>(null);
     public Task<SetListSyncResult> DumpAllSetListsAsync(IProgress<(int Done, int Total, int Found)>? progress, CancellationToken ct) =>
         Task.FromResult(new SetListSyncResult(new Dictionary<int, SetListData>(), Array.Empty<int>(), 0, false));
-    public Task<SetListSlotWriteResult> WriteSetListSlotAsync(int setListNumber, int slotNumber, string? name, string? comments) =>
-        Task.FromResult(SetListSlotWriteResult.Fail("stub"));
     public Task<int> SyncNamesAsync(IProgress<(int Done, int Total, int Names)>? progress, CancellationToken ct) => Task.FromResult(0);
     public void ApplyMidiSettings(bool midiMonitorEnabled, bool proactivePoll, int pollIntervalSec, bool pollOnChanges) { }
     public Task<bool> SendMidiAsync(string hexBytes) => Task.FromResult(false);
     public Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index) => Task.FromResult<ObjectDump?>(null);
+    public Task<Dictionary<int, ObjectDump>> DumpBankBulkAsync(int obj, int bank, int count) => Task.FromResult(new Dictionary<int, ObjectDump>());
     public ObjLoc? CurrentPerformanceLoc() => null;
     public Task<ProgramBankTypes?> RequestProgramBankTypesAsync() => Task.FromResult<ProgramBankTypes?>(null);
 

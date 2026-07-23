@@ -42,16 +42,6 @@ interface ISysExService : INotifyPropertyChanged, IMoveExecutor
     Task<SetListSyncResult> DumpAllSetListsAsync(
         IProgress<(int Done, int Total, int Found)>? progress, CancellationToken ct);
 
-    // Write a Set List slot's Name and/or Notes (Comments) via Object Dump (obj
-    // 0x11 / 0x10 — bank=set list, index=slot), then commit with a Store Bank
-    // Request (func 0x76). Pass null for a field to leave it unchanged.
-    //
-    // Performance (type/bank/index) is intentionally NOT writable here: the only
-    // SysEx path for it (Parameter Change, func 0x43) edits whichever Set List is
-    // currently active on the Kronos's own screen, not an arbitrary bank+index
-    // like this write — there's no safe way to target a background Set List.
-    Task<SetListSlotWriteResult> WriteSetListSlotAsync(int setListNumber, int slotNumber, string? name, string? comments);
-
     // Request every program/combi bank's names and capture them into the cache,
     // so program-change follow shows names with no per-change SysEx query. Reports
     // (banks done, banks total, names captured). Returns the final name count.
@@ -76,6 +66,17 @@ interface ISysExService : INotifyPropertyChanged, IMoveExecutor
     // Dump one full object (obj 0x00 Program / 0x01 Combi / 0x0D Set List) by
     // bank+index, parsed into header + decoded body. Null if unavailable/no reply.
     Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index);
+
+    // Attempts every object of `obj` in `bank` via ONE func-0x77 Dump Bank Request
+    // instead of `count` individual func-0x72 round-trips — much faster when it works.
+    // HW-UNVERIFIED for full objects and for USER banks: the only existing func-0x77
+    // caller (SyncNamesAsync) is Name-object-only and confirmed REJECTED for USER banks
+    // there, and nothing in this codebase has tried 0x77 against 0x00/0x01/0x0D before.
+    // Returns whatever the bulk reply actually contained (0 to `count`, keyed by index)
+    // — callers MUST treat a missing index as "needs an individual DumpObjectAsync
+    // fallback," never as "confirmed empty": a rejected/unsupported bulk request looks
+    // identical to a fully-empty bank at this layer (zero results either way).
+    Task<Dictionary<int, ObjectDump>> DumpBankBulkAsync(int obj, int bank, int count);
 
     // Best-effort current performance as an ObjLoc (for the live 0x43 dual-write).
     // Null if unknown. (The remaining Librarian primitives — object write, Store,

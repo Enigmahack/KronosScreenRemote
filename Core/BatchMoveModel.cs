@@ -99,7 +99,8 @@ static class BatchLibrarian
     public const int BankSlotCount = 128;   // every Program/Combi bank is exactly 128 slots
 
     // PURE. Assigns sequential destination slots to a set of PENDING clipboard entries — the
-    // algorithm behind Paste All / Paste Multi (Views/LibrarianWindow.Batch.cs): fill starting at
+    // algorithm behind drag-drop auto-fill onto a bank (ViewModels/LibrarianShellViewModel.cs's
+    // BatchPlaceFromPcg): fill starting at
     // `startSlot` (the exact slot the user right-clicked, NOT always 0 — replaces the earlier
     // "always slot 0" sequential-fill tool), skip anything that doesn't fit (past slot 127) or
     // fails a Program HD-1/EXi type check, leaving it pending rather than losing it (it's already
@@ -180,16 +181,40 @@ static class BatchLibrarian
         {
             foreach (var p in real)
             {
-                if (p.From is not { } from || from.Bank == p.To.Bank) continue;
-                bool? srcType = bankTypeOf(from.Bank);
-                bool? dstType = bankTypeOf(p.To.Bank);
-                if (srcType is bool st && dstType is bool dt)
+                if (p.From is { } from)
                 {
-                    if (st != dt)
-                        plan.Warnings.Add($"REFUSE: {from.Label()} ({(st ? "EXi" : "HD-1")}) cannot move to {p.To.Label()} ({(dt ? "EXi" : "HD-1")}) — bank types differ");
+                    // Local-to-local move — compare the two REAL banks' own configured types.
+                    if (from.Bank == p.To.Bank) continue;
+                    bool? srcType = bankTypeOf(from.Bank);
+                    bool? dstType = bankTypeOf(p.To.Bank);
+                    if (srcType is bool st && dstType is bool dt)
+                    {
+                        if (st != dt)
+                            plan.Warnings.Add($"REFUSE: {from.Label()} ({(st ? "EXi" : "HD-1")}) cannot move to {p.To.Label()} ({(dt ? "EXi" : "HD-1")}) — bank types differ");
+                    }
+                    else
+                        plan.Warnings.Add($"CHECK: {from.Label()} -> {p.To.Label()} crosses banks whose HD-1/EXi type couldn't be fully verified — the write may be rejected (Reply 64).");
                 }
                 else
-                    plan.Warnings.Add($"CHECK: {from.Label()} -> {p.To.Label()} crosses banks whose HD-1/EXi type couldn't be fully verified — the write may be rejected (Reply 64).");
+                {
+                    // Fresh placement (from a loaded PCG file or the Merge Window) — there's no
+                    // local source bank to compare against here, so check the actual wire
+                    // bytes about to be written against what the destination bank really
+                    // expects instead. The body's own length already deterministically says
+                    // EXi (4960B) or HD-1 (3706B) — no lookup needed for that half of the
+                    // comparison, only for what the destination itself currently is. This is
+                    // the gap that let a fresh placement's wrong-format Program body reach
+                    // hardware and get rejected (func 0x24 Reply — 3 "mangled message" or 64
+                    // "wrong bank type") instead of being caught here first.
+                    if (bankTypeOf(p.To.Bank) is bool dt)
+                    {
+                        int expectedLen = dt ? ProgramFormatConverter.WireSizeExi : ProgramFormatConverter.WireSizeHd1;
+                        if (p.Body.Body.Length != expectedLen)
+                            plan.Warnings.Add($"REFUSE: {p.To.Label()} is a {(dt ? "EXi" : "HD-1")} bank ({expectedLen}-byte Programs), but {p.SourceLabel} is {p.Body.Body.Length} bytes — wrong format for this bank.");
+                    }
+                    else
+                        plan.Warnings.Add($"CHECK: {p.To.Label()}'s HD-1/EXi type couldn't be fully verified — the write may be rejected (Reply 64).");
+                }
             }
         }
 
@@ -208,8 +233,19 @@ static class BatchLibrarian
         foreach (var to in distinctTargets)
         {
             var displacedRefs = cat.ReferrersOf(to);
-            if (displacedRefs.Count > 0 && !relocation.ContainsKey(to))
-                plan.Warnings.Add($"REFUSE: {to.Label()} is referenced by {displacedRefs.Count} object(s) and would be overwritten without being relocated itself — add it to this batch as a source, or choose a different destination.");
+            if (displacedRefs.Count == 0 || relocation.ContainsKey(to)) continue;
+
+            // The common, non-alarming trigger for this gate: the destination already holds
+            // BYTE-IDENTICAL content (e.g. re-dropping a Program the Merge Window already
+            // placed there once) — nothing would actually change, so say that plainly instead
+            // of the generic dependency-safety warning below, which is for the genuinely
+            // dangerous case (a DIFFERENT occupant, still referenced elsewhere, about to be
+            // silently destroyed).
+            bool identical = destOccupants.TryGetValue(to, out var occ)
+                && real.First(p => p.To.Equals(to)).Body.Body.AsSpan().SequenceEqual(occ.Body);
+            plan.Warnings.Add(identical
+                ? $"REFUSE: {to.Label()} already contains this exact object — nothing to place."
+                : $"REFUSE: {to.Label()} is referenced by {displacedRefs.Count} object(s) and would be overwritten without being relocated itself — add it to this batch as a source, or choose a different destination.");
         }
 
         // (3) Referrer collection + grouping — direct generalization of PlanMove's `grouped` dict.
@@ -297,12 +333,12 @@ static class BatchLibrarian
     // ── BatchClipboard <-> persisted DTO (Storage.ClipboardEntryDto) ─────────
     // Flat mapping only — Provenance round-trips through its string name, PastedTo through
     // plain bank/number ints (its ObjType always matches the entry's own, so isn't stored twice).
-    static Storage.ClipboardEntryDto ToDto(ClipboardEntry e) => new(
+    internal static Storage.ClipboardEntryDto ToDto(ClipboardEntry e) => new(
         e.ObjType, e.Origin.Bank, e.Origin.Number, e.Version, e.Body,
         e.Provenance.ToString(), e.Reason, e.CutAt,
         e.PastedTo?.Bank, e.PastedTo?.Number, e.PastedAt, e.BankCopyGroup);
 
-    static ClipboardEntry FromDto(Storage.ClipboardEntryDto d) => new()
+    internal static ClipboardEntry FromDto(Storage.ClipboardEntryDto d) => new()
     {
         ObjType = d.ObjType,
         Origin = new ObjLoc(d.ObjType, d.OriginBank, d.OriginNumber),
@@ -316,15 +352,19 @@ static class BatchLibrarian
         BankCopyGroup = d.BankCopyGroup,
     };
 
-    public static BatchClipboard LoadClipboard(string host)
+    // The persisted pending-change clipboard is a single global store, not per-host — see
+    // LocalLibraryCache's own doc comment for why (the Kronos's IP can change; the objects
+    // don't). The pre-Phase-7 host-keyed variant (for the classic, now-retired
+    // LibrarianWindow) has been removed along with that window.
+    public static BatchClipboard LoadClipboardGlobal()
     {
         var clip = new BatchClipboard();
-        clip.Entries.AddRange(Storage.LoadClipboard(host).Select(FromDto));
+        clip.Entries.AddRange(Storage.LoadClipboardGlobal().Select(FromDto));
         return clip;
     }
 
-    public static void SaveClipboard(string host, BatchClipboard clipboard) =>
-        Storage.SaveClipboard(host, clipboard.Entries.Select(ToDto).ToList());
+    public static void SaveClipboardGlobal(BatchClipboard clipboard) =>
+        Storage.SaveClipboardGlobal(clipboard.Entries.Select(ToDto).ToList());
 
     // ── Off-hardware self-test (wired into --librarian-selftest) ─────────────
     public static List<string> SelfTest()
@@ -370,6 +410,38 @@ static class BatchLibrarian
         Check("resolve-type-mismatch", placedP.Count == 1 && placedP[0].Entry == progSrcs[1] &&
             clipP.Count == 1 && clipP[0].Entry == progSrcs[0]);
 
+        // 3b. PlanBatchMove: FRESH placement (From: null) bank-type check — the gap behind a
+        // real hardware write rejection (func 0x24 Reply — "mangled message"/"wrong bank
+        // type"): a Program placed fresh (from a loaded PCG file or the Merge Window) was
+        // never checked against what its destination bank is ACTUALLY configured as, only a
+        // local-to-local move was. The body's own length (EXi=4960B, HD-1=3706B) must be
+        // compared directly against bankTypeOf(destBank) — no "source bank" to look up here.
+        var freshCat = new LibraryCatalog();
+        var freshDest = new ObjLoc(LibObj.Program, 0x40, 20);   // BankType(0x40) => false (HD-1)
+        var noOccupants = new Dictionary<ObjLoc, ObjectDump>();
+
+        var wrongFormatBody = new ObjectDump(LibObj.Program, 0x40, 20, 1, new byte[ProgramFormatConverter.WireSizeExi]);
+        var freshWrongFormatPlan = PlanBatchMove(freshCat, LibObj.Program,
+            new List<BatchPlacement> { new(null, freshDest, wrongFormatBody, "fresh") },
+            noOccupants, divertDisplacedToClipboard: false, BankType);
+        Check("fresh-placement-wrong-format-refuses", freshWrongFormatPlan.IsRefusable &&
+            freshWrongFormatPlan.Warnings.Any(w => w.Contains("wrong format for this bank")));
+
+        var correctFormatBody = new ObjectDump(LibObj.Program, 0x40, 20, 1, new byte[ProgramFormatConverter.WireSizeHd1]);
+        var freshCorrectFormatPlan = PlanBatchMove(freshCat, LibObj.Program,
+            new List<BatchPlacement> { new(null, freshDest, correctFormatBody, "fresh") },
+            noOccupants, divertDisplacedToClipboard: false, BankType);
+        Check("fresh-placement-correct-format-not-refused",
+            !freshCorrectFormatPlan.Warnings.Any(w => w.Contains("wrong format for this bank")));
+
+        var unknownBankDest = new ObjLoc(LibObj.Program, 0x99, 0);   // BankType(0x99) => null, "can't verify"
+        var unknownBankBody = new ObjectDump(LibObj.Program, 0x99, 0, 1, new byte[ProgramFormatConverter.WireSizeExi]);
+        var freshUnknownBankPlan = PlanBatchMove(freshCat, LibObj.Program,
+            new List<BatchPlacement> { new(null, unknownBankDest, unknownBankBody, "fresh") },
+            noOccupants, divertDisplacedToClipboard: false, BankType);
+        Check("fresh-placement-unknown-bank-check-only", !freshUnknownBankPlan.IsRefusable &&
+            freshUnknownBankPlan.Warnings.Any(w => w.StartsWith("CHECK:", StringComparison.Ordinal) && w.Contains("couldn't be fully verified")));
+
         // 4. Orphan gate: overwriting a referenced, non-relocated slot REFUSES.
         var cat1 = new LibraryCatalog();
         int fbX = KronosBanks.ObjBankToFunc33(1, 0x40);
@@ -378,10 +450,22 @@ static class BatchLibrarian
         cat1.AddCombi(new ObjectDump(LibObj.Combi, 0x00, 0, 3, combiBody1));
         var orphanSrc = new ObjLoc(LibObj.Program, 0x00, 5);
         var orphanDst = new ObjLoc(LibObj.Program, 0x40, 10);   // referenced, not itself relocated
-        var orphanPlacements = new List<BatchPlacement> { new(orphanSrc, orphanDst, new ObjectDump(LibObj.Program, 0x00, 5, 1, new byte[100]), orphanSrc.Label()) };
-        var orphanOccupants = new Dictionary<ObjLoc, ObjectDump> { [orphanDst] = new ObjectDump(LibObj.Program, 0x40, 10, 1, new byte[100]) };
+        var incomingBody = new byte[100];
+        var occupantBody = new byte[100];
+        occupantBody[0] = 0xFF;   // deliberately different from incomingBody — a real displacement, not a re-drop of the same content
+        var orphanPlacements = new List<BatchPlacement> { new(orphanSrc, orphanDst, new ObjectDump(LibObj.Program, 0x00, 5, 1, incomingBody), orphanSrc.Label()) };
+        var orphanOccupants = new Dictionary<ObjLoc, ObjectDump> { [orphanDst] = new ObjectDump(LibObj.Program, 0x40, 10, 1, occupantBody) };
         var orphanPlan = PlanBatchMove(cat1, LibObj.Program, orphanPlacements, orphanOccupants, divertDisplacedToClipboard: false);
         Check("orphan-gate-refuses", orphanPlan.IsRefusable && orphanPlan.Warnings.Any(w => w.Contains("referenced by")));
+
+        // 4b. Orphan gate: same referenced/non-relocated shape, but the incoming content is
+        // BYTE-IDENTICAL to what's already there — a friendlier "already exists" message, not
+        // the alarming "would be overwritten" one, since nothing would actually change.
+        var dupOrphanPlacements = new List<BatchPlacement> { new(orphanSrc, orphanDst, new ObjectDump(LibObj.Program, 0x00, 5, 1, occupantBody), orphanSrc.Label()) };
+        var dupOrphanPlan = PlanBatchMove(cat1, LibObj.Program, dupOrphanPlacements, orphanOccupants, divertDisplacedToClipboard: false);
+        Check("orphan-gate-identical-content", dupOrphanPlan.IsRefusable &&
+            dupOrphanPlan.Warnings.Any(w => w.Contains("already contains this exact object")) &&
+            !dupOrphanPlan.Warnings.Any(w => w.Contains("referenced by")));
 
         // 5. THE crux case: one referrer touched by TWO placements in the same batch gets
         // both patches merged into a single write, not two independent (stomping) writes.
@@ -477,11 +561,10 @@ static class BatchLibrarian
         Check("repoint-unplaceable-true", ClipboardProvenance.UnplaceableSource.NeedsOriginRepoint());
         Check("repoint-usercopy-true", ClipboardProvenance.UserCopy.NeedsOriginRepoint());
 
-        // 10. RefIndex/LibraryCatalog.ReferrersOf must return empty for a Set List loc — nothing
-        // ever references one, and the old binary Program/Combi refType assumption would otherwise
+        // 10. LibraryCatalog.ReferrersOf must return empty for a Set List loc — nothing ever
+        // references one, and the old binary Program/Combi refType assumption would otherwise
         // mistranslate it through the Combi branch.
         var slLoc = new ObjLoc(LibObj.SetList, 0, 5);
-        Check("refindex-setlist-no-referrers", new RefIndex().ReferrersOf(slLoc).Count == 0);
         Check("catalog-setlist-no-referrers", new LibraryCatalog().ReferrersOf(slLoc).Count == 0);
 
         // 11. A Set List placement (via the batch/clipboard pipeline, now that Set Lists are

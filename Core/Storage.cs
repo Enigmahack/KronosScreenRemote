@@ -167,15 +167,13 @@ static class Storage
 
     public static Dictionary<int, PaletteEntry> LoadOverrides()
     {
-        string? json = null;
-        if (File.Exists(OverridePath))
-            json = File.ReadAllText(OverridePath);
-        else
-            json = ReadEmbedded("palette_override.json");
-
-        if (json == null) return new();
         try
         {
+            string? json = File.Exists(OverridePath)
+                ? File.ReadAllText(OverridePath)
+                : ReadEmbedded("palette_override.json");
+            if (json == null) return new();
+
             var node = JsonNode.Parse(json)?.AsObject();
             if (node == null) return new();
             var d = new Dictionary<int, PaletteEntry>();
@@ -254,11 +252,16 @@ static class Storage
     {
         try
         {
-            if (!File.Exists(NameCachePath)) return new();
-            var all = JsonSerializer.Deserialize<Dictionary<string, List<CachedName>>>(
-                File.ReadAllText(NameCachePath));
-            if (all != null && all.TryGetValue(host, out var list) && list != null)
-                return list;
+            // Same lock as SaveNames — an unlocked read racing a save hits a sharing
+            // violation, lands in the catch, and silently reports an EMPTY cache.
+            lock (_nameCacheFileLock)
+            {
+                if (!File.Exists(NameCachePath)) return new();
+                var all = JsonSerializer.Deserialize<Dictionary<string, List<CachedName>>>(
+                    File.ReadAllText(NameCachePath));
+                if (all != null && all.TryGetValue(host, out var list) && list != null)
+                    return list;
+            }
         }
         catch (Exception ex) { AppLog.Warn($"[name-cache] load failed: {ex.Message}"); }
         return new();
@@ -300,18 +303,23 @@ static class Storage
         var set = new HashSet<(int, int)>();
         try
         {
-            if (!File.Exists(DumpedBanksPath)) return set;
-            var all = JsonSerializer.Deserialize<Dictionary<string, List<string>>>(
-                File.ReadAllText(DumpedBanksPath));
-            if (all != null && all.TryGetValue(host, out var list) && list != null)
-                foreach (var s in list)
-                {
-                    var parts = s.Split(':');
-                    if (parts.Length == 2 &&
-                        int.TryParse(parts[0], out var t) &&
-                        int.TryParse(parts[1], System.Globalization.NumberStyles.HexNumber, null, out var b))
-                        set.Add((t, b));
-                }
+            // Same lock as SaveDumpedBanks — an unlocked read racing a save hits a
+            // sharing violation, lands in the catch, and silently reports NO banks dumped.
+            lock (_dumpedFileLock)
+            {
+                if (!File.Exists(DumpedBanksPath)) return set;
+                var all = JsonSerializer.Deserialize<Dictionary<string, List<string>>>(
+                    File.ReadAllText(DumpedBanksPath));
+                if (all != null && all.TryGetValue(host, out var list) && list != null)
+                    foreach (var s in list)
+                    {
+                        var parts = s.Split(':');
+                        if (parts.Length == 2 &&
+                            int.TryParse(parts[0], out var t) &&
+                            int.TryParse(parts[1], System.Globalization.NumberStyles.HexNumber, null, out var b))
+                            set.Add((t, b));
+                    }
+            }
         }
         catch (Exception ex) { AppLog.Warn($"[dumped-banks] load failed: {ex.Message}"); }
         return set;
@@ -335,107 +343,53 @@ static class Storage
     }
 
     // ── Librarian reference-graph cache ───────────────────────────────────────
-    // Persists RefIndex (Core/LibrarianModel.cs) across sessions so a "lazy" scan can diff
-    // against last time instead of rebuilding from scratch. Combi-timbre / set-list-slot
-    // reference tuples plus per-bank SHA-1 digests, keyed by host like the caches above.
-    // Tuple-keyed dictionaries don't serialize directly, hence the flat DTO shape below —
-    // same trick LoadDumpedBanks/SaveDumpedBanks uses for its "type:objBank" string keys.
-
-    static string RefGraphPath => Path.Combine(DataDir, "librarian_refs_cache.json");
-    static readonly object _refGraphFileLock = new();
-
-    public sealed record RefGraphCombiEntry(int Bank, int Index, List<int[]> Refs);       // Refs: [bank, number]
-    public sealed record RefGraphSetlistEntry(int Number, List<int[]> Refs);              // Refs: [slot, type, bank, index]
-    public sealed record RefGraphDigest(int Obj, int Bank, string Hex);
-
-    public sealed record RefGraph(
-        List<RefGraphCombiEntry> Combis, List<RefGraphSetlistEntry> Setlists, List<RefGraphDigest> Digests)
-    {
-        public static RefGraph Empty => new(new(), new(), new());
-    }
-
-    public static RefGraph LoadRefGraph(string host)
-    {
-        lock (_refGraphFileLock)
-        {
-            try
-            {
-                if (!File.Exists(RefGraphPath)) return RefGraph.Empty;
-                var all = JsonSerializer.Deserialize<Dictionary<string, RefGraph>>(File.ReadAllText(RefGraphPath));
-                if (all != null && all.TryGetValue(host, out var g) && g != null) return g;
-            }
-            catch (Exception ex) { AppLog.Warn($"[librarian-refs] load failed: {ex.Message}"); }
-            return RefGraph.Empty;
-        }
-    }
-
-    public static void SaveRefGraph(string host, RefGraph graph)
-    {
-        lock (_refGraphFileLock)
-        {
-            try
-            {
-                var all = File.Exists(RefGraphPath)
-                    ? JsonSerializer.Deserialize<Dictionary<string, RefGraph>>(File.ReadAllText(RefGraphPath)) ?? new()
-                    : new();
-                all[host] = graph;
-                File.WriteAllText(RefGraphPath, JsonSerializer.Serialize(all));
-            }
-            catch (Exception ex) { AppLog.Warn($"[librarian-refs] save failed: {ex.Message}"); }
-        }
-    }
-
-    // ── Librarian batch-move clipboard ────────────────────────────────────────
-    // Persists BatchClipboard (Core/BatchMoveModel.cs) across sessions — cut-but-unplaced
-    // objects must never be silently lost just because the window or app was closed. Same
-    // per-host JSON pattern as the reference-graph cache above; flat DTO (Provenance as a
-    // string, Origin/PastedTo split into plain ints) keeps the file simple and inspectable,
-    // same reasoning as RefGraphDigest storing its SHA-1 as hex rather than raw bytes.
-
-    static string ClipboardPath => Path.Combine(DataDir, "librarian_clipboard_cache.json");
-    static readonly object _clipboardFileLock = new();
+    // ── Librarian clipboard (Core/BatchMoveModel.cs's BatchClipboard) ───────────
+    // A flat list, not a Dictionary<host,...> like the caches above — deliberately not
+    // host-keyed, because the local library it belongs to (Core/LocalLibrary) is a single
+    // global store: the Kronos's IP can change but the objects don't. (The old per-host
+    // reference-graph cache and host-keyed clipboard this file used to also carry — for
+    // the classic, now-retired LibrarianWindow — were removed in the Phase 7 cutover, along
+    // with that window itself.)
 
     public sealed record ClipboardEntryDto(
         int ObjType, int OriginBank, int OriginNumber, byte Version, byte[] Body,
         string Provenance, string Reason, DateTime CutAt,
         int? PastedBank, int? PastedNumber, DateTime? PastedAt, Guid? BankCopyGroup = null);
 
-    public static List<ClipboardEntryDto> LoadClipboard(string host)
+    static string ClipboardGlobalPath => Path.Combine(DataDir, "local_library_clipboard.json");
+    static readonly object _clipboardGlobalFileLock = new();
+
+    public static List<ClipboardEntryDto> LoadClipboardGlobal()
     {
-        lock (_clipboardFileLock)
+        lock (_clipboardGlobalFileLock)
         {
             try
             {
-                if (!File.Exists(ClipboardPath)) return new();
-                var all = JsonSerializer.Deserialize<Dictionary<string, List<ClipboardEntryDto>>>(File.ReadAllText(ClipboardPath));
-                if (all != null && all.TryGetValue(host, out var list) && list != null) return list;
+                if (!File.Exists(ClipboardGlobalPath)) return new();
+                return JsonSerializer.Deserialize<List<ClipboardEntryDto>>(File.ReadAllText(ClipboardGlobalPath)) ?? new();
             }
-            catch (Exception ex) { AppLog.Warn($"[librarian-clipboard] load failed: {ex.Message}"); }
+            catch (Exception ex) { AppLog.Warn($"[local-library-clipboard] load failed: {ex.Message}"); }
             return new();
         }
     }
 
-    public static void SaveClipboard(string host, List<ClipboardEntryDto> entries)
+    public static void SaveClipboardGlobal(List<ClipboardEntryDto> entries)
     {
-        lock (_clipboardFileLock)
+        lock (_clipboardGlobalFileLock)
         {
-            try
-            {
-                var all = File.Exists(ClipboardPath)
-                    ? JsonSerializer.Deserialize<Dictionary<string, List<ClipboardEntryDto>>>(File.ReadAllText(ClipboardPath)) ?? new()
-                    : new();
-                all[host] = entries;
-                File.WriteAllText(ClipboardPath, JsonSerializer.Serialize(all));
-            }
-            catch (Exception ex) { AppLog.Warn($"[librarian-clipboard] save failed: {ex.Message}"); }
+            try { File.WriteAllText(ClipboardGlobalPath, JsonSerializer.Serialize(entries)); }
+            catch (Exception ex) { AppLog.Warn($"[local-library-clipboard] save failed: {ex.Message}"); }
         }
     }
 
     // ── Program bank type cache ───────────────────────────────────────────────
-    // Persists the func-0x61 Program Bank Types bitmap (HD-1 vs EXi) per host so the
-    // Librarian can label Program banks immediately on open, before any Scan has run.
-    // Refreshed from hardware on the first successful Scan of each session
-    // (LibrarianWindow.ScanAsync) and re-saved here whenever that refresh lands.
+    // Persists the func-0x61 Program Bank Types bitmap (HD-1 vs EXi) per host. Currently
+    // unused by the new Librarian (Views/LibrarianShellWindow.xaml) — its batch-place path
+    // (ViewModels/LibrarianShellViewModel.cs's BatchPlaceFromPcg) doesn't yet gate on
+    // bank-type compatibility the way the old, now-retired LibrarianWindow's batch-move did
+    // (a known, flagged gap, not a silent regression). Left in place rather than deleted:
+    // ISysExService.RequestProgramBankTypesAsync and this cache are exactly what a future
+    // fix would need.
 
     static string ProgramBankTypesPath => Path.Combine(DataDir, "program_bank_types_cache.json");
     static readonly object _programBankTypesFileLock = new();
@@ -489,15 +443,13 @@ static class Storage
     {
         var dots = new List<CalBiasDot>();
 
-        string? json = null;
-        if (File.Exists(CalPath))
-            json = File.ReadAllText(CalPath);
-        else
-            json = ReadEmbedded("cal_data.json");
-
-        if (json == null) return (new CalMesh(), dots);
         try
         {
+            string? json = File.Exists(CalPath)
+                ? File.ReadAllText(CalPath)
+                : ReadEmbedded("cal_data.json");
+            if (json == null) return (new CalMesh(), dots);
+
             var root = JsonNode.Parse(json)?.AsObject();
             if (root == null) return (new CalMesh(), dots);
 

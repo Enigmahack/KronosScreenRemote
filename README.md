@@ -10,6 +10,14 @@ A Windows desktop application for remotely viewing and controlling a **Korg Kron
 | [KronosScreenRemote](https://github.com/Enigmahack/KronosScreenRemote) | This repo — Windows desktop client |
 | [KronosScreenRemoteDaemon](https://github.com/Enigmahack/KronosScreenRemoteDaemon) | Kronos-side daemon (required) |
 
+> **Shared context**: this project is part of a larger Kronos RE/modding
+> ecosystem (this client + [KronosScreenRemotePy](../KronosScreenRemotePy/) +
+> [kronosology](../kronosology/) + [KronosScreenRemoteDaemon](../KronosScreenRemoteDaemon/)).
+> Cross-project architecture, shared dev environments, credentials/access
+> pointers, and agent/tooling policy live in
+> [`/home/share/PROJECT_BRAIN/BRAIN.md`](../PROJECT_BRAIN/BRAIN.md) —
+> check there before duplicating knowledge into this repo.
+
 ---
 
 ## Features
@@ -105,7 +113,7 @@ A PowerShell helper script is included for self-signed or CA-signed code signing
 KronosScreenRemote/
 ├── Audio/          # WASAPI audio capture and VU meter engine
 ├── Core/           # Logging, settings, models, and JSON persistence
-├── Detection/      # Reference-image mode detection and boot phase tracking
+├── Detection/      # Reference-image mode/help-overlay detection
 ├── Networking/     # Stream receiver, control client, FTP, MIDI/SysEx transports
 ├── Rendering/      # Overlay, palette, and button rendering helpers
 ├── Views/          # WPF windows and XAML (MainWindow, FileManager, dialogs)

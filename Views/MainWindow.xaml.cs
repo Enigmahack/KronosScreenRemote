@@ -96,8 +96,8 @@ public partial class MainWindow : Window, ICtrlSender
     HelpWindow?          _helpWin;
     KeyboardInfoWindow?  _kbdInfoWin;
     SysExToolWindow?     _sysExToolWin;
-    SetListWindow?       _setListWin;
-    LibrarianWindow?     _librarianWin;
+    LibrarianShellWindow? _librarianShellWin;
+    LocalLibraryCache?   _localLibraryCache;
 
     // ── Misc ──────────────────────────────────────────────────────────────────
     System.Windows.Forms.NotifyIcon? _trayIcon;
@@ -107,6 +107,7 @@ public partial class MainWindow : Window, ICtrlSender
     CancellationTokenSource? _connectCts;
     IStreamReceiver? _receiver;
     ICtrlClient      _ctrl        = null!;
+    Action<string>?  _ctrlErrorHandler;   // held so OnClosing can detach from the STATIC CtrlClient.OnCtrlError
     readonly SeqTransportViewModel _seqTransport;
     double           _pixPerDip   = 1.0;
     bool             _shiftHeld   = false;
@@ -139,13 +140,9 @@ public partial class MainWindow : Window, ICtrlSender
     bool IsConnected => _connState == ConnState.Connected;
     readonly FpsCounter _fpsCounter = new();
 
-    // ── Boot splash / load-phase state ────────────────────────────────────────
-    readonly BootState _boot = new();
-
-    // Cross-cutting frame classification — read by mode + combi detection, not only boot.
-    bool _detectedModeEver        = false;  // set by SetModeButton; boot exits once a mode is confirmed
-    bool _frameIsMostlyBlack      = false;  // ≥90% black — suppresses mode/combi detection
-    bool _frameIsLikelyBootScreen = false;  // ≥60% black — gates splash display
+    // Frame classification — read by mode + combi + help detection.
+    bool _detectedModeEver = false;  // set by SetModeButton
+    bool _daemonBooting    = true;   // daemon's own authoritative BOOT= field (STATE poll) — fail-safe default until the first poll response, mirroring the daemon's own fail-safe default
 
     // ── Layout preset ─────────────────────────────────────────────────────────
     LayoutPreset           _layoutPreset      = LayoutPreset.Full;
@@ -195,11 +192,14 @@ public partial class MainWindow : Window, ICtrlSender
 
         // Log daemon-side ERR responses and surface them in the notification bubble.
         // Fires on a background thread; SetNotification handles its own dispatch.
-        CtrlClient.OnCtrlError += msg =>
+        // Kept in a field so OnClosing can unsubscribe — OnCtrlError is STATIC, so an
+        // anonymous handler would root this window on the type for the process lifetime.
+        _ctrlErrorHandler = msg =>
         {
             AppLog.Warn($"[ctrl] daemon error: {msg}");
             SetNotification(msg, isError: true);
         };
+        CtrlClient.OnCtrlError += _ctrlErrorHandler;
 
         NotifyBubble.MouseLeftButtonDown += (_, _) => OnNotifyBubbleClick();
         KbdInfoBtn.MouseLeftButtonDown   += (_, _) => OpenKeyboardInfoWindow();
@@ -264,13 +264,18 @@ public partial class MainWindow : Window, ICtrlSender
         // panel ignores mode keys during boot anyway, so a press there does nothing
         // useful — but it would still stamp a pending mode whose timeout fallback
         // later lights the wrong button, and could perturb the boot sequence.
-        // "Booted" = a real mode has been confirmed (_detectedModeEver) and the boot
-        // overlay is not active. Both reset on (re)connect, so a fresh connection to
-        // a still-booting board also blocks until its first mode is detected.
-        if (!IsConnected || !_detectedModeEver || _boot.Phase)
+        // "Booted" = a real mode has been confirmed (_detectedModeEver) — resets on
+        // (re)connect, so a fresh connection to a still-booting board also blocks
+        // until its first mode is detected. The daemon itself now also refuses
+        // MODE/EDITCTX-bearing data and rejects mutating commands with
+        // "ERR BOOTING" while it considers the board still booting (see
+        // KronosScreenRemoteDaemon/docs/api.md's "Boot gate" section), so this is
+        // a client-side belt-and-suspenders check, not the only thing preventing
+        // a stray press during boot.
+        if (!IsConnected || !_detectedModeEver)
         {
             AppLog.Debug($"[mode] SendMode({mode}) ignored — board not booted " +
-                         $"(connected={IsConnected}, detectedMode={_detectedModeEver}, boot={_boot.Phase})");
+                         $"(connected={IsConnected}, detectedMode={_detectedModeEver})");
             return;
         }
 
@@ -615,8 +620,7 @@ public partial class MainWindow : Window, ICtrlSender
         };
         MNU_InputTester.Click  += (sender, e) => new InputTesterWindow(_ctrl) { Owner = this }.Show();
         MNU_SysExTool.Click    += (sender, e) => OpenSysExToolWindow();
-        MNU_SetListView.Click  += (sender, e) => OpenSetListWindow();
-        MNU_Librarian.Click    += (sender, e) => OpenLibrarianWindow();
+        MNU_Librarian.Click    += (sender, e) => OpenLibrarianShellWindow();
         MNU_KeyboardInfo.Click += (sender, e) => OpenKeyboardInfoWindow();
         CTX_KeyboardInfo.Click += (sender, e) => OpenKeyboardInfoWindow();
         MNU_KbdWarp.Visibility = Visibility.Collapsed;
@@ -993,21 +997,7 @@ public partial class MainWindow : Window, ICtrlSender
         if (_wb != null && _rawFrame != null) ApplyLut();
 
         if (_rawFrame != null && _lut != null)
-        {
-            bool meetsThreshold = IsFrameMostlyBlack(_rawFrame, _lut, _settings.BootScreenThreshold / 100.0);
-            if (_boot.Phase && !meetsThreshold)
-            {
-                _boot.Phase      = false;
-                _detectedModeEver = true;
-            }
-            else if (!_boot.Phase && meetsThreshold && !_detectedModeEver && IsConnected)
-            {
-                _boot.Phase         = true;
-                _boot.PreloadTimerStart = DateTime.Now;
-                BuildPreloadSchedule();
-            }
             Ctrl(DaemonCommand.RefreshDisplay);
-        }
         ApplyHideInputPanels();
         MNU_HideDataInput.IsChecked  = _hideDataInput;
         MNU_HideValueInput.IsChecked = _hideValueInput;
@@ -1280,16 +1270,14 @@ public partial class MainWindow : Window, ICtrlSender
                 _midiCoord.SetScreenConnection(false, _host, _ctrlPort);
                 if (_editCtx.Active) { _editCtx.Active = false; _editCtx.FlashTimer.Stop(); }
                 _editCtx.Origin = EditContext.None;
-                _currentMode = Mode.Unknown;
-                _prevMode    = Mode.Unknown;
+                _currentMode   = Mode.Unknown;
+                _prevMode      = Mode.Unknown;
+                _daemonBooting = true;   // fail-safe default until the next connection's first STATE poll
                 ClearModeButtons();
                 _seqTransport.Reset();
                 _seqTransport.CurrentMode = Mode.Unknown;
                 OverlayLayer.InvalidateVisual();
             }
-            // Start boot overlay immediately on connect so it shows while waiting for first frame
-            if (state == ConnState.Connected && _boot.FirstFrame == DateTime.MinValue)
-                _boot.FirstFrame = DateTime.Now;
         });
     }
 
@@ -1434,28 +1422,27 @@ public partial class MainWindow : Window, ICtrlSender
         _sysExToolWin.Show();
     }
 
-    void OpenSetListWindow()
+    // The rebuilt Librarian — Phase 7's cutover retired the classic LibrarianWindow (and its
+    // SetListWindow/SetListSlotEditDialog satellites) entirely; this is now the only entry point.
+    void OpenLibrarianShellWindow()
     {
-        if (_setListWin != null && _setListWin.IsLoaded)
+        if (_librarianShellWin != null && _librarianShellWin.IsLoaded)
         {
-            _setListWin.Activate();
-            _setListWin.Focus();
+            _librarianShellWin.Activate();
+            _librarianShellWin.Focus();
             return;
         }
-        _setListWin = new SetListWindow(_sysExService, _host) { Owner = this };
-        _setListWin.Show();
-    }
+        _localLibraryCache ??= LocalLibraryCache.Open();
 
-    void OpenLibrarianWindow()
-    {
-        if (_librarianWin != null && _librarianWin.IsLoaded)
-        {
-            _librarianWin.Activate();
-            _librarianWin.Focus();
-            return;
-        }
-        _librarianWin = new LibrarianWindow(_sysExService, _host) { Owner = this };
-        _librarianWin.Show();
+        // LocalLibraryCache's one-time referrer-catalog build (reads every local Combi/Set
+        // List body once — see BuildCatalogAsync's own comment) used to run synchronously
+        // right here, before the window even existed — a real 10-20s freeze on a large
+        // library just to open the Librarian. It now runs on a background thread, kicked off
+        // from LibrarianShellViewModel's constructor as soon as the window is created, so
+        // opening the window no longer depends on it at all.
+        _librarianShellWin = new LibrarianShellWindow(_sysExService, _localLibraryCache, _settings, _host) { Owner = this };
+        _librarianShellWin.Closed += (_, _) => _librarianShellWin = null;
+        _librarianShellWin.Show();
     }
 
     void OpenKeyboardInfoWindow()

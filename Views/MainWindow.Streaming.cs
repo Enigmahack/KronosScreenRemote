@@ -7,9 +7,6 @@ namespace KronosScreenRemote;
 
 public partial class MainWindow
 {
-    bool   _ftpAuthenticated     = false;
-    string _ftpAuthenticatedHost = "";
-
     // Tear down the current connection and start a fresh one (user reconnect, host change,
     // or streaming-parameter change).
     void TriggerReconnect()
@@ -34,8 +31,6 @@ public partial class MainWindow
     // no-op'ing behind a "connecting" guard and silently dropping the reconnect.
     void BeginConnect()
     {
-        ResetBootState();
-
         var prev = _connectCts;
         _connectCts = new CancellationTokenSource();
         var ct = _connectCts.Token;
@@ -57,7 +52,7 @@ public partial class MainWindow
                     "No Kronos IP address is configured.\n\nGo to Settings and enter the Kronos IP address.",
                     "Connection", MessageBoxButton.OK, MessageBoxImage.Information);
                 OpenSettingsDialog(SettingsTab.Connection);
-            });
+            }, DispatcherPriority.Normal, ct).Task.ConfigureAwait(false);
             SetConnectionStatus(ConnState.Disconnected);  // BeginConnect set Connecting; undo it
             return;
         }
@@ -66,7 +61,7 @@ public partial class MainWindow
         {
             if (ct.IsCancellationRequested) return;
             SetConnectionStatus(ConnState.Disconnected);
-            await Dispatcher.InvokeAsync(() => UpdateTitle("Not Connected")).Task.ConfigureAwait(false);
+            await Dispatcher.InvokeAsync(() => UpdateTitle("Not Connected"), DispatcherPriority.Normal, ct).Task.ConfigureAwait(false);
             return;
         }
         if (ct.IsCancellationRequested) return;  // superseded during login
@@ -102,7 +97,7 @@ public partial class MainWindow
         catch (UnauthorizedAccessException ex)
         {
             receiver.Dispose();
-            _ftpAuthenticated = false;
+            KronosFtpSession.ResetAuthentication();
             await ShowConnectError(
                 $"[conn] auth rejected: {ex.Message}",
                 "Authentication Failed",
@@ -163,7 +158,7 @@ public partial class MainWindow
                                         PixelFormats.Bgr32, null);
             FrameImage.Source = _wb;
         });
-        await Dispatcher.InvokeAsync(RefreshFrameRect, DispatcherPriority.Background)
+        await Dispatcher.InvokeAsync(RefreshFrameRect, DispatcherPriority.Background, ct)
             .Task.ConfigureAwait(false);
 
         // Push saved VGA mirror + screensaver settings to the daemon on every connect
@@ -191,7 +186,6 @@ public partial class MainWindow
     {
         _connectCts?.Cancel();
         _modePollCts?.Cancel();
-        ResetBootState();
 
         TearDownReceiver();
 
@@ -199,66 +193,10 @@ public partial class MainWindow
         UpdateTitle(title);
     }
 
-    async Task<bool> EnsureFtpLoginAsync()
-    {
-        // Already authenticated for this host — skip on auto-reconnects and stream drops.
-        if (_ftpAuthenticated && _ftpAuthenticatedHost == _host)
-            return true;
-
-        _ftpAuthenticated = false;
-
-        // Silent verify with cached credentials — if they work, skip the dialog entirely.
-        if (!string.IsNullOrEmpty(_settings.FtpUsername))
-        {
-            var (silentOk, _) = await KronosFtpSession.VerifyAsync(
-                _host, _settings.FtpPort, _settings.FtpUsername, _settings.FtpPassword)
-                .ConfigureAwait(false);
-            if (silentOk)
-            {
-                _ftpAuthenticated     = true;
-                _ftpAuthenticatedHost = _host;
-                return true;
-            }
-        }
-
-        // Prompt — up to 3 interactive attempts regardless of silent verify outcome.
-        bool dialogOk  = false;
-        bool exhausted = false;
-        await Dispatcher.InvokeAsync(() =>
-        {
-            var dlg = new LoginDialog(_host, _settings.FtpPort,
-                                      _settings.FtpUsername, _settings.FtpPassword,
-                                      attemptsAllowed: 3)
-                      { Owner = this };
-            dialogOk  = dlg.ShowDialog() == true;
-            exhausted = dlg.ExhaustedAttempts;
-            if (dialogOk)
-            {
-                _settings.FtpUsername = dlg.Username;
-                _settings.FtpPassword = dlg.Password;
-                if (dlg.SavePassword) Storage.SaveSettings(_settings);
-            }
-        }).Task.ConfigureAwait(false);
-
-        if (dialogOk)
-        {
-            _ftpAuthenticated     = true;
-            _ftpAuthenticatedHost = _host;
-            return true;
-        }
-
-        if (exhausted)
-        {
-            await Dispatcher.InvokeAsync(() =>
-                MessageBox.Show(
-                    "FTP authentication failed after 3 attempts.\nClick Reconnect to try again.",
-                    "Authentication Failed",
-                    MessageBoxButton.OK, MessageBoxImage.Error))
-                .Task.ConfigureAwait(false);
-        }
-
-        return false;
-    }
+    // Delegates to KronosFtpSession.EnsureLoginAsync (promoted from this method, Phase 6 of
+    // the Librarian rebuild) so the new Librarian's PCG-from-Kronos loader can share the
+    // exact same silent-verify-then-LoginDialog flow instead of a second copy.
+    Task<bool> EnsureFtpLoginAsync() => KronosFtpSession.EnsureLoginAsync(this, _settings, _host);
 
     async Task ShowConnectError(string logMsg, string titleSuffix, string dialogTitle, string dialogMsg)
     {
@@ -283,7 +221,6 @@ public partial class MainWindow
         SetConnectionStatus(ConnState.Disconnected);
         Dispatcher.InvokeAsync(() =>
         {
-            ResetBootState();
             _helpActive       = false;
             BTN_Help.IsActive = false;
             ModeText.Text     = "";
@@ -300,35 +237,64 @@ public partial class MainWindow
     {
         while (!ct.IsCancellationRequested)
         {
-            var state = await QueryStateAsync().ConfigureAwait(false);
-            if (state is { } s)
-                await Dispatcher.InvokeAsync(() => ApplyDaemonState(s.Mode, s.EditCtx))
-                    .Task.ConfigureAwait(false);
-            try { await Task.Delay(ModePollIntervalMs, ct).ConfigureAwait(false); }
+            try
+            {
+                var state = await QueryStateAsync().ConfigureAwait(false);
+                if (state is { } s)
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        _daemonBooting = s.Boot;
+                        ApplyDaemonState(s.Mode, s.EditCtx);
+                    }, DispatcherPriority.Background, ct).Task.ConfigureAwait(false);
+                await Task.Delay(ModePollIntervalMs, ct).ConfigureAwait(false);
+            }
             catch (OperationCanceledException) { break; }
         }
     }
 
-    // Ask the daemon for its current operating mode and edit context
-    // ("STATE" → "MODE=<n> EDITCTX=<e>"). Returns null if the query failed or the
-    // reply carried no MODE field.
-    async Task<(Mode Mode, EditContext EditCtx)?> QueryStateAsync()
+    // Ask the daemon for its current operating mode, edit context, and boot-gate state
+    // ("STATE" → "MODE=<n> EDITCTX=<e> BOOT=<0|1>"). Returns null if the query failed or
+    // the reply carried no MODE field. MODE/EDITCTX are already the daemon's own safe
+    // sentinels (0/0) while BOOT=1 - see KronosScreenRemoteDaemon/docs/api.md's "Boot
+    // gate" section - so no separate handling is needed here beyond reading BOOT itself.
+    async Task<(Mode Mode, EditContext EditCtx, bool Boot)?> QueryStateAsync()
     {
         var resp = await _ctrl.QueryAsync(DaemonCommand.QueryState).ConfigureAwait(false);
         if (resp == null) return null;
 
-        int mode = -1, editCtx = 0;
+        // TryParse sets its out-param to 0 (not left unchanged) on failure, so every
+        // field below explicitly checks the return value rather than relying on that
+        // implicitly. -1 is the "no valid MODE seen" sentinel the return check further
+        // down relies on, so a malformed "MODE=" token has to be put back to -1, not
+        // left at TryParse's own 0 default - otherwise it'd be indistinguishable from a
+        // genuine, valid "MODE=0". EDITCTX falls back to None (0) either way. BOOT
+        // deliberately does NOT use TryParse's 0 default on failure - it fails safe to
+        // 1 ("assume still booting"), same reasoning as _daemonBooting's own fail-safe
+        // default: silently treating a malformed/missing BOOT as "not booting" risks
+        // trusting data we don't actually know is safe yet.
+        int mode = -1, editCtx = 0, boot = 1;
         foreach (var tok in resp.Split(' ', StringSplitOptions.RemoveEmptyEntries))
         {
             int eq = tok.IndexOf('=');
             if (eq <= 0) continue;
             var val = tok[(eq + 1)..];
             if (tok.StartsWith("MODE=", StringComparison.Ordinal))
-                int.TryParse(val, out mode);
+            {
+                if (!int.TryParse(val, out mode))
+                    mode = -1;
+            }
             else if (tok.StartsWith("EDITCTX=", StringComparison.Ordinal))
-                int.TryParse(val, out editCtx);
+            {
+                if (!int.TryParse(val, out editCtx))
+                    editCtx = 0;
+            }
+            else if (tok.StartsWith("BOOT=", StringComparison.Ordinal))
+            {
+                if (!int.TryParse(val, out boot))
+                    boot = 1;   // malformed - fail safe, assume still booting
+            }
         }
-        return mode >= 0 ? ((Mode)mode, (EditContext)editCtx) : null;
+        return mode >= 0 ? ((Mode)mode, (EditContext)editCtx, boot != 0) : null;
     }
 
     // Apply one STATE poll result. EDITCTX (only ever non-zero while MODE=Program)
@@ -367,11 +333,7 @@ public partial class MainWindow
             }
             _currentMode = mode;
             _pendingMode = Mode.Unknown;  // detection is authoritative — clear pending
-            if (!_detectedModeEver)
-            {
-                _detectedModeEver = true;
-                _boot.Phase = false;   // dismiss overlay immediately — no fade
-            }
+            _detectedModeEver = true;
         }
 
         if (ButtonForMode(mode) is { } btn && !_editCtx.Active)
@@ -465,59 +427,18 @@ public partial class MainWindow
 
             _rawFrame = raw;
             ApplyLut();
-            _frameIsMostlyBlack      = IsFrameMostlyBlack(raw, _lut);        // 90% — suppresses mode detection
-            _frameIsLikelyBootScreen = IsFrameMostlyBlack(raw, _lut, _settings.BootScreenThreshold / 100.0);
 
             // Top-left 140×55 changed — re-check help-overlay state (rows 27–55 of the ROI).
             // Mode/edit-context no longer come from pixels at all — see ModePollLoop, which
-            // polls the daemon's STATE command directly. Guard on !_frameIsMostlyBlack:
-            // near-black reference pixels (dark help-banner text) score as false positives
-            // against the black boot framebuffer, so skip detection until Eva's UI is visible
-            // (at least 10% non-black pixels across the frame).
-            if (TopLeftOcr.HasChanged(raw, _frameW) && !_frameIsMostlyBlack)
+            // polls the daemon's STATE command directly. Guard on !_daemonBooting (the
+            // daemon's own authoritative BOOT= field, also read via that same STATE poll):
+            // dark help-banner reference pixels score as false positives against the
+            // still-mostly-black boot frame, so skip detection until the daemon itself
+            // says the board is up.
+            if (TopLeftOcr.HasChanged(raw, _frameW) && !_daemonBooting)
             {
                 _helpActive       = HelpDetector.IsHelpActive(raw, _frameW, _lut);
                 BTN_Help.IsActive = _helpActive;
-            }
-        }
-
-        // Boot phase entry: enters immediately once connected (BootState.EntryDelaySec=0) if no mode detected.
-        // Cleared instantly by SetModeButton the first time a valid mode is confirmed.
-        if (_rawFrame != null && _boot.FirstFrame == DateTime.MinValue)
-            _boot.FirstFrame = DateTime.Now;
-
-        if (!_detectedModeEver && !_boot.Phase && _boot.FirstFrame != DateTime.MinValue &&
-            (DateTime.Now - _boot.FirstFrame).TotalSeconds >= BootState.EntryDelaySec)
-        {
-            _boot.Phase         = true;
-            _boot.PreloadTimerStart = DateTime.Now;
-            BuildPreloadSchedule();
-            ClearModeButtons();
-        }
-
-        // Boot load-phase detection — run on every new frame while the overlay is active.
-        // Phases advance strictly forward; each detection latches its own timestamp.
-        if (_boot.Phase && newFrame && _rawFrame != null)
-        {
-            var detected = BootPhaseDetector.Identify(_rawFrame, _frameW, _lut);
-            if (detected == BootPhaseDetector.Phase.Finishing &&
-                _boot.LoadPhase < BootPhaseDetector.Phase.Finishing)
-            {
-                _boot.FinishingFillFrac = ComputeBootFillFraction(); // freeze bar at current position
-                _boot.LoadPhase  = BootPhaseDetector.Phase.Finishing;
-            }
-            else if (detected == BootPhaseDetector.Phase.BankData &&
-                     _boot.LoadPhase < BootPhaseDetector.Phase.BankData)
-            {
-                _boot.LoadPhase      = BootPhaseDetector.Phase.BankData;
-                _boot.BankDataDetectedAt = DateTime.Now;
-            }
-            else if (detected == BootPhaseDetector.Phase.PreloadKSC &&
-                     _boot.LoadPhase < BootPhaseDetector.Phase.PreloadKSC)
-            {
-                _boot.LoadPhase = BootPhaseDetector.Phase.PreloadKSC;
-                // Do NOT reset _boot.PreloadTimerStart — it was latched at boot entry to avoid
-                // the bar jumping backward if detection fires a few seconds late.
             }
         }
 
@@ -540,7 +461,7 @@ public partial class MainWindow
             SetModeButton(fallback);
         }
 
-        if (newFrame || _drag.Marker.HasValue || _boot.Phase)
+        if (newFrame || _drag.Marker.HasValue)
             OverlayLayer.InvalidateVisual();
 
         var (rawL, rawR) = _audioEngine?.GetLevels() ?? (-80.0, -80.0);

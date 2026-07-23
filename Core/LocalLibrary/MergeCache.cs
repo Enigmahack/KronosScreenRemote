@@ -1,0 +1,284 @@
+namespace KronosScreenRemote;
+
+// Where one piece of content in the merge cache was originally pulled from — kept for
+// traceability even after dedup collapses multiple pulls of identical content into one
+// MergeEntry (see MergeCache.PullRecursive).
+readonly record struct MergeOrigin(string PcgFileName, ObjLoc SourceLoc);
+
+// One outgoing reference site inside a Combi/Set List entry's own body (a timbre slot, or a
+// Set List slot). RefKind/Site mirror ObjectReferenceWalker's own (RefKind, Site) pair exactly
+// so MergeCache.ResolveReferencesForPlacement can patch the same bytes ObjectReferenceWalker
+// read. ResolvedContentHash is the dependency's content hash if pulling it succeeded at the
+// time OwnerHash's entry was itself pulled; null means it was a gap — MergeCache.ReconcileGaps
+// can still backfill it later if the exact same ObjLoc is pulled successfully afterward (e.g.
+// from a second PCG).
+sealed class MergeRefSite
+{
+    public required string OwnerHash { get; init; }   // the entry this reference site belongs to
+    public required string RefKind { get; init; }
+    public required int Site { get; init; }
+    public required ObjLoc TargetLoc { get; init; }   // the original reference, for gap reconciliation
+    public string? ResolvedContentHash { get; set; }
+}
+
+// One piece of content staged in the Merge Window — the Merge Window's whole point is that
+// IDENTICAL content pulled multiple times (same PCG twice, or two different PCGs with a
+// byte-identical Program) collapses to exactly one of these, tracked by ContentHash.
+sealed class MergeEntry
+{
+    public required string ContentHash { get; init; }
+    public required int ObjType { get; init; }
+    public required byte[] Body { get; init; }   // wire format — same convention LocalObjectStore uses
+    public required byte Version { get; init; }
+    public required string DisplayName { get; init; }
+    public bool IsTopLevelPull { get; set; }     // the user explicitly pulled this, not just a dependency
+    public List<MergeOrigin> Origins { get; } = new();
+    public HashSet<string> ReferencedBy { get; } = new();   // >1 => shown as "shared" (yellow) in the UI
+    public List<MergeRefSite> RefSites { get; } = new();    // this entry's OWN outgoing references (empty for Programs)
+
+    public bool HasUnresolvedDependencies => RefSites.Any(s => s.ResolvedContentHash == null);
+}
+
+// The Librarian's Merge Window: a bag-based staging cache for objects pulled out of loaded
+// PCG files, before they're placed into Local Library. Deliberately bag-based, not addressed —
+// two different PCGs can each have something at the SAME (bank,number), so staging can't use
+// Local Library's own address space without inventing conflicts that don't need to exist yet;
+// address resolution happens only once, at placement time (LocalEditOps.PlaceObject, unchanged).
+sealed class MergeCache
+{
+    readonly Dictionary<string, MergeEntry> _byHash = new();
+
+    // Every RefSite still pointing at a specific ObjLoc that hasn't resolved yet — keyed by
+    // that ObjLoc so a LATER pull of the exact same ObjLoc (e.g. from a second PCG that DOES
+    // have it) can retroactively resolve it. See ReconcileGaps.
+    readonly Dictionary<ObjLoc, List<MergeRefSite>> _pendingGapSites = new();
+
+    // Where a content hash has already been placed in Local Library this batch — the
+    // mechanism behind "two Combis sharing one deduped Program get patched to point at the
+    // SAME destination slot" (see ResolveReferencesForPlacement).
+    readonly Dictionary<string, ObjLoc> _placedAddresses = new();
+
+    IMergeCachePersistence _persistence;
+
+    public IReadOnlyCollection<MergeEntry> Entries => _byHash.Values;
+
+    public MergeCache(IMergeCachePersistence persistence)
+    {
+        _persistence = persistence;
+        var snapshot = _persistence.Load();
+        if (snapshot == null) return;
+
+        foreach (var e in snapshot.Entries)
+        {
+            var entry = new MergeEntry
+            {
+                ContentHash = e.ContentHash, ObjType = e.ObjType, Body = e.Body, Version = e.Version,
+                DisplayName = e.DisplayName, IsTopLevelPull = e.IsTopLevelPull,
+            };
+            entry.Origins.AddRange(e.Origins);
+            foreach (var r in e.ReferencedBy) entry.ReferencedBy.Add(r);
+            entry.RefSites.AddRange(e.RefSites);
+            _byHash[entry.ContentHash] = entry;
+        }
+        foreach (var (hash, loc) in snapshot.PlacedAddresses) _placedAddresses[hash] = loc;
+        RebuildPendingGapIndex();
+    }
+
+    void RebuildPendingGapIndex()
+    {
+        _pendingGapSites.Clear();
+        foreach (var entry in _byHash.Values)
+            foreach (var site in entry.RefSites)
+                if (site.ResolvedContentHash == null)
+                    RegisterGap(site);
+    }
+
+    // Switches which persistence strategy future mutations go through — e.g. the user flips
+    // the "Merge behavior" setting while the Librarian is open. Temporary -> Local Storage
+    // persists whatever is CURRENTLY staged to the new location immediately, so switching
+    // mid-session doesn't silently lose it; Local Storage -> Temporary deletes the old
+    // snapshot file but keeps everything already staged in memory for the rest of this
+    // session — only future persistence stops.
+    public void SetPersistence(IMergeCachePersistence newPersistence, bool wasFileBacked)
+    {
+        if (wasFileBacked) _persistence.Clear();
+        _persistence = newPersistence;
+        Save();
+    }
+
+    // Pulls one object — and, fully automatically and transitively, everything it references
+    // that resolves within `pcg` — into the merge cache. Byte-identical content already staged
+    // (from this or any earlier pull) is recognized and NOT duplicated; only genuinely new
+    // content is returned in Added. Gaps are references that don't resolve in `pcg` — the
+    // caller decides how to surface them (same contract DependencyScanner.Scan already uses).
+    public (List<MergeEntry> Added, List<(ObjLoc MissingRef, string RefKind)> Gaps) PullFromPcg(
+        PcgLibraryView pcg, string pcgFileName, ObjLoc loc)
+    {
+        var added = new List<MergeEntry>();
+        var gaps = new List<(ObjLoc, string)>();
+        PullRecursive(pcg, pcgFileName, loc, isTopLevel: true, added, gaps);
+        Save();
+        return (added, gaps);
+    }
+
+    // Returns the content hash of whatever now represents `loc` (an existing deduped entry, a
+    // freshly-added one, or null if it's a real gap — not found in `pcg`, or a malformed
+    // Program record). No cycle guard needed: a Program never references anything, a Combi
+    // only ever references Programs, and a Set List only ever references Combis/Programs —
+    // this reference graph is acyclic by construction (same assumption LibrarianModel.cs's
+    // own referrer-patch logic already relies on).
+    string? PullRecursive(PcgLibraryView pcg, string pcgFileName, ObjLoc loc, bool isTopLevel,
+                           List<MergeEntry> added, List<(ObjLoc, string)> gaps)
+    {
+        var pcgEntry = pcg.Get(loc);
+        byte[]? wireBody = pcgEntry == null ? null : ProgramFormatConverter.WireBodyFromPcgEntry(loc.ObjType, pcgEntry);
+        if (pcgEntry == null || wireBody == null)
+        {
+            gaps.Add((loc, isTopLevel ? "pull" : "dependency"));
+            return null;
+        }
+
+        string hash = LocalObjectStore.ComputeHash(wireBody);
+        if (_byHash.TryGetValue(hash, out var existing))
+        {
+            if (isTopLevel) existing.IsTopLevelPull = true;
+            if (!existing.Origins.Any(o => o.PcgFileName == pcgFileName && o.SourceLoc == loc))
+                existing.Origins.Add(new MergeOrigin(pcgFileName, loc));
+            ReconcileGaps(loc, hash);
+            return hash;   // dedup — already walked its own deps when first added
+        }
+
+        var entry = new MergeEntry
+        {
+            ContentHash = hash, ObjType = loc.ObjType, Body = wireBody,
+            Version = LibObj.CurrentObjectVersion(loc.ObjType) ?? 0, DisplayName = pcgEntry.Name, IsTopLevelPull = isTopLevel,
+        };
+        entry.Origins.Add(new MergeOrigin(pcgFileName, loc));
+        _byHash[hash] = entry;
+        added.Add(entry);
+        ReconcileGaps(loc, hash);
+
+        foreach (var (refKind, site, refLoc) in ObjectReferenceWalker.Walk(loc.ObjType, wireBody))
+        {
+            string? depHash = PullRecursive(pcg, pcgFileName, refLoc, isTopLevel: false, added, gaps);
+            var refSite = new MergeRefSite { OwnerHash = hash, RefKind = refKind, Site = site, TargetLoc = refLoc, ResolvedContentHash = depHash };
+            entry.RefSites.Add(refSite);
+            if (depHash != null) _byHash[depHash].ReferencedBy.Add(hash);
+            else RegisterGap(refSite);
+        }
+        return hash;
+    }
+
+    void RegisterGap(MergeRefSite site)
+    {
+        if (!_pendingGapSites.TryGetValue(site.TargetLoc, out var list))
+            _pendingGapSites[site.TargetLoc] = list = new();
+        list.Add(site);
+    }
+
+    // A dependency that was missing when some earlier entry was pulled can become available
+    // the moment the SAME ObjLoc is later pulled successfully — typically from a different PCG
+    // that happens to have it. There's no address to re-check in a bag-based cache, only "was
+    // this exact reference ever satisfied since" — which is exactly what "resolve later by
+    // loading a different PCG and pulling it in" (from this feature's design discussion) means.
+    void ReconcileGaps(ObjLoc loc, string resolvedHash)
+    {
+        if (!_pendingGapSites.Remove(loc, out var sites)) return;
+        foreach (var site in sites)
+        {
+            site.ResolvedContentHash = resolvedHash;
+            _byHash[resolvedHash].ReferencedBy.Add(site.OwnerHash);
+        }
+    }
+
+    public MergeEntry? TryGet(string contentHash) => _byHash.GetValueOrDefault(contentHash);
+
+    // Removes one entry — called after it's successfully placed into Local Library (move
+    // semantics: the Merge Window only ever shows what's still pending placement) or when the
+    // user abandons it without placing it. _placedAddresses is untouched: if this WAS placed,
+    // RecordPlacement already captured where, which is exactly what lets a sibling entry still
+    // staged resolve against it later.
+    public bool Remove(string contentHash)
+    {
+        if (!_byHash.Remove(contentHash)) return false;
+        Save();
+        return true;
+    }
+
+    // Explicit "Clear Merge" — abandons everything still staged, whether or not any of it was
+    // ever placed. Placement bookkeeping is cleared too: once the whole batch is gone, nothing
+    // remains that could ever look it up again.
+    public void Clear()
+    {
+        _byHash.Clear();
+        _pendingGapSites.Clear();
+        _placedAddresses.Clear();
+        Save();
+    }
+
+    // Records that `contentHash` now lives at `destLoc` in Local Library — the mechanism
+    // behind the "many-to-one" dependency dedup: every OTHER still-staged entry whose
+    // RefSites resolved to this same hash will patch to point at exactly this address the
+    // next time ResolveReferencesForPlacement runs on it.
+    public void RecordPlacement(string contentHash, ObjLoc destLoc)
+    {
+        _placedAddresses[contentHash] = destLoc;
+        Save();
+    }
+
+    // Rewrites a COPY of `entry`'s own body so every dependency that can be resolved gets
+    // repointed to its actual destination, and reports back whatever's left unresolved (see
+    // MergeRefSite — used by the caller to track it for a later retry, e.g.
+    // LibrarianShellViewModel.TrackMergeDependencies). A dependency resolves two ways, tried in
+    // order:
+    //   1. _placedAddresses — it was placed via THIS cache, this session (or a prior session
+    //      recovered via Local Storage). Cheapest, most authoritative — always wins if present.
+    //   2. localLookup (objType, contentHash) -> ObjLoc? — an optional caller-supplied search
+    //      over Local Library as a WHOLE, by content identity, for a dependency that already
+    //      exists there regardless of how it got there (a prior Pull, a prior Commit, a manual
+    //      placement — anything). This is what lets a Combi's reference repoint correctly even
+    //      when its dependency was never placed FROM this Merge Window at all. Null (the
+    //      self-tests' default) skips this entirely, matching the old exact-_placedAddresses-
+    //      only behavior.
+    // Anything still unresolved after both — including a true gap where ResolvedContentHash was
+    // already null — is left exactly as pulled (unchanged bytes) and reported in Unresolved.
+    // Placement itself (choosing entry's OWN destination) is a separate, manual step the caller
+    // drives via LocalEditOps — this method only patches OUTGOING references, never decides
+    // where `entry` itself goes.
+    public (byte[] Body, List<MergeRefSite> Unresolved) ResolveReferencesForPlacement(
+        MergeEntry entry, Func<int, string, ObjLoc?>? localLookup = null)
+    {
+        var body = (byte[])entry.Body.Clone();
+        var unresolved = new List<MergeRefSite>();
+        foreach (var site in entry.RefSites)
+        {
+            ObjLoc? destLoc = null;
+            if (site.ResolvedContentHash is { } hash)
+            {
+                if (_placedAddresses.TryGetValue(hash, out var placed)) destLoc = placed;
+                else if (localLookup?.Invoke(site.TargetLoc.ObjType, hash) is { } found) destLoc = found;
+            }
+
+            if (destLoc is { } d)
+            {
+                int refType = d.ObjType == LibObj.Program ? 1 : 0;
+                int func33Bank = KronosBanks.ObjBankToFunc33(refType, d.Bank);
+                if (site.RefKind.StartsWith("timbre", StringComparison.Ordinal))
+                    LibRefs.SetCombiTimbreRef(body, site.Site, func33Bank, d.Number);
+                else
+                    LibRefs.SetSetListSlotRef(body, site.Site, func33Bank, d.Number, type: null);
+            }
+            else
+            {
+                unresolved.Add(site);
+            }
+        }
+        return (body, unresolved);
+    }
+
+    void Save() => _persistence.Save(new MergeCacheSnapshot(
+        _byHash.Values.Select(e => new MergeEntrySnapshot(
+            e.ContentHash, e.ObjType, e.Body, e.Version, e.DisplayName, e.IsTopLevelPull,
+            e.Origins.ToList(), e.ReferencedBy.ToList(), e.RefSites.ToList())).ToList(),
+        new Dictionary<string, ObjLoc>(_placedAddresses)));
+}
