@@ -135,6 +135,9 @@ public class AppSettings
         ("Seq Record",  "Seq: Record",       Key.None),
         ("Seq Start",   "Seq: Start/Stop",   Key.None),
         ("Seq Save",    "Write / Save",      Key.None),
+        // Tap tempo (unassigned by default) — the bound key taps once per press; hold
+        // is ignored (auto-repeat is filtered) so a held key can't spam phantom taps.
+        ("Tap Tempo",   "Tap Tempo",         Key.None),
     ];
 
     public Keybind GetKeybind(string action)

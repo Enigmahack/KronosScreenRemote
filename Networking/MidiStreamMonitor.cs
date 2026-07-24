@@ -353,6 +353,7 @@ sealed class MidiStreamParser
         // Real-time messages: single byte, can appear anywhere in the stream
         if (b >= 0xF8)
         {
+            if (b == 0xF8) TempoProbe.Pulse("stream");   // PROBE (throwaway) — clock tick, then suppress
             if (b is 0xFA or 0xFB or 0xFC or 0xFF)
                 MessageReceived?.Invoke([b]);
             // Suppress: 0xF8 (clock), 0xF9 (undefined), 0xFD (undefined), 0xFE (active sensing)

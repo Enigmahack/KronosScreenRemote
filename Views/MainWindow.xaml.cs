@@ -334,6 +334,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         WireCommand(BTN_SeqRew,    "Seq Rewind");
         WireCommand(BTN_SeqFf,     "Seq Forward");
         WireCommand(BTN_SeqPause,  "Seq Pause");
+        WireCommand(BTN_TapTempo,  "Tap Tempo");   // global (not seq-mode gated) — see command registry
 
         // Right-click context menus on mode and toggle buttons
         foreach (var btn in new KronosButton[] { BTN_Setlist, BTN_Combi, BTN_Program, BTN_Sequence,
@@ -1284,6 +1285,9 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             ConnModeText.Text = state == ConnState.Connected
                 ? (_pullMode ? "Pull" : "Change")
                 : "";
+            // Tap tempo injects a front-panel key over the daemon ctrl channel, so it's
+            // meaningful only while connected (unlike USB-MIDI SysEx features).
+            BTN_TapTempo.IsEnabled = state == ConnState.Connected;
             if (state != ConnState.Connected) { FpsText.Text = ""; PingText.Text = ""; _fpsCounter.Reset(); }
             if (state == ConnState.Connected) StartPing(); else StopPing();
             if (state == ConnState.Connected) StartAudioCapture(); else StopAudioCapture();
@@ -1568,6 +1572,9 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             new("Seq Record",  "Seq: Record",       K("Seq Record"),  () => _seqTransport.RecordCommand.Execute(null)),
             new("Seq Start",   "Seq: Start/Stop",   K("Seq Start"),   () => _seqTransport.StartStopCommand.Execute(null)),
             new("Seq Save",    "Write / Save",      K("Seq Save"),    () => _seqTransport.RecordCommand.Execute(null)),
+            // Tap tempo: one BUTTON TAP_TEMPO press per invocation; the Kronos averages
+            // successive taps itself. Global — enabled whenever connected, not seq-gated.
+            new("Tap Tempo",   "Tap Tempo",         K("Tap Tempo"),   TapTempoOnce),
             // ── Help
             new("Help",  "Show Help", K("Help"), () => OpenHelpWindow()),
             new("About", "About",     "",        () => OpenAboutWindow()),
@@ -1594,6 +1601,43 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         => btn.Click += (_, _) => RunCommand(id);
     void WireCommand(MenuItem mi, string id)
         => mi.Click += (_, _) => RunCommand(id);
+
+    // ── Tap tempo ───────────────────────────────────────────────────────────────
+    // One tap = one front-panel TAP TEMPO press; the Kronos does its own averaging
+    // (two taps set the tempo), so the client never computes BPM. Routed through the
+    // command registry so the footer button, the "Tap Tempo" keybind, and the command
+    // palette all share this one action. Requires the daemon ctrl channel (front-panel
+    // injection is not available over the USB-MIDI-only path), so the button is enabled
+    // only while connected — see SetConnectionStatus.
+    void TapTempoOnce()
+    {
+        FlashTapTempo();
+        Ctrl(DaemonCommand.Button(PanelButton.TapTempo));
+    }
+
+    // Briefly highlight the footer Tap Tempo button so each tap (mouse or keybind) reads
+    // as registered — the plain footer Button has no KronosButton.FlashDepress. One shared
+    // single-shot timer clears it back to the style's transparent base.
+    static readonly Brush TapFlashBrush = new SolidColorBrush(Color.FromRgb(0x45, 0x45, 0x45));
+    System.Windows.Threading.DispatcherTimer? _tapFlashTimer;
+    void FlashTapTempo()
+    {
+        BTN_TapTempo.Background = TapFlashBrush;
+        if (_tapFlashTimer == null)
+        {
+            _tapFlashTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(110),
+            };
+            _tapFlashTimer.Tick += (_, _) =>
+            {
+                _tapFlashTimer!.Stop();
+                BTN_TapTempo.Background = Brushes.Transparent;
+            };
+        }
+        _tapFlashTimer.Stop();
+        _tapFlashTimer.Start();
+    }
 
     // The mode-select registry Ids, in button/menu order — the keybind chain iterates these so
     // adding a mode is a one-line registry change, not a new hand-wired IsAction branch.

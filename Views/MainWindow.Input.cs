@@ -374,6 +374,11 @@ public partial class MainWindow
         }
         if (_seqTransport.IsSaveEnabled && IsAction("Seq Save", e)) { RunCommand("Seq Save"); return; }
 
+        // Tap tempo (global — not seq-mode gated). Ignore auto-repeat so a HELD key can't
+        // spam phantom taps; real tap tempo needs discrete presses. Connection-gated to
+        // match the footer button (front-panel injection needs the daemon ctrl channel).
+        if (IsConnected && !e.IsRepeat && IsAction("Tap Tempo", e)) { RunCommand("Tap Tempo"); return; }
+
         if (IsAction("Calibrate", e))
         {
             _cal.Mode = !_cal.Mode;

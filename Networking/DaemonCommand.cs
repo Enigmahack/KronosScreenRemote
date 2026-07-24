@@ -95,6 +95,7 @@ enum PanelButton
     Inc, Dec,
     NumDash, NumDot,
     SeqLocate, SeqRewind, SeqForward, SeqPause, SeqRecord, SeqStart,
+    TapTempo,
 }
 
 static class PanelButtonExtensions
@@ -116,6 +117,7 @@ static class PanelButtonExtensions
         PanelButton.SeqPause   => "SEQ_PAUSE",
         PanelButton.SeqRecord  => "SEQ_REC",
         PanelButton.SeqStart   => "SEQ_START",
+        PanelButton.TapTempo   => "TAP_TEMPO",
         _ => throw new ArgumentOutOfRangeException(nameof(button), button, "Unknown panel button"),
     };
 }

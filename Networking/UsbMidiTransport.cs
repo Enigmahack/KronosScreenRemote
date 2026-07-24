@@ -176,7 +176,8 @@ sealed class UsbMidiTransport : IKronosMidiTransport
         // The Kronos streams MIDI clock (F8) continuously over USB, plus active
         // sensing (FE) / undefined (F9,FD); the parser suppresses all of these, so
         // drop them here to avoid an allocation + lock on every clock tick.
-        if (status is 0xF8 or 0xF9 or 0xFD or 0xFE) return;
+        if (status == 0xF8) { TempoProbe.Pulse("usb"); return; }   // PROBE (throwaway) — clock tick, then drop
+        if (status is 0xF9 or 0xFD or 0xFE) return;
         int need = MidiHex.DataBytesFor(status);
         Span<byte> msg = stackalloc byte[1 + need];
         msg[0] = status;
