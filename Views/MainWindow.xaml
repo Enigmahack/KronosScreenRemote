@@ -1,11 +1,10 @@
-<Window x:Class="KronosScreenRemote.MainWindow"
+<local:ThemedWindow x:Class="KronosScreenRemote.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:KronosScreenRemote"
         Title="Kronos ScreenRemote"
         Width="1870" Height="625"
         ResizeMode="CanResize"
-        Background="Black"
         Focusable="True"
         Icon="/Resources/Icons/AppIcon.ico">
     <DockPanel>
@@ -513,7 +512,7 @@
             </StatusBarItem>
         </StatusBar>
 
-        <Grid x:Name="OuterGrid" Background="Black">
+        <Grid x:Name="OuterGrid" Background="{StaticResource WindowBackgroundBrush}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="LeftPanelColumn" Width="282*"/>
                 <ColumnDefinition x:Name="MainAreaColumn" Width="1600*"/>
@@ -818,4 +817,4 @@
         </Grid>
         </Grid>
     </DockPanel>
-</Window>
+</local:ThemedWindow>

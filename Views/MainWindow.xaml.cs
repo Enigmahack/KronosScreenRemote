@@ -10,7 +10,7 @@ using KronosScreenRemote.ViewModels;
 
 namespace KronosScreenRemote;
 
-public partial class MainWindow : Window, ICtrlSender
+public partial class MainWindow : ThemedWindow, ICtrlSender
 {
     // ── Connection settings ───────────────────────────────────────────────────
     string _host     = "";
@@ -148,12 +148,16 @@ public partial class MainWindow : Window, ICtrlSender
     LayoutPreset           _layoutPreset      = LayoutPreset.Full;
     FileManagerWindow?     _fileManagerWin;
 
+    // The only window permitted to minimize — it collapses to the system tray (see InitTrayIcon),
+    // rather than stranding itself in a screen corner. Every other window inherits ThemedWindow's
+    // default (no minimize box).
+    protected override bool AllowMinimize => true;
+
     public MainWindow()
     {
         InitializeComponent();
 
         OverlayLayer.RenderCallback = DrawOverlay;
-        WindowTheme.ApplyDarkCaption(this);
 
         _settings  = Storage.LoadSettings();
         _zoomLevel = _settings.ZoomDefaultLevel;
@@ -619,7 +623,7 @@ public partial class MainWindow : Window, ICtrlSender
             UpdateKbdStatus();
             OverlayLayer.InvalidateVisual();
         };
-        MNU_InputTester.Click  += (sender, e) => new InputTesterWindow(_ctrl) { Owner = this }.Show();
+        MNU_InputTester.Click  += (sender, e) => new InputTesterWindow(_ctrl).OwnedBy(this).Show();
         MNU_SysExTool.Click    += (sender, e) => OpenSysExToolWindow();
         MNU_Librarian.Click    += (sender, e) => OpenLibrarianShellWindow();
         MNU_KeyboardInfo.Click += (sender, e) => OpenKeyboardInfoWindow();
@@ -938,10 +942,10 @@ public partial class MainWindow : Window, ICtrlSender
         double imgG  = _settings.ImageGamma;
 
         var dlg = new SettingsWindow(_settings, m => _ = RunUserMacroAsync(m),
-            showInputTester: () => new InputTesterWindow(_ctrl) { Owner = this }.Show(),
+            showInputTester: () => new InputTesterWindow(_ctrl).OwnedBy(this).Show(),
             initialTab: tab,
             onImagePreview: PreviewImageAdjust)
-            { Owner = this };
+            .OwnedBy(this);
         bool ok = ShowDialogPreservingGeometry(dlg);
 
         if (!ok)
@@ -1087,6 +1091,14 @@ public partial class MainWindow : Window, ICtrlSender
 
     void UserInitiatedReconnect()
     {
+        // No IP configured yet → don't pop the FTP-login dialog against an empty host.
+        // Hand off to the normal connect command, which surfaces the "enter IP address"
+        // message and opens the Connection settings screen (ConnectAsync's empty-host branch).
+        if (string.IsNullOrWhiteSpace(_host))
+        {
+            TriggerReconnect();
+            return;
+        }
         if (string.IsNullOrEmpty(_settings.FtpUsername))
         {
             ShowFtpCredentialsDialog();
@@ -1112,7 +1124,7 @@ public partial class MainWindow : Window, ICtrlSender
 
         _fileManagerWin = new FileManagerWindow(_host, _settings.FtpPort,
                                                 _settings.FtpUsername, _settings.FtpPassword)
-                          { Owner = this };
+                          .OwnedBy(this);
         _fileManagerWin.Closed += (_, _) => _fileManagerWin = null;
         _fileManagerWin.Show();
     }
@@ -1121,7 +1133,7 @@ public partial class MainWindow : Window, ICtrlSender
     {
         var dlg = new LoginDialog(_host, _settings.FtpPort,
                                   _settings.FtpUsername, _settings.FtpPassword)
-                  { Owner = this };
+                  .OwnedBy(this);
         if (ShowDialogPreservingGeometry(dlg))
         {
             _settings.FtpUsername = dlg.Username;
@@ -1133,7 +1145,7 @@ public partial class MainWindow : Window, ICtrlSender
     bool EnsureHasFtpCredentials()
     {
         if (!string.IsNullOrEmpty(_settings.FtpUsername)) return true;
-        var dlg = new LoginDialog(_host, _settings.FtpPort) { Owner = this };
+        var dlg = new LoginDialog(_host, _settings.FtpPort).OwnedBy(this);
         if (!ShowDialogPreservingGeometry(dlg)) return false;
         _settings.FtpUsername = dlg.Username;
         _settings.FtpPassword = dlg.Password;
@@ -1310,14 +1322,14 @@ public partial class MainWindow : Window, ICtrlSender
             _helpWin.Focus();
             return;
         }
-        _helpWin = new HelpWindow(_settings) { Owner = this };
+        _helpWin = new HelpWindow(_settings).OwnedBy(this);
         _helpWin.Show();
     }
 
     void OpenAboutWindow()
     {
         string? host = string.IsNullOrEmpty(_host) ? null : _host;
-        ShowDialogPreservingGeometry(new AboutWindow(host, _ctrlPort) { Owner = this });
+        ShowDialogPreservingGeometry(new AboutWindow(host, _ctrlPort).OwnedBy(this));
     }
 
     // The MIDI backend changed (TCP daemon ⇄ direct USB, or none). Surface it on
@@ -1347,17 +1359,10 @@ public partial class MainWindow : Window, ICtrlSender
 
     // Footer badge colours per link kind: USB green (native, fast), DIN amber (5-pin
     // interface, slow), TCP blue (network), None dim.
-    static readonly System.Windows.Media.SolidColorBrush LinkUsbBrush  = FrozenBrush(0x7D, 0xC9, 0x7D);
-    static readonly System.Windows.Media.SolidColorBrush LinkDinBrush  = FrozenBrush(0xCC, 0xAA, 0x33);
-    static readonly System.Windows.Media.SolidColorBrush LinkTcpBrush  = FrozenBrush(0x88, 0xAA, 0xDD);
-    static readonly System.Windows.Media.SolidColorBrush LinkNoneBrush = FrozenBrush(0x77, 0x77, 0x77);
-
-    static System.Windows.Media.SolidColorBrush FrozenBrush(byte r, byte g, byte b)
-    {
-        var br = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(r, g, b));
-        br.Freeze();
-        return br;
-    }
+    static readonly System.Windows.Media.SolidColorBrush LinkUsbBrush  = ThemeBrushes.Frozen(0x7D, 0xC9, 0x7D);
+    static readonly System.Windows.Media.SolidColorBrush LinkDinBrush  = ThemeBrushes.Frozen(0xCC, 0xAA, 0x33);
+    static readonly System.Windows.Media.SolidColorBrush LinkTcpBrush  = ThemeBrushes.Frozen(0x88, 0xAA, 0xDD);
+    static readonly System.Windows.Media.SolidColorBrush LinkNoneBrush = ThemeBrushes.Frozen(0x77, 0x77, 0x77);
 
     // Paint the footer TCP/USB/DIN badge from the coordinator's current link.
     void UpdateMidiLinkBadge()
@@ -1431,7 +1436,7 @@ public partial class MainWindow : Window, ICtrlSender
             _sysExToolWin.Focus();
             return;
         }
-        _sysExToolWin = new SysExToolWindow(_sysExService, _settings.MidiOutputChannel) { Owner = this };
+        _sysExToolWin = new SysExToolWindow(_sysExService, _settings.MidiOutputChannel).OwnedBy(this);
         _sysExToolWin.Closed += (_, _) =>
         {
             _settings.MidiOutputChannel = _sysExToolWin.SelectedChannel;
@@ -1459,7 +1464,7 @@ public partial class MainWindow : Window, ICtrlSender
         // library just to open the Librarian. It now runs on a background thread, kicked off
         // from LibrarianShellViewModel's constructor as soon as the window is created, so
         // opening the window no longer depends on it at all.
-        _librarianShellWin = new LibrarianShellWindow(_sysExService, _localLibraryCache, _settings, _host) { Owner = this };
+        _librarianShellWin = new LibrarianShellWindow(_sysExService, _localLibraryCache, _settings, _host).OwnedBy(this);
         _librarianShellWin.Closed += (_, _) => _librarianShellWin = null;
         _librarianShellWin.Show();
     }
@@ -1472,7 +1477,7 @@ public partial class MainWindow : Window, ICtrlSender
             _kbdInfoWin.Focus();
             return;
         }
-        _kbdInfoWin = new KeyboardInfoWindow(_host, _ctrlPort, () => IsConnected) { Owner = this };
+        _kbdInfoWin = new KeyboardInfoWindow(_host, _ctrlPort, () => IsConnected).OwnedBy(this);
         _kbdInfoWin.Show();
     }
 
@@ -1483,7 +1488,7 @@ public partial class MainWindow : Window, ICtrlSender
         AppLog.Info("[palette] opening");
         // Fresh build so KeyHints reflect the current keybinds (a rebind since launch shows up
         // immediately) — same behaviour as before the registry existed.
-        var pal = new CommandPaletteWindow(BuildCommandRegistry()) { Owner = this };
+        var pal = new CommandPaletteWindow(BuildCommandRegistry()).OwnedBy(this);
         pal.Show();
     }
 
@@ -1705,6 +1710,35 @@ public partial class MainWindow : Window, ICtrlSender
         Dispatcher.InvokeAsync(RefreshFrameRect, DispatcherPriority.Loaded);
     }
 
+    // Smallest client width that still shows every footer status-bar item (icons +
+    // spacing) without clipping. Measured live from the bar's own content, so adding
+    // items in XAML automatically widens the floor — there's no constant to keep in sync.
+    // Probes at infinite width (rather than reading DesiredSize at the current width) so
+    // the result is correct even when this runs while the window is already narrow, e.g.
+    // when Focused is the startup preset.
+    double MeasureStatusBarNaturalWidth()
+    {
+        double h = AppStatusBar.ActualHeight > 0 ? AppStatusBar.ActualHeight : 28;
+        AppStatusBar.Measure(new Size(double.PositiveInfinity, h));
+        double w = AppStatusBar.DesiredSize.Width;
+        AppStatusBar.InvalidateMeasure();   // undo the probe; the real constraint re-applies next pass
+        return w;
+    }
+
+    // Pin the window's minimum width to the footer's natural width so it can never be
+    // dragged — or preset-sized — narrower than the status-bar icons. Computed once at
+    // load while the stretchy performance-name item is still empty, so the floor is
+    // "icons + spacing", not "icons + whatever performance name is showing".
+    void UpdateMinimumWindowWidth()
+    {
+        if (!IsLoaded) return;
+        UpdateLayout();                        // ensure ActualWidth reflects the current chrome
+        var dp = (FrameworkElement)Content;
+        if (dp.ActualWidth <= 0) return;
+        double chromeW = Width - dp.ActualWidth;
+        MinWidth = MeasureStatusBarNaturalWidth() + chromeW;
+    }
+
     void SetWindowSize(double scale)
     {
         if (!IsLoaded) return;
@@ -1829,7 +1863,12 @@ public partial class MainWindow : Window, ICtrlSender
             ContextMenuStrip = menu,
             Visible          = false
         };
-        _trayIcon.DoubleClick += (_, _) => RestoreFromTray();
+        // Single LEFT click restores (matches how every other tray/taskbar app behaves — a
+        // double-click used to be required). Right click still falls through to the context menu.
+        _trayIcon.MouseClick += (_, e) =>
+        {
+            if (e.Button == System.Windows.Forms.MouseButtons.Left) RestoreFromTray();
+        };
 
         StateChanged += (_, _) =>
         {

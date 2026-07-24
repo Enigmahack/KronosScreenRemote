@@ -4,7 +4,7 @@ using System.Windows.Media;
 
 namespace KronosScreenRemote;
 
-public partial class HelpWindow : Window
+public partial class HelpWindow : ThemedWindow
 {
     static readonly Color CBody    = Color.FromRgb(0xC8, 0xC8, 0xC8);
     static readonly Color CHead    = Color.FromRgb(0x88, 0xAA, 0xDD);
@@ -17,7 +17,6 @@ public partial class HelpWindow : Window
     public HelpWindow(AppSettings settings)
     {
         InitializeComponent();
-        WindowTheme.ApplyDarkCaption(this);
         HelpViewer.Document = BuildDocument(settings);
     }
 

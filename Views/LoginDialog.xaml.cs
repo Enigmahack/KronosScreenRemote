@@ -2,7 +2,7 @@ using System.Windows;
 
 namespace KronosScreenRemote;
 
-public partial class LoginDialog : Window
+public partial class LoginDialog : ThemedWindow
 {
     readonly string _host;
     readonly int    _port;
@@ -20,7 +20,6 @@ public partial class LoginDialog : Window
         _port            = port;
         _attemptsAllowed = attemptsAllowed;
         InitializeComponent();
-        WindowTheme.ApplyDarkCaption(this);
         SubtitleText.Text = $"FTP credentials for {host}:{port}";
         TxtUser.Text      = existingUser;
         if (!string.IsNullOrEmpty(existingPass))

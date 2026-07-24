@@ -40,7 +40,7 @@ class TestEntry : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new(n!));
 }
 
-internal partial class InputTesterWindow : Window
+internal partial class InputTesterWindow : ThemedWindow
 {
     static string ResultsPath =>
         Path.Combine(Storage.DataDir, "input_test_results.json");
@@ -63,7 +63,6 @@ internal partial class InputTesterWindow : Window
     public InputTesterWindow(ICtrlClient ctrl)
     {
         InitializeComponent();
-        WindowTheme.ApplyDarkCaption(this);
         _ctrl = ctrl;
         BuildEntries();
         EntryGrid.ItemsSource   = _entries;

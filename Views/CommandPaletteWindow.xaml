@@ -1,6 +1,7 @@
-<Window x:Class="KronosScreenRemote.CommandPaletteWindow"
+<local:ThemedWindow x:Class="KronosScreenRemote.CommandPaletteWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:KronosScreenRemote"
         Title="Command Palette"
         Width="480"
         SizeToContent="Height"
@@ -10,9 +11,7 @@
         ResizeMode="NoResize"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
-        Topmost="True"
-        Background="{StaticResource WindowBackgroundBrush}"
-        Foreground="{StaticResource TextBrush}">
+        Topmost="True">
 
     <Window.Resources>
         <!-- Item container: dark highlight on hover/selection -->
@@ -33,10 +32,10 @@
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsSelected" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#FF2D4A7A"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource SelectionBrush}"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="#FF263A5E"/>
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource SelectionHoverBrush}"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -45,7 +44,7 @@
         </Style>
     </Window.Resources>
 
-    <Border BorderBrush="#FF555555" BorderThickness="1">
+    <Border BorderBrush="{StaticResource BorderBrush1}" BorderThickness="1">
         <Grid>
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
@@ -118,4 +117,4 @@
             </ListBox>
         </Grid>
     </Border>
-</Window>
+</local:ThemedWindow>

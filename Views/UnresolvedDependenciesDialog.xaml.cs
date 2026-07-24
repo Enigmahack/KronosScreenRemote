@@ -8,12 +8,11 @@ namespace KronosScreenRemote;
 // missing many Combis/Programs) until its own Yes/No buttons scrolled off-screen and couldn't
 // be clicked at all. The list here is capped (XAML's Border MaxHeight) and scrolls instead,
 // with Continue/Cancel always pinned below it.
-internal partial class UnresolvedDependenciesDialog : Window
+internal partial class UnresolvedDependenciesDialog : ThemedWindow
 {
     UnresolvedDependenciesDialog(string heading, IEnumerable<string> descriptions)
     {
         InitializeComponent();
-        WindowTheme.ApplyDarkCaption(this);
         TXT_Heading.Text = heading;
         foreach (var d in descriptions) LST_Dependencies.Items.Add(new Row(d));
     }

@@ -8,6 +8,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using static KronosScreenRemote.ThemeBrushes;
 
 namespace KronosScreenRemote;
 
@@ -15,7 +16,7 @@ enum FilterState { On, Filter, Off }
 
 enum MidiMsgType { Note, CC, ProgramChange, PitchBend, AfterTouch, SysEx, Transport, Other }
 
-partial class SysExToolWindow : Window
+partial class SysExToolWindow : ThemedWindow
 {
     const int MaxEntries = 1000;
 
@@ -81,7 +82,6 @@ partial class SysExToolWindow : Window
     {
         _sysEx = sysEx;
         InitializeComponent();
-        WindowTheme.ApplyDarkCaption(this);
 
         _view = CollectionViewSource.GetDefaultView(_allItems);
         _view.Filter = FilterMessage;
@@ -338,13 +338,6 @@ partial class SysExToolWindow : Window
         return $"{names[midi % 12]}{midi / 12 - 1}";
     }
 
-    static SolidColorBrush Frozen(byte r, byte g, byte b)
-    {
-        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
-        brush.Freeze();
-        return brush;
-    }
-
     // ── Traffic routing ──────────────────────────────────────────────────────
 
     // Called on a background thread (the MIDI consumer thread, or a TX caller).
@@ -453,14 +446,14 @@ partial class SysExToolWindow : Window
 
 class SysExMessageItem
 {
-    static readonly SolidColorBrush ColorNote      = MakeBrush(0x88, 0xBB, 0xFF); // blue-ish
-    static readonly SolidColorBrush ColorCC        = MakeBrush(0xFF, 0xCC, 0x66); // amber
-    static readonly SolidColorBrush ColorProg      = MakeBrush(0xCC, 0x88, 0xFF); // purple
-    static readonly SolidColorBrush ColorSysEx     = MakeBrush(0x77, 0xDD, 0x99); // green
-    static readonly SolidColorBrush ColorBend      = MakeBrush(0xFF, 0x99, 0x66); // orange
-    static readonly SolidColorBrush ColorAfterTouch= MakeBrush(0xFF, 0x77, 0xAA); // pink
-    static readonly SolidColorBrush ColorTransport = MakeBrush(0xAA, 0xDD, 0xFF); // light blue
-    static readonly SolidColorBrush ColorOther     = MakeBrush(0xCC, 0xCC, 0xCC); // default
+    static readonly SolidColorBrush ColorNote      = Frozen(0x88, 0xBB, 0xFF); // blue-ish
+    static readonly SolidColorBrush ColorCC        = Frozen(0xFF, 0xCC, 0x66); // amber
+    static readonly SolidColorBrush ColorProg      = Frozen(0xCC, 0x88, 0xFF); // purple
+    static readonly SolidColorBrush ColorSysEx     = Frozen(0x77, 0xDD, 0x99); // green
+    static readonly SolidColorBrush ColorBend      = Frozen(0xFF, 0x99, 0x66); // orange
+    static readonly SolidColorBrush ColorAfterTouch= Frozen(0xFF, 0x77, 0xAA); // pink
+    static readonly SolidColorBrush ColorTransport = Frozen(0xAA, 0xDD, 0xFF); // light blue
+    static readonly SolidColorBrush ColorOther     = Frozen(0xCC, 0xCC, 0xCC); // default
 
     public string      Time      { get; }
     public string      Dir       { get; }
@@ -537,10 +530,4 @@ class SysExMessageItem
         _                         => ColorOther,
     };
 
-    static SolidColorBrush MakeBrush(byte r, byte g, byte b)
-    {
-        var brush = new SolidColorBrush(Color.FromRgb(r, g, b));
-        brush.Freeze();
-        return brush;
-    }
 }

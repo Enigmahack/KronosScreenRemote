@@ -1,15 +1,14 @@
-<Window x:Class="KronosScreenRemote.SysExToolWindow"
+<local:ThemedWindow x:Class="KronosScreenRemote.SysExToolWindow"
         x:ClassModifier="internal"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:KronosScreenRemote"
         Title="SysEx / MIDI Monitor"
         Width="1600" Height="600"
         MinWidth="600" MinHeight="300"
         ResizeMode="CanResize"
         WindowStartupLocation="CenterOwner"
-        ShowInTaskbar="False"
-        Background="{StaticResource WindowBackgroundBrush}"
-        Foreground="{StaticResource TextBrush}">
+        ShowInTaskbar="False">
     <Window.Resources>
         <Style x:Key="FilterButtonStyle" TargetType="Button">
             <Setter Property="Height"          Value="24"/>
@@ -199,4 +198,4 @@
         </ListBox>
 
     </DockPanel>
-</Window>
+</local:ThemedWindow>

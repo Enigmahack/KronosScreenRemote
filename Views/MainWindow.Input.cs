@@ -43,6 +43,10 @@ public partial class MainWindow
         // Restore saved window bounds after layout settles
         Dispatcher.InvokeAsync(() =>
         {
+            // Pin the minimum width to the footer's natural width first, so a restored
+            // (or later dragged) window can never be narrower than the status-bar icons.
+            UpdateMinimumWindowWidth();
+
             if (_settings.WindowLeft >= 0 && _settings.WindowTop >= 0)
             {
                 Left = Math.Max(_settings.WindowLeft, SystemParameters.VirtualScreenLeft);

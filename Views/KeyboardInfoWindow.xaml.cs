@@ -6,7 +6,7 @@ using System.Windows.Threading;
 
 namespace KronosScreenRemote;
 
-public partial class KeyboardInfoWindow : Window
+public partial class KeyboardInfoWindow : ThemedWindow
 {
     const int HistLen = 60;
 
@@ -41,7 +41,6 @@ public partial class KeyboardInfoWindow : Window
         _isParentConnected = isParentConnected;
 
         InitializeComponent();
-        WindowTheme.ApplyDarkCaption(this);
 
         // ── Graph canvas setup ────────────────────────────────────────────────
         var gridStroke = new SolidColorBrush(Color.FromRgb(0x33, 0x33, 0x33));

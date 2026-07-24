@@ -16,7 +16,7 @@ namespace KronosScreenRemote;
 // not sent a clean QUIT (see FileManagerWindow.xaml.cs's OnClosing comment), so a caller
 // opening a second connection immediately after this one closes risked hanging waiting for
 // a session slot. One connection, opened once and cleanly closed once, avoids that entirely.
-internal partial class RemoteFilePickerDialog : Window
+internal partial class RemoteFilePickerDialog : ThemedWindow
 {
     sealed record Entry(string Name, string FullPath, bool IsDirectory)
     {
@@ -34,7 +34,6 @@ internal partial class RemoteFilePickerDialog : Window
     public RemoteFilePickerDialog(string host, int port, string user, string pass, string extensionFilter)
     {
         InitializeComponent();
-        WindowTheme.ApplyDarkCaption(this);
         _client = KronosFtpSession.CreateClient(host, port, user, pass);
         _extensionFilter = extensionFilter;
         LST_Items.SelectionChanged += (_, _) => BTN_Select.IsEnabled = LST_Items.SelectedItem is Entry { IsDirectory: false };

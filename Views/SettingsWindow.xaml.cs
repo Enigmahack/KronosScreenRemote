@@ -9,7 +9,7 @@ using Microsoft.Win32;
 
 namespace KronosScreenRemote;
 
-public partial class SettingsWindow : Window
+public partial class SettingsWindow : ThemedWindow
 {
     public AppSettings Result   { get; private set; }
     public bool        WasReset { get; private set; }
@@ -57,7 +57,6 @@ public partial class SettingsWindow : Window
                           Action<ImagePreview>? onImagePreview = null)
     {
         InitializeComponent();
-        WindowTheme.ApplyDarkCaption(this);
         _playMacro      = playMacro;
         _showInputTester = showInputTester;
         _onImagePreview  = onImagePreview;

@@ -101,6 +101,14 @@
         <Setter Property="BorderBrush" Value="{StaticResource DangerBorderBrush}"/>
     </Style>
 
+    <!-- Standard dialog action button (the OK/Cancel/Continue/Select rows) — one shared minimum
+         width so the affirmative/cancel pair reads uniformly across every dialog, in one place
+         instead of a repeated inline MinWidth="75". The 8px gap between a pair stays inline Margin
+         (it's positional, not per-button). -->
+    <Style x:Key="DialogButtonStyle" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+        <Setter Property="MinWidth" Value="75"/>
+    </Style>
+
     <!-- ══════════════════════════════════════════════════════════════════
          TextBox / PasswordBox
          ══════════════════════════════════════════════════════════════════ -->

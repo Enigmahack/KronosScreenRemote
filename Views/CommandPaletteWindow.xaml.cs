@@ -10,7 +10,7 @@ namespace KronosScreenRemote;
 // entries get a unique synthetic Id. Label/KeyHint are the palette's display fields only.
 public record CommandEntry(string Id, string Label, string KeyHint, Action Execute);
 
-public partial class CommandPaletteWindow : Window
+public partial class CommandPaletteWindow : ThemedWindow
 {
     readonly IReadOnlyList<CommandEntry> _all;
     bool _dismissed = false;
@@ -19,7 +19,6 @@ public partial class CommandPaletteWindow : Window
     {
         _all = commands;
         InitializeComponent();
-        WindowTheme.ApplyDarkCaption(this);
 
         Loaded      += (_, _) => { SearchBox.Focus(); Refresh(""); };
         Deactivated += (_, _) => Dismiss();

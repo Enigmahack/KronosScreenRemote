@@ -1,4 +1,4 @@
-<Window x:Class="KronosScreenRemote.LibrarianShellWindow"
+<local:ThemedWindow x:Class="KronosScreenRemote.LibrarianShellWindow"
         x:ClassModifier="internal"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -9,9 +9,7 @@
         MinWidth="900" MinHeight="560"
         ResizeMode="CanResize"
         WindowStartupLocation="CenterOwner"
-        ShowInTaskbar="False"
-        Background="{StaticResource WindowBackgroundBrush}"
-        Foreground="{StaticResource TextBrush}">
+        ShowInTaskbar="False">
     <Window.Resources>
         <local:NullOrEmptyToVisibilityConverter x:Key="NullToCollapsed"/>
         <local:EmptyStringToNullConverter x:Key="EmptyToNull"/>
@@ -456,4 +454,4 @@
                        Text="Local edits never touch hardware until Sync Library or Commit Changes. Select an item or a whole bank, then Cut/Copy/Paste (toolbar, right-click, or Ctrl+X/C/V) or drag it — Copy fills an empty slot or a whole bank; Cut only swaps onto another occupied slot. F2 to rename, Del to mark for deletion (fades in place — Del again to restore). Drag from the PCG pane to copy in, or right-click it to move into the Merge Window; double-click for properties."/>
         </DockPanel>
     </Grid>
-</Window>
+</local:ThemedWindow>

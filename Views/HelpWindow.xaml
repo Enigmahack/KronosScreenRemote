@@ -1,14 +1,14 @@
-<Window x:Class="KronosScreenRemote.HelpWindow"
+<local:ThemedWindow x:Class="KronosScreenRemote.HelpWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:KronosScreenRemote"
         Title="Kronos ScreenRemote — Help"
         Width="780" Height="700"
         MinWidth="520" MinHeight="420"
         ResizeMode="CanResize"
-        Background="#FF0E0E0E"
         ShowInTaskbar="False">
     <FlowDocumentScrollViewer x:Name="HelpViewer"
-                              Background="#FF0E0E0E"
+                              Background="{StaticResource WindowBackgroundBrush}"
                               VerticalScrollBarVisibility="Auto"
                               HorizontalScrollBarVisibility="Disabled"/>
-</Window>
+</local:ThemedWindow>

@@ -1,14 +1,13 @@
-<Window x:Class="KronosScreenRemote.KeyboardInfoWindow"
+<local:ThemedWindow x:Class="KronosScreenRemote.KeyboardInfoWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:KronosScreenRemote"
         Title="Keyboard Info"
         Width="400" Height="504"
         MinWidth="300" MinHeight="440"
         ResizeMode="CanResize"
         WindowStartupLocation="CenterOwner"
-        ShowInTaskbar="False" SizeToContent="Height"
-        Background="{StaticResource WindowBackgroundBrush}"
-        Foreground="{StaticResource TextBrush}">
+        ShowInTaskbar="False" SizeToContent="Height">
     <DockPanel>
 
         <!-- Bottom bar: update interval + status -->
@@ -364,4 +363,4 @@
             </StackPanel>
         </ScrollViewer>
     </DockPanel>
-</Window>
+</local:ThemedWindow>

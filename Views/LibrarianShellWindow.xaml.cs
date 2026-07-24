@@ -20,7 +20,7 @@ namespace KronosScreenRemote;
 // scope reasoning as the ContextMenu — and, per PaneSelection below, a BANK-level node is now
 // a selectable citizen too (not just a leaf), expanding to every item inside it wherever an
 // action needs concrete ObjLocs (SelectedLocs/PcgSelectedLocs).
-internal partial class LibrarianShellWindow : Window
+internal partial class LibrarianShellWindow : ThemedWindow
 {
     readonly LibrarianShellViewModel _vm;
 
@@ -43,7 +43,6 @@ internal partial class LibrarianShellWindow : Window
     public LibrarianShellWindow(ILibrarianService sysEx, LocalLibraryCache cache, AppSettings settings, string host)
     {
         InitializeComponent();
-        WindowTheme.ApplyDarkCaption(this);
         _vm = new LibrarianShellViewModel(sysEx, cache, settings, host);
         DataContext = _vm;
 
@@ -55,8 +54,7 @@ internal partial class LibrarianShellWindow : Window
         // UnresolvedDependenciesDialog's own comment).
         _vm.ConfirmContinueWithPendingDependencies = pending =>
         {
-            var dlg = UnresolvedDependenciesDialog.For(pending);
-            dlg.Owner = this;
+            var dlg = UnresolvedDependenciesDialog.For(pending).OwnedBy(this);
             return Task.FromResult(dlg.ShowDialog() == true);
         };
 
@@ -205,8 +203,7 @@ internal partial class LibrarianShellWindow : Window
         {
             var data = SetListBody.FromRawBody(loc.Number, dump.Body);
             if (data == null) return;
-            var setListDlg = PropertiesDialog.ForSetList($"{loc.Label()} Properties", currentName, data);
-            setListDlg.Owner = this;
+            var setListDlg = PropertiesDialog.ForSetList($"{loc.Label()} Properties", currentName, data).OwnedBy(this);
             if (setListDlg.ShowDialog() != true) return;
 
             bool changed = false;
@@ -227,8 +224,7 @@ internal partial class LibrarianShellWindow : Window
         var (category, subCategory) = loc.ObjType == LibObj.Program
             ? ProgramBody.ReadCategory(dump.Body)
             : CombiBody.ReadCategory(dump.Body);
-        var propDlg = PropertiesDialog.ForProgramOrCombi($"{loc.Label()} Properties", currentName, category, subCategory);
-        propDlg.Owner = this;
+        var propDlg = PropertiesDialog.ForProgramOrCombi($"{loc.Label()} Properties", currentName, category, subCategory).OwnedBy(this);
         if (propDlg.ShowDialog() != true) return;
 
         string? name = propDlg.NewName != null && propDlg.NewName != currentName ? propDlg.NewName : null;
@@ -300,7 +296,7 @@ internal partial class LibrarianShellWindow : Window
     {
         if (target?.Loc is not { } loc) return;
         string current = _vm.LocalPane.ReadDisplayName(loc);
-        var dlg = new PromptDialog($"Rename {loc.Label()}:", current) { Owner = this };
+        var dlg = new PromptDialog($"Rename {loc.Label()}:", current).OwnedBy(this);
         if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.Result) || dlg.Result == current) return;
         _vm.LocalPane.Rename(loc, dlg.Result);
     }

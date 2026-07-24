@@ -1,12 +1,11 @@
-<Window x:Class="KronosScreenRemote.LoginDialog"
+<local:ThemedWindow x:Class="KronosScreenRemote.LoginDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:KronosScreenRemote"
         Title="Kronos FTP Login" Width="340" SizeToContent="Height"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
-        ShowInTaskbar="False"
-        Background="{StaticResource WindowBackgroundBrush}"
-        Foreground="{StaticResource TextBrush}">
+        ShowInTaskbar="False">
     <Grid Margin="18">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -27,7 +26,7 @@
         </Grid.RowDefinitions>
 
         <!-- Subtitle -->
-        <TextBlock Grid.Row="0" x:Name="SubtitleText" Foreground="#FFAAAAAA" FontSize="11"/>
+        <TextBlock Grid.Row="0" x:Name="SubtitleText" Foreground="{StaticResource MutedTextBrush}" FontSize="11"/>
 
         <!-- Username -->
         <TextBlock Grid.Row="2" Text="Username"/>
@@ -42,17 +41,17 @@
 
         <!-- Error -->
         <TextBlock Grid.Row="12" x:Name="ErrorText"
-                   Foreground="#FFFF7777" TextWrapping="Wrap"
+                   Foreground="{StaticResource DangerTextBrush}" TextWrapping="Wrap"
                    Visibility="Collapsed"/>
 
         <!-- Buttons -->
         <DockPanel Grid.Row="14">
-            <Button x:Name="BtnClear" Content="Clear" Click="OnClear" DockPanel.Dock="Left" MinWidth="75"
+            <Button x:Name="BtnClear" Content="Clear" Click="OnClear" DockPanel.Dock="Left" Style="{StaticResource DialogButtonStyle}"
                     ToolTip="Clear both fields so you can enter fresh credentials"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button x:Name="BtnCancel" Content="Cancel" IsCancel="True" Click="OnCancel" Margin="0 0 8 0" MinWidth="75"/>
-                <Button x:Name="BtnOk"    Content="OK"     IsDefault="True" Click="OnOk" MinWidth="75"/>
+                <Button x:Name="BtnCancel" Content="Cancel" IsCancel="True" Click="OnCancel" Margin="0 0 8 0" Style="{StaticResource DialogButtonStyle}"/>
+                <Button x:Name="BtnOk"    Content="OK"     IsDefault="True" Click="OnOk" Style="{StaticResource DialogButtonStyle}"/>
             </StackPanel>
         </DockPanel>
     </Grid>
-</Window>
+</local:ThemedWindow>

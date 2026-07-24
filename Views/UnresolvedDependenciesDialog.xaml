@@ -1,14 +1,13 @@
-<Window x:Class="KronosScreenRemote.UnresolvedDependenciesDialog"
+<local:ThemedWindow x:Class="KronosScreenRemote.UnresolvedDependenciesDialog"
         x:ClassModifier="internal"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:KronosScreenRemote"
         Title="Unresolved Dependencies"
         SizeToContent="Height" Width="480"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterOwner"
-        ShowInTaskbar="False"
-        Background="{StaticResource WindowBackgroundBrush}"
-        Foreground="{StaticResource TextBrush}">
+        ShowInTaskbar="False">
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -32,8 +31,8 @@
         </Border>
 
         <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button x:Name="BTN_Cancel" Content="Cancel" IsCancel="True" IsDefault="True" Click="OnCancel" Margin="0 0 8 0" MinWidth="75"/>
+            <Button x:Name="BTN_Cancel" Content="Cancel" IsCancel="True" IsDefault="True" Click="OnCancel" Margin="0 0 8 0" Style="{StaticResource DialogButtonStyle}"/>
             <Button x:Name="BTN_Continue" Content="Continue Anyway" Click="OnContinue" MinWidth="120"/>
         </StackPanel>
     </Grid>
-</Window>
+</local:ThemedWindow>

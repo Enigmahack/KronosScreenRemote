@@ -14,7 +14,7 @@ namespace KronosScreenRemote;
 //     that slot's Name/Color/Comments for editing. This absorbs Views/SetListWindow's
 //     functionality (Phase 6 of the rebuild) into one dialog instead of a separate window
 //     plus a second per-slot edit dialog (the retired SetListSlotEditDialog).
-internal partial class PropertiesDialog : Window
+internal partial class PropertiesDialog : ThemedWindow
 {
     // 16-slot color palette (Kronos Set List slot colors) — sourced from SetListColors
     static readonly Brush[] SlotColors = BuildPalette();
@@ -26,9 +26,7 @@ internal partial class PropertiesDialog : Window
         {
             if (SetListColors.TryGetByIndex(i, out var color))
             {
-                var brush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(color.R, color.G, color.B));
-                brush.Freeze();
-                brushes[i] = brush;
+                brushes[i] = ThemeBrushes.Frozen(color.R, color.G, color.B);
             }
         }
         return brushes;
@@ -48,7 +46,6 @@ internal partial class PropertiesDialog : Window
     PropertiesDialog(string heading, string currentName)
     {
         InitializeComponent();
-        WindowTheme.ApplyDarkCaption(this);
         Title = heading;
         TXT_Heading.Text = heading;
         TXT_Name.Text = currentName;

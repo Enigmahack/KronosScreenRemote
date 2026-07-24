@@ -20,13 +20,11 @@ public sealed class VuMeterBar : FrameworkElement
     // clipping peak still doesn't reach the top (increase) or overshoots (decrease).
     const double InputTrimDb = 7.5;
 
-    static readonly Brush BgBrush     = Freeze(new SolidColorBrush(Color.FromRgb(0x05, 0x12, 0x05)));
-    static readonly Brush GreenBrush  = Freeze(new SolidColorBrush(Color.FromRgb(0x00, 0xE0, 0x40)));
-    static readonly Brush YellowBrush = Freeze(new SolidColorBrush(Color.FromRgb(0xD8, 0xC8, 0x00)));
-    static readonly Brush RedBrush    = Freeze(new SolidColorBrush(Color.FromRgb(0xE8, 0x20, 0x00)));
-    static readonly Brush PeakBrush   = Freeze(new SolidColorBrush(Colors.White));
-
-    static Brush Freeze(SolidColorBrush b) { b.Freeze(); return b; }
+    static readonly Brush BgBrush     = ThemeBrushes.Frozen(0x05, 0x12, 0x05);
+    static readonly Brush GreenBrush  = ThemeBrushes.Frozen(0x00, 0xE0, 0x40);
+    static readonly Brush YellowBrush = ThemeBrushes.Frozen(0xD8, 0xC8, 0x00);
+    static readonly Brush RedBrush    = ThemeBrushes.Frozen(0xE8, 0x20, 0x00);
+    static readonly Brush PeakBrush   = ThemeBrushes.Frozen(0xFF, 0xFF, 0xFF);
 
     readonly double[] _levelDb = { MinDb, MinDb };
     readonly double[] _peakDb  = { MinDb, MinDb };

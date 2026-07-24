@@ -1,13 +1,11 @@
-<Window x:Class="KronosScreenRemote.AboutWindow"
+<local:ThemedWindow x:Class="KronosScreenRemote.AboutWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:KronosScreenRemote"
         Title="About Kronos ScreenRemote"
         Width="400" Height="320"
         ResizeMode="NoResize"
-        WindowStartupLocation="CenterOwner"
-        ShowInTaskbar="False"
-        Background="{StaticResource WindowBackgroundBrush}"
-        Foreground="{StaticResource TextBrush}">
+        ShowInTaskbar="False">
     <Grid Margin="28 24 28 20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -27,7 +25,7 @@
         <!-- Subtitle -->
         <TextBlock Grid.Row="1"
                    Text="Remote viewer and control for Korg Kronos"
-                   FontSize="12" Foreground="#FF888888"
+                   FontSize="12" Foreground="{StaticResource MutedTextBrush}"
                    Margin="0 4 0 0"/>
 
         <!-- Info grid -->
@@ -44,16 +42,16 @@
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <TextBlock Grid.Row="0" Grid.Column="0" Text="Client version"   Foreground="#FF888888" FontSize="12"/>
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Client version"   Foreground="{StaticResource MutedTextBrush}" FontSize="12"/>
             <TextBlock Grid.Row="0" Grid.Column="1" x:Name="TXT_ClientVer"  Foreground="#FFD0D0D0" FontSize="12" FontFamily="Consolas"/>
 
-            <TextBlock Grid.Row="1" Grid.Column="0" Text="Client build ID"  Foreground="#FF888888" FontSize="12" Margin="0 4 0 0"/>
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Client build ID"  Foreground="{StaticResource MutedTextBrush}" FontSize="12" Margin="0 4 0 0"/>
             <TextBlock Grid.Row="1" Grid.Column="1" x:Name="TXT_ClientBuild" Foreground="#FFD0D0D0" FontSize="12" FontFamily="Consolas" Margin="0 4 0 0"/>
 
-            <TextBlock Grid.Row="3" Grid.Column="0" Text="Daemon version"   Foreground="#FF888888" FontSize="12"/>
+            <TextBlock Grid.Row="3" Grid.Column="0" Text="Daemon version"   Foreground="{StaticResource MutedTextBrush}" FontSize="12"/>
             <TextBlock Grid.Row="3" Grid.Column="1" x:Name="TXT_DaemonVer"  Foreground="#FFD0D0D0" FontSize="12" FontFamily="Consolas"/>
 
-            <TextBlock Grid.Row="4" Grid.Column="0" Text="Daemon build ID"  Foreground="#FF888888" FontSize="12" Margin="0 4 0 0"/>
+            <TextBlock Grid.Row="4" Grid.Column="0" Text="Daemon build ID"  Foreground="{StaticResource MutedTextBrush}" FontSize="12" Margin="0 4 0 0"/>
             <TextBlock Grid.Row="4" Grid.Column="1" x:Name="TXT_DaemonBuild" Foreground="#FFD0D0D0" FontSize="12" FontFamily="Consolas" Margin="0 4 0 0"/>
         </Grid>
 
@@ -64,4 +62,4 @@
                 Width="80" Height="28"
                 Click="CloseButton_Click"/>
     </Grid>
-</Window>
+</local:ThemedWindow>

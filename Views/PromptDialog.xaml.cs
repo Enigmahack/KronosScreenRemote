@@ -2,14 +2,13 @@ using System.Windows;
 
 namespace KronosScreenRemote;
 
-public partial class PromptDialog : Window
+public partial class PromptDialog : ThemedWindow
 {
     public string? Result { get; private set; }
 
     public PromptDialog(string prompt, string initial = "")
     {
         InitializeComponent();
-        WindowTheme.ApplyDarkCaption(this);
         Title            = prompt;
         PromptLabel.Text = prompt;
         InputBox.Text    = initial;

@@ -177,6 +177,16 @@ sealed class CalMesh
 static class WindowTheme
 {
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);
+    [DllImport("user32.dll")] static extern int GetWindowLong(IntPtr hwnd, int index);
+    [DllImport("user32.dll")] static extern int SetWindowLong(IntPtr hwnd, int index, int newStyle);
+    [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+
+    const int  GWL_STYLE        = -16;
+    const int  WS_MINIMIZEBOX   = 0x00020000;
+    const uint SWP_NOSIZE       = 0x0001;
+    const uint SWP_NOMOVE       = 0x0002;
+    const uint SWP_NOZORDER     = 0x0004;
+    const uint SWP_FRAMECHANGED = 0x0020;
 
     // Match title bar to status bar background (#1A1A1A). DWMWA_CAPTION_COLOR (35)
     // requires Windows 11 build 22000+. COLORREF is 0x00BBGGRR.
@@ -188,5 +198,25 @@ static class WindowTheme
             var h = new WindowInteropHelper(w).Handle;
             DwmSetWindowAttribute(h, 35, ref c, sizeof(int));
         };
+    }
+
+    // Clear WS_MINIMIZEBOX so the window can't be minimized (its minimize button greys out,
+    // maximize/resize is untouched). Runs at SourceInitialized — the earliest point the HWND
+    // exists — so the button never flashes enabled before the window is shown. Applied by
+    // ThemedWindow to every window except the ones that opt in via AllowMinimize (MainWindow).
+    public static void DisableMinimizeBox(Window w)
+    {
+        static void Apply(Window win)
+        {
+            var h = new WindowInteropHelper(win).Handle;
+            if (h == IntPtr.Zero) return;
+            int style = GetWindowLong(h, GWL_STYLE);
+            SetWindowLong(h, GWL_STYLE, style & ~WS_MINIMIZEBOX);
+            // Force the non-client frame to redraw so the style change actually takes effect —
+            // SetWindowLong alone is silently ignored often enough that this nudge is required.
+            SetWindowPos(h, IntPtr.Zero, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+        }
+        if (new WindowInteropHelper(w).Handle != IntPtr.Zero) Apply(w);
+        else w.SourceInitialized += (_, _) => Apply(w);
     }
 }

@@ -2,12 +2,11 @@ using System.Windows;
 
 namespace KronosScreenRemote;
 
-public partial class AboutWindow : Window
+public partial class AboutWindow : ThemedWindow
 {
     public AboutWindow(string? host, int ctrlPort)
     {
         InitializeComponent();
-        WindowTheme.ApplyDarkCaption(this);
 
         TXT_ClientVer.Text   = BuildInfo.ClientVersion;
         TXT_ClientBuild.Text = BuildInfo.ClientBuildId;

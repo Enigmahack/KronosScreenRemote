@@ -11,7 +11,7 @@ using FluentFTP;
 
 namespace KronosScreenRemote;
 
-public partial class FileManagerWindow : Window
+public partial class FileManagerWindow : ThemedWindow
 {
     // ── File entry model ──────────────────────────────────────────────────────
     record FileEntry(string Name, string FullPath, bool IsDirectory, long Bytes, DateTime Modified)
@@ -57,7 +57,7 @@ public partial class FileManagerWindow : Window
     }
 
     // ── Conflict dialog (Rename / Overwrite / Skip / Cancel) ─────────────────
-    sealed class ConflictDialog : Window
+    sealed class ConflictDialog : ThemedWindow
     {
         public ConflictAction Action     { get; private set; } = ConflictAction.Cancel;
         public string         ResultName { get; private set; }
@@ -70,9 +70,6 @@ public partial class FileManagerWindow : Window
             Title                 = "File Already Exists";
             ResizeMode            = ResizeMode.NoResize;
             SizeToContent         = SizeToContent.WidthAndHeight;
-            WindowStartupLocation = WindowStartupLocation.CenterOwner;
-            Background            = new SolidColorBrush(Color.FromRgb(0x1a, 0x1a, 0x1a));
-            WindowTheme.ApplyDarkCaption(this);
 
             var nameBox = new TextBox
             {
@@ -120,11 +117,14 @@ public partial class FileManagerWindow : Window
                 return b;
             }
 
+            // Cancel goes far-left so the app's convention holds (the bottom-right slot is never
+            // a cancel/escape). Rename/Overwrite/Skip are all "proceed" variants — no single
+            // affirmative — so they keep their established left-to-right order.
             var btnRow = new StackPanel { Orientation = Orientation.Horizontal };
+            btnRow.Children.Add(Btn("Cancel",    ConflictAction.Cancel));
             btnRow.Children.Add(Btn("Rename",    ConflictAction.Rename));
             btnRow.Children.Add(Btn("Overwrite", ConflictAction.Overwrite));
             btnRow.Children.Add(Btn("Skip",      ConflictAction.Skip));
-            btnRow.Children.Add(Btn("Cancel",    ConflictAction.Cancel));
 
             var root = new StackPanel { Margin = new Thickness(20) };
             root.Children.Add(new TextBlock
@@ -225,7 +225,6 @@ public partial class FileManagerWindow : Window
         _user    = user;
         _pass    = pass;
         InitializeComponent();
-        WindowTheme.ApplyDarkCaption(this);
         LocalList.ItemsSource  = _local.Items;
         RemoteList.ItemsSource = _remote.Items;
 
@@ -1505,7 +1504,7 @@ public partial class FileManagerWindow : Window
 
     string? PromptInput(string prompt, string initial = "")
     {
-        var dlg = new PromptDialog(prompt, initial) { Owner = this };
+        var dlg = new PromptDialog(prompt, initial).OwnedBy(this);
         return dlg.ShowDialog() == true ? dlg.Result : null;
     }
 

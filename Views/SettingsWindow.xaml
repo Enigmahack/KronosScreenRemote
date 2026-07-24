@@ -1,12 +1,11 @@
-<Window x:Class="KronosScreenRemote.SettingsWindow"
+<local:ThemedWindow x:Class="KronosScreenRemote.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:KronosScreenRemote"
         Title="Settings" Width="520" Height="620" MinHeight="480"
         ResizeMode="CanResizeWithGrip"
         WindowStartupLocation="CenterOwner"
-        ShowInTaskbar="False"
-        Background="{StaticResource WindowBackgroundBrush}"
-        Foreground="{StaticResource TextBrush}">
+        ShowInTaskbar="False">
     <Window.Resources>
         <!-- Key-binding list: app-wide ListViewItem look plus an amber highlight while recording a new key. -->
         <Style TargetType="ListViewItem" BasedOn="{StaticResource {x:Type ListViewItem}}">
@@ -731,11 +730,11 @@
                         ToolTip="Load settings from a JSON file, replacing the current configuration."/>
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button x:Name="BtnOK"     Content="OK"     Width="80" Margin="0 0 8 0"
-                        Click="BtnOK_Click" IsDefault="True"/>
-                <Button x:Name="BtnCancel" Content="Cancel" Width="80"
+                <Button x:Name="BtnCancel" Content="Cancel" Width="80" Margin="0 0 8 0"
                         Click="BtnCancel_Click" IsCancel="True"/>
+                <Button x:Name="BtnOK"     Content="OK"     Width="80"
+                        Click="BtnOK_Click" IsDefault="True"/>
             </StackPanel>
         </Grid>
     </Grid>
-</Window>
+</local:ThemedWindow>
