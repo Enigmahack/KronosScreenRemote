@@ -66,8 +66,8 @@ static class KronosFtpSession
         {
             await owner.Dispatcher.InvokeAsync(() =>
                 MessageBox.Show(owner,
-                    "FTP authentication failed after 3 attempts.\nTry again.",
-                    "Authentication Failed", MessageBoxButton.OK, MessageBoxImage.Error))
+                    AppMessages.Ftp.AuthFailedAfterAttempts,
+                    AppMessages.Titles.AuthenticationFailed, MessageBoxButton.OK, MessageBoxImage.Error))
                 .Task.ConfigureAwait(false);
         }
 

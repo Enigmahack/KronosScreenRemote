@@ -90,6 +90,31 @@ static class ObjectBodySelfTests
         var afterComments = SetListBody.FromRawBody(2, withComments);
         Check("setlist-comments-write", afterComments != null && afterComments.Slots[0].Comments == "hello world");
 
+        // ── EraseBody (requirement 2): the blank/INIT body written to a slot on a committed
+        //    delete. Derived from the existing body, so wire length/format is always preserved. ──
+        var slForErase = new byte[69416];
+        Array.Fill(slForErase, (byte)0x20);
+        WriteAscii(slForErase, 0, "TO DELETE");
+        slForErase = SetListBody.WriteSlotName(slForErase, 0, "SLOT ZERO");
+        slForErase = SetListBody.WriteSlotName(slForErase, 7, "SLOT SEVEN");
+        var slErased = EraseBody.Build(LibObj.SetList, slForErase);
+        Check("erase-setlist-length-preserved", slErased.Length == slForErase.Length);
+        Check("erase-setlist-is-empty", SetListBody.FromRawBody(0, slErased)?.IsEmpty ?? false);
+
+        var progForErase = ProgramBody.WriteCategory(ProgramBody.WriteName(new byte[3706], "MY SOUND"), 5, 2);
+        var progErased = EraseBody.Build(LibObj.Program, progForErase);
+        Check("erase-program-length-preserved", progErased.Length == progForErase.Length);
+        Check("erase-program-name-init", ProgramBody.ReadName(progErased) == "INIT PROGRAM");
+        Check("erase-program-category-cleared", ProgramBody.ReadCategory(progErased) == (0, 0));
+
+        var combiForErase = CombiBody.WriteName(new byte[7810], "MY COMBI");
+        LibRefs.SetCombiTimbreRef(combiForErase, 0, 5, 42);
+        var combiErased = EraseBody.Build(LibObj.Combi, combiForErase);
+        Check("erase-combi-length-preserved", combiErased.Length == combiForErase.Length);
+        Check("erase-combi-name-init", CombiBody.ReadName(combiErased) == "INIT COMBI");
+        var (etBank, etNum) = LibRefs.CombiTimbreRef(combiErased, 0);
+        Check("erase-combi-timbre-cleared", etBank == 0 && etNum == 0);
+
         // ── Registry: bank enumeration matches the pre-existing hardcoded ranges ──
         var expectedProgramBanks = Enumerable.Range(0x00, 7).Concat(Enumerable.Range(0x40, 14)).ToList();
         Check("registry-program-banks",

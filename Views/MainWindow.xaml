@@ -95,7 +95,7 @@
                 <MenuItem x:Name="MNU_TestMode"     Header="Enter Kronos _Test Mode"/>
                 <Separator/>
                 <!-- Keyboard input -->
-                <MenuItem x:Name="MNU_DisableKbd"   Header="_Disable Keyboard Send" IsCheckable="True"/>
+                <MenuItem x:Name="MNU_DisableKbd"   Header="_Disable Typing Send" IsCheckable="True" ToolTip="Disable sending keystrokes to the Kronos. All keyboard input remains local."/>
             </MenuItem>
             <MenuItem x:Name="MENU_ModeSelect" Header="_Mode Select">
                 <MenuItem x:Name="MNU_Mode_Setlist"  Header="_Setlist" InputGestureText="S"/>

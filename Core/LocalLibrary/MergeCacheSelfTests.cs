@@ -152,6 +152,52 @@ static class MergeCacheSelfTests
             var (bankX2, numX2) = LibRefs.CombiTimbreRef(combiXViaBoth, 0);
             Check("placedAddresses-takes-priority-over-localLookup", bankX2 == fbDest && numX2 == progADest.Number);
 
+            // ── Requirement 3: PullFromLocal — the same transitive/dedup/gap pull, sourced
+            // from Local Library instead of a PCG. Seed a tiny local cache (a Combi referencing
+            // a Program) via RecordPullBaselines and pull the Combi in; both must stage, the
+            // referrer bookkeeping must be wired, and the origin must be labeled Local Library. ─
+            string localRoot = Path.Combine(root, "local_lib");
+            var localCache = new LocalLibraryCache(localRoot);
+            int fbLocalProg = KronosBanks.ObjBankToFunc33(1, 0x00);
+            var localProgBody = new byte[3706];
+            Encoding.ASCII.GetBytes("LOCAL PROG").CopyTo(localProgBody, 0);
+            var localCombiBody = new byte[7810];
+            Encoding.ASCII.GetBytes("LOCAL COMBI").CopyTo(localCombiBody, 0);
+            LibRefs.SetCombiTimbreRef(localCombiBody, 0, fbLocalProg, 0);   // -> the local Program
+            localCache.RecordPullBaselines(new[]
+            {
+                (LibObj.Program, 0x00, 0, (byte)5, localProgBody),
+                (LibObj.Combi, 0x00, 0, (byte)3, localCombiBody),
+            }, DateTime.UtcNow);
+
+            var localMerge = new MergeCache(new InMemoryMergeCachePersistence());
+            var (localAdded, localGaps) = localMerge.PullFromLocal(localCache, new ObjLoc(LibObj.Combi, 0x00, 0));
+            Check("local-pull-adds-2", localAdded.Count == 2);   // Combi + its Program
+            Check("local-pull-no-gaps", localGaps.Count == 0);
+            var localCombiEntry = localMerge.Entries.FirstOrDefault(e => e.DisplayName == "LOCAL COMBI");
+            var localProgEntry = localMerge.Entries.FirstOrDefault(e => e.DisplayName == "LOCAL PROG");
+            Check("local-pull-combi-present", localCombiEntry != null);
+            Check("local-pull-prog-present", localProgEntry != null);
+            Check("local-pull-prog-referenced-by-combi", localProgEntry != null && localCombiEntry != null &&
+                localProgEntry.ReferencedBy.Contains(localCombiEntry.ContentHash));
+            Check("local-pull-origin-labeled-local", localCombiEntry != null &&
+                localCombiEntry.Origins.Any(o => o.PcgFileName == MergeCache.LocalSourceLabel));
+
+            // A dependency absent locally is tracked as a gap, same contract as the PCG path.
+            // Point EVERY timbre at a Program not present locally — timbres left at their (0,0)
+            // default would otherwise resolve to the local Program seeded above and get pulled
+            // too, masking the gap under test.
+            var orphanCombiBody = new byte[7810];
+            Encoding.ASCII.GetBytes("ORPHAN COMBI").CopyTo(orphanCombiBody, 0);
+            var missingLoc = new ObjLoc(LibObj.Program, 0x40, 5);
+            for (int t = 0; t < LibRefs.TimbreCount; t++)
+                LibRefs.SetCombiTimbreRef(orphanCombiBody, t, KronosBanks.ObjBankToFunc33(1, missingLoc.Bank), missingLoc.Number);
+            localCache.RecordPullBaselines(new[] { (LibObj.Combi, 0x00, 1, (byte)3, orphanCombiBody) }, DateTime.UtcNow);
+            var localMerge2 = new MergeCache(new InMemoryMergeCachePersistence());
+            var (orphanAdded, orphanGaps) = localMerge2.PullFromLocal(localCache, new ObjLoc(LibObj.Combi, 0x00, 1));
+            Check("local-pull-gap-adds-combi-only", orphanAdded.Count == 1);
+            Check("local-pull-gap-reported", orphanGaps.Any(g => g.MissingRef.Equals(missingLoc)));
+
             // ── Move-on-place semantics: Remove takes exactly the requested entry out ───
             int countBeforeRemove = cache.Entries.Count;
             Check("remove-combiX-ok", cache.Remove(combiXEntry!.ContentHash));

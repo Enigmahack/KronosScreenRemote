@@ -38,8 +38,21 @@ partial class MergePaneViewModel : ObservableObject
         var (added, gaps) = _cache.PullFromPcg(pcg, pcgFileName, loc);
         RefreshTree();
         StatusText = gaps.Count == 0
-            ? $"Pulled {added.Count} object(s) into the Merge Window."
-            : $"Pulled {added.Count} object(s); {gaps.Count} dependency reference(s) not found in this PCG — load another PCG that has them and pull it in.";
+            ? AppMessages.Librarian.Merge.PulledIntoMerge(added.Count)
+            : AppMessages.Librarian.Merge.PulledWithGapsInPcg(added.Count, gaps.Count);
+    }
+
+    // Requirement 3: stage a Local Library object (transitively, same as PullFromPcg) back into
+    // the Merge Window, so it can be rearranged and pushed to a different destination. The
+    // LocalLibraryCache is supplied by the caller (LibrarianShellViewModel, which owns it) — this
+    // pane only ever holds the MergeCache.
+    public void PullFromLocal(LocalLibraryCache localCache, ObjLoc loc)
+    {
+        var (added, gaps) = _cache.PullFromLocal(localCache, loc);
+        RefreshTree();
+        StatusText = gaps.Count == 0
+            ? AppMessages.Librarian.Merge.PulledIntoMerge(added.Count)
+            : AppMessages.Librarian.Merge.PulledWithGapsLocally(added.Count, gaps.Count);
     }
 
     // Explicit "Clear Merge" — abandons everything still staged (see MergeCache.Clear's own
@@ -48,7 +61,7 @@ partial class MergePaneViewModel : ObservableObject
     {
         _cache.Clear();
         RefreshTree();
-        StatusText = "Merge Window cleared.";
+        StatusText = AppMessages.Librarian.Merge.Cleared;
     }
 
     public MergeEntry? TryGet(string contentHash) => _cache.TryGet(contentHash);
@@ -67,7 +80,7 @@ partial class MergePaneViewModel : ObservableObject
         foreach (var hash in contentHashes)
             if (_cache.Remove(hash)) removed++;
         RefreshTree();
-        StatusText = removed == 1 ? "Removed 1 item from the Merge Window." : $"Removed {removed} item(s) from the Merge Window.";
+        StatusText = removed == 1 ? AppMessages.Librarian.Merge.RemovedOne : AppMessages.Librarian.Merge.RemovedMany(removed);
     }
 
     // Called by LibrarianShellViewModel.PlaceFromMerge ONLY after LocalEditOps has already
@@ -95,20 +108,15 @@ partial class MergePaneViewModel : ObservableObject
         // this whole group" identity a bank-equivalent selection needs (see
         // LibrarianShellWindow.xaml.cs's PaneSelection and LibrarianShellViewModel.
         // PlaceMergeGroupSequentially), reusing the exact mechanism Local/PCG bank nodes
-        // already have rather than inventing a second concept for the same idea. Bank number is
-        // always 0 — meaningless for Merge Window, just a placeholder so the tuple identity is
-        // stable across rebuilds.
-        var setListsRoot = new ObjectTreeNode("Set Lists", bankRef: (LibObj.SetList, 0));
-        var combisRoot = new ObjectTreeNode("Combis", bankRef: (LibObj.Combi, 0));
-        var programsRoot = new ObjectTreeNode("Programs", bankRef: (LibObj.Program, 0));
-
-        // An entry counts as "still referenced" only if that referrer is ITSELF still staged —
-        // Remove/CommitPlacement never retroactively clean up a placed/removed entry's own
-        // ReferencedBy bookkeeping on whatever IT referenced (harmless on its own — the same
-        // "an unreferenced blob is accepted debris, not a correctness problem" spirit MergeCache's
-        // class doc already applies to blobs), so this is computed fresh against the CURRENT
-        // snapshot every refresh rather than trusted at face value.
-        bool HasCurrentReferrer(MergeEntry e) => e.ReferencedBy.Any(byHash.ContainsKey);
+        // already have rather than inventing a second concept for the same idea. The type-root's
+        // own bank is the sentinel -1 ("everything of this type"), deliberately NOT a real bank
+        // number, so it never collides with the per-source-bank sub-groups added below
+        // (requirement 4) — a bank group for I-A would otherwise share bank 0 with this root and
+        // break selection identity.
+        const int allBanksSentinel = -1;
+        var setListsRoot = new ObjectTreeNode("Set Lists", bankRef: (LibObj.SetList, allBanksSentinel));
+        var combisRoot = new ObjectTreeNode("Combis", bankRef: (LibObj.Combi, allBanksSentinel));
+        var programsRoot = new ObjectTreeNode("Programs", bankRef: (LibObj.Program, allBanksSentinel));
 
         // A Set List is always effectively "top-level" — nothing else in this reference
         // graph ever points at one (see ObjectReferenceWalker) — so every staged Set List
@@ -126,19 +134,12 @@ partial class MergePaneViewModel : ObservableObject
         // still staged is deliberately left nested-only here (no duplicate flat entry) — that's
         // still a real referrer, and is what makes a genuinely-shared dependency's yellow
         // marker show up wherever it's actually used.
-        foreach (var e in _cache.Entries.Where(e => e.ObjType == LibObj.Combi && (e.IsTopLevelPull || !HasCurrentReferrer(e))))
-            combisRoot.Children.Add(MakeNodeWithChildren(e, byHash));
-
-        // Grouped by actual wire format rather than dumped flat — a real Program bank is
-        // always homogeneously one format or the other (see ProgramFormatConverter's own
-        // class comment), so mirroring that split here matches what the same Program will
-        // look like once placed, and makes an unexpected format immediately visible.
-        var hd1Root = new ObjectTreeNode("HD-1");
-        var exiRoot = new ObjectTreeNode("EXi");
-        foreach (var e in _cache.Entries.Where(e => e.ObjType == LibObj.Program && (e.IsTopLevelPull || !HasCurrentReferrer(e))))
-            (e.Body.Length == ProgramFormatConverter.WireSizeExi ? exiRoot : hd1Root).Children.Add(MakeNode(e, byHash));
-        if (hd1Root.Children.Count > 0) programsRoot.Children.Add(hd1Root);
-        if (exiRoot.Children.Count > 0) programsRoot.Children.Add(exiRoot);
+        //
+        // Grouped by SOURCE bank (requirement 4) so a whole bank is a single selectable unit
+        // that can be placed — or, for Programs, copied across an EXi/HD-1 boundary — in one
+        // action. See AddBankGroups.
+        AddBankGroups(combisRoot, LibObj.Combi, byHash);
+        AddBankGroups(programsRoot, LibObj.Program, byHash);
 
         if (setListsRoot.Children.Count > 0) Roots.Add(setListsRoot);
         if (combisRoot.Children.Count > 0) Roots.Add(combisRoot);
@@ -146,6 +147,41 @@ partial class MergePaneViewModel : ObservableObject
         ObjectTreeNode.RestoreExpandedKeys(Roots, expandedKeys);
         TreeRefreshed?.Invoke();
     }
+
+    // Top-level Combis/Programs grouped by their SOURCE bank (requirement 4) so a whole bank is
+    // a single selectable/draggable unit — its BankRef expands to every content hash under it,
+    // exactly like a Local/PCG bank does, and a whole bank can be placed (or, for Programs,
+    // copied across an EXi/HD-1 boundary) at once. A Program bank's label carries the
+    // "(EXi)"/"(HD-1)" format suffix (a real Program bank is homogeneously one format — see
+    // ProgramFormatConverter), mirroring the Local pane's own bank labels and making an
+    // unexpected format immediately visible. Grouped by the entry's FIRST origin's bank.
+    void AddBankGroups(ObjectTreeNode root, int objType, Dictionary<string, MergeEntry> byHash)
+    {
+        var descriptor = ObjectTypeRegistry.Get(objType);
+        // "Top-level pull, OR nothing still staged references it anymore" — an entry counts as
+        // still-referenced only if that referrer is ITSELF still staged (Remove/CommitPlacement
+        // never retroactively clean up a placed/removed entry's ReferencedBy bookkeeping, so it's
+        // recomputed fresh against the CURRENT snapshot here rather than trusted at face value).
+        var groups = _cache.Entries
+            .Where(e => e.ObjType == objType && (e.IsTopLevelPull || !e.ReferencedBy.Any(byHash.ContainsKey)))
+            .GroupBy(PrimaryBank)
+            .OrderBy(g => g.Key);
+        foreach (var group in groups)
+        {
+            string label = objType == LibObj.Program
+                ? $"{descriptor.BankLabel(group.Key)} ({(group.First().Body.Length == ProgramFormatConverter.WireSizeExi ? "EXi" : "HD-1")})"
+                : descriptor.BankLabel(group.Key);
+            var bankNode = new ObjectTreeNode(label, bankRef: (objType, group.Key));
+            foreach (var e in group)
+                bankNode.Children.Add(objType == LibObj.Combi ? MakeNodeWithChildren(e, byHash) : MakeNode(e, byHash));
+            root.Children.Add(bankNode);
+        }
+    }
+
+    // The bank a merge entry is grouped under — its first origin's source bank (0 if, somehow,
+    // it has no origin at all). Dedup can give one entry multiple origins; the first is a stable,
+    // good-enough choice for grouping (the common case is a single-source pull anyway).
+    static int PrimaryBank(MergeEntry entry) => entry.Origins.Count > 0 ? entry.Origins[0].SourceLoc.Bank : 0;
 
     ObjectTreeNode MakeNodeWithChildren(MergeEntry entry, Dictionary<string, MergeEntry> byHash)
     {

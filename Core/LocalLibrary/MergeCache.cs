@@ -106,6 +106,15 @@ sealed class MergeCache
         Save();
     }
 
+    // Origin label used for anything pulled from Local Library rather than a loaded .pcg file
+    // (requirement 3) — occupies the same MergeOrigin.PcgFileName slot a real filename would.
+    public const string LocalSourceLabel = "Local Library";
+
+    // A source of wire bodies + display names for a merge pull — a loaded PCG file (PullFromPcg)
+    // or the Local Library (PullFromLocal). Returns null when this source has nothing at `loc`
+    // (an empty slot, or a malformed record) — treated as a gap by the shared recursion below.
+    delegate (byte[] Body, string Name)? MergePullSource(ObjLoc loc);
+
     // Pulls one object — and, fully automatically and transitively, everything it references
     // that resolves within `pcg` — into the merge cache. Byte-identical content already staged
     // (from this or any earlier pull) is recognized and NOT duplicated; only genuinely new
@@ -114,36 +123,63 @@ sealed class MergeCache
     public (List<MergeEntry> Added, List<(ObjLoc MissingRef, string RefKind)> Gaps) PullFromPcg(
         PcgLibraryView pcg, string pcgFileName, ObjLoc loc)
     {
+        MergePullSource source = l =>
+        {
+            var e = pcg.Get(l);
+            var body = e == null ? null : ProgramFormatConverter.WireBodyFromPcgEntry(l.ObjType, e);
+            return body == null ? null : (body, e!.Name);
+        };
+        return Pull(source, pcgFileName, loc);
+    }
+
+    // Requirement 3: the same transitive, deduping pull, sourced from Local Library instead of a
+    // loaded PCG — so an already-placed object (and everything it references locally) can be
+    // staged back in the Merge Window to be rearranged and pushed somewhere else. Bodies come
+    // from the cache's CURRENT state (cache.GetCurrentBody); references resolve against whatever
+    // address they encode, exactly as a PCG pull resolves within its file.
+    public (List<MergeEntry> Added, List<(ObjLoc MissingRef, string RefKind)> Gaps) PullFromLocal(
+        LocalLibraryCache localCache, ObjLoc loc)
+    {
+        MergePullSource source = l =>
+        {
+            var body = localCache.GetCurrentBody(l.ObjType, l.Bank, l.Number);
+            return body == null ? null : (body, localCache.GetDisplayName(l.ObjType, l.Bank, l.Number));
+        };
+        return Pull(source, LocalSourceLabel, loc);
+    }
+
+    (List<MergeEntry> Added, List<(ObjLoc MissingRef, string RefKind)> Gaps) Pull(
+        MergePullSource source, string sourceLabel, ObjLoc loc)
+    {
         var added = new List<MergeEntry>();
         var gaps = new List<(ObjLoc, string)>();
-        PullRecursive(pcg, pcgFileName, loc, isTopLevel: true, added, gaps);
+        PullRecursive(source, sourceLabel, loc, isTopLevel: true, added, gaps);
         Save();
         return (added, gaps);
     }
 
     // Returns the content hash of whatever now represents `loc` (an existing deduped entry, a
-    // freshly-added one, or null if it's a real gap — not found in `pcg`, or a malformed
-    // Program record). No cycle guard needed: a Program never references anything, a Combi
+    // freshly-added one, or null if it's a real gap — not found in `source`, or a malformed
+    // record). No cycle guard needed: a Program never references anything, a Combi
     // only ever references Programs, and a Set List only ever references Combis/Programs —
     // this reference graph is acyclic by construction (same assumption LibrarianModel.cs's
     // own referrer-patch logic already relies on).
-    string? PullRecursive(PcgLibraryView pcg, string pcgFileName, ObjLoc loc, bool isTopLevel,
+    string? PullRecursive(MergePullSource source, string sourceLabel, ObjLoc loc, bool isTopLevel,
                            List<MergeEntry> added, List<(ObjLoc, string)> gaps)
     {
-        var pcgEntry = pcg.Get(loc);
-        byte[]? wireBody = pcgEntry == null ? null : ProgramFormatConverter.WireBodyFromPcgEntry(loc.ObjType, pcgEntry);
-        if (pcgEntry == null || wireBody == null)
+        if (source(loc) is not { } got)
         {
             gaps.Add((loc, isTopLevel ? "pull" : "dependency"));
             return null;
         }
+        var (wireBody, name) = got;
 
         string hash = LocalObjectStore.ComputeHash(wireBody);
         if (_byHash.TryGetValue(hash, out var existing))
         {
             if (isTopLevel) existing.IsTopLevelPull = true;
-            if (!existing.Origins.Any(o => o.PcgFileName == pcgFileName && o.SourceLoc == loc))
-                existing.Origins.Add(new MergeOrigin(pcgFileName, loc));
+            if (!existing.Origins.Any(o => o.PcgFileName == sourceLabel && o.SourceLoc == loc))
+                existing.Origins.Add(new MergeOrigin(sourceLabel, loc));
             ReconcileGaps(loc, hash);
             return hash;   // dedup — already walked its own deps when first added
         }
@@ -151,16 +187,16 @@ sealed class MergeCache
         var entry = new MergeEntry
         {
             ContentHash = hash, ObjType = loc.ObjType, Body = wireBody,
-            Version = LibObj.CurrentObjectVersion(loc.ObjType) ?? 0, DisplayName = pcgEntry.Name, IsTopLevelPull = isTopLevel,
+            Version = LibObj.CurrentObjectVersion(loc.ObjType) ?? 0, DisplayName = name, IsTopLevelPull = isTopLevel,
         };
-        entry.Origins.Add(new MergeOrigin(pcgFileName, loc));
+        entry.Origins.Add(new MergeOrigin(sourceLabel, loc));
         _byHash[hash] = entry;
         added.Add(entry);
         ReconcileGaps(loc, hash);
 
         foreach (var (refKind, site, refLoc) in ObjectReferenceWalker.Walk(loc.ObjType, wireBody))
         {
-            string? depHash = PullRecursive(pcg, pcgFileName, refLoc, isTopLevel: false, added, gaps);
+            string? depHash = PullRecursive(source, sourceLabel, refLoc, isTopLevel: false, added, gaps);
             var refSite = new MergeRefSite { OwnerHash = hash, RefKind = refKind, Site = site, TargetLoc = refLoc, ResolvedContentHash = depHash };
             entry.RefSites.Add(refSite);
             if (depHash != null) _byHash[depHash].ReferencedBy.Add(hash);

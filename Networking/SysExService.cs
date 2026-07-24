@@ -902,6 +902,20 @@ sealed class SysExService : ISysExService
         finally { _dumpGate.End(gateEpoch); }
     }
 
+    public async Task<int> ChangeProgramBankTypeAsync(int bank, bool isExi)
+    {
+        var dump = _dump;
+        if (dump == null || _transport?.CanStream != true) return -1;
+        int gateEpoch = _dumpGate.Begin();
+        try
+        {
+            AppLog.Debug($"[sysex] ChangeProgramBankTypeAsync bank=0x{bank:X2} -> {(isExi ? "EXi" : "HD-1")} (reformats+erases the bank)");
+            var code = await dump.SendChangeProgramBankTypeAsync(bank, isExi).ConfigureAwait(false);
+            return code ?? -1;
+        }
+        finally { _dumpGate.End(gateEpoch); }
+    }
+
     public async Task<byte[]?> BankDigestAsync(int obj, int bank)
     {
         var transport = _transport;

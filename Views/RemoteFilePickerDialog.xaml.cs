@@ -61,19 +61,19 @@ internal partial class RemoteFilePickerDialog : ThemedWindow
 
     async Task ConnectAndRefreshAsync()
     {
-        TXT_Status.Text = "Connecting…";
+        TXT_Status.Text = AppMessages.RemoteFilePicker.Connecting;
         try
         {
             await _client.Connect();
             await RefreshAsync();
         }
-        catch (Exception ex) { TXT_Status.Text = $"Connect failed: {ex.Message}"; }
+        catch (Exception ex) { TXT_Status.Text = AppMessages.RemoteFilePicker.ConnectFailed(ex.Message); }
     }
 
     async Task RefreshAsync()
     {
         TXT_Path.Text = _dir;
-        TXT_Status.Text = "Loading…";
+        TXT_Status.Text = AppMessages.RemoteFilePicker.Loading;
         try
         {
             var listing = await _client.GetListing(_dir);
@@ -84,9 +84,9 @@ internal partial class RemoteFilePickerDialog : ThemedWindow
                 .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
             LST_Items.ItemsSource = entries;
-            TXT_Status.Text = $"{entries.Count} item(s)";
+            TXT_Status.Text = AppMessages.RemoteFilePicker.ItemCount(entries.Count);
         }
-        catch (Exception ex) { TXT_Status.Text = $"Error: {ex.Message}"; }
+        catch (Exception ex) { TXT_Status.Text = AppMessages.RemoteFilePicker.Error(ex.Message); }
     }
 
     async void OnUp(object sender, RoutedEventArgs e)
@@ -116,7 +116,7 @@ internal partial class RemoteFilePickerDialog : ThemedWindow
         BTN_Select.IsEnabled = false;
         BTN_Cancel.IsEnabled = false;
         BTN_Up.IsEnabled = false;
-        TXT_Status.Text = $"Downloading {entry.Name}…";
+        TXT_Status.Text = AppMessages.RemoteFilePicker.Downloading(entry.Name);
         try
         {
             string tempPath = Path.Combine(Path.GetTempPath(), "kronos_pcg_cache", entry.Name);
@@ -127,7 +127,7 @@ internal partial class RemoteFilePickerDialog : ThemedWindow
         }
         catch (Exception ex)
         {
-            TXT_Status.Text = $"Download failed: {ex.Message}";
+            TXT_Status.Text = AppMessages.RemoteFilePicker.DownloadFailed(ex.Message);
             BTN_Select.IsEnabled = true;
             BTN_Cancel.IsEnabled = true;
             BTN_Up.IsEnabled = true;

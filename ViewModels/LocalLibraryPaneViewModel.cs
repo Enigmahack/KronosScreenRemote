@@ -59,6 +59,19 @@ partial class LocalLibraryPaneViewModel : ObservableObject
 
     [ObservableProperty] string statusText = "";
 
+    // True while the referrer catalog is (re)building (see LibrarianShellViewModel.WarmCatalogAsync).
+    // The view hides the tree and disables the toolbar until this clears, so a move/edit can't run
+    // against a half-built index. Defaults true so the pane starts hidden until indexing completes.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsReady))]
+    bool isIndexing = true;
+
+    // Binding convenience: the tree/toolbar are shown/enabled only when NOT indexing.
+    public bool IsReady => !IsIndexing;
+
+    // The centered placeholder shown in the tree's place while indexing (see AppMessages).
+    public string IndexingPlaceholder => AppMessages.Librarian.Local.IndexingPlaceholder;
+
     public bool HasClipboard => Mode != ClipboardMode.None && _clipItems.Count > 0;
     public string ClipboardLabel => Mode switch
     {
@@ -168,14 +181,18 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     // directions) — there is no way to vacate a source slot otherwise (see PasteSingle's own
     // comment), so a multi-item or move-to-empty Cut can never be completed correctly. Copy
     // has no such limit, since it never touches the source.
+    //
+    // Set Lists are eligible now (requirement 1): a Set-List swap is a pure body-swap — nothing
+    // ever references a Set List (LibraryCatalog.ReferrersOf returns empty for it), so
+    // Librarian.PlanMove just writes the two bodies swapped, with no referrer patching. The
+    // earlier Set-List exclusion here was conservatism, not a correctness guard.
     public void Cut(IReadOnlyList<ObjLoc> locs)
     {
-        var eligible = locs.Where(l => l.ObjType != LibObj.SetList).ToList();
-        if (eligible.Count == 0) { ClearClipboard(); StatusText = "Set Lists can't be Cut — Copy instead."; return; }
-        if (eligible.Count > 1) { StatusText = "Cut works on one item at a time — select a single item, or use Copy for multiple."; return; }
-        _clipItems = eligible;
+        if (locs.Count == 0) { ClearClipboard(); StatusText = AppMessages.Librarian.Local.NothingToCut; return; }
+        if (locs.Count > 1) { StatusText = AppMessages.Librarian.Local.CutOneAtATime; return; }
+        _clipItems = locs.ToList();
         Mode = ClipboardMode.Cut;
-        StatusText = $"Cut {eligible[0].Label()} — select an occupied slot and Paste to swap.";
+        StatusText = AppMessages.Librarian.Local.Cut(locs[0].Label());
     }
 
     public void Copy(IReadOnlyList<ObjLoc> locs)
@@ -184,8 +201,8 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         _clipItems = locs.ToList();
         Mode = ClipboardMode.Copy;
         StatusText = locs.Count == 1
-            ? $"Copied {locs[0].Label()} — select a destination and Paste."
-            : $"Copied {locs.Count} item(s) — select a destination and Paste.";
+            ? AppMessages.Librarian.Local.CopiedOne(locs[0].Label())
+            : AppMessages.Librarian.Local.CopiedMany(locs.Count);
     }
 
     public void ClearClipboard()
@@ -200,8 +217,8 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     // more than one (same fill behavior as PasteIntoBank below).
     public (bool Ok, string? Message) PasteIntoSlot(ObjLoc dest)
     {
-        if (!HasClipboard) return (false, "nothing cut or copied");
-        if (_clipItems.Any(l => l.ObjType != dest.ObjType)) return (false, "can't paste here — object type doesn't match");
+        if (!HasClipboard) return (false, AppMessages.Librarian.Local.NothingCutOrCopied);
+        if (_clipItems.Any(l => l.ObjType != dest.ObjType)) return (false, AppMessages.Librarian.Local.TypeMismatch);
 
         bool cut = Mode == ClipboardMode.Cut;
         var result = _clipItems.Count == 1
@@ -218,10 +235,10 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     // occupied slot instead, or use Copy.
     public (bool Ok, string? Message) PasteIntoBank(int objType, int bank)
     {
-        if (!HasClipboard) return (false, "nothing cut or copied");
-        if (_clipItems.Any(l => l.ObjType != objType)) return (false, "can't paste here — object type doesn't match");
+        if (!HasClipboard) return (false, AppMessages.Librarian.Local.NothingCutOrCopied);
+        if (_clipItems.Any(l => l.ObjType != objType)) return (false, AppMessages.Librarian.Local.TypeMismatch);
         if (Mode == ClipboardMode.Cut)
-            return (false, "Cut needs a specific occupied slot to swap into — drop directly onto one, or use Copy to fill empty slots.");
+            return (false, AppMessages.Librarian.Local.CutNeedsOccupiedSlot);
 
         int startSlot = LocalEditOps.FindNextFreeSlot(_cache, objType, bank);
         var result = PasteBatch(_clipItems, objType, bank, startSlot);
@@ -237,22 +254,22 @@ partial class LocalLibraryPaneViewModel : ObservableObject
 
     (bool Ok, string? Message) PasteSingle(ObjLoc src, ObjLoc dest, bool cut)
     {
-        if (src.Equals(dest)) return (false, "source and destination are the same location");
+        if (src.Equals(dest)) return (false, AppMessages.Librarian.Local.SameLocation);
 
         if (!cut)
         {
             var dump = LocalEditOps.GetObjectDump(_cache, src);
-            if (dump == null) return (false, $"{src.Label()} not found locally");
+            if (dump == null) return (false, AppMessages.Librarian.Local.NotFoundLocally(src.Label()));
             var label = _cache.GetDisplayName(src.ObjType, src.Bank, src.Number);
             var (ok, error, clipboardAdds) = LocalEditOps.PlaceObject(_cache, dest, src.ObjType, dump.Version, dump.Body, label, divertDisplacedToClipboard: true, DateTime.UtcNow);
             if (ok) MergeIntoPersistentClipboard(clipboardAdds);
-            return (ok, ok ? $"Copied {src.Label()} to {dest.Label()}" : $"Copy failed: {error}");
+            return (ok, ok ? AppMessages.Librarian.Local.CopiedTo(src.Label(), dest.Label()) : AppMessages.Librarian.Local.CopyFailed(error));
         }
 
         if (_cache.Exists(dest.ObjType, dest.Bank, dest.Number))
         {
             var (ok, error) = LocalEditOps.Move(_cache, src, dest, DateTime.UtcNow);
-            return (ok, ok ? $"Moved {src.Label()} ↔ {dest.Label()}" : $"Move failed: {error}");
+            return (ok, ok ? AppMessages.Librarian.Local.Swapped(src.Label(), dest.Label()) : AppMessages.Librarian.Local.MoveFailed(error));
         }
         else
         {
@@ -261,7 +278,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
             // just-pulled object) and no way to push "this slot is now empty" to hardware
             // either. A real move is only ever a true swap (LocalEditOps.Move, both
             // directions written) — swap onto an occupied slot instead, or use Copy.
-            return (false, $"{dest.Label()} is empty — Cut can only be pasted onto an occupied slot (to swap). Use Copy to place a copy there instead.");
+            return (false, AppMessages.Librarian.Local.EmptySlotCut(dest.Label()));
         }
     }
 
@@ -281,10 +298,10 @@ partial class LocalLibraryPaneViewModel : ObservableObject
                 Provenance = ClipboardProvenance.UserCopy, CutAt = DateTime.UtcNow,
             });
         }
-        if (pending.Count == 0) return (false, "nothing to paste");
+        if (pending.Count == 0) return (false, AppMessages.Librarian.Local.NothingToPaste);
 
         var (placed, stillPending) = BatchLibrarian.ResolveSequentialFill(pending, objType, destBank, startSlot, bankTypeOf: null);
-        if (placed.Count == 0) return (false, "nothing could be placed (bank full or type mismatch)");
+        if (placed.Count == 0) return (false, AppMessages.Librarian.Local.NothingCouldBePlaced);
 
         var placements = placed
             .Select(p => new BatchPlacement(null, new ObjLoc(objType, destBank, p.Slot),
@@ -295,7 +312,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         if (!ok) return (false, error);
         MergeIntoPersistentClipboard(clipboardAdds);
 
-        string msg = $"Placed {placed.Count}" + (stillPending.Count > 0 ? $"; {stillPending.Count} didn't fit (bank full or type mismatch)" : "");
+        string msg = AppMessages.Librarian.Local.PlacedCount(placed.Count, stillPending.Count);
         return (true, msg);
     }
 
@@ -310,14 +327,14 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     public void Rename(ObjLoc loc, string newName)
     {
         var (ok, error) = LocalEditOps.Rename(_cache, loc, newName, DateTime.UtcNow);
-        StatusText = ok ? $"Renamed {loc.Label()} to \"{newName}\"" : $"Rename failed: {error}";
+        StatusText = ok ? AppMessages.Librarian.Local.Renamed(loc.Label(), newName) : AppMessages.Librarian.Local.RenameFailed(error);
         if (ok) RefreshTree();
     }
 
     public void Discard(ObjLoc loc)
     {
         var (ok, error) = LocalEditOps.Discard(_cache, loc, DateTime.UtcNow);
-        StatusText = ok ? $"Discarded {loc.Label()}" : $"Discard failed: {error}";
+        StatusText = ok ? AppMessages.Librarian.Local.Discarded(loc.Label()) : AppMessages.Librarian.Local.DiscardFailed(error);
         if (ok) RefreshTree();
     }
 
@@ -330,7 +347,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         int ok = 0;
         foreach (var loc in locs)
             if (LocalEditOps.Discard(_cache, loc, DateTime.UtcNow).Ok) ok++;
-        StatusText = ok == locs.Count ? $"Discarded {ok} item(s)" : $"Discarded {ok}/{locs.Count} item(s)";
+        StatusText = AppMessages.Librarian.Local.DiscardedCount(ok, locs.Count);
         if (ok > 0) RefreshTree();
     }
 
@@ -345,8 +362,8 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         if (markForDeletion) LocalEditOps.Discard(_cache, loc, DateTime.UtcNow);
         var (ok, error) = LocalEditOps.SetPendingDelete(_cache, loc, markForDeletion, DateTime.UtcNow);
         StatusText = ok
-            ? (markForDeletion ? $"Marked {loc.Label()} for deletion" : $"Restored {loc.Label()}")
-            : $"{(markForDeletion ? "Delete" : "Restore")} failed: {error}";
+            ? (markForDeletion ? AppMessages.Librarian.Local.MarkedForDeletion(loc.Label()) : AppMessages.Librarian.Local.Restored(loc.Label()))
+            : AppMessages.Librarian.Local.DeleteRestoreFailed(markForDeletion, error);
         if (ok) RefreshTree();
     }
 
@@ -364,8 +381,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
             if (markForDeletion) LocalEditOps.Discard(_cache, loc, DateTime.UtcNow);
             if (LocalEditOps.SetPendingDelete(_cache, loc, markForDeletion, DateTime.UtcNow).Ok) ok++;
         }
-        string verb = markForDeletion ? "Marked" : "Restored";
-        StatusText = ok == locs.Count ? $"{verb} {ok} item(s)" : $"{verb} {ok}/{locs.Count} item(s)";
+        StatusText = AppMessages.Librarian.Local.MarkedRestoredCount(markForDeletion, ok, locs.Count);
         if (ok > 0) RefreshTree();
     }
 
@@ -380,7 +396,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     public void ClearAllChanges()
     {
         var locs = _cache.DirtyObjects().Concat(_cache.PendingDeleteObjects()).Distinct().ToList();
-        if (locs.Count == 0) { StatusText = "Nothing to clear."; return; }
+        if (locs.Count == 0) { StatusText = AppMessages.Librarian.Local.NothingToClear; return; }
         int ok = 0;
         foreach (var loc in locs)
         {
@@ -388,23 +404,33 @@ partial class LocalLibraryPaneViewModel : ObservableObject
             bool didRestore = LocalEditOps.SetPendingDelete(_cache, loc, false, DateTime.UtcNow).Ok;
             if (didDiscard || didRestore) ok++;
         }
-        StatusText = $"Cleared {ok} pending change(s).";
+        StatusText = AppMessages.Librarian.Local.ClearedChanges(ok);
         RefreshTree();
     }
 
     public ObjectDump? GetObjectDump(ObjLoc loc) => LocalEditOps.GetObjectDump(_cache, loc);
 
+    // Human-readable descriptions of every Combi timbre / Set List slot that currently points at
+    // `loc` (issue 1 — used to warn before deleting a dependency that would leave those referrers
+    // dangling). Empty for a Set List (nothing ever references one) and for anything nothing
+    // points at. Uses the memoized catalog, so the first call after the window opens may build it.
+    public IReadOnlyList<string> DescribeReferrers(ObjLoc loc)
+    {
+        if (loc.ObjType == LibObj.SetList) return Array.Empty<string>();
+        return _cache.BuildCatalog().ReferrersOf(loc).Select(r => r.Describe()).ToList();
+    }
+
     public void EditProperties(ObjLoc loc, string? name, int? category, int? subCategory)
     {
         var (ok, error) = LocalEditOps.EditProperties(_cache, loc, name, category, subCategory, DateTime.UtcNow);
-        StatusText = ok ? $"Edited {loc.Label()}" : $"Edit failed: {error}";
+        StatusText = ok ? AppMessages.Librarian.Local.Edited(loc.Label()) : AppMessages.Librarian.Local.EditFailed(error);
         if (ok) RefreshTree();
     }
 
     public void EditSetListSlot(ObjLoc loc, int slot, string? name, int? color, string? comments)
     {
         var (ok, error) = LocalEditOps.EditSetListSlot(_cache, loc, slot, name, color, comments, DateTime.UtcNow);
-        StatusText = ok ? $"Edited {loc.Label()} slot {slot}" : $"Edit failed: {error}";
+        StatusText = ok ? AppMessages.Librarian.Local.EditedSlot(loc.Label(), slot) : AppMessages.Librarian.Local.EditFailed(error);
         if (ok) RefreshTree();
     }
 }

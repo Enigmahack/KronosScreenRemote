@@ -73,6 +73,15 @@ sealed record SetListData(int Number, string Name, IReadOnlyList<SetListSlot> Sl
     // untouched set list carries a blank name or a default label is unverified.
     [JsonIgnore]
     public bool IsEmpty => Slots.Count == 0 || Slots.All(s => s.IsEmpty);
+
+    // The Kronos's factory-default name for set-list slot N — verified against a full hardware
+    // dump, where every untouched slot comes back as "Set List 000".."Set List 127" (zero-padded
+    // to three digits). Used to name a slot reverted-to-blank on a committed delete (requirement 2:
+    // "revert to the init configuration but with the name of the slot it occupies"), so an erased
+    // Set List reads as its own slot instead of inheriting the shared blank template's name — that
+    // template is captured ONCE from Set List 127, so reusing it verbatim would stamp "Set List 127"
+    // onto every erased slot (the exact corruption this method prevents).
+    public static string DefaultName(int number) => $"Set List {number:D3}";
 }
 
 // Result of a full Set List sweep (ISysExService.DumpAllSetListsAsync / "Sync All").

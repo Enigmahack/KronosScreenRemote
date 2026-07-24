@@ -686,11 +686,8 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         MNU_TestMode.Click += async (sender, e) =>
         {
             var result = MessageBox.Show(
-                "This will place you into the Kronos Test Mode. All unsaved changes will be lost, " +
-                "and your Kronos will need to be restarted after complete. Also, this is potentially " +
-                "a dangerous operation and should only be performed if you are aware of the risk.\n\n" +
-                "Do you wish to continue?",
-                "Kronos Test Mode",
+                AppMessages.TestMode.Warning,
+                AppMessages.TestMode.Title,
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning);
             if (result != MessageBoxResult.Yes) return;
@@ -794,8 +791,8 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     {
         if (_wb == null)
         {
-            MessageBox.Show("No frame available — connect to Kronos first.",
-                "Screenshot", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(AppMessages.Screenshot.NoFrameAvailable,
+                AppMessages.Screenshot.Title, MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -815,22 +812,22 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Failed to save screenshot:\n{ex.Message}",
-                "Screenshot", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(AppMessages.Screenshot.SaveFailed(ex.Message),
+                AppMessages.Screenshot.Title, MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
     void QuickSaveScreenshot()
     {
-        if (_wb == null) { SetNotification("No frame to save — connect first", isError: true); return; }
+        if (_wb == null) { SetNotification(AppMessages.Notify.NoFrameToSave, isError: true); return; }
         try
         {
             var path = Path.Combine(EffectiveScreenshotDir, $"kronos_{DateTime.Now:yyyyMMdd_HHmmss}.png");
             SaveFramePng(_wb, path);
-            SetNotification($"Saved {System.IO.Path.GetFileName(path)}", isError: false);
+            SetNotification(AppMessages.Notify.Saved(System.IO.Path.GetFileName(path)), isError: false);
             Console.WriteLine($"[screenshot] quick-saved → {path}");
         }
-        catch (Exception ex) { SetNotification($"Screenshot failed: {ex.Message}", isError: true); }
+        catch (Exception ex) { SetNotification(AppMessages.Notify.ScreenshotFailed(ex.Message), isError: true); }
     }
 
     // Encode a frame as PNG and write it to path.
@@ -844,19 +841,19 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
 
     void CopyFrameToClipboard()
     {
-        if (_wb == null) { SetNotification("No frame to copy — connect first", isError: true); return; }
+        if (_wb == null) { SetNotification(AppMessages.Notify.NoFrameToCopy, isError: true); return; }
         try
         {
             Clipboard.SetImage(_wb);
-            SetNotification("Frame copied to clipboard", isError: false);
+            SetNotification(AppMessages.Notify.FrameCopied, isError: false);
         }
-        catch (Exception ex) { SetNotification($"Copy failed: {ex.Message}", isError: true); }
+        catch (Exception ex) { SetNotification(AppMessages.Notify.CopyFailed(ex.Message), isError: true); }
     }
 
     void OpenScreenshotsFolder()
     {
         try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(EffectiveScreenshotDir) { UseShellExecute = true }); }
-        catch (Exception ex) { SetNotification($"Could not open folder: {ex.Message}", isError: true); }
+        catch (Exception ex) { SetNotification(AppMessages.Notify.CouldNotOpenFolder(ex.Message), isError: true); }
     }
 
     void AddRecentHost(string host)
@@ -1021,8 +1018,8 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         {
             if (IsConnected) TriggerReconnect();
             MessageBox.Show(
-                "All settings have been reset to defaults.\n\nCalibration data will fully take effect on the next launch.",
-                "Settings Reset", MessageBoxButton.OK, MessageBoxImage.Information);
+                AppMessages.SettingsReset.Done,
+                AppMessages.SettingsReset.DoneTitle, MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -1054,13 +1051,13 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         try
         {
             Storage.SaveSettingsTo(_settings, dlg.FileName);
-            MessageBox.Show(this, $"Settings exported to:\n{dlg.FileName}",
-                "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, AppMessages.SettingsIo.Exported(dlg.FileName),
+                AppMessages.Titles.ExportComplete, MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, $"Export failed:\n{ex.Message}",
-                "Export Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(this, AppMessages.SettingsIo.ExportFailed(ex.Message),
+                AppMessages.Titles.ExportFailed, MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -1078,13 +1075,13 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             // editing settings and clicking OK (persist + reconnect if needed).
             var imported = Storage.LoadSettingsFrom(dlg.FileName);
             ApplySettingsResult(imported, wasReset: false);
-            MessageBox.Show(this, "Settings imported and applied.",
-                "Import Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(this, AppMessages.SettingsIo.ImportedAndApplied,
+                AppMessages.Titles.ImportComplete, MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
-            MessageBox.Show(this, $"Import failed:\n{ex.Message}",
-                "Import Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(this, AppMessages.SettingsIo.ImportFailed(ex.Message),
+                AppMessages.Titles.ImportFailed, MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -1117,8 +1114,8 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         }
         if (!IsConnected)
         {
-            MessageBox.Show("Not connected to Kronos.\n\nConnect to Kronos first, then open the File Manager.",
-                "File Manager", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(AppMessages.FileManager.OpenNotConnected,
+                AppMessages.FileManager.OpenNotConnectedTitle, MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
         if (!EnsureHasFtpCredentials()) return;
@@ -1226,13 +1223,13 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     {
         if (!Dispatcher.CheckAccess()) { Dispatcher.InvokeAsync(() => SetNotification(msg, isError)); return; }
         NotifyBubblePath.Fill = new SolidColorBrush(isError ? NotifyColorError : NotifyColorIdle);
-        NotifyBubble.ToolTip  = msg + "\n— click to open log";
+        NotifyBubble.ToolTip  = msg + AppMessages.Notify.LogHintSuffix;
     }
 
     void ClearNotification()
     {
         NotifyBubblePath.Fill = new SolidColorBrush(NotifyColorIdle);
-        NotifyBubble.ToolTip  = "Click to open log";
+        NotifyBubble.ToolTip  = AppMessages.Notify.ClickToOpenLog;
     }
 
     void OnNotifyBubbleClick()
@@ -1275,12 +1272,12 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
                 : new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88));
             StatusText.Text = state switch
             {
-                ConnState.Connected  => $"Connected — {_host}",
-                ConnState.Connecting => $"Connecting to {_host}…",
+                ConnState.Connected  => AppMessages.Connection.Connected(_host),
+                ConnState.Connecting => AppMessages.Connection.Connecting(_host),
                 // When USB MIDI is live, say so — otherwise a disconnected screen reads
                 // as "broken" even though the SysEx features are fully working over USB.
-                _ when _midiCoord.UsingUsb => "USB MIDI — screen not connected",
-                _                    => "Not connected"
+                _ when _midiCoord.UsingUsb => AppMessages.Connection.UsbMidiScreenNotConnected,
+                _                    => AppMessages.Connection.NotConnected
             };
             ConnModeText.Text = state == ConnState.Connected
                 ? (_pullMode ? "Pull" : "Change")
@@ -1356,8 +1353,8 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             // mode buttons USB is actively driving.
             if (!IsConnected)
                 StatusText.Text = _midiCoord.UsingUsb
-                    ? "USB MIDI — screen not connected"
-                    : "Not connected";
+                    ? AppMessages.Connection.UsbMidiScreenNotConnected
+                    : AppMessages.Connection.NotConnected;
         });
     }
 

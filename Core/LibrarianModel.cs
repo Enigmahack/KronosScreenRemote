@@ -103,6 +103,12 @@ interface IExecutablePlan
     List<string> Warnings { get; }
     string BackupLabel { get; }            // filename-safe; ApplyMoveAsync prefixes it with the stamp
     bool IsRefusable { get; }
+
+    // Program banks whose HD-1/EXi type this plan changes (func 0x7C) before writing them —
+    // only the whole-bank-copy changeset (requirement 4) ever populates this; every other plan
+    // shape inherits the empty default. Applied by ApplyMoveAsync after the staleness gate and
+    // before the object writes, since 0x7C erases the bank.
+    IReadOnlyList<(int Bank, bool IsExi)> BankTypeChanges => Array.Empty<(int, bool)>();
 }
 
 sealed class MovePlan : IExecutablePlan
@@ -230,6 +236,12 @@ interface IMoveExecutor
     Task<int> WriteObjectAsync(WriteOp op);   // Reply code (0 = OK); -1 = timeout
     Task<int> StoreBankAsync(int obj, int bank);
     Task SendRawAsync(byte[] data);
+
+    // Change a Program bank's HD-1/EXi type (func 0x7C) — REFORMATS AND ERASES the bank when
+    // the type actually changes (requirement 4). Reply code (0 = OK); -1 = timeout. Issued by
+    // ApplyMoveAsync after the staleness gate and before that bank's writes, since the whole
+    // bank must be re-written after the erase.
+    Task<int> ChangeProgramBankTypeAsync(int bank, bool isExi);
 }
 
 static class Librarian
@@ -280,11 +292,11 @@ static class Librarian
         var plan = new MovePlan { Src = src, Dst = dst };
 
         if (src.ObjType != dst.ObjType)
-            plan.Warnings.Add("REFUSE: cannot move between different object types (program vs combi)");
+            plan.Warnings.Add(AppMessages.Librarian.Move.CannotMoveBetweenTypes);
         if (src.ObjType == LibObj.Program && ReadOnlyProgramBanks.Contains(dst.Bank))
-            plan.Warnings.Add($"REFUSE: destination {dst.Label()} is a read-only (GM/g) program bank");
+            plan.Warnings.Add(AppMessages.Librarian.Move.DestinationReadOnlyBank(dst.Label()));
         if (src.Equals(dst))
-            plan.Warnings.Add("REFUSE: source and destination are the same location");
+            plan.Warnings.Add(AppMessages.Librarian.Move.SameLocation);
 
         int refType = src.ObjType == LibObj.Program ? 1 : 0;
         int dstFunc33 = KronosBanks.ObjBankToFunc33(refType, dst.Bank);
@@ -321,7 +333,7 @@ static class Librarian
                 : (cat.Setlists.TryGetValue(refIndex, out var s) ? s : null);
             if (baseDump == null)
             {
-                plan.Warnings.Add($"REFUSE: referring object missing from catalog (obj {refObj:X2} bank {refBank:X2} idx {refIndex}) — re-scan before moving");
+                plan.Warnings.Add(AppMessages.Librarian.Move.ReferringObjectMissing(refObj, refBank, refIndex));
                 continue;
             }
             plan.PreImages.Add(new WriteOp(refObj, refBank, refIndex, baseDump.Version, baseDump.Body, "original"));
@@ -355,7 +367,7 @@ static class Librarian
 
         // (5) Program bank-type reminder (HD-1/EXi) — enforced at apply via Reply 64.
         if (src.ObjType == LibObj.Program && src.Bank != dst.Bank)
-            plan.Warnings.Add("CHECK: program move across banks — destination bank must be the same type (HD-1/EXi) or the write is rejected (Reply 64).");
+            plan.Warnings.Add(AppMessages.Librarian.Move.CheckProgramMoveAcrossBanks);
 
         plan.Preview.Add($"SWAP  {src.Label()}  <->  {dst.Label()}  ({(src.ObjType == LibObj.Program ? "programs" : "combis")})");
         plan.Preview.Add($"  references to rewrite: {plan.Referrers.Count}");
@@ -407,6 +419,18 @@ static class Librarian
                 return (false, steps, $"ABORT: {StoreLabel(obj, bank)} changed since preview (edited at the panel?) — nothing was Stored");
         }
         Note("staleness gate passed");
+
+        // 2b. Program bank-type changes (func 0x7C) — REFORMATS AND ERASES each bank to the
+        // requested EXi/HD-1 type. After the staleness gate (an external change is still caught
+        // first) but before the writes, because 0x7C erases the bank; the changeset guarantees
+        // every slot of that bank is in Writes so the whole bank is rebuilt immediately after.
+        foreach (var (bank, isExi) in plan.BankTypeChanges)
+        {
+            int rc = await ex.ChangeProgramBankTypeAsync(bank, isExi).ConfigureAwait(false);
+            Note($"change bank type {KronosBanks.ProgramLabel(bank)} -> {(isExi ? "EXi" : "HD-1")} -> Reply {rc}");
+            if (rc != 0)
+                return (false, steps, $"ABORT: bank-type change rejected (Reply {rc}) for {KronosBanks.ProgramLabel(bank)} — nothing Stored");
+        }
 
         // 3. Send all object writes (volatile).
         foreach (var w in plan.Writes)

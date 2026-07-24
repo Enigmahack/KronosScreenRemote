@@ -68,6 +68,59 @@ static class MergeGroupPlacementSelfTests
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
 
+        // ── Whole-bank copy with EXi/HD-1 type change (requirement 4), via PullFromLocal so no
+        //    synthetic-PCG program encoding is needed: seed EXi programs in source bank I-A and
+        //    HD-1 programs in destination bank U-A, pull the EXi bank into the Merge Window, then
+        //    place it into U-A with a type change. The destination bank is replaced and the
+        //    type-change intent is recorded for Commit (the 0x7C path is covered by
+        //    SyncPipelineSelfTests case I). ─────────────────────────────────────────────────────
+        string tcRoot = Path.Combine(Path.GetTempPath(), "kronos_selftest_merge_typechange");
+        if (Directory.Exists(tcRoot)) Directory.Delete(tcRoot, recursive: true);
+        try
+        {
+            var exec = new FakeMoveExecutor();
+            const int srcBank = 0x00, destBank = 0x40;   // I-A (source), U-A (destination)
+            var exiBodies = new byte[3][];
+            for (int n = 0; n < 3; n++)
+            {
+                exiBodies[n] = new byte[ProgramFormatConverter.WireSizeExi];
+                Encoding.ASCII.GetBytes($"EXI {n}").CopyTo(exiBodies[n], 0);
+                exec.Seed(LibObj.Program, srcBank, n, 5, exiBodies[n]);
+            }
+            for (int n = 0; n < 2; n++) exec.Seed(LibObj.Program, destBank, n, 5, new byte[ProgramFormatConverter.WireSizeHd1]);
+
+            var bits = new bool[21];
+            bits[1] = true;    // I-A = EXi (matches the seeded EXi bodies)
+            bits[7] = false;   // U-A = HD-1 (the destination we're changing)
+            exec.ProgramBankTypesToReturn = new ProgramBankTypes(bits);
+
+            var cache = new LocalLibraryCache(tcRoot);
+            await LibraryPullPipeline.PullAsync(exec, cache, full: true);
+            // A UNIQUE host, not "" — WarmProgramBankTypesForTestingAsync persists the queried
+            // types to the host-keyed global cache (program_bank_types_cache.json), so using the
+            // empty host every other VM-based self-test uses would pollute their BankTypeOf and
+            // make their EXi placements REFUSE. This host is read by nothing else.
+            var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), "selftest-typechange-host");
+            await vm.WarmProgramBankTypesForTestingAsync();   // so BankTypeOf(destBank) resolves
+
+            for (int n = 0; n < 3; n++) vm.PullLocalIntoMerge(new ObjLoc(LibObj.Program, srcBank, n));
+            var hashes = exiBodies.Select(LocalObjectStore.ComputeHash).ToList();
+            Check("tc-all-exi-staged", hashes.All(h => vm.MergePane.TryGet(h) != null));
+
+            var needed = vm.BankTypeChangeNeeded(LibObj.Program, destBank, hashes);
+            Check("tc-type-change-detected", needed == true);
+
+            var (ok, _) = vm.PlaceMergeBankWithTypeChange(destBank, hashes, targetIsExi: true);
+            Check("tc-place-ok", ok);
+            Check("tc-intent-recorded", cache.PendingBankTypeChange(destBank) == true);
+            Check("tc-exi-programs-in-dest", cache.Exists(LibObj.Program, destBank, 0) &&
+                cache.IsExi(LibObj.Program, destBank, 0) && cache.GetDisplayName(LibObj.Program, destBank, 0) == "EXI 0");
+            Check("tc-dest-bank-replaced-count", Enumerable.Range(0, 128).Count(n => cache.Exists(LibObj.Program, destBank, n)) == 3);
+            Check("tc-removed-from-merge", hashes.All(h => vm.MergePane.TryGet(h) == null));
+            Check("tc-source-untouched", cache.Exists(LibObj.Program, srcBank, 0));
+        }
+        finally { if (Directory.Exists(tcRoot)) Directory.Delete(tcRoot, recursive: true); }
+
         return fails;
     }
 

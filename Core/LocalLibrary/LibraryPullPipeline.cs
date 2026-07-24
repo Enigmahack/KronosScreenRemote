@@ -56,7 +56,7 @@ static class LibraryPullPipeline
             // COMPLETELY EMPTY bulk result (bulk.Count == 0) as ambiguous — rejected vs. a
             // genuinely fully-empty bank look identical at this layer — and fall back to a
             // full per-slot sweep only in that one case, same as if bulk didn't exist.
-            progress?.Invoke($"Bulk-dumping {descriptor.DisplayName} {descriptor.BankLabel(bankRef.Bank)}…");
+            progress?.Invoke(AppMessages.Librarian.Sync.BulkDumping(descriptor.DisplayName, descriptor.BankLabel(bankRef.Bank)));
             var bulk = await sysEx.DumpBankBulkAsync(bankRef.ObjType, bankRef.Bank, descriptor.SlotCount).ConfigureAwait(false);
             bool bulkWorked = bulk.Count > 0;
 
@@ -67,7 +67,7 @@ static class LibraryPullPipeline
                     : bulkWorked ? null   // bulk worked and omitted this slot -> confirmed empty
                     : await sysEx.DumpObjectAsync(bankRef.ObjType, bankRef.Bank, number).ConfigureAwait(false);
                 done++;
-                progress?.Invoke($"Pulling {done}/{total} — {descriptor.DisplayName} {descriptor.BankLabel(bankRef.Bank)}:{number:D3}");
+                progress?.Invoke(AppMessages.Librarian.Sync.Pulling(done, total, descriptor.DisplayName, descriptor.BankLabel(bankRef.Bank), number));
                 if (dump == null) continue;   // empty slot — nothing to pull
 
                 // A dirty object is NEVER overwritten by a pull, full or lazy — whether its

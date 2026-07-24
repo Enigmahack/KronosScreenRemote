@@ -195,8 +195,8 @@ internal partial class InputTesterWindow : ThemedWindow
 
     void TxtHostKey_GotFocus(object sender, RoutedEventArgs e)
     {
-        if (TxtHostKey.Text == "[click, then press key]") TxtHostKey.Text = "";
-        TxtHostKey.Text = "[press a key]";
+        if (TxtHostKey.Text == AppMessages.InputTester.HostKeyPlaceholder) TxtHostKey.Text = "";
+        TxtHostKey.Text = AppMessages.InputTester.PressAKey;
         _captureKey = Key.None;
     }
 
@@ -215,9 +215,9 @@ internal partial class InputTesterWindow : ThemedWindow
     void BtnAddMapping_Click(object sender, RoutedEventArgs e)
     {
         if (_captureKey == Key.None)
-        { TxtStatus.Text = "Click the host-key field and press the key you want to assign."; return; }
+        { TxtStatus.Text = AppMessages.InputTester.ClickHostKeyField; return; }
         if (!int.TryParse(TxtRawCode.Text.Trim(), out int code) || code < 1 || code > 767)
-        { TxtStatus.Text = "Enter a valid raw keycode (1–767) first."; return; }
+        { TxtStatus.Text = AppMessages.InputTester.EnterValidRawCode; return; }
 
         string label = (EntryGrid.SelectedItem as TestEntry)?.Observed ?? "";
 
@@ -231,9 +231,9 @@ internal partial class InputTesterWindow : ThemedWindow
         });
 
         string keyStr = _captureShift ? $"Shift+{_captureKey}" : _captureKey.ToString();
-        TxtStatus.Text = $"Mapped: {keyStr} → KEY {code}  (active immediately)";
+        TxtStatus.Text = AppMessages.InputTester.Mapped(keyStr, code);
         _captureKey = Key.None;
-        TxtHostKey.Text = "[click, then press key]";
+        TxtHostKey.Text = AppMessages.InputTester.HostKeyPlaceholder;
     }
 
     void BtnDeleteMapping_Click(object sender, RoutedEventArgs e)
@@ -255,22 +255,22 @@ internal partial class InputTesterWindow : ThemedWindow
         {
             File.WriteAllText(ResultsPath,
                 obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
-            TxtStatus.Text = $"Saved → {ResultsPath}";
+            TxtStatus.Text = AppMessages.InputTester.Saved(ResultsPath);
         }
         catch (Exception ex)
         {
-            TxtStatus.Text = $"Save failed: {ex.Message}";
+            TxtStatus.Text = AppMessages.InputTester.SaveFailed(ex.Message);
         }
     }
 
     void BtnLoad_Click(object sender, RoutedEventArgs e)
     {
-        if (!File.Exists(ResultsPath)) { TxtStatus.Text = "No results file found."; return; }
+        if (!File.Exists(ResultsPath)) { TxtStatus.Text = AppMessages.InputTester.NoResultsFile; return; }
 
         JsonObject? obj;
         try { obj = JsonNode.Parse(File.ReadAllText(ResultsPath))?.AsObject(); }
         catch { obj = null; }
-        if (obj == null) { TxtStatus.Text = "Parse error."; return; }
+        if (obj == null) { TxtStatus.Text = AppMessages.InputTester.ParseError; return; }
 
         var map = new Dictionary<int, string>();
         foreach (var kv in obj)
@@ -286,12 +286,12 @@ internal partial class InputTesterWindow : ThemedWindow
             CboObserved.Text = sel.Observed;
 
         UpdateCount();
-        TxtStatus.Text = $"Loaded {map.Count} entries — {ResultsPath}";
+        TxtStatus.Text = AppMessages.InputTester.Loaded(map.Count, ResultsPath);
     }
 
     void UpdateCount()
     {
         int tested = _entries.Count(x => x.Observed.Length > 0);
-        TxtStatus.Text = $"{tested} / {_entries.Count} tested";
+        TxtStatus.Text = AppMessages.InputTester.TestedProgress(tested, _entries.Count);
     }
 }

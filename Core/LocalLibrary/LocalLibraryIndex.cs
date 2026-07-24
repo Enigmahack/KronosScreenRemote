@@ -51,6 +51,13 @@ sealed class LocalLibraryIndex
     public Dictionary<string, LocalIndexEntry> Entries { get; } = new();       // key: "type:bank:number"
     public Dictionary<string, string> BankDigestBaseline { get; } = new();     // key: "type:bank", value: hex SHA-1
 
+    // Program banks the user has staged a whole-bank HD-1/EXi type change for (requirement 4) —
+    // key: program bank, value: target IsExi. Set when a whole bank of the opposite format is
+    // placed into a destination bank; consumed by ChangesetBuilder (which emits a func 0x7C) on
+    // the next Commit and cleared on success. Persisted so the intent survives closing/reopening
+    // the Librarian before committing.
+    public Dictionary<int, bool> PendingProgramBankTypeChanges { get; } = new();
+
     public static string Key(int objType, int bank, int number) => $"{objType}:{bank}:{number}";
     public static string BankKey(int objType, int bank) => $"{objType}:{bank}";
 
@@ -59,7 +66,15 @@ sealed class LocalLibraryIndex
     // until an actual Push establishes a real baseline.
     public const string NoBaselineSentinel = "";
 
-    sealed record Dto(Dictionary<string, LocalIndexEntry> Entries, Dictionary<string, string> BankDigestBaseline);
+    // An OpLogTarget.ResultHash of this value means "this object was DELETED" (requirement 2's
+    // committed deletion — see LocalLibraryCache.RemoveObject). Distinct from any real 40-char
+    // SHA-1 hex hash, so the op-log fold (RebuildCurrentFromOpLog) can REMOVE the slot instead of
+    // resurrecting it from its last real hash — without this, recovering the index from the log
+    // alone would bring every deleted object back.
+    public const string DeletedTombstone = "<deleted>";
+
+    sealed record Dto(Dictionary<string, LocalIndexEntry> Entries, Dictionary<string, string> BankDigestBaseline,
+        Dictionary<int, bool>? PendingProgramBankTypeChanges = null);
 
     static string PathFor(string root) => Path.Combine(root, "index.json");
 
@@ -74,6 +89,8 @@ sealed class LocalLibraryIndex
             if (dto == null) return idx;
             foreach (var kv in dto.Entries) idx.Entries[kv.Key] = kv.Value;
             foreach (var kv in dto.BankDigestBaseline) idx.BankDigestBaseline[kv.Key] = kv.Value;
+            if (dto.PendingProgramBankTypeChanges != null)
+                foreach (var kv in dto.PendingProgramBankTypeChanges) idx.PendingProgramBankTypeChanges[kv.Key] = kv.Value;
         }
         catch (Exception ex) { AppLog.Warn($"[local-library] index load failed: {ex.Message}"); }
         return idx;
@@ -84,7 +101,7 @@ sealed class LocalLibraryIndex
         try
         {
             Directory.CreateDirectory(root);
-            File.WriteAllText(PathFor(root), JsonSerializer.Serialize(new Dto(Entries, BankDigestBaseline)));
+            File.WriteAllText(PathFor(root), JsonSerializer.Serialize(new Dto(Entries, BankDigestBaseline, PendingProgramBankTypeChanges)));
         }
         catch (Exception ex) { AppLog.Warn($"[local-library] index save failed: {ex.Message}"); }
     }
@@ -98,7 +115,11 @@ sealed class LocalLibraryIndex
         var current = new Dictionary<string, string>();
         foreach (var entry in entries)
             foreach (var t in entry.Targets)
-                current[Key(t.ObjType, t.Bank, t.Number)] = t.ResultHash;
+            {
+                var key = Key(t.ObjType, t.Bank, t.Number);
+                if (t.ResultHash == DeletedTombstone) current.Remove(key);   // a committed deletion removes the slot
+                else current[key] = t.ResultHash;
+            }
         return current;
     }
 }

@@ -49,12 +49,15 @@ static class MergeTreeVisibilitySelfTests
         Check("setlist-gone", merge.TryGet(setListHash) == null);
         Check("combiX-still-staged-after-setlist-removed", merge.TryGet(combiXHash) != null);
 
+        // Top-level Combis/Programs are now grouped by SOURCE bank (requirement 4), so a
+        // graduated entry sits one level deeper — under its bank group, not directly under the
+        // type root. SelectMany through the bank groups to find it.
         var combisRoot = merge.Roots.FirstOrDefault(r => r.Label == "Combis");
-        Check("combiX-graduates-to-flat-display", combisRoot?.Children.Any(n => n.MergeContentHash == combiXHash) == true);
+        Check("combiX-graduates-to-flat-display", combisRoot?.Children.SelectMany(b => b.Children).Any(n => n.MergeContentHash == combiXHash) == true);
 
         // Program A is still nested under Combi X (Combi X is still its current referrer) —
         // not ALSO duplicated flatly under "Programs".
-        var combiXNode = combisRoot?.Children.FirstOrDefault(n => n.MergeContentHash == combiXHash);
+        var combiXNode = combisRoot?.Children.SelectMany(b => b.Children).FirstOrDefault(n => n.MergeContentHash == combiXHash);
         Check("progA-still-nested-under-combiX", combiXNode?.Children.Any(n => n.MergeContentHash == progAHash) == true);
         Check("programs-root-still-absent", !merge.Roots.Any(r => r.Label == "Programs"));
 
@@ -62,7 +65,7 @@ static class MergeTreeVisibilitySelfTests
         // graduate to flat display under "Programs" — the same rule, one level deeper.
         merge.Remove(new[] { combiXHash });
         var programsRoot = merge.Roots.FirstOrDefault(r => r.Label == "Programs");
-        bool progAFlat = programsRoot?.Children.SelectMany(formatGroup => formatGroup.Children)
+        bool progAFlat = programsRoot?.Children.SelectMany(bankGroup => bankGroup.Children)
             .Any(n => n.MergeContentHash == progAHash) == true;
         Check("progA-graduates-to-flat-display-after-combiX-removed", progAFlat);
 

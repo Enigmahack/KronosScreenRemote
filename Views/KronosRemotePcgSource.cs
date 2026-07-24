@@ -30,7 +30,7 @@ sealed class KronosRemotePcgSource : IRemotePcgSource
     public async Task<RemotePcgPick> PickAsync()
     {
         if (!await KronosFtpSession.EnsureLoginAsync(_owner, _settings, _host))
-            return RemotePcgPick.Failed("FTP login failed or was cancelled.");
+            return RemotePcgPick.Failed(AppMessages.Librarian.Pcg.FtpLoginFailedOrCancelled);
 
         // The picker downloads the selected file itself, over the one connection it opened to
         // browse — no second connection here. Opening a second one right after the first closes
@@ -42,7 +42,7 @@ sealed class KronosRemotePcgSource : IRemotePcgSource
             Owner = _owner,
         };
         if (picker.ShowDialog() != true || picker.DownloadedTempPath == null)
-            return RemotePcgPick.Failed("Load from Kronos cancelled — the previously loaded file (if any) is unchanged.");
+            return RemotePcgPick.Failed(AppMessages.Librarian.Pcg.LoadFromKronosCancelled);
 
         try
         {
@@ -52,7 +52,7 @@ sealed class KronosRemotePcgSource : IRemotePcgSource
         catch (Exception ex)
         {
             AppLog.Error($"PCG load from Kronos failed: {ex}");
-            return RemotePcgPick.Failed($"Load failed: {ex.Message}");
+            return RemotePcgPick.Failed(AppMessages.Librarian.Pcg.LoadFailed(ex.Message));
         }
     }
 }

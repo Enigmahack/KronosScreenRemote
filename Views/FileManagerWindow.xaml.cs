@@ -277,17 +277,17 @@ public partial class FileManagerWindow : ThemedWindow
         _ftp = KronosFtpSession.CreateClient(_host, _ftpPort, _user, _pass);
         try
         {
-            SetStatus("Connecting to Kronos FTP…");
+            SetStatus(AppMessages.FileManager.Connecting);
             await RunExclusive(async () =>
             {
                 await Task.Run(() => _ftp.Connect(CancellationToken.None));
-                SetStatus("Connected.");
+                SetStatus(AppMessages.FileManager.Connected);
                 await RefreshBothAsync();
             });
         }
         catch (Exception ex)
         {
-            SetStatus($"FTP connect failed: {ex.Message}");
+            SetStatus(AppMessages.FileManager.ConnectFailed(ex.Message));
         }
     }
 
@@ -374,7 +374,7 @@ public partial class FileManagerWindow : ThemedWindow
     async Task<bool> RefreshRemoteAsync()
     {
         if (!await EnsureConnectedAsync()) return false;
-        SetStatus($"Loading {_remote.Dir}…");
+        SetStatus(AppMessages.FileManager.Loading(_remote.Dir));
         try
         {
             var listing = await _ftp!.GetListing(_remote.Dir);
@@ -386,10 +386,10 @@ public partial class FileManagerWindow : ThemedWindow
             foreach (var entry in entries) _remote.Items.Add(entry);
             ApplySort(_remote.Items, _remote.SortCol, _remote.SortAsc);
             RemotePathBox.Text = _remote.Dir;   // reflect only after a successful listing
-            SetStatus($"{entries.Count} item(s) in {_remote.Dir}");
+            SetStatus(AppMessages.FileManager.ItemsIn(entries.Count, _remote.Dir));
             return true;
         }
-        catch (Exception ex) { SetStatus($"Error listing remote: {ex.Message}"); return false; }
+        catch (Exception ex) { SetStatus(AppMessages.FileManager.ErrorListingRemote(ex.Message)); return false; }
     }
 
     void RefreshLocal()
@@ -404,16 +404,16 @@ public partial class FileManagerWindow : ThemedWindow
             foreach (var f in Directory.GetFiles(_local.Dir).Select(p => new FileInfo(p)))
                 _local.Items.Add(new FileEntry(f.Name, f.FullName, false, f.Length, f.LastWriteTime));
             ApplySort(_local.Items, _local.SortCol, _local.SortAsc);
-            SetStatus($"{_local.Items.Count} item(s) in {_local.Dir}");
+            SetStatus(AppMessages.FileManager.ItemsIn(_local.Items.Count, _local.Dir));
         }
-        catch (Exception ex) { SetStatus($"Error listing local: {ex.Message}"); }
+        catch (Exception ex) { SetStatus(AppMessages.FileManager.ErrorListingLocal(ex.Message)); }
     }
 
     // ── Upload (local → Kronos) ───────────────────────────────────────────────
     async void OnUpload(object s, RoutedEventArgs e)
     {
         var items = LocalList.SelectedItems.Cast<FileEntry>().Where(f => !f.IsDirectory).ToList();
-        if (items.Count == 0) { SetStatus("Select one or more local files to upload."); return; }
+        if (items.Count == 0) { SetStatus(AppMessages.FileManager.SelectLocalFilesToUpload); return; }
         await RunExclusive(() => UploadItemsAsync(items));
     }
 
@@ -427,7 +427,7 @@ public partial class FileManagerWindow : ThemedWindow
         if (!await EnsureConnectedAsync()) return moved;
         var remoteNames = _remote.Items.Where(f => !f.IsDirectory)
             .Select(f => f.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        SetBusy(true, $"Uploading {items.Count} file(s)…");
+        SetBusy(true, AppMessages.FileManager.Uploading(items.Count));
         int done = 0;
         var resolve = MakeConflictResolver();
         foreach (var (local, idx) in items.Select((x, i) => (x, i)))
@@ -446,17 +446,17 @@ public partial class FileManagerWindow : ThemedWindow
                 var progress = new Progress<FtpProgress>(p => Dispatcher.InvokeAsync(() =>
                 {
                     TransferProgress.Value = p.Progress;
-                    SetStatus($"[{idx + 1}/{items.Count}] {local.Name} — {p.Progress:F0}%");
+                    SetStatus(AppMessages.FileManager.ItemProgress(idx + 1, items.Count, local.Name, p.Progress));
                 }));
                 var st = await _ftp!.UploadFile(local.FullPath, dest, FtpRemoteExists.Overwrite,
                                                 createRemoteDir: true, progress: progress);
                 if (st == FtpStatus.Success) { done++; moved.Add(local); }
-                else SetStatus($"Upload of {local.Name} did not complete ({st}) — source kept");
+                else SetStatus(AppMessages.FileManager.UploadIncomplete(local.Name, st));
             }
-            catch (Exception ex) { SetStatus($"Failed {local.Name}: {ex.Message}"); }
+            catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(local.Name, ex.Message)); }
         }
         await RefreshRemoteAsync();
-        SetStatus($"Uploaded {done}/{items.Count} file(s) → {_remote.Dir}");
+        SetStatus(AppMessages.FileManager.Uploaded(done, items.Count, _remote.Dir));
         SetBusy(false);
         return moved;
     }
@@ -465,7 +465,7 @@ public partial class FileManagerWindow : ThemedWindow
     async void OnDownload(object s, RoutedEventArgs e)
     {
         var items = RemoteList.SelectedItems.Cast<FileEntry>().Where(f => !f.IsDirectory).ToList();
-        if (items.Count == 0) { SetStatus("Select one or more Kronos files to download."); return; }
+        if (items.Count == 0) { SetStatus(AppMessages.FileManager.SelectKronosFilesToDownload); return; }
         await RunExclusive(() => DownloadItemsAsync(items));
     }
 
@@ -475,7 +475,7 @@ public partial class FileManagerWindow : ThemedWindow
     {
         var moved = new List<FileEntry>();
         if (!await EnsureConnectedAsync()) return moved;
-        SetBusy(true, $"Downloading {items.Count} file(s)…");
+        SetBusy(true, AppMessages.FileManager.Downloading(items.Count));
         int done = 0;
         var resolve = MakeConflictResolver();
         foreach (var (remote, idx) in items.Select((x, i) => (x, i)))
@@ -494,17 +494,17 @@ public partial class FileManagerWindow : ThemedWindow
                 var progress = new Progress<FtpProgress>(p => Dispatcher.InvokeAsync(() =>
                 {
                     TransferProgress.Value = p.Progress;
-                    SetStatus($"[{idx + 1}/{items.Count}] {remote.Name} — {p.Progress:F0}%");
+                    SetStatus(AppMessages.FileManager.ItemProgress(idx + 1, items.Count, remote.Name, p.Progress));
                 }));
                 var st = await _ftp!.DownloadFile(dest, remote.FullPath, FtpLocalExists.Overwrite,
                                                   FtpVerify.None, progress);
                 if (st == FtpStatus.Success) { done++; moved.Add(remote); }
-                else SetStatus($"Download of {remote.Name} did not complete ({st}) — source kept");
+                else SetStatus(AppMessages.FileManager.DownloadIncomplete(remote.Name, st));
             }
-            catch (Exception ex) { SetStatus($"Failed {remote.Name}: {ex.Message}"); }
+            catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(remote.Name, ex.Message)); }
         }
         RefreshLocal();
-        SetStatus($"Downloaded {done}/{items.Count} file(s) → {_local.Dir}");
+        SetStatus(AppMessages.FileManager.Downloaded(done, items.Count, _local.Dir));
         SetBusy(false);
         return moved;
     }
@@ -512,32 +512,32 @@ public partial class FileManagerWindow : ThemedWindow
     // ── New Folder ────────────────────────────────────────────────────────────
     async void OnRemoteNewFolder(object s, RoutedEventArgs e)
     {
-        var name = PromptInput("New folder name:", "NewFolder");
+        var name = PromptInput(AppMessages.Prompts.NewFolderName, "NewFolder");
         if (string.IsNullOrWhiteSpace(name)) return;
         await RunExclusive(async () =>
         {
             if (!await EnsureConnectedAsync()) return;
             var path = $"{_remote.Dir.TrimEnd('/')}/{name}";
-            try { await _ftp!.CreateDirectory(path); await RefreshRemoteAsync(); SetStatus($"Created {path}"); }
-            catch (Exception ex) { SetStatus($"Failed: {ex.Message}"); }
+            try { await _ftp!.CreateDirectory(path); await RefreshRemoteAsync(); SetStatus(AppMessages.FileManager.Created(path)); }
+            catch (Exception ex) { SetStatus(AppMessages.FileManager.Failed(ex.Message)); }
         });
     }
 
     void OnLocalNewFolder(object s, RoutedEventArgs e)
     {
-        var name = PromptInput("New folder name:", "NewFolder");
+        var name = PromptInput(AppMessages.Prompts.NewFolderName, "NewFolder");
         if (string.IsNullOrWhiteSpace(name)) return;
         var path = Path.Combine(_local.Dir, name);
-        try { Directory.CreateDirectory(path); RefreshLocal(); SetStatus($"Created {path}"); }
-        catch (Exception ex) { SetStatus($"Failed: {ex.Message}"); }
+        try { Directory.CreateDirectory(path); RefreshLocal(); SetStatus(AppMessages.FileManager.Created(path)); }
+        catch (Exception ex) { SetStatus(AppMessages.FileManager.Failed(ex.Message)); }
     }
 
     // ── Delete ────────────────────────────────────────────────────────────────
     async void OnRemoteDelete(object s, RoutedEventArgs e)
     {
         var items = RemoteList.SelectedItems.Cast<FileEntry>().ToList();
-        if (items.Count == 0) { SetStatus("Select items to delete."); return; }
-        if (MessageBox.Show($"Delete {items.Count} item(s) from Kronos?", "Delete",
+        if (items.Count == 0) { SetStatus(AppMessages.FileManager.SelectItemsToDelete); return; }
+        if (MessageBox.Show(AppMessages.FileManager.ConfirmDeleteRemote(items.Count), AppMessages.Titles.Delete,
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         await RunExclusive(async () =>
         {
@@ -551,18 +551,18 @@ public partial class FileManagerWindow : ThemedWindow
                     else                  await _ftp!.DeleteFile(item.FullPath);
                     done++;
                 }
-                catch (Exception ex) { SetStatus($"Failed {item.Name}: {ex.Message}"); }
+                catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(item.Name, ex.Message)); }
             }
             await RefreshRemoteAsync();
-            SetStatus($"Deleted {done}/{items.Count} item(s).");
+            SetStatus(AppMessages.FileManager.Deleted(done, items.Count));
         });
     }
 
     void OnLocalDelete(object s, RoutedEventArgs e)
     {
         var items = LocalList.SelectedItems.Cast<FileEntry>().ToList();
-        if (items.Count == 0) { SetStatus("Select items to delete."); return; }
-        if (MessageBox.Show($"Delete {items.Count} item(s)?", "Delete",
+        if (items.Count == 0) { SetStatus(AppMessages.FileManager.SelectItemsToDelete); return; }
+        if (MessageBox.Show(AppMessages.FileManager.ConfirmDeleteLocal(items.Count), AppMessages.Titles.Delete,
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         int done = 0;
         foreach (var item in items)
@@ -573,33 +573,33 @@ public partial class FileManagerWindow : ThemedWindow
                 else                  File.Delete(item.FullPath);
                 done++;
             }
-            catch (Exception ex) { SetStatus($"Failed {item.Name}: {ex.Message}"); }
+            catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(item.Name, ex.Message)); }
         }
         RefreshLocal();
-        SetStatus($"Deleted {done}/{items.Count} item(s).");
+        SetStatus(AppMessages.FileManager.Deleted(done, items.Count));
     }
 
     // ── Rename ────────────────────────────────────────────────────────────────
     async void OnRemoteRename(object s, RoutedEventArgs e)
     {
-        if (RemoteList.SelectedItems.Count != 1) { SetStatus("Select exactly one item to rename."); return; }
+        if (RemoteList.SelectedItems.Count != 1) { SetStatus(AppMessages.FileManager.SelectOneToRename); return; }
         var item    = (FileEntry)RemoteList.SelectedItem!;
-        var newName = PromptInput("New name:", item.Name);
+        var newName = PromptInput(AppMessages.Prompts.NewName, item.Name);
         if (string.IsNullOrWhiteSpace(newName) || newName == item.Name) return;
         await RunExclusive(async () =>
         {
             if (!await EnsureConnectedAsync()) return;
             var newPath = $"{GetFtpParent(item.FullPath).TrimEnd('/')}/{newName}";
-            try { await _ftp!.Rename(item.FullPath, newPath); await RefreshRemoteAsync(); SetStatus($"Renamed → {newName}"); }
-            catch (Exception ex) { SetStatus($"Rename failed: {ex.Message}"); }
+            try { await _ftp!.Rename(item.FullPath, newPath); await RefreshRemoteAsync(); SetStatus(AppMessages.FileManager.Renamed(newName)); }
+            catch (Exception ex) { SetStatus(AppMessages.FileManager.RenameFailed(ex.Message)); }
         });
     }
 
     void OnLocalRename(object s, RoutedEventArgs e)
     {
-        if (LocalList.SelectedItems.Count != 1) { SetStatus("Select exactly one item to rename."); return; }
+        if (LocalList.SelectedItems.Count != 1) { SetStatus(AppMessages.FileManager.SelectOneToRename); return; }
         var item    = (FileEntry)LocalList.SelectedItem!;
-        var newName = PromptInput("New name:", item.Name);
+        var newName = PromptInput(AppMessages.Prompts.NewName, item.Name);
         if (string.IsNullOrWhiteSpace(newName) || newName == item.Name) return;
         var newPath = Path.Combine(Path.GetDirectoryName(item.FullPath) ?? _local.Dir, newName);
         try
@@ -607,9 +607,9 @@ public partial class FileManagerWindow : ThemedWindow
             if (item.IsDirectory) Directory.Move(item.FullPath, newPath);
             else                  File.Move(item.FullPath, newPath);
             RefreshLocal();
-            SetStatus($"Renamed → {newName}");
+            SetStatus(AppMessages.FileManager.Renamed(newName));
         }
-        catch (Exception ex) { SetStatus($"Rename failed: {ex.Message}"); }
+        catch (Exception ex) { SetStatus(AppMessages.FileManager.RenameFailed(ex.Message)); }
     }
 
     // ── Drag-to-select (rubber-band) ──────────────────────────────────────────
@@ -1031,7 +1031,7 @@ public partial class FileManagerWindow : ThemedWindow
 
     async Task MoveLocalItemsAsync(IList<FileEntry> items, string destFolder)
     {
-        SetBusy(true, $"Moving {items.Count} item(s)…");
+        SetBusy(true, AppMessages.FileManager.MovingItems(items.Count));
         int done = 0;
         var resolve = MakeConflictResolver();
         foreach (var item in items)
@@ -1071,26 +1071,26 @@ public partial class FileManagerWindow : ThemedWindow
                 });
                 done++;
             }
-            catch (Exception ex) { SetStatus($"Failed {item.Name}: {ex.Message}"); }
+            catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(item.Name, ex.Message)); }
         }
         RefreshLocal();
-        SetStatus($"Moved {done}/{items.Count} item(s) → {destFolder}");
+        SetStatus(AppMessages.FileManager.MovedItems(done, items.Count, destFolder));
         SetBusy(false);
     }
 
     async Task MoveRemoteItemsAsync(IList<FileEntry> items, string destFolder)
     {
         if (!await EnsureConnectedAsync()) return;
-        SetBusy(true, $"Moving {items.Count} file(s)…");
+        SetBusy(true, AppMessages.FileManager.MovingFiles(items.Count));
         int done = 0;
         foreach (var item in items)
         {
             var dest = $"{destFolder.TrimEnd('/')}/{item.Name}";
             try { await _ftp!.Rename(item.FullPath, dest); done++; }
-            catch (Exception ex) { SetStatus($"Failed {item.Name}: {ex.Message}"); }
+            catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(item.Name, ex.Message)); }
         }
         await RefreshRemoteAsync();
-        SetStatus($"Moved {done}/{items.Count} file(s) → {destFolder}");
+        SetStatus(AppMessages.FileManager.MovedFiles(done, items.Count, destFolder));
         SetBusy(false);
     }
 
@@ -1102,10 +1102,10 @@ public partial class FileManagerWindow : ThemedWindow
         {
             try
             {
-                SetStatus("Reconnecting…");
+                SetStatus(AppMessages.FileManager.Reconnecting);
                 await Task.Run(() => _ftp.Connect(CancellationToken.None));
             }
-            catch (Exception ex) { SetStatus($"FTP reconnect failed: {ex.Message}"); return false; }
+            catch (Exception ex) { SetStatus(AppMessages.FileManager.ReconnectFailed(ex.Message)); return false; }
         }
         return true;
     }
@@ -1220,7 +1220,7 @@ public partial class FileManagerWindow : ThemedWindow
         var items = lv.SelectedItems.Cast<FileEntry>().ToList(); // files + dirs
         if (items.Count == 0) return;
         _clipboard = new ClipboardPayload(IsCut: true, FromRemote: isRemote, Items: items);
-        SetStatus($"Cut {items.Count} item(s) — paste to move.");
+        SetStatus(AppMessages.FileManager.CutToMove(items.Count));
     }
 
     void DoCopy(ListView lv, bool isRemote)
@@ -1228,7 +1228,7 @@ public partial class FileManagerWindow : ThemedWindow
         var items = lv.SelectedItems.Cast<FileEntry>().ToList(); // files + dirs
         if (items.Count == 0) return;
         _clipboard = new ClipboardPayload(IsCut: false, FromRemote: isRemote, Items: items);
-        SetStatus($"Copied {items.Count} item(s) — paste to copy.");
+        SetStatus(AppMessages.FileManager.CopiedToCopy(items.Count));
     }
 
     async Task DoPasteAsync(bool toRemote)
@@ -1262,14 +1262,14 @@ public partial class FileManagerWindow : ThemedWindow
             {
                 foreach (var dir in dirs)
                 {
-                    SetStatus($"Uploading folder {dir.Name}…");
+                    SetStatus(AppMessages.FileManager.UploadingFolder(dir.Name));
                     try
                     {
                         var res = await _ftp!.UploadDirectory(dir.FullPath, $"{_remote.Dir.TrimEnd('/')}/{dir.Name}", FtpFolderSyncMode.Update);
                         if (res.All(r => r.IsSuccess || r.IsSkipped)) movedDirs.Add(dir);
-                        else SetStatus($"{dir.Name}: some files failed to upload — source kept");
+                        else SetStatus(AppMessages.FileManager.FolderSomeFailedUpload(dir.Name));
                     }
-                    catch (Exception ex) { SetStatus($"Failed {dir.Name}: {ex.Message}"); }
+                    catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(dir.Name, ex.Message)); }
                 }
                 await RefreshRemoteAsync();
             }
@@ -1293,14 +1293,14 @@ public partial class FileManagerWindow : ThemedWindow
             {
                 foreach (var dir in dirs)
                 {
-                    SetStatus($"Downloading folder {dir.Name}…");
+                    SetStatus(AppMessages.FileManager.DownloadingFolder(dir.Name));
                     try
                     {
                         var res = await _ftp!.DownloadDirectory(Path.Combine(_local.Dir, dir.Name), dir.FullPath, FtpFolderSyncMode.Update);
                         if (res.All(r => r.IsSuccess || r.IsSkipped)) movedDirs.Add(dir);
-                        else SetStatus($"{dir.Name}: some files failed to download — source kept");
+                        else SetStatus(AppMessages.FileManager.FolderSomeFailedDownload(dir.Name));
                     }
-                    catch (Exception ex) { SetStatus($"Failed {dir.Name}: {ex.Message}"); }
+                    catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(dir.Name, ex.Message)); }
                 }
                 RefreshLocal();
             }
@@ -1327,12 +1327,12 @@ public partial class FileManagerWindow : ThemedWindow
         var unmoved = cb.Items.Where(i => !moved.Contains(i)).ToList();
         if (unmoved.Count == 0) { _clipboard = null; return; }
         _clipboard = cb with { Items = unmoved };
-        SetStatus($"Moved {moved.Count} item(s); kept {unmoved.Count} on clipboard (transfer skipped or failed).");
+        SetStatus(AppMessages.FileManager.MovedKeptOnClipboard(moved.Count, unmoved.Count));
     }
 
     async Task CopyLocalItemsAsync(IList<FileEntry> items, string destFolder)
     {
-        SetBusy(true, $"Copying {items.Count} item(s)…");
+        SetBusy(true, AppMessages.FileManager.CopyingItems(items.Count));
         int done = 0;
         var resolve = MakeConflictResolver();
         foreach (var item in items)
@@ -1357,10 +1357,10 @@ public partial class FileManagerWindow : ThemedWindow
                 });
                 done++;
             }
-            catch (Exception ex) { SetStatus($"Failed {item.Name}: {ex.Message}"); }
+            catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(item.Name, ex.Message)); }
         }
         RefreshLocal();
-        SetStatus($"Copied {done}/{items.Count} item(s) → {destFolder}");
+        SetStatus(AppMessages.FileManager.Copied(done, items.Count, destFolder));
         SetBusy(false);
     }
 
@@ -1376,7 +1376,7 @@ public partial class FileManagerWindow : ThemedWindow
     async Task CopyRemoteItemsAsync(IList<FileEntry> items, string destFolder)
     {
         if (!await EnsureConnectedAsync()) return;
-        SetBusy(true, $"Copying {items.Count} item(s)…");
+        SetBusy(true, AppMessages.FileManager.CopyingItems(items.Count));
         int done    = 0;
         var tempDir = Path.Combine(Path.GetTempPath(), "KronosCopy_" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(tempDir);
@@ -1402,7 +1402,7 @@ public partial class FileManagerWindow : ThemedWindow
                     if (item.IsDirectory)
                     {
                         var localDir = Path.Combine(tempDir, item.Name);
-                        SetStatus($"Copying folder {item.Name}…");
+                        SetStatus(AppMessages.FileManager.CopyingFolder(item.Name));
                         await _ftp!.DownloadDirectory(localDir, item.FullPath, FtpFolderSyncMode.Update);
                         await _ftp!.UploadDirectory(localDir, dest, FtpFolderSyncMode.Update);
                     }
@@ -1414,12 +1414,12 @@ public partial class FileManagerWindow : ThemedWindow
                     }
                     done++;
                 }
-                catch (Exception ex) { SetStatus($"Failed {item.Name}: {ex.Message}"); }
+                catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(item.Name, ex.Message)); }
             }
         }
         finally { try { Directory.Delete(tempDir, recursive: true); } catch { } }
         await RefreshRemoteAsync();
-        SetStatus($"Copied {done}/{items.Count} item(s) → {destFolder}");
+        SetStatus(AppMessages.FileManager.Copied(done, items.Count, destFolder));
         SetBusy(false);
     }
 

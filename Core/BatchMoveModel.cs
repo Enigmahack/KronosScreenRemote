@@ -164,18 +164,18 @@ static class BatchLibrarian
 
         if (real.Count == 0)
         {
-            plan.Warnings.Add("REFUSE: no placements to perform");
+            plan.Warnings.Add(AppMessages.Librarian.Move.NoPlacements);
             return plan;
         }
 
         foreach (var g in real.GroupBy(p => p.To).Where(g => g.Count() > 1))
-            plan.Warnings.Add($"REFUSE: duplicate destination {g.Key.Label()} targeted by {g.Count()} placement(s)");
+            plan.Warnings.Add(AppMessages.Librarian.Move.DuplicateDestination(g.Key.Label(), g.Count()));
 
         if (real.Any(p => p.To.ObjType != objType || (p.From is { } fo && fo.ObjType != objType)))
-            plan.Warnings.Add("REFUSE: batch contains an object of a different type than the batch's object type");
+            plan.Warnings.Add(AppMessages.Librarian.Move.BatchTypeMismatch);
 
         if (objType == LibObj.Program && real.Any(p => KronosBanks.IsReadOnlyProgramBank(p.To.Bank)))
-            plan.Warnings.Add("REFUSE: a destination bank is read-only (GM/g)");
+            plan.Warnings.Add(AppMessages.Librarian.Move.DestinationReadOnly);
 
         if (objType == LibObj.Program && bankTypeOf != null)
         {
@@ -190,10 +190,10 @@ static class BatchLibrarian
                     if (srcType is bool st && dstType is bool dt)
                     {
                         if (st != dt)
-                            plan.Warnings.Add($"REFUSE: {from.Label()} ({(st ? "EXi" : "HD-1")}) cannot move to {p.To.Label()} ({(dt ? "EXi" : "HD-1")}) — bank types differ");
+                            plan.Warnings.Add(AppMessages.Librarian.Move.BankTypesDiffer(from.Label(), st ? "EXi" : "HD-1", p.To.Label(), dt ? "EXi" : "HD-1"));
                     }
                     else
-                        plan.Warnings.Add($"CHECK: {from.Label()} -> {p.To.Label()} crosses banks whose HD-1/EXi type couldn't be fully verified — the write may be rejected (Reply 64).");
+                        plan.Warnings.Add(AppMessages.Librarian.Move.CheckCrossBankUnverified(from.Label(), p.To.Label()));
                 }
                 else
                 {
@@ -210,10 +210,10 @@ static class BatchLibrarian
                     {
                         int expectedLen = dt ? ProgramFormatConverter.WireSizeExi : ProgramFormatConverter.WireSizeHd1;
                         if (p.Body.Body.Length != expectedLen)
-                            plan.Warnings.Add($"REFUSE: {p.To.Label()} is a {(dt ? "EXi" : "HD-1")} bank ({expectedLen}-byte Programs), but {p.SourceLabel} is {p.Body.Body.Length} bytes — wrong format for this bank.");
+                            plan.Warnings.Add(AppMessages.Librarian.Move.WrongFormatForBank(p.To.Label(), dt ? "EXi" : "HD-1", expectedLen, p.SourceLabel, p.Body.Body.Length));
                     }
                     else
-                        plan.Warnings.Add($"CHECK: {p.To.Label()}'s HD-1/EXi type couldn't be fully verified — the write may be rejected (Reply 64).");
+                        plan.Warnings.Add(AppMessages.Librarian.Move.CheckDestTypeUnverified(p.To.Label()));
                 }
             }
         }
@@ -244,8 +244,8 @@ static class BatchLibrarian
             bool identical = destOccupants.TryGetValue(to, out var occ)
                 && real.First(p => p.To.Equals(to)).Body.Body.AsSpan().SequenceEqual(occ.Body);
             plan.Warnings.Add(identical
-                ? $"REFUSE: {to.Label()} already contains this exact object — nothing to place."
-                : $"REFUSE: {to.Label()} is referenced by {displacedRefs.Count} object(s) and would be overwritten without being relocated itself — add it to this batch as a source, or choose a different destination.");
+                ? AppMessages.Librarian.Move.AlreadyContainsExact(to.Label())
+                : AppMessages.Librarian.Move.ReferencedWouldBeOverwritten(to.Label(), displacedRefs.Count));
         }
 
         // (3) Referrer collection + grouping — direct generalization of PlanMove's `grouped` dict.
@@ -287,7 +287,7 @@ static class BatchLibrarian
                     Reason = $"displaced by incoming placement to {to.Label()}", CutAt = DateTime.Now,
                 });
             else
-                plan.Warnings.Add($"CHECK: {to.Label()} is overwritten and not diverted — its prior contents are only recoverable from the automatic backup.");
+                plan.Warnings.Add(AppMessages.Librarian.Move.CheckOverwrittenNotDiverted(to.Label()));
         }
 
         // (6) Grouped referrer-patch writes — identical shape to PlanMove's step 2.
@@ -298,7 +298,7 @@ static class BatchLibrarian
                 : (cat.Setlists.TryGetValue(refIndex, out var s) ? s : null);
             if (baseDump == null)
             {
-                plan.Warnings.Add($"REFUSE: referring object missing from catalog (obj {refObj:X2} bank {refBank:X2} idx {refIndex}) — re-scan before moving");
+                plan.Warnings.Add(AppMessages.Librarian.Move.ReferringObjectMissing(refObj, refBank, refIndex));
                 continue;
             }
             plan.PreImages.Add(new WriteOp(refObj, refBank, refIndex, baseDump.Version, baseDump.Body, "original"));

@@ -25,13 +25,11 @@ internal partial class UnresolvedDependenciesDialog : ThemedWindow
     public static UnresolvedDependenciesDialog For(IReadOnlyList<SessionDependencyEntry> pending)
     {
         int count = pending.Count;
-        string heading =
-            $"{count} dependency reference{(count == 1 ? "" : "s")} still unresolved and will sound wrong until placed:\n\n" +
-            "Continue anyway, or cancel to fix them first (e.g. place the staged dependency in the Merge Window)?";
+        string heading = AppMessages.UnresolvedDependencies.Heading(count);
 
         var grouped = pending
             .GroupBy(e => (e.MissingRef, e.ExpectedContentHash))
-            .Select(g => $"{g.Key.MissingRef.Label()} — needed by {g.Count()} object{(g.Count() == 1 ? "" : "s")}");
+            .Select(g => AppMessages.UnresolvedDependencies.Row(g.Key.MissingRef.Label(), g.Count()));
 
         return new UnresolvedDependenciesDialog(heading, grouped);
     }

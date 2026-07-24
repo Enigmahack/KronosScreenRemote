@@ -20,7 +20,7 @@ public partial class LoginDialog : ThemedWindow
         _port            = port;
         _attemptsAllowed = attemptsAllowed;
         InitializeComponent();
-        SubtitleText.Text = $"FTP credentials for {host}:{port}";
+        SubtitleText.Text = AppMessages.Login.Subtitle(host, port);
         TxtUser.Text      = existingUser;
         if (!string.IsNullOrEmpty(existingPass))
             PwdBox.Password = existingPass;
@@ -36,7 +36,7 @@ public partial class LoginDialog : ThemedWindow
         var user = TxtUser.Text.Trim();
         if (string.IsNullOrEmpty(user))
         {
-            ShowError("Username is required.");
+            ShowError(AppMessages.Login.UsernameRequired);
             return;
         }
 
@@ -58,7 +58,7 @@ public partial class LoginDialog : ThemedWindow
             BtnOk.IsEnabled     = true;
             BtnCancel.IsEnabled = true;
             BtnOk.Content       = "OK";
-            ShowError($"Login failed: {ex.Message}");
+            ShowError(AppMessages.Login.Failed(ex.Message));
             return;
         }
 
@@ -84,9 +84,9 @@ public partial class LoginDialog : ThemedWindow
             }
 
             string suffix = _attemptsAllowed > 0
-                ? $" ({_attemptsAllowed - _attemptsFailed} attempt{(_attemptsAllowed - _attemptsFailed == 1 ? "" : "s")} remaining)"
+                ? AppMessages.Login.AttemptsRemaining(_attemptsAllowed - _attemptsFailed)
                 : "";
-            ShowError($"Login failed: {error}{suffix}");
+            ShowError(AppMessages.Login.Failed($"{error}{suffix}"));
         }
     }
 

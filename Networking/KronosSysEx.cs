@@ -487,6 +487,14 @@ sealed class KronosSysEx
     public static byte[] BuildStoreBankRequest(int obj, int bank) =>
         KorgMessage(0x76, (byte)obj, (byte)bank);
 
+    // Build a Change Program Bank Type (func 0x7C): sets the given program bank to HD-1
+    // (type 0) or EXi (type 1). If the new type differs from the current one, the instrument
+    // REFORMATS AND ERASES that bank before replying with a func 0x24 Reply — so this is only
+    // ever sent as the first step of copying a WHOLE bank across (requirement 4).
+    //   F0 42 3g 68 7C bank type F7
+    public static byte[] BuildChangeProgramBankType(int bank, bool isExi) =>
+        KorgMessage(0x7C, (byte)bank, (byte)(isExi ? 1 : 0));
+
     // ── Librarian additions: full-object parse, param-change, digest, mode ──────
 
     // Parse a received func-0x73 Object Dump into header fields + decoded body.

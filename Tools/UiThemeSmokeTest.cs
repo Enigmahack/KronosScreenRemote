@@ -140,6 +140,7 @@ internal sealed class FakeSysExService : ISysExService
     public Task<byte[]?> BankDigestAsync(int obj, int bank) => Task.FromResult<byte[]?>(null);
     public Task<int> WriteObjectAsync(WriteOp op) => Task.FromResult(0);
     public Task<int> StoreBankAsync(int obj, int bank) => Task.FromResult(0);
+    public Task<int> ChangeProgramBankTypeAsync(int bank, bool isExi) => Task.FromResult(0);
     public Task SendRawAsync(byte[] data) => Task.CompletedTask;
 }
 

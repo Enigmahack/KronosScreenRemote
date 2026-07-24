@@ -85,6 +85,20 @@ sealed class FakeMoveExecutor : ILibrarianService
         return Task.FromResult(0);
     }
 
+    // Records each program bank's requested HD-1/EXi type and, mirroring the real func 0x7C
+    // ("reformats and erases specified bank"), clears every stored Program in that bank — so a
+    // self-test can assert both that the type change fired and that the whole-bank rewrite that
+    // follows lands on a freshly-erased bank.
+    public Dictionary<int, bool> BankTypeChanges { get; } = new();
+    public Task<int> ChangeProgramBankTypeAsync(int bank, bool isExi)
+    {
+        CallLog.Add($"ChangeBankType:{bank}:{(isExi ? "EXi" : "HD-1")}");
+        BankTypeChanges[bank] = isExi;
+        foreach (var key in _objects.Keys.Where(k => k.Obj == LibObj.Program && k.Bank == bank).ToList())
+            _objects.Remove(key);
+        return Task.FromResult(0);
+    }
+
     public Task BackupObjectsAsync(IReadOnlyList<WriteOp> ops, string path)
     {
         CallLog.Add("Backup");   // lets a self-test assert the pre-image backup fired BEFORE any Write

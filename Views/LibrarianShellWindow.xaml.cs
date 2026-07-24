@@ -131,8 +131,8 @@ internal partial class LibrarianShellWindow : ThemedWindow
     void OnClearHistoryButton(object sender, RoutedEventArgs e)
     {
         if (MessageBox.Show(this,
-                "Permanently delete the local edit history log?\n\nThis does not affect your current local library, pending edits, or hardware — only the History panel's audit trail, which can't be recovered afterward.",
-                "Clear History", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+                AppMessages.Librarian.Shell.ClearHistory,
+                AppMessages.Librarian.Shell.ClearHistoryTitle, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         _vm.ClearHistory();
     }
 
@@ -141,8 +141,8 @@ internal partial class LibrarianShellWindow : ThemedWindow
     void OnClearChangesButton(object sender, RoutedEventArgs e)
     {
         if (MessageBox.Show(this,
-                "Revert every pending local edit back to baseline and un-mark every pending deletion?\n\nHardware is unaffected either way — this only reverts what hasn't been pushed yet. A fresh Pull would leave the library looking the same as this does.",
-                "Clear Changes", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+                AppMessages.Librarian.Shell.ClearChanges,
+                AppMessages.Librarian.Shell.ClearChangesTitle, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         _vm.LocalPane.ClearAllChanges();
         _vm.NotifyLocalEditMade();
     }
@@ -261,16 +261,16 @@ internal partial class LibrarianShellWindow : ThemedWindow
         if (target?.Loc is { } destLoc)
         {
             var (ok, msg) = _vm.LocalPane.PasteIntoSlot(destLoc);
-            _vm.LocalPane.StatusText = msg ?? (ok ? "Pasted." : "Paste failed.");
+            _vm.LocalPane.StatusText = msg ?? (ok ? AppMessages.Librarian.Pasted : AppMessages.Librarian.PasteFailed);
         }
         else if (target?.BankRef is { } bankRef)
         {
             var (ok, msg) = _vm.LocalPane.PasteIntoBank(bankRef.ObjType, bankRef.Bank);
-            _vm.LocalPane.StatusText = msg ?? (ok ? "Pasted." : "Paste failed.");
+            _vm.LocalPane.StatusText = msg ?? (ok ? AppMessages.Librarian.Pasted : AppMessages.Librarian.PasteFailed);
         }
         else
         {
-            _vm.LocalPane.StatusText = "Select a slot or bank to paste into.";
+            _vm.LocalPane.StatusText = AppMessages.Librarian.Shell.SelectSlotOrBankToPasteInto;
         }
     }
 
@@ -287,16 +287,42 @@ internal partial class LibrarianShellWindow : ThemedWindow
     {
         var locs = SelectedLocs();
         if (locs.Count == 0) return;
+
+        // Issue 1: warn before deleting something other Combis/Set Lists depend on — only on the
+        // DELETE direction (a Restore toggles the flag back and can't dangle anything), and only
+        // when there actually are referrers. The direction matches DoDelete's own toggle
+        // (ToggleDelete[Many]): Restore when EVERY selected node is already pending-delete.
+        bool restoring = _localSelection.Items.Count > 0 && _localSelection.Items.All(n => n.IsPendingDelete);
+        if (!restoring)
+        {
+            var dependents = locs.SelectMany(l => _vm.LocalPane.DescribeReferrers(l).Select(r => (Loc: l, Ref: r))).ToList();
+            if (dependents.Count > 0 && !ConfirmDeleteDependency(dependents)) return;
+        }
+
         if (locs.Count == 1) _vm.LocalPane.ToggleDelete(locs[0]);
         else _vm.LocalPane.ToggleDeleteMany(locs);
         _vm.NotifyLocalEditMade();
+    }
+
+    // The dependency-delete warning (issue 1). Confirmation lives here (WPF concern), same split
+    // as every other destructive prompt in this file. Caps the listed referrers so a heavily-used
+    // Program doesn't grow the dialog off-screen.
+    bool ConfirmDeleteDependency(List<(ObjLoc Loc, string Ref)> dependents)
+    {
+        const int maxLines = 8;
+        var lines = dependents.Take(maxLines).Select(d => AppMessages.Librarian.Shell.DeleteDependencyLine(d.Loc.Label(), d.Ref));
+        string list = string.Join("\n", lines);
+        if (dependents.Count > maxLines) list += AppMessages.Librarian.Shell.DeleteDependencyMore(dependents.Count - maxLines);
+        return MessageBox.Show(this,
+            AppMessages.Librarian.Shell.DeleteDependency(list),
+            AppMessages.Librarian.Shell.DeleteDependencyTitle, MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
     }
 
     void DoRename(ObjectTreeNode? target)
     {
         if (target?.Loc is not { } loc) return;
         string current = _vm.LocalPane.ReadDisplayName(loc);
-        var dlg = new PromptDialog($"Rename {loc.Label()}:", current).OwnedBy(this);
+        var dlg = new PromptDialog(AppMessages.Prompts.Rename(loc.Label()), current).OwnedBy(this);
         if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.Result) || dlg.Result == current) return;
         _vm.LocalPane.Rename(loc, dlg.Result);
     }
@@ -325,7 +351,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
                 case MenuItem { Name: "MI_Rename" or "MI_Properties" } mi:
                     mi.Visibility = isLeaf ? Visibility.Visible : Visibility.Collapsed;
                     break;
-                case MenuItem { Name: "MI_Cut" or "MI_Copy" } mi:
+                case MenuItem { Name: "MI_Cut" or "MI_Copy" or "MI_MoveToMerge" } mi:
                     mi.Visibility = isLeaf || isBank ? Visibility.Visible : Visibility.Collapsed;
                     break;
                 case MenuItem { Name: "MI_Delete" } mi:
@@ -347,6 +373,15 @@ internal partial class LibrarianShellWindow : ThemedWindow
     void OnPasteMenuItem(object sender, RoutedEventArgs e) => PasteAt(((MenuItem)sender).DataContext as ObjectTreeNode);
     void OnRenameMenuItem(object sender, RoutedEventArgs e) => DoRename(((MenuItem)sender).DataContext as ObjectTreeNode);
     void OnDeleteMenuItem(object sender, RoutedEventArgs e) { if (((MenuItem)sender).DataContext is ObjectTreeNode { Loc: { } } or ObjectTreeNode { BankRef: { } }) DoDelete(); }
+
+    // Requirement 3: stage the selected local object(s) (a leaf, a multi-select, or a whole bank
+    // via SelectedLocs()'s LeafLocs expansion) into the Merge Window — the same effective action
+    // as dragging them onto it (OnMergeDrop's LocalDragFormat branch).
+    void OnMoveLocalToMergeMenuItem(object sender, RoutedEventArgs e)
+    {
+        if (((MenuItem)sender).DataContext is ObjectTreeNode { Loc: { } } or ObjectTreeNode { BankRef: { } })
+            foreach (var loc in SelectedLocs()) _vm.PullLocalIntoMerge(loc);
+    }
 
     // Toolbar handlers — act on the current selection (Paste/Rename need exactly one leaf).
     void OnCutButton(object sender, RoutedEventArgs e) => DoCut();
@@ -451,6 +486,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
         _local.DragArmed = false;
         var locs = SelectedLocs();
         if (locs.Count == 0) return;
+        AppLog.Debug($"[librarian] local drag start: {locs.Count} item(s) [{string.Join(", ", locs.Select(l => l.Label()))}]");
         var data = new DataObject(LocalDragFormat, new LocalDragPayload(locs));
         DragDrop.DoDragDrop((DependencyObject)sender, data, DragDropEffects.Copy | DragDropEffects.Move);
     }
@@ -474,13 +510,13 @@ internal partial class LibrarianShellWindow : ThemedWindow
 
         if (e.Data.GetData(PcgDragFormat) is not PcgDragPayload payload)
         {
-            _vm.StatusText = "Drop didn't carry a recognized library object.";
+            _vm.StatusText = AppMessages.Librarian.Shell.DropNotRecognizedLibraryObject;
             return;
         }
         var target = GetNodeAt(TV_Local, e.GetPosition(TV_Local));
         if (target == null)
         {
-            _vm.StatusText = "Drop landed outside any bank/slot row — try dropping directly on one.";
+            _vm.StatusText = AppMessages.Librarian.Shell.DropOutsideRow;
             return;
         }
 
@@ -489,7 +525,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
             // Dropped one item on a specific slot -> exact placement (prompts-via-orphan-gate
             // if occupied, same as the existing paste-to-occupied-slot flow).
             var (ok, error) = _vm.PlaceFromPcg(payload.Locs[0], destLoc);
-            _vm.StatusText = ok ? $"Placed {payload.Locs[0].Label()} at {destLoc.Label()}" : $"Place failed: {error}";
+            _vm.StatusText = ok ? AppMessages.Librarian.Shell.PlacedAt(payload.Locs[0].Label(), destLoc.Label()) : AppMessages.Librarian.Shell.PlaceFailedDetail(error);
         }
         else if (target.Loc is { } slotLoc)
         {
@@ -497,17 +533,17 @@ internal partial class LibrarianShellWindow : ThemedWindow
             // of them, so auto-fill starting at that slot's bank instead (same rationale as
             // the Local pane's own multi-item Paste onto a specific slot).
             var (ok, msg) = _vm.BatchPlaceFromPcg(slotLoc.ObjType, payload.Locs, slotLoc.Bank);
-            _vm.StatusText = msg ?? (ok ? "Placed." : "Place failed.");
+            _vm.StatusText = msg ?? (ok ? AppMessages.Librarian.Placed : AppMessages.Librarian.PlaceFailed);
         }
         else if (target.BankRef is { } bankRef)
         {
             // Dropped on a bank (or the Set Lists root) -> auto-fill starting at the next free slot.
             var (ok, msg) = _vm.BatchPlaceFromPcg(bankRef.ObjType, payload.Locs, bankRef.Bank);
-            _vm.StatusText = msg ?? (ok ? "Placed." : "Place failed.");
+            _vm.StatusText = msg ?? (ok ? AppMessages.Librarian.Placed : AppMessages.Librarian.PlaceFailed);
         }
         else
         {
-            _vm.StatusText = "Drop onto a specific bank or slot.";
+            _vm.StatusText = AppMessages.Librarian.Shell.DropOntoBankOrSlot;
         }
     }
 
@@ -515,13 +551,14 @@ internal partial class LibrarianShellWindow : ThemedWindow
     {
         if (e.Data.GetData(LocalDragFormat) is not LocalDragPayload payload)
         {
-            _vm.LocalPane.StatusText = "Drop didn't carry a recognized library object.";
+            _vm.LocalPane.StatusText = AppMessages.Librarian.Shell.DropNotRecognizedLibraryObject;
             return;
         }
         var target = GetNodeAt(TV_Local, e.GetPosition(TV_Local));
+        AppLog.Debug($"[librarian] local internal drop: {payload.Locs.Count} item(s); target={(target?.Loc?.Label() ?? (target?.BankRef is { } br ? $"bank {br.ObjType:X2}:{br.Bank:X2}" : "(none)"))}");
         if (target == null)
         {
-            _vm.LocalPane.StatusText = "Drop landed outside any bank/slot row — try dropping directly on one.";
+            _vm.LocalPane.StatusText = AppMessages.Librarian.Shell.DropOutsideRow;
             return;
         }
 
@@ -532,13 +569,14 @@ internal partial class LibrarianShellWindow : ThemedWindow
             // leaves any existing clipboard armed (see its own comment), and unconditionally
             // calling PasteAt right after would silently act on that unrelated leftover
             // clipboard instead of failing cleanly.
-            _vm.LocalPane.StatusText = "Drag-move works one item at a time — select a single item, or hold Ctrl to copy.";
+            _vm.LocalPane.StatusText = AppMessages.Librarian.Shell.DragMoveOneAtATime;
             return;
         }
 
         if (copy) _vm.LocalPane.Copy(payload.Locs);
         else _vm.LocalPane.Cut(payload.Locs);
         PasteAt(target);
+        AppLog.Debug($"[librarian] local internal drop result ({(copy ? "copy" : "cut/swap")}): {_vm.LocalPane.StatusText}");
     }
 
     // Merge Window -> Local: exact-slot placement for a single item (manual, per-item — the
@@ -553,7 +591,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
     {
         if (e.Data.GetData(MergeDragFormat) is not MergeDragPayload payload || payload.ContentHashes.Count == 0)
         {
-            _vm.MergePane.StatusText = "Drop didn't carry a recognized Merge Window object.";
+            _vm.MergePane.StatusText = AppMessages.Librarian.Shell.DropNotRecognizedMergeObject;
             return;
         }
         var target = GetNodeAt(TV_Local, e.GetPosition(TV_Local));
@@ -562,22 +600,41 @@ internal partial class LibrarianShellWindow : ThemedWindow
         {
             if (target?.Loc is not { } destLoc)
             {
-                _vm.MergePane.StatusText = "Drop directly onto a specific slot — pick exactly where this lands.";
+                _vm.MergePane.StatusText = AppMessages.Librarian.Shell.DropOntoSpecificSlot;
                 return;
             }
             var (ok, error) = _vm.PlaceFromMerge(payload.ContentHashes[0], destLoc);
-            _vm.MergePane.StatusText = ok ? $"Placed at {destLoc.Label()}" : $"Place failed: {error}";
+            _vm.MergePane.StatusText = ok ? AppMessages.Librarian.Shell.PlacedAtWhere(destLoc.Label()) : AppMessages.Librarian.Shell.PlaceFailedDetail(error);
             return;
         }
 
         (int ObjType, int Bank)? destBank = target?.Loc is { } slotLoc ? (slotLoc.ObjType, slotLoc.Bank) : target?.BankRef;
         if (destBank is not { } db)
         {
-            _vm.MergePane.StatusText = "Drop onto a specific slot or bank so the group has somewhere to land.";
+            _vm.MergePane.StatusText = AppMessages.Librarian.Shell.DropOntoSlotOrBankForGroup;
             return;
         }
+
+        // Whole Program bank crossing an EXi/HD-1 boundary (requirement 4): copying it requires
+        // reformatting the destination bank (func 0x7C), which ERASES it — confirm first.
+        if (_vm.BankTypeChangeNeeded(db.ObjType, db.Bank, payload.ContentHashes) is bool targetIsExi)
+        {
+            var descriptor = ObjectTypeRegistry.Get(db.ObjType);
+            string curType = targetIsExi ? "HD-1" : "EXi", newType = targetIsExi ? "EXi" : "HD-1";
+            if (MessageBox.Show(this,
+                    AppMessages.Librarian.Shell.ChangeBankType(descriptor.BankLabel(db.Bank), curType, newType),
+                    AppMessages.Librarian.Shell.ChangeBankTypeTitle, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            {
+                _vm.MergePane.StatusText = AppMessages.Librarian.Shell.BankTypeChangeCancelled;
+                return;
+            }
+            var (tcOk, tcMsg) = _vm.PlaceMergeBankWithTypeChange(db.Bank, payload.ContentHashes, targetIsExi);
+            _vm.MergePane.StatusText = tcMsg ?? (tcOk ? AppMessages.Librarian.Placed : AppMessages.Librarian.PlaceFailed);
+            return;
+        }
+
         var (bulkOk, msg) = _vm.PlaceMergeGroupSequentially(db.ObjType, db.Bank, payload.ContentHashes);
-        _vm.MergePane.StatusText = msg ?? (bulkOk ? "Placed." : "Place failed.");
+        _vm.MergePane.StatusText = msg ?? (bulkOk ? AppMessages.Librarian.Placed : AppMessages.Librarian.PlaceFailed);
     }
 
     // ── Merge Window: selection + drag source (onto Local) + drop target (from PCG) ──────
@@ -640,20 +697,30 @@ internal partial class LibrarianShellWindow : ThemedWindow
         DragDrop.DoDragDrop((DependencyObject)sender, data, DragDropEffects.Move);
     }
 
+    // Accepts drags from the PCG pane (copy-in) and, now, the Local pane (requirement 3 —
+    // stage an already-placed object back in to rearrange/re-push it). Both are a pull-in, so
+    // both request Copy — the Local drag's own DoDragDrop allows Copy|Move, so Copy is fine.
     void OnMergeDragOver(object sender, DragEventArgs e)
     {
-        e.Effects = e.Data.GetDataPresent(PcgDragFormat) ? DragDropEffects.Copy : DragDropEffects.None;
+        e.Effects = e.Data.GetDataPresent(PcgDragFormat) || e.Data.GetDataPresent(LocalDragFormat)
+            ? DragDropEffects.Copy : DragDropEffects.None;
         e.Handled = true;
     }
 
-    // PCG -> Merge: every dropped item is pulled in fully automatically along with its own
-    // dependencies (see LibrarianShellViewModel.PullIntoMerge) — no destination to pick, since
-    // the Merge Window is bag-based (no addressing at all until placement into Local Library).
+    // PCG/Local -> Merge: every dropped item is pulled in fully automatically along with its own
+    // dependencies (see LibrarianShellViewModel.PullIntoMerge/PullLocalIntoMerge) — no destination
+    // to pick, since the Merge Window is bag-based (no addressing at all until placement into
+    // Local Library).
     void OnMergeDrop(object sender, DragEventArgs e)
     {
+        if (e.Data.GetData(LocalDragFormat) is LocalDragPayload localPayload)
+        {
+            foreach (var loc in localPayload.Locs) _vm.PullLocalIntoMerge(loc);
+            return;
+        }
         if (e.Data.GetData(PcgDragFormat) is not PcgDragPayload payload)
         {
-            _vm.MergePane.StatusText = "Drop didn't carry a recognized library object.";
+            _vm.MergePane.StatusText = AppMessages.Librarian.Shell.DropNotRecognizedLibraryObject;
             return;
         }
         foreach (var loc in payload.Locs) _vm.PullIntoMerge(loc);
@@ -663,8 +730,8 @@ internal partial class LibrarianShellWindow : ThemedWindow
     void OnClearMergeButton(object sender, RoutedEventArgs e)
     {
         if (MessageBox.Show(this,
-                "Abandon everything currently staged in the Merge Window?\n\nAnything already placed into Local Library is unaffected — this only clears what's still pending.",
-                "Clear Merge", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
+                AppMessages.Librarian.Shell.ClearMerge,
+                AppMessages.Librarian.Shell.ClearMergeTitle, MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         _vm.MergePane.Clear();
     }
 

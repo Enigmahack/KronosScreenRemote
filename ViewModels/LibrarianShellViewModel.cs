@@ -62,9 +62,9 @@ partial class LibrarianShellViewModel : ObservableObject
         // Kicks off the cache's one-time referrer-catalog build (see LocalLibraryCache.
         // BuildCatalogAsync's own comment) on a background thread as soon as the window
         // opens, instead of it running inline the first time a placement needs it — a real
-        // 10-20s freeze on a large library. The tree above is already populated from the
-        // index alone (no blob reads), so the window is usable immediately; only a
-        // drop/paste attempted before this finishes pays a (shrinking) wait, same as before.
+        // 10-20s freeze on a large library. While it runs, the Local Library pane hides its
+        // tree and disables its toolbar (LocalPane.IsIndexing) so nothing can be moved/edited
+        // against a half-built index; the pane reveals itself once the build completes.
         _ = WarmCatalogAsync();
 
         _programBankTypes = Storage.LoadProgramBankTypes(_host) is { } cached ? new ProgramBankTypes(cached) : null;
@@ -73,18 +73,26 @@ partial class LibrarianShellViewModel : ObservableObject
 
     async Task WarmCatalogAsync()
     {
-        StatusText = "Indexing local library…";
+        LocalPane.IsIndexing = true;   // hide the tree + disable its toolbar until the build finishes
+        StatusText = AppMessages.Librarian.Shell.Indexing;
         try
         {
             await _cache.BuildCatalogAsync();
-            if (StatusText == "Indexing local library…") StatusText = "";
+            if (StatusText == AppMessages.Librarian.Shell.Indexing) StatusText = "";
         }
         catch (Exception ex)
         {
             // Fire-and-forget from the ctor — without this, a blob-IO failure (e.g. the
             // library share going away) would be an unobserved task exception, invisible.
             AppLog.Warn($"[librarian] catalog warm-up failed: {ex.Message}");
-            StatusText = "Local library indexing failed — see log";
+            StatusText = AppMessages.Librarian.Shell.IndexingFailed;
+        }
+        finally
+        {
+            // Reveal the pane whether the build succeeded or failed — the tree is valid from the
+            // fast index regardless; a failure is surfaced via the Sync-row status above, not by
+            // leaving the pane stuck on the indexing placeholder.
+            LocalPane.IsIndexing = false;
         }
     }
 
@@ -172,8 +180,9 @@ partial class LibrarianShellViewModel : ObservableObject
             if (!await PrepareForPushAsync()) return;
             var (pull, push) = await SyncPipeline.SyncLibraryAsync(
                 _sysEx, _cache, _sessionClipboard, ForceFullPull, m => StatusText = m);
-            StatusText = $"Pulled {pull.ObjectsFetched} object(s) ({pull.Conflicts} conflict(s)). Pushed {push.Written} object(s).";
+            StatusText = AppMessages.Librarian.Shell.SyncResult(pull.ObjectsFetched, pull.Conflicts, push.Written, push.Deleted);
             if (!push.Ok) WarningText = push.Error;
+            else ClearPaneStatuses();   // requirement 5: the per-pane "Cut …/Placed …" lines are stale once pushed
             LocalPane.RefreshTree();
             RefreshHistory();
         }
@@ -188,8 +197,11 @@ partial class LibrarianShellViewModel : ObservableObject
         {
             if (!await PrepareForPushAsync()) return;
             var result = await SyncPipeline.CommitChangesAsync(_sysEx, _cache, _sessionClipboard, m => StatusText = m);
-            StatusText = result.Ok ? $"Pushed {result.Written} object(s)." : "Commit failed — see warning.";
+            StatusText = result.Ok
+                ? AppMessages.Librarian.Shell.CommitResult(result.Written, result.Deleted)
+                : AppMessages.Librarian.Shell.CommitFailed;
             if (!result.Ok) WarningText = result.Error;
+            else ClearPaneStatuses();   // requirement 5: the per-pane "Cut …/Placed …" lines are stale once pushed
             LocalPane.RefreshTree();
             RefreshHistory();
         }
@@ -212,7 +224,7 @@ partial class LibrarianShellViewModel : ObservableObject
             || await ConfirmContinueWithPendingDependencies(_sessionClipboard.Pending.ToList());
         if (!proceed)
         {
-            StatusText = "Cancelled — unresolved dependencies still pending.";
+            StatusText = AppMessages.Librarian.Shell.CancelledPendingDeps;
             return false;
         }
 
@@ -236,6 +248,17 @@ partial class LibrarianShellViewModel : ObservableObject
     // Called after any local edit (rename/move/discard/placement) so the permanent history
     // panel reflects it immediately rather than only after a Sync/Commit.
     public void NotifyLocalEditMade() => RefreshHistory();
+
+    // Requirement 5: after a successful Sync/Commit, the per-pane status lines under each pane's
+    // buttons ("Cut …", "Placed at …", "Pulled N object(s)…") describe work that's now been
+    // pushed and no longer reflects current state — clear them. The top Sync-row StatusText is
+    // left alone: it holds the just-pressed button's own result ("Pushed N object(s).").
+    void ClearPaneStatuses()
+    {
+        LocalPane.StatusText = "";
+        MergePane.StatusText = "";
+        PcgPane.StatusText = "";
+    }
 
     [RelayCommand]
     void LoadPcgFromComputer(Window owner) => PcgPane.LoadFromComputer(owner);
@@ -289,6 +312,11 @@ partial class LibrarianShellViewModel : ObservableObject
         if (PcgPane.View is not { } view) return;   // nothing loaded — nothing to pull from
         MergePane.PullFromPcg(view, PcgPane.LoadedFileName ?? "(unknown)", pcgLoc);
     }
+
+    // ── Local -> Merge Window (requirement 3, transitive — see MergeCache.PullFromLocal) ──
+    // The Merge Window as a general scratchpad: stage an already-placed Local object (plus its
+    // local dependencies) back in so it can be moved/rearranged and pushed somewhere else.
+    public void PullLocalIntoMerge(ObjLoc localLoc) => MergePane.PullFromLocal(_cache, localLoc);
 
     // ── Merge Window group -> Local (bulk placement of a multi-item Merge selection) ─────
     // Dragging a multi-item Merge Window selection — typically the whole "Set Lists"/"Combis"/
@@ -347,6 +375,84 @@ partial class LibrarianShellViewModel : ObservableObject
             ? $"Placed {take}; {group.Count - take} didn't fit ({descriptor.BankLabel(destBank)} is full) — still staged in the Merge Window"
             : $"Placed {take}";
         return (true, msg);
+    }
+
+    // ── Whole Program bank copy with EXi/HD-1 type change (requirement 4) ────────────────
+    // The func 0x7C "Change Program Bank Type" the changeset emits reformats+ERASES the whole
+    // destination bank, so a type change is inherently a copy-the-entire-bank operation.
+
+    // If placing this Merge-Window Program group into destBank would require changing the
+    // destination bank's HD-1/EXi type, returns the target IsExi; otherwise null (not a Program
+    // group, mixed formats, destination type unknown, or already the right type). The caller
+    // (code-behind) uses this to prompt before the destructive reformat.
+    public bool? BankTypeChangeNeeded(int objType, int destBank, IReadOnlyList<string> contentHashes)
+    {
+        if (objType != LibObj.Program) return null;
+        var group = contentHashes.Select(h => MergePane.TryGet(h)).Where(e => e is { ObjType: LibObj.Program }).Select(e => e!).ToList();
+        if (group.Count == 0) return null;
+        bool allExi = group.All(e => e.Body.Length == ProgramFormatConverter.WireSizeExi);
+        bool allHd1 = group.All(e => e.Body.Length != ProgramFormatConverter.WireSizeExi);
+        if (allExi == allHd1) return null;   // mixed formats — not a clean single-type bank
+        bool groupIsExi = allExi;
+        // Destination bank's current type: the live func-0x61 answer if we have it, ELSE the
+        // format of whatever Programs already sit in that bank locally (a real bank is
+        // homogeneous). The fallback is what makes the type-change prompt fire right after the
+        // window opens or offline, instead of the drop slipping through and only being caught as
+        // a per-item REFUSE at Commit — the exact failure the user hit copying EXi into an HD-1
+        // bank whose live type hadn't been warmed yet.
+        bool? destIsExi = BankTypeOf(destBank) ?? LocalProgramBankFormat(destBank);
+        return destIsExi is bool d && d != groupIsExi ? groupIsExi : null;
+    }
+
+    // The HD-1/EXi format of a destination Program bank as Local Library currently sees it — the
+    // cached IsExi of the first Program already in that bank (index-only, no blob read). Null if
+    // the bank is empty locally (nothing to infer a type from).
+    bool? LocalProgramBankFormat(int bank)
+    {
+        var descriptor = ObjectTypeRegistry.Get(LibObj.Program);
+        for (int n = 0; n < descriptor.SlotCount; n++)
+            if (_cache.Exists(LibObj.Program, bank, n)) return _cache.IsExi(LibObj.Program, bank, n);
+        return null;
+    }
+
+    // Copies a whole Program bank from the Merge Window into destBank, changing destBank's
+    // HD-1/EXi type to match. Because the func 0x7C emitted at Commit ERASES the whole
+    // destination bank, this REPLACES it: every existing local Program in destBank is dropped
+    // first (it would be erased on hardware regardless), the group is placed from slot 0, and
+    // the type-change intent is recorded for the next Commit. Placement bypasses the normal
+    // format REFUSE (bankTypeOf: null) precisely because the reformat is intentional.
+    public (bool Ok, string? Message) PlaceMergeBankWithTypeChange(int destBank, IReadOnlyList<string> contentHashes, bool targetIsExi)
+    {
+        var descriptor = ObjectTypeRegistry.Get(LibObj.Program);
+        var group = contentHashes.Select(h => MergePane.TryGet(h)).Where(e => e is { ObjType: LibObj.Program }).Select(e => e!).ToList();
+        if (group.Count == 0) return (false, "nothing to place for this bank");
+        if (group.Count > descriptor.SlotCount) group = group.Take(descriptor.SlotCount).ToList();
+
+        // Replace the destination bank — the 0x7C erases everything in it on hardware anyway.
+        for (int n = 0; n < descriptor.SlotCount; n++)
+            if (_cache.Exists(LibObj.Program, destBank, n))
+                _cache.RemoveObject(LibObj.Program, destBank, n, DateTime.UtcNow);
+
+        var placements = new List<BatchPlacement>();
+        for (int i = 0; i < group.Count; i++)
+        {
+            var (body, _) = MergePane.ResolveReferencesForPlacement(group[i], LocalLookup);   // Programs have no refs
+            placements.Add(new BatchPlacement(null, new ObjLoc(LibObj.Program, destBank, i),
+                new ObjectDump(LibObj.Program, destBank, i, group[i].Version, body), group[i].DisplayName));
+        }
+
+        var (ok, error, clipboardAdds) = LocalEditOps.BatchPlace(_cache, LibObj.Program, placements, divertDisplacedToClipboard: true, bankTypeOf: null, DateTime.UtcNow);
+        if (!ok) return (false, error);
+
+        MergeDisplacedIntoPersistentClipboard(clipboardAdds);
+        for (int i = 0; i < group.Count; i++)
+            MergePane.CommitPlacement(group[i].ContentHash, new ObjLoc(LibObj.Program, destBank, i));
+        _cache.SetPendingBankTypeChange(destBank, targetIsExi);
+        _cache.Save();
+        LocalPane.RefreshTree();
+        NotifyLocalEditMade();
+
+        return (true, $"Copied {group.Count} program(s) into {descriptor.BankLabel(destBank)} and set it to {(targetIsExi ? "EXi" : "HD-1")} — the bank reformats on Commit.");
     }
 
     // ── Merge Window -> Local (manual, per-item — the user picks every destination,

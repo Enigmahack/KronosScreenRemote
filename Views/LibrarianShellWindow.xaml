@@ -111,6 +111,9 @@
                                 <MenuItem x:Name="MI_Cut" Header="Cut" InputGestureText="Ctrl+X" Click="OnCutMenuItem"/>
                                 <MenuItem x:Name="MI_Copy" Header="Copy" InputGestureText="Ctrl+C" Click="OnCopyMenuItem"/>
                                 <MenuItem x:Name="MI_Paste" Header="Paste" InputGestureText="Ctrl+V" Click="OnPasteMenuItem"/>
+                                <Separator x:Name="SEP_MergeMove"/>
+                                <MenuItem x:Name="MI_MoveToMerge" Header="Move to Merge Window" Click="OnMoveLocalToMergeMenuItem"
+                                          ToolTip="Stage this (and its dependencies) in the Merge Window to rearrange and push it somewhere else."/>
                                 <Separator x:Name="SEP_1"/>
                                 <MenuItem x:Name="MI_Rename" Header="Rename…" InputGestureText="F2" Click="OnRenameMenuItem"/>
                                 <MenuItem x:Name="MI_Properties" Header="Properties…" Click="OnOpenProperties"/>
@@ -272,7 +275,8 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0 0 0 6">
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0 0 0 6"
+                                IsEnabled="{Binding LocalPane.IsReady}">
                         <Button x:Name="BTN_LocalCut" Content="Cut" Padding="10 2" Margin="0 0 4 0"
                                 Click="OnCutButton" ToolTip="Cut the selected item(s) (Ctrl+X)"/>
                         <Button x:Name="BTN_LocalCopy" Content="Copy" Padding="10 2" Margin="0 0 4 0"
@@ -295,12 +299,22 @@
                                ToolTip="{Binding LocalPane.StatusText, Converter={StaticResource EmptyToNull}}"/>
 
                     <TreeView Grid.Row="2" x:Name="TV_Local" ItemsSource="{Binding LocalPane.Roots}"
+                              Visibility="{Binding LocalPane.IsReady, Converter={StaticResource BoolToVis}}"
                               Style="{StaticResource LibraryTreeStyle}"
                               ItemTemplate="{StaticResource LocalNodeTemplate}"
                               ItemContainerStyle="{StaticResource LibraryTreeItemStyle}"
                               MouseDoubleClick="OnTreeDoubleClick"
                               PreviewKeyDown="OnLocalTreeKeyDown"
                               AllowDrop="True" DragOver="OnLocalDragOver" Drop="OnLocalDrop"/>
+
+                    <!-- Shown in the tree's place while the referrer catalog is (re)indexing, so
+                         nothing can be moved/edited against a half-built index (see
+                         LibrarianShellViewModel.WarmCatalogAsync / LocalPane.IsIndexing). -->
+                    <TextBlock Grid.Row="2" Text="{Binding LocalPane.IndexingPlaceholder}"
+                               Visibility="{Binding LocalPane.IsIndexing, Converter={StaticResource BoolToVis}}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               TextAlignment="Center" TextWrapping="Wrap" FontStyle="Italic"
+                               Foreground="{StaticResource AccentBrush}"/>
                 </Grid>
             </GroupBox>
 

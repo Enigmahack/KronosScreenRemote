@@ -107,9 +107,9 @@ public partial class MainWindow
         if (_settings.PromptBeforeQuitting)
         {
             string msg = IsConnected
-                ? "Disconnect from Kronos and quit?"
-                : "Quit Kronos ScreenRemote?";
-            if (MessageBox.Show(msg, "Quit", MessageBoxButton.YesNo, MessageBoxImage.Question)
+                ? AppMessages.Quit.DisconnectAndQuit
+                : AppMessages.Quit.QuitApp;
+            if (MessageBox.Show(msg, AppMessages.Quit.Title, MessageBoxButton.YesNo, MessageBoxImage.Question)
                 != MessageBoxResult.Yes)
             {
                 e.Cancel = true;
@@ -121,8 +121,8 @@ public partial class MainWindow
         if (_cal.Dirty)
         {
             var result = MessageBox.Show(
-                "You have unsaved calibration changes.\nSave before exiting?",
-                "Unsaved Calibration",
+                AppMessages.Calibration.UnsavedChanges,
+                AppMessages.Calibration.UnsavedTitle,
                 MessageBoxButton.YesNoCancel,
                 MessageBoxImage.Question);
 

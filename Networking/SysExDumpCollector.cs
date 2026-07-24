@@ -290,6 +290,12 @@ sealed class SysExDumpCollector
     public Task<int?> SendStoreBankRequestAsync(int obj, int bank, int timeoutMs = 4000) =>
         SendAndAwaitReplyAsync(KronosSysEx.BuildStoreBankRequest(obj, bank), timeoutMs);
 
+    // Change Program Bank Type (func 0x7C) — reformats+ERASES the bank to HD-1/EXi. Longer
+    // default timeout: reformatting a bank on the instrument takes noticeably longer than a
+    // plain Store before the func 0x24 Reply comes back.
+    public Task<int?> SendChangeProgramBankTypeAsync(int bank, bool isExi, int timeoutMs = 20000) =>
+        SendAndAwaitReplyAsync(KronosSysEx.BuildChangeProgramBankType(bank, isExi), timeoutMs);
+
     // ── Request builders (Korg header F0 42 30 68, matching existing convention) ──
 
     // Object Dump Request (func 0x72): one specific object.

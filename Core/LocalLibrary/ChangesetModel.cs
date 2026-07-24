@@ -15,7 +15,29 @@ sealed class ChangesetPlan : IExecutablePlan
     public string BackupLabel => "changeset";
     public bool IsRefusable => Warnings.Any(w => w.StartsWith("REFUSE:", StringComparison.Ordinal));
 
+    // Program banks this changeset reformats to HD-1/EXi (func 0x7C) before writing them —
+    // requirement 4's whole-bank type change. Implements IExecutablePlan.BankTypeChanges (whose
+    // default is empty); ApplyMoveAsync issues each one after the staleness gate, before writes.
+    readonly List<(int Bank, bool IsExi)> _bankTypeChanges = new();
+    public IReadOnlyList<(int Bank, bool IsExi)> BankTypeChanges => _bankTypeChanges;
+    public void AddBankTypeChange(int bank, bool isExi)
+    {
+        if (!_bankTypeChanges.Any(x => x.Bank == bank)) _bankTypeChanges.Add((bank, isExi));
+    }
+
     // Local objects to advance baseline for on a successful push — distinct from
     // Writes/Stores (hardware-facing); SyncPipeline uses this afterward to update the cache.
     public List<ObjLoc> TargetsOnSuccess { get; } = new();
+
+    // Committed deletions of objects that EXIST on hardware (requirement 2). Each contributes an
+    // erase WriteOp + Store (blanking the slot on the instrument); on success the LOCAL slot is
+    // advanced to that same blank body — it stays in the tree showing the init/blank object at its
+    // address, NOT removed (a bank slot never truly vanishes on the Kronos). BlankBody is the
+    // exact bytes written, so the local slot ends up byte-identical to hardware.
+    public List<(ObjLoc Loc, byte Version, byte[] BlankBody)> Erasures { get; } = new();
+
+    // Committed deletions of LOCAL-ONLY objects (placed but never pushed — no hardware baseline).
+    // Nothing to erase on the instrument (the slot is genuinely empty there), so these are simply
+    // removed from the index on success — undoing the local placement back to the empty slot.
+    public List<ObjLoc> Deletes { get; } = new();
 }

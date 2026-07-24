@@ -258,8 +258,8 @@ public partial class SettingsWindow : ThemedWindow
             if (target.BoundKey.Key != Key.None)
             {
                 var res = MessageBox.Show(
-                    $"Clear keybinding for '{target.Label}'?",
-                    "Clear Binding", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                    AppMessages.Keybinding.ClearBinding(target.Label),
+                    AppMessages.Keybinding.ClearBindingTitle, MessageBoxButton.YesNo, MessageBoxImage.Question);
                 if (res == MessageBoxResult.Yes)
                 {
                     target.BoundKey = Keybind.None;
@@ -464,7 +464,7 @@ public partial class SettingsWindow : ThemedWindow
         {
             _selectedMacroRow!.Definition.Steps.Clear();
             _selectedMacroRow.Refresh();
-            TxtMacroSteps.Text = "(recording — press keys…)";
+            TxtMacroSteps.Text = AppMessages.Macro.Recording;
         }
         else
             UpdateMacroStepsDisplay();
@@ -504,8 +504,8 @@ public partial class SettingsWindow : ThemedWindow
             if (PhysicalKeys.Contains(key))
             {
                 MessageBox.Show(
-                    "This key routes directly to a physical control-surface button and cannot be remapped.",
-                    "Not Remappable", MessageBoxButton.OK, MessageBoxImage.Information);
+                    AppMessages.Keybinding.NotRemappable,
+                    AppMessages.Keybinding.NotRemappableTitle, MessageBoxButton.OK, MessageBoxImage.Information);
                 _rawEditListening        = false;
                 BtnRawCaptureKey.Content = _rawEditPrevBtn;
                 e.Handled = true;
@@ -533,8 +533,8 @@ public partial class SettingsWindow : ThemedWindow
             if (trigger.Modifiers == ModifierKeys.None)
             {
                 MessageBox.Show(
-                    "A macro trigger must include at least one modifier key (Ctrl, Alt, or Shift).",
-                    "Modifier Required", MessageBoxButton.OK, MessageBoxImage.Information);
+                    AppMessages.Keybinding.ModifierRequired,
+                    AppMessages.Keybinding.ModifierRequiredTitle, MessageBoxButton.OK, MessageBoxImage.Information);
                 StopTriggerListen();
                 e.Handled = true;
                 return;
@@ -585,7 +585,7 @@ public partial class SettingsWindow : ThemedWindow
 
     void UpdateMacroStepsDisplay()
     {
-        if (_selectedMacroRow == null) { TxtMacroSteps.Text = "(no steps recorded)"; return; }
+        if (_selectedMacroRow == null) { TxtMacroSteps.Text = AppMessages.Macro.NoStepsRecorded; return; }
         var steps = _selectedMacroRow.Definition.Steps;
         TxtMacroSteps.Text = steps.Count == 0
             ? "(no steps recorded)"
@@ -651,14 +651,14 @@ public partial class SettingsWindow : ThemedWindow
     {
         if (_rawEditCapturedKey == Key.None)
         {
-            MessageBox.Show("Click 'Host key' and press the key you want to capture.",
-                "Host Key Required", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(AppMessages.Keybinding.HostKeyRequired,
+                AppMessages.Keybinding.HostKeyRequiredTitle, MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
         if (!int.TryParse(TxtRawCode.Text.Trim(), out int code) || code < 1 || code > 767)
         {
-            MessageBox.Show("Raw code must be an integer from 1 to 767 (Linux keycode).",
-                "Invalid Code", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(AppMessages.Keybinding.InvalidRawCode,
+                AppMessages.Keybinding.InvalidCodeTitle, MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
 
@@ -747,13 +747,13 @@ public partial class SettingsWindow : ThemedWindow
         try
         {
             Storage.SaveSettingsTo(Result, dlg.FileName);
-            MessageBox.Show($"Settings exported to:\n{dlg.FileName}",
-                "Export Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show(AppMessages.SettingsIo.Exported(dlg.FileName),
+                AppMessages.Titles.ExportComplete, MessageBoxButton.OK, MessageBoxImage.Information);
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Export failed:\n{ex.Message}",
-                "Export Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(AppMessages.SettingsIo.ExportFailed(ex.Message),
+                AppMessages.Titles.ExportFailed, MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -771,14 +771,14 @@ public partial class SettingsWindow : ThemedWindow
             Result   = imported;
             WasReset = false;
             MessageBox.Show(
-                "Settings imported. Click OK to apply them.",
-                "Import Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                AppMessages.SettingsIo.ImportedClickOk,
+                AppMessages.Titles.ImportComplete, MessageBoxButton.OK, MessageBoxImage.Information);
             DialogResult = true;
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Import failed:\n{ex.Message}",
-                "Import Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(AppMessages.SettingsIo.ImportFailed(ex.Message),
+                AppMessages.Titles.ImportFailed, MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -787,10 +787,8 @@ public partial class SettingsWindow : ThemedWindow
     void OnResetSettings(object s, RoutedEventArgs e)
     {
         var res = MessageBox.Show(
-            "This will permanently remove all saved settings, key mappings, calibration data, and other customizations.\n\n" +
-            "The app will return to its default state. Calibration changes take full effect on next launch.\n\n" +
-            "This cannot be undone. Continue?",
-            "Reset All Settings",
+            AppMessages.SettingsReset.Confirm,
+            AppMessages.SettingsReset.ConfirmTitle,
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
 

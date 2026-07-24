@@ -37,6 +37,7 @@ static class LocalCutCopyPasteSelfTests
             exec.Seed(LibObj.Program, 0x00, 7, 1, Named(3706, "PROG H"));   // multi-copy #2
             exec.Seed(LibObj.Program, 0x40, 1, 1, Named(3706, "WAS HERE")); // occupies a Copy destination
             exec.Seed(LibObj.SetList, 0, 0, 1, Named(69416, "MY SETLIST"));
+            exec.Seed(LibObj.SetList, 0, 1, 1, Named(69416, "SECOND SETLIST")); // Set-List swap partner
 
             var progD = new ObjLoc(LibObj.Program, 0x00, 3);
             int fbD = KronosBanks.ObjBankToFunc33(1, progD.Bank);
@@ -123,12 +124,24 @@ static class LocalCutCopyPasteSelfTests
             Check("batch-copy-sources-unchanged", cache.Exists(progG.ObjType, progG.Bank, progG.Number) && cache.Exists(progH.ObjType, progH.Bank, progH.Number));
             Check("batch-copy-both-landed", cache.GetDisplayName(LibObj.Program, 0x44, 0) == "PROG G" && cache.GetDisplayName(LibObj.Program, 0x44, 1) == "PROG H");
 
-            // 7. Set Lists: Copy allowed, Cut refused (unchanged restriction).
+            // 7. Set Lists: Copy allowed, and Cut now allowed too (requirement 1) — a Set-List
+            // swap is a pure body-swap (nothing references a Set List), so Cut + paste onto
+            // another occupied Set List swaps the two exactly like Programs/Combis.
             var slLoc = new ObjLoc(LibObj.SetList, 0, 0);
-            pane.Cut(new[] { slLoc });
-            Check("setlist-cut-refused", !pane.HasClipboard);
+            var slLoc2 = new ObjLoc(LibObj.SetList, 0, 1);
             pane.Copy(new[] { slLoc });
             Check("setlist-copy-allowed", pane.HasClipboard);
+            pane.Cut(new[] { slLoc });
+            Check("setlist-cut-allowed", pane.HasClipboard);
+            var (slSwapOk, _) = pane.PasteIntoSlot(slLoc2);
+            Check("setlist-cut-onto-occupied-swaps",
+                slSwapOk && cache.GetDisplayName(slLoc2.ObjType, slLoc2.Bank, slLoc2.Number) == "MY SETLIST"
+                         && cache.GetDisplayName(slLoc.ObjType, slLoc.Bank, slLoc.Number) == "SECOND SETLIST");
+
+            // 8. Issue 1: DescribeReferrers reports the Combi timbre that depends on progD (so a
+            // delete can warn); a Set List (nothing ever references one) reports none.
+            Check("referrers-detects-combi-dependent", pane.DescribeReferrers(progD).Count >= 1);
+            Check("setlist-has-no-referrers", pane.DescribeReferrers(slLoc).Count == 0);
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
 

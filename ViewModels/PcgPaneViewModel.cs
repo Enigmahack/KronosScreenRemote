@@ -40,7 +40,7 @@ partial class PcgPaneViewModel : ObservableObject
         catch (Exception ex)
         {
             AppLog.Error($"PCG load from computer failed: {ex}");
-            ClearLoaded($"Load failed: {ex.Message}");
+            ClearLoaded(AppMessages.Librarian.Pcg.LoadFailed(ex.Message));
         }
     }
 
@@ -65,7 +65,7 @@ partial class PcgPaneViewModel : ObservableObject
         catch (Exception ex)
         {
             AppLog.Error($"PCG load from Kronos failed: {ex}");
-            ClearLoaded($"Load failed: {ex.Message}");
+            ClearLoaded(AppMessages.Librarian.Pcg.LoadFailed(ex.Message));
         }
     }
 
@@ -81,17 +81,17 @@ partial class PcgPaneViewModel : ObservableObject
         if (file == null)
         {
             AppLog.Warn($"PCG load '{fileName}' failed: not a recognizable Kronos .pcg file.");
-            ClearLoaded($"{fileName} is not a recognizable Kronos .pcg file.");
+            ClearLoaded(AppMessages.Librarian.Pcg.NotRecognizedPcg(fileName));
             return;
         }
         _view = new PcgLibraryView(file);
         LoadedFileName = fileName;
         RefreshTree();
 
-        StatusText = $"Loaded {fileName} — {file.Objects.Count} object(s).";
+        StatusText = AppMessages.Librarian.Pcg.Loaded(fileName, file.Objects.Count);
         if (file.RejectedBanks.Count > 0)
         {
-            StatusText += $" ({file.RejectedBanks.Count} bank chunk(s) couldn't be read — see log)";
+            StatusText += AppMessages.Librarian.Pcg.RejectedBanksSuffix(file.RejectedBanks.Count);
             AppLog.Warn($"PCG load '{fileName}': {file.RejectedBanks.Count} candidate bank chunk(s) rejected:");
             foreach (var r in file.RejectedBanks)
                 AppLog.Warn($"  {r.Tag} @0x{r.Offset:X} count={r.Count} itemSize={r.ItemSize} bankId=0x{r.BankIdRaw:X} — {r.Reason}");

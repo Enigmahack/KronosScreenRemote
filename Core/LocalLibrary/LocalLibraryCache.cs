@@ -126,6 +126,24 @@ sealed class LocalLibraryCache
     public void SetBankDigestBaseline(int objType, int bank, string hex) =>
         _index.BankDigestBaseline[LocalLibraryIndex.BankKey(objType, bank)] = hex;
 
+    // ── Whole-bank HD-1/EXi type change intent (requirement 4) ──────────────────────
+    // Records that a Program bank should be reformatted to `isExi` on the next Commit (because
+    // a whole bank of the opposite format was placed into it). ChangesetBuilder turns this into
+    // a func 0x7C, and SyncPipeline clears it on success. Persisted, so the intent survives
+    // closing/reopening the Librarian before committing.
+    public void SetPendingBankTypeChange(int bank, bool isExi)
+    {
+        lock (_lock) _index.PendingProgramBankTypeChanges[bank] = isExi;
+    }
+
+    public bool? PendingBankTypeChange(int bank) =>
+        _index.PendingProgramBankTypeChanges.TryGetValue(bank, out var isExi) ? isExi : null;
+
+    public void ClearPendingBankTypeChange(int bank)
+    {
+        lock (_lock) _index.PendingProgramBankTypeChanges.Remove(bank);
+    }
+
     static ObjLoc ParseKey(string key)
     {
         var parts = key.Split(':');
@@ -303,6 +321,36 @@ sealed class LocalLibraryCache
         OpLog.Append(Root, new OpLogEntry(Guid.NewGuid(), utcNow, "Discard",
             new[] { new OpLogTarget(objType, bank, number, e.BaselineHash) },
             $"Discarded {new ObjLoc(objType, bank, number).Label()}", null, null));
+        return true;
+    }
+
+    // Removes an object's index entry entirely — the final step of a committed deletion
+    // (requirement 2): once the slot has been erased/INIT'd + Stored on hardware (or, for a
+    // local-only object never on hardware, simply abandoned), there's nothing left to track
+    // locally, so the row disappears from the tree instead of lingering faded. Also drops it
+    // from the memoized referrer catalog so a later Move this session can't find a deleted
+    // Combi/Set List as a referrer. The CAS blob is left in the store (harmless debris, same
+    // "an unreferenced blob is accepted" spirit as everywhere else). Itself an op-log entry,
+    // same auditable-history convention as Discard/SetPendingDelete. False if there was no entry.
+    public bool RemoveObject(int objType, int bank, int number, DateTime utcNow)
+    {
+        string key = LocalLibraryIndex.Key(objType, bank, number);
+        LocalIndexEntry e;
+        lock (_lock)
+        {
+            if (!_index.Entries.TryGetValue(key, out e!)) return false;
+            _index.Entries.Remove(key);
+            if (_catalog != null)
+            {
+                if (objType == LibObj.Combi) _catalog.Combis.Remove((bank, number));
+                else if (objType == LibObj.SetList) _catalog.Setlists.Remove(number);
+            }
+        }
+        // Tombstone the target (not e.CurrentHash) so the op-log fold REMOVES the slot on
+        // recovery instead of resurrecting it — see LocalLibraryIndex.DeletedTombstone.
+        OpLog.Append(Root, new OpLogEntry(Guid.NewGuid(), utcNow, "Delete",
+            new[] { new OpLogTarget(objType, bank, number, LocalLibraryIndex.DeletedTombstone) },
+            $"Deleted {new ObjLoc(objType, bank, number).Label()}", null, null));
         return true;
     }
 

@@ -49,8 +49,8 @@ public partial class MainWindow
             {
                 UpdateTitle("Not Connected");
                 MessageBox.Show(
-                    "No Kronos IP address is configured.\n\nGo to Settings and enter the Kronos IP address.",
-                    "Connection", MessageBoxButton.OK, MessageBoxImage.Information);
+                    AppMessages.Connection.NoIpConfigured,
+                    AppMessages.Connection.NoIpTitle, MessageBoxButton.OK, MessageBoxImage.Information);
                 OpenSettingsDialog(SettingsTab.Connection);
             }, DispatcherPriority.Normal, ct).Task.ConfigureAwait(false);
             SetConnectionStatus(ConnState.Disconnected);  // BeginConnect set Connecting; undo it
@@ -100,9 +100,9 @@ public partial class MainWindow
             KronosFtpSession.ResetAuthentication();
             await ShowConnectError(
                 $"[conn] auth rejected: {ex.Message}",
-                "Authentication Failed",
-                "Authentication Failed",
-                "The Kronos daemon rejected the FTP credentials.\n\nClick Reconnect to try again.");
+                AppMessages.Titles.AuthenticationFailed,
+                AppMessages.Titles.AuthenticationFailed,
+                AppMessages.Connection.DaemonRejectedCredentials);
             return;
         }
         catch (Exception ex) when (ex is TimeoutException or OperationCanceledException)
@@ -110,8 +110,8 @@ public partial class MainWindow
             receiver.Dispose();
             await ShowConnectError(
                 $"[conn] timeout: {ex.Message}",
-                "Connection Timed Out",
-                "Connection Timed Out",
+                AppMessages.Connection.TimedOutTitle,
+                AppMessages.Connection.TimedOutTitle,
                 ex.Message);
             return;
         }
@@ -121,8 +121,8 @@ public partial class MainWindow
             await ShowConnectError(
                 $"[conn] failed: {ex.GetType().Name}: {ex.Message}",
                 "Connection Failed",
-                "Kronos ScreenRemote",
-                $"Connection failed:\n{ex.Message}");
+                AppMessages.Connection.FailedTitle,
+                AppMessages.Connection.Failed(ex.Message));
             return;
         }
 

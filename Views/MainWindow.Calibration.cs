@@ -14,8 +14,8 @@ public partial class MainWindow
         if (!_cal.Mesh.IsIdentity() || _cal.BiasDots.Count > 0)
         {
             var result = MessageBox.Show(
-                $"Changing grid size to {size}×{size} will clear existing calibration data.\nProceed?",
-                "Change Calibration Grid",
+                AppMessages.Calibration.GridChangeWarning(size),
+                AppMessages.Calibration.GridChangeTitle,
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning);
             if (result != MessageBoxResult.Yes) return;

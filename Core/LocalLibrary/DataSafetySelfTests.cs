@@ -219,6 +219,13 @@ static class DataSafetySelfTests
                 var folded2 = LocalLibraryIndex.RebuildCurrentFromOpLog(OpLog.ReadAll(root));
                 var foldedBody2 = folded2.TryGetValue(key, out var h2) ? LocalObjectStore.TryGet(root, h2) : null;
                 Check("c1-fold-reflects-discard", foldedBody2 != null && ProgramBody.ReadName(foldedBody2) == "BASE-FOLD");
+
+                // A committed deletion (RemoveObject) tombstones the slot — the fold, replaying
+                // the whole log, must DROP it, not resurrect it from its last real hash
+                // (requirement 2). Without the DeletedTombstone, recovery would bring it back.
+                cache.RemoveObject(loc.ObjType, loc.Bank, loc.Number, utc);
+                var folded3 = LocalLibraryIndex.RebuildCurrentFromOpLog(OpLog.ReadAll(root));
+                Check("c1-fold-reflects-delete", !folded3.ContainsKey(key));
             }
             finally { Reset(root); }
         }
