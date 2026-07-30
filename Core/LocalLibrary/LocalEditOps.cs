@@ -55,7 +55,7 @@ static class LocalEditOps
     // merge into its BatchClipboard and save.
     public static (bool Ok, string? Error, List<ClipboardEntry> NewClipboardEntries) BatchPlace(
         LocalLibraryCache cache, int objType, IReadOnlyList<BatchPlacement> placements,
-        bool divertDisplacedToClipboard, Func<int, bool?>? bankTypeOf, DateTime utcNow)
+        bool divertDisplacedToClipboard, Func<int, bool?>? bankTypeOf, DateTime utcNow, bool forceOverwrite = false)
     {
         var cat = cache.BuildCatalog();
         var destOccupants = new Dictionary<ObjLoc, ObjectDump>();
@@ -65,7 +65,7 @@ static class LocalEditOps
             if (occ != null) destOccupants[p.To] = occ;
         }
 
-        var plan = BatchLibrarian.PlanBatchMove(cat, objType, placements, destOccupants, divertDisplacedToClipboard, bankTypeOf);
+        var plan = BatchLibrarian.PlanBatchMove(cat, objType, placements, destOccupants, divertDisplacedToClipboard, bankTypeOf, forceOverwrite);
         if (plan.IsRefusable) return (false, string.Join("; ", plan.Warnings), new List<ClipboardEntry>());
 
         cache.RecordEdits(plan.Writes.Select(w => (w.Obj, w.Bank, w.Index, w.Version, w.Body)),
@@ -83,10 +83,10 @@ static class LocalEditOps
     // never via PlaceObject + a hoped-for vacate step.
     public static (bool Ok, string? Error, List<ClipboardEntry> NewClipboardEntries) PlaceObject(
         LocalLibraryCache cache, ObjLoc dest, int objType, byte version, byte[] sourceBody, string sourceLabel,
-        bool divertDisplacedToClipboard, DateTime utcNow, Func<int, bool?>? bankTypeOf = null)
+        bool divertDisplacedToClipboard, DateTime utcNow, Func<int, bool?>? bankTypeOf = null, bool forceOverwrite = false)
     {
         var placement = new BatchPlacement(null, dest, new ObjectDump(objType, dest.Bank, dest.Number, version, sourceBody), sourceLabel);
-        return BatchPlace(cache, objType, new[] { placement }, divertDisplacedToClipboard, bankTypeOf, utcNow);
+        return BatchPlace(cache, objType, new[] { placement }, divertDisplacedToClipboard, bankTypeOf, utcNow, forceOverwrite);
     }
 
     // Repoints ONE reference site inside an already-placed Combi/Set List to a NEW destination

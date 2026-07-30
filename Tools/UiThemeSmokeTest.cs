@@ -11,12 +11,16 @@ namespace KronosScreenRemote;
 // resolved Background/Foreground brush so a "still white" report can be diagnosed without
 // a screenshot. InitializeComponent() runs near the top of every constructor here, before
 // any real dependency is touched, so this exercises 100% of the XAML/resource-resolution
-// path without showing a window or requiring a live Kronos connection. Not a substitute for
-// actually looking at the app — see the report this writes for what it does and doesn't prove.
+// path without presenting a visible window or requiring a live Kronos connection. The Librarian
+// ownership check temporarily shows invisible windows to exercise its real close path. Not a
+// substitute for actually looking at the app — see the report this writes for what it does and
+// doesn't prove.
 static class UiThemeSmokeTest
 {
     public static void Run()
     {
+        // This diagnostic closes throwaway windows itself, so it must own application shutdown.
+        Application.Current.ShutdownMode = ShutdownMode.OnExplicitShutdown;
         var results = new List<(string Name, bool Passed, string? Detail)>();
 
         static string Describe(Brush? b) => b switch
@@ -85,6 +89,85 @@ static class UiThemeSmokeTest
             }
             return w;
         });
+        try
+        {
+            var scratch = Path.Combine(Path.GetTempPath(), "kronos_ui_smoketest_librarian_owner");
+            if (Directory.Exists(scratch)) Directory.Delete(scratch, recursive: true);
+            var owner = new Window
+            {
+                ShowInTaskbar = false,
+                ShowActivated = false,
+                Opacity = 0,
+                Width = 1,
+                Height = 1,
+                Left = -10_000,
+                Top = -10_000,
+            };
+            owner.Show();
+            owner.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            // Seeded with one throwaway Combi purely so the Undo check below has something to
+            // edit — a routed-command probe against an EMPTY undo stack can't tell "wired but
+            // correctly refusing" from "not wired at all" (RoutedCommand.Execute skips the
+            // Executed handler whenever CanExecute says false).
+            var ownerCache = new LocalLibraryCache(scratch);
+            var seedLoc = new ObjLoc(LibObj.Combi, 0x00, 0);
+            ownerCache.RecordEdits(new[] { (seedLoc.ObjType, seedLoc.Bank, seedLoc.Number, (byte)1, new byte[7810]) },
+                "SmokeTestSeed", "smoke-test seed", DateTime.UtcNow);
+            var librarian = new LibrarianShellWindow(fakeSysEx, ownerCache, settings, "")
+                .OwnedBy(owner);
+            librarian.ShowInTaskbar = false;
+            librarian.Opacity = 0;
+            librarian.Left = -10_000;
+            librarian.Top = -10_000;
+            librarian.Show();
+            librarian.Activate();
+            librarian.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            librarian.Closed += (_, _) => owner.Dispatcher.BeginInvoke(
+                owner.Activate, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+
+            // Undo (Ctrl+Z) wiring, on the one Librarian instance here that's actually shown.
+            // Two halves, checked separately because only one of them is our code:
+            //  1. the gesture is declared (Window.InputBindings' Ctrl+Z -> ApplicationCommands.Undo);
+            //     translating a real keypress into that command is WPF's own job, not testable here.
+            //  2. the command ROUTES from a focused pane up to the window's CommandBinding and
+            //     actually rolls the last edit back — armed by renaming the seeded Combi, then
+            //     executing the routed command from TV_Local (exactly where the Ctrl+Z gesture
+            //     lands with a tree focused) and checking BOTH the status line and the restored
+            //     name. A missing/mis-wired CommandBinding leaves both untouched.
+            bool gestureDeclared = librarian.InputBindings.OfType<System.Windows.Input.KeyBinding>().Any(
+                b => b.Key == System.Windows.Input.Key.Z &&
+                     b.Modifiers == System.Windows.Input.ModifierKeys.Control &&
+                     b.Command == System.Windows.Input.ApplicationCommands.Undo);
+            string undoDetail = gestureDeclared ? "Ctrl+Z gesture declared" : "NO Ctrl+Z KeyBinding on the window";
+            bool routed = false;
+            var librarianVm = librarian.DataContext as ViewModels.LibrarianShellViewModel;
+            if (librarianVm != null && librarian.FindName("TV_Local") is IInputElement fromPane)
+            {
+                librarianVm.LocalPane.Rename(seedLoc, "SMOKE UNDO");
+                bool armed = librarianVm.CanUndo &&
+                    System.Windows.Input.ApplicationCommands.Undo.CanExecute(null, fromPane);
+                System.Windows.Input.ApplicationCommands.Undo.Execute(null, fromPane);
+                routed = armed
+                    && librarianVm.StatusText.StartsWith("Undone: ", StringComparison.Ordinal)
+                    && ownerCache.GetDisplayName(seedLoc.ObjType, seedLoc.Bank, seedLoc.Number) != "SMOKE UNDO";
+                undoDetail += routed
+                    ? "; routed command undid the last local edit"
+                    : $"; NOT effective (armed={armed}, status=\"{librarianVm.StatusText}\")";
+            }
+            results.Add(("  Librarian Undo command wiring", gestureDeclared && routed, undoDetail));
+
+            librarian.Close();
+            owner.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
+            results.Add(("  Librarian close detaches owner", librarian.Owner == null,
+                librarian.Owner == null ? null : "Owner remained attached after Closing"));
+            results.Add(("  Librarian close reactivates owner", owner.IsActive,
+                owner.IsActive ? null : "Owner did not regain activation after Librarian closed"));
+            owner.Hide();
+        }
+        catch (Exception ex)
+        {
+            results.Add(("  Librarian close detaches owner", false, ex.GetType().Name + ": " + ex.Message));
+        }
         Try("LoginDialog",            () => new LoginDialog("", 0));
         Try("PromptDialog",           () => new PromptDialog("test"));
         Try("PropertiesDialog (Program/Combi)", () => PropertiesDialog.ForProgramOrCombi("Test Properties", "Test Name", 0, 0));

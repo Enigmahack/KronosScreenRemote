@@ -95,7 +95,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     KeyboardInfoWindow?  _kbdInfoWin;
     SysExToolWindow?     _sysExToolWin;
     LibrarianShellWindow? _librarianShellWin;
-    LocalLibraryCache?   _localLibraryCache;
+    LocalLibraryCache    _localLibraryCache = null!;
 
     // ── Misc ──────────────────────────────────────────────────────────────────
     System.Windows.Forms.NotifyIcon? _trayIcon;
@@ -164,6 +164,16 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         _fps      = _settings.MaxFps;
         ParseArgs();  // CLI args still win
 
+        // Kick off the Local Library's one-time referrer-catalog build (LocalLibraryCache.
+        // BuildCatalogAsync — see its own comment for why this is otherwise a real 10-20s
+        // stall) as soon as the app starts, not when the Librarian menu item is first clicked.
+        // BuildCatalogAsync memoizes (a no-op if already built/building), so opening the
+        // Librarian later just picks up whatever this warm-up has already finished, same as
+        // LibrarianShellViewModel's own ctor-time WarmCatalogAsync — this just gives it a
+        // multi-minute head start instead of starting cold at first open.
+        _localLibraryCache = LocalLibraryCache.Open();
+        _ = WarmLocalLibraryCatalogAsync();
+
         // Log daemon-side ERR responses and surface them in the notification bubble. Fires on
         // a background thread; SetNotification handles its own dispatch. Held in a field so
         // SetCtrlClient can move the subscription to each new CtrlClient instance (a host change
@@ -228,11 +238,11 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
 
         KeyDown    += OnKeyDown;
         KeyUp      += OnKeyUp;
-        MouseMove  += OnMouseMove;
-        MouseDown  += OnMouseDown;
-        MouseUp    += OnMouseUp;
-        MouseLeave += OnMouseLeave;
-        MouseWheel += OnMouseWheel;
+        MouseMove         += OnMouseMove;
+        PreviewMouseDown  += OnMouseDown;
+        PreviewMouseUp    += OnMouseUp;
+        MouseLeave        += OnMouseLeave;
+        MouseWheel        += OnMouseWheel;
         FrameImage.LostMouseCapture += OnFrameLostMouseCapture;
         SizeChanged += (sender, e) => RefreshFrameRect();
 
@@ -1447,6 +1457,18 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         _sysExToolWin.Show();
     }
 
+    // Fire-and-forget from the constructor, mirroring LibrarianShellViewModel.WarmCatalogAsync's
+    // own exception handling — without an explicit catch/log here, a blob-IO failure (e.g. the
+    // library share going away) would be an unobserved task exception, invisible until the
+    // Librarian window is opened and pays the same cost again. LocalPane.IsIndexing (which hides
+    // the Local Library tree mid-build) is owned by LibrarianShellViewModel, not this window, so
+    // it isn't touched here — nothing local-library-shaped is on screen yet at app startup.
+    async Task WarmLocalLibraryCatalogAsync()
+    {
+        try { await _localLibraryCache.BuildCatalogAsync(); }
+        catch (Exception ex) { AppLog.Warn($"[librarian] startup catalog warm-up failed: {ex.Message}"); }
+    }
+
     // The rebuilt Librarian — Phase 7's cutover retired the classic LibrarianWindow (and its
     // SetListWindow/SetListSlotEditDialog satellites) entirely; this is now the only entry point.
     void OpenLibrarianShellWindow()
@@ -1457,16 +1479,18 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             _librarianShellWin.Focus();
             return;
         }
-        _localLibraryCache ??= LocalLibraryCache.Open();
 
-        // LocalLibraryCache's one-time referrer-catalog build (reads every local Combi/Set
-        // List body once — see BuildCatalogAsync's own comment) used to run synchronously
-        // right here, before the window even existed — a real 10-20s freeze on a large
-        // library just to open the Librarian. It now runs on a background thread, kicked off
-        // from LibrarianShellViewModel's constructor as soon as the window is created, so
-        // opening the window no longer depends on it at all.
+        // _localLibraryCache's catalog build was already kicked off at app startup (see the
+        // constructor's WarmLocalLibraryCatalogAsync call) — LibrarianShellViewModel's own ctor
+        // calls BuildCatalogAsync() again, which is a no-op if that build already finished, or
+        // just awaits whatever's left of it otherwise. Either way, opening the window no longer
+        // depends on paying this cost cold.
         _librarianShellWin = new LibrarianShellWindow(_sysExService, _localLibraryCache, _settings, _host).OwnedBy(this);
-        _librarianShellWin.Closed += (_, _) => _librarianShellWin = null;
+        _librarianShellWin.Closed += (_, _) =>
+        {
+            _librarianShellWin = null;
+            Dispatcher.BeginInvoke(Activate, DispatcherPriority.ApplicationIdle);
+        };
         _librarianShellWin.Show();
     }
 

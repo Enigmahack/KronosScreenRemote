@@ -37,6 +37,7 @@ public partial class App : Application
             fails.AddRange(ScreenSessionSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(MidiTransportReplySelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(MergeGroupPlacementSelfTests.SelfTestAsync().GetAwaiter().GetResult());
+            fails.AddRange(LibrarianUndoSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             var outPath = Path.Combine(Path.GetTempPath(), "kronos_librarian_selftest.txt");
             File.WriteAllText(outPath, fails.Count == 0 ? "OK" : "FAIL: " + string.Join(", ", fails));
             Environment.Exit(fails.Count == 0 ? 0 : 1);

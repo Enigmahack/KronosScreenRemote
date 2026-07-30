@@ -155,7 +155,8 @@ static class BatchLibrarian
         IReadOnlyList<BatchPlacement> placements,
         IReadOnlyDictionary<ObjLoc, ObjectDump> destOccupants,
         bool divertDisplacedToClipboard,
-        Func<int, bool?>? bankTypeOf = null)
+        Func<int, bool?>? bankTypeOf = null,
+        bool forceOverwrite = false)
     {
         var plan = new BatchMovePlan { ObjType = objType };
 
@@ -228,7 +229,13 @@ static class BatchLibrarian
         // (2) Orphan gate — UNCONDITIONAL, independent of divertDisplacedToClipboard. A
         // clipboard entry has no address for a referrer to repoint to, so overwriting a
         // referenced slot is only safe when that slot's occupant is ITSELF also being relocated
-        // somewhere in this same batch (i.e. it's also a From — a chain, not an orphan).
+        // somewhere in this same batch (i.e. it's also a From — a chain, not an orphan) — OR the
+        // caller explicitly opted into forceOverwrite (the Merge Window's "Force Overwrite"
+        // checkbox), accepting that the referrer(s) will end up pointing at the NEW object
+        // instead of the old one. Forcing downgrades this from a REFUSE to a CHECK: the write
+        // still proceeds through (5) below exactly like any other overwritten-but-unreferenced
+        // slot, so the prior occupant is still diverted to the clipboard when
+        // divertDisplacedToClipboard is set — never silently lost, only its referrers repointed.
         var distinctTargets = real.Select(p => p.To).Distinct().ToList();
         foreach (var to in distinctTargets)
         {
@@ -243,8 +250,8 @@ static class BatchLibrarian
             // silently destroyed).
             bool identical = destOccupants.TryGetValue(to, out var occ)
                 && real.First(p => p.To.Equals(to)).Body.Body.AsSpan().SequenceEqual(occ.Body);
-            plan.Warnings.Add(identical
-                ? AppMessages.Librarian.Move.AlreadyContainsExact(to.Label())
+            plan.Warnings.Add(identical ? AppMessages.Librarian.Move.AlreadyContainsExact(to.Label())
+                : forceOverwrite ? AppMessages.Librarian.Move.ForcedOverwriteReferenced(to.Label(), displacedRefs.Count)
                 : AppMessages.Librarian.Move.ReferencedWouldBeOverwritten(to.Label(), displacedRefs.Count));
         }
 
@@ -466,6 +473,17 @@ static class BatchLibrarian
         Check("orphan-gate-identical-content", dupOrphanPlan.IsRefusable &&
             dupOrphanPlan.Warnings.Any(w => w.Contains("already contains this exact object")) &&
             !dupOrphanPlan.Warnings.Any(w => w.Contains("referenced by")));
+
+        // 4c. Orphan gate: forceOverwrite (the Merge Window's "Force Overwrite" checkbox)
+        // downgrades the same REFUSE to a CHECK and lets the write through — the referrer keeps
+        // pointing at the same address, which now holds the NEW content instead of the old, and
+        // the displaced occupant is still diverted to the clipboard rather than lost outright.
+        var forcedPlan = PlanBatchMove(cat1, LibObj.Program, orphanPlacements, orphanOccupants,
+            divertDisplacedToClipboard: true, bankTypeOf: null, forceOverwrite: true);
+        Check("orphan-gate-forced-not-refused", !forcedPlan.IsRefusable &&
+            forcedPlan.Warnings.Any(w => w.StartsWith("CHECK:", StringComparison.Ordinal) && w.Contains("Force Overwrite")));
+        Check("orphan-gate-forced-write-present", forcedPlan.Writes.Any(w => w.Bank == orphanDst.Bank && w.Index == orphanDst.Number));
+        Check("orphan-gate-forced-displaced-to-clipboard", forcedPlan.ClipboardAdds.Any(c => c.Origin.Equals(orphanDst)));
 
         // 5. THE crux case: one referrer touched by TWO placements in the same batch gets
         // both patches merged into a single write, not two independent (stomping) writes.

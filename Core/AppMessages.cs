@@ -405,6 +405,40 @@ public static class AppMessages
             public static string PlacedAt(string what, string where) => $"Placed {what} at {where}";
             public static string PlacedAtWhere(string where)         => $"Placed at {where}";
             public static string PlaceFailedDetail(string? error)    => $"Place failed: {error}";
+            // Duplicate-content guard (Merge -> Local): content byte-identical to something
+            // already elsewhere in Local Library is reused instead of written a second time.
+            public static string ReusedExistingContent(string existingWhere) =>
+                $"Identical content already at {existingWhere} — reused it instead of copying";
+            public static string ReusedExistingContentCount(int count) =>
+                $"{count} item(s) already existed elsewhere — reused instead of copying";
+
+            // ── Undo (Ctrl+Z — see Core/LocalLibrary/LibrarianUndo.cs) ──
+            // Step descriptions are past-tense phrases naming the action, so they read correctly in
+            // BOTH surroundings they appear in: the button's "Undo: <desc> (Ctrl+Z)" tooltip and the
+            // status line's "Undone: <desc>".
+            public const string UndoNothingTooltip = "Nothing to undo (Ctrl+Z)";
+            public static string UndoTooltip(string description) => $"Undo: {description} (Ctrl+Z)";
+            public const string NothingToUndo = "Nothing to undo.";
+            public static string Undone(string description) => $"Undone: {description}";
+
+            public static string UndoPlacedAt(string what, string where)   => $"Placed {what} at {where}";
+            public static string UndoPlacedMergeItemAt(string where)       => $"Placed a Merge Window item at {where}";
+            public static string UndoPlacedGroup(int count, string bank)   => $"Placed {count} item(s) into {bank}";
+            public static string UndoCopiedBankWithTypeChange(string bank) => $"Copied a whole bank into {bank} with a type change";
+            public static string UndoPulledIntoMerge(int count)            => $"Pulled {count} item(s) into the Merge Window";
+            public static string UndoRemovedFromMerge(int count)           => $"Removed {count} item(s) from the Merge Window";
+            public const string UndoClearedMerge                            = "Cleared the Merge Window";
+            public static string UndoPastedAt(string where)                => $"Pasted into {where}";
+            public static string UndoRenamed(string what)                  => $"Renamed {what}";
+            public static string UndoEdited(string what)                   => $"Edited {what}";
+            public static string UndoEditedSlot(string what, int slot)     => $"Edited {what} slot {slot}";
+            public static string UndoDiscarded(string what)                => $"Discarded {what}";
+            public static string UndoDiscardedMany(int count)              => $"Discarded {count} item(s)";
+            public static string UndoDeletedOrRestored(bool deleted, string what) =>
+                $"{(deleted ? "Deleted" : "Restored")} {what}";
+            public static string UndoDeletedOrRestoredMany(bool deleted, int count) =>
+                $"{(deleted ? "Deleted" : "Restored")} {count} item(s)";
+            public static string UndoClearedChanges(int count)             => $"Cleared {count} pending change(s)";
         }
 
         /// <summary>Pull/push pipeline (Core) — progress and referential REFUSE warnings.
@@ -455,6 +489,8 @@ public static class AppMessages
                 $"REFUSE: {toLabel} already contains this exact object — nothing to place.";
             public static string ReferencedWouldBeOverwritten(string toLabel, int refCount) =>
                 $"REFUSE: {toLabel} is referenced by {refCount} object(s) and would be overwritten without being relocated itself — add it to this batch as a source, or choose a different destination.";
+            public static string ForcedOverwriteReferenced(string toLabel, int refCount) =>
+                $"CHECK: {toLabel} was referenced by {refCount} object(s) — Force Overwrite placed it anyway, so those referrer(s) now resolve to the NEW object instead of the old one.";
             public static string CheckOverwrittenNotDiverted(string toLabel) =>
                 $"CHECK: {toLabel} is overwritten and not diverted — its prior contents are only recoverable from the automatic backup.";
             public static string ReferringObjectMissing(int refObj, int refBank, int refIndex) =>

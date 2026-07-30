@@ -41,6 +41,7 @@ static class ObjectTreeScaffold
         // the bankRef identity and leaves nest directly under it, NOT through an inner bank node.
         var setListsRoot = new ObjectTreeNode("Set Lists", bankRef: (LibObj.SetList, 0));
         foreach (var loc in setListLocs) setListsRoot.Children.Add(makeLeaf(loc));
+        setListsRoot.IsDirty = setListsRoot.Children.Any(c => c.IsDirty);
 
         AddRoot(roots, programsRoot, keepEmptyRoots);
         AddRoot(roots, combisRoot, keepEmptyRoots);
@@ -60,8 +61,17 @@ static class ObjectTreeScaffold
             if (bank.Locs.Count == 0) continue;   // an empty bank never becomes a node
             var bankNode = new ObjectTreeNode(bankLabel(objType, bank), bankRef: (objType, bank.Number));
             foreach (var loc in bank.Locs) bankNode.Children.Add(makeLeaf(loc));
+            // Bubbled up from the leaves just added — a bank node otherwise defaults to
+            // IsDirty=false forever (nothing else ever sets it), so a locally-changed leaf
+            // sitting inside a COLLAPSED bank had no way to show its red dot (see
+            // ObjectTreeNode's IsDirty doc) until the bank was expanded. PCG leaves never set
+            // IsDirty (read-only pane), so this is a harmless no-op there — always false.
+            bankNode.IsDirty = bankNode.Children.Any(c => c.IsDirty);
             typeRoot.Children.Add(bankNode);
         }
+        // Same bubble-up, one level higher — a whole type root ("Programs"/"Combis") collapsed
+        // at the window level should also flag that SOMETHING inside changed.
+        typeRoot.IsDirty = typeRoot.Children.Any(c => c.IsDirty);
         return typeRoot;
     }
 

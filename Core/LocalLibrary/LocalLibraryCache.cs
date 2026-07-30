@@ -31,6 +31,15 @@ sealed class LocalLibraryCache
     // — replayed onto the freshly-built catalog once that loop finishes. See PatchCatalog.
     readonly List<(int ObjType, int Bank, int Number, byte Version, byte[] Body)> _pendingCatalogPatches = new();
 
+    // Raised immediately BEFORE one slot's index entry is written or removed, carrying that
+    // slot's PRIOR entry (null = it didn't exist). The Librarian's linear undo
+    // (Core/LocalLibrary/LibrarianUndo.cs) is the only subscriber: observing this is what lets
+    // one capture scope record every slot an action touched — however deep inside LocalEditOps/
+    // BatchLibrarian the write happens — without every edit path having to opt in by hand.
+    // Raised from the four LOCAL-EDIT mutators only (RecordEdits, Discard, RemoveObject,
+    // SetPendingDelete): a Pull/Push baseline advance isn't a local edit and isn't undoable.
+    public event Action<int, int, int, LocalIndexEntry?>? SlotMutating;
+
     public LocalLibraryCache(string root)
     {
         Root = root;
@@ -277,6 +286,7 @@ sealed class LocalLibraryCache
             lock (_lock)
             {
                 _index.Entries.TryGetValue(key, out var existing);
+                SlotMutating?.Invoke(w.ObjType, w.Bank, w.Number, existing);
                 // No prior entry = a brand-new local-only object (Phase 6: PCG-sourced or a
                 // fresh clipboard placement) — it doesn't exist on hardware yet, so it must be
                 // dirty until pushed. NoBaselineSentinel ("", never a real 40-char SHA-1 hex
@@ -310,6 +320,7 @@ sealed class LocalLibraryCache
         {
             if (!_index.Entries.TryGetValue(key, out e!) || e.CurrentHash == e.BaselineHash) return false;
         }
+        SlotMutating?.Invoke(objType, bank, number, e);
         // A single blob read here is fine — Discard is a one-object, user-initiated action,
         // not a per-slot bulk operation (unlike the tree-building path this whole cache of
         // DisplayName exists to avoid).
@@ -347,6 +358,7 @@ sealed class LocalLibraryCache
         lock (_lock)
         {
             if (!_index.Entries.TryGetValue(key, out e!)) return false;
+            SlotMutating?.Invoke(objType, bank, number, e);
             _index.Entries.Remove(key);
             if (_catalog != null)
             {
@@ -360,6 +372,55 @@ sealed class LocalLibraryCache
             new[] { new OpLogTarget(objType, bank, number, LocalLibraryIndex.DeletedTombstone) },
             $"Deleted {new ObjLoc(objType, bank, number).Label()}", null, null));
         return true;
+    }
+
+    // Puts a set of slots back exactly as LibrarianUndo captured them before an action ran — the
+    // rollback half of the Librarian's Ctrl+Z (Core/LocalLibrary/LibrarianUndo.cs). A snapshot
+    // whose Entry is null means the slot didn't exist then, so it's removed again.
+    //
+    // Restores the captured LocalIndexEntry record wholesale (it's immutable, so BaselineHash/
+    // PendingDelete/Conflicted/Version/DisplayName all come back exactly), keeps the memoized
+    // referrer catalog correct in BOTH directions (re-add a restored Combi/Set List, drop one
+    // that's going away again), and appends exactly ONE op-log entry for the whole rollback —
+    // a DeletedTombstone target for each slot that goes back to nonexistent, so index.json stays
+    // a valid fold of oplog.jsonl and the rollback is auditable history rather than an erasure,
+    // same convention Discard/Delete already follow. The catalog's body re-read is confined to
+    // Combi/Set List (the only referrer types PatchCatalog stores) so undoing a whole Program
+    // bank never turns into 128 blob reads over an SMB-mounted DataDir.
+    //
+    // Does NOT raise SlotMutating: an undo is never itself an undoable step (the recorder also
+    // suppresses capture around this call).
+    public void RestoreSlots(IReadOnlyList<LocalSlotSnapshot> slots, string description, DateTime utcNow)
+    {
+        var targets = new List<OpLogTarget>();
+        foreach (var s in slots)
+        {
+            string key = LocalLibraryIndex.Key(s.ObjType, s.Bank, s.Number);
+            if (s.Entry is { } entry)
+            {
+                lock (_lock) _index.Entries[key] = entry;
+                if (s.ObjType is LibObj.Combi or LibObj.SetList &&
+                    LocalObjectStore.TryGet(Root, entry.CurrentHash) is { } body)
+                    PatchCatalog(s.ObjType, s.Bank, s.Number, entry.Version, body);
+                targets.Add(new OpLogTarget(s.ObjType, s.Bank, s.Number, entry.CurrentHash));
+            }
+            else
+            {
+                lock (_lock)
+                {
+                    _index.Entries.Remove(key);
+                    if (_catalog != null)
+                    {
+                        if (s.ObjType == LibObj.Combi) _catalog.Combis.Remove((s.Bank, s.Number));
+                        else if (s.ObjType == LibObj.SetList) _catalog.Setlists.Remove(s.Number);
+                    }
+                }
+                targets.Add(new OpLogTarget(s.ObjType, s.Bank, s.Number, LocalLibraryIndex.DeletedTombstone));
+            }
+        }
+        if (targets.Count == 0) return;
+        OpLog.Append(Root, new OpLogEntry(Guid.NewGuid(), utcNow, "Undo", targets, description, null, null));
+        Save();
     }
 
     // Cached at write time, same discipline as HasResolvedDependencies/IsExi above — index-only,
@@ -379,6 +440,7 @@ sealed class LocalLibraryCache
         lock (_lock)
         {
             if (!_index.Entries.TryGetValue(key, out e!) || e.PendingDelete == value) return false;
+            SlotMutating?.Invoke(objType, bank, number, e);
             _index.Entries[key] = e with { PendingDelete = value };
         }
         OpLog.Append(Root, new OpLogEntry(Guid.NewGuid(), utcNow, value ? "PendingDelete" : "RestoreFromPendingDelete",

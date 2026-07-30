@@ -157,6 +157,18 @@ static class LocalLibrarySelfTests
             Check("edit-marks-dirty", cache.IsDirty(LibObj.Program, 0x00, 0));
             Check("edit-updates-display-name", cache.GetDisplayName(LibObj.Program, 0x00, 0) == "EDITED PROG");
 
+            // Regression: a dirty leaf sitting inside a COLLAPSED bank had no way to signal that
+            // (the red dot lives on ObjectTreeNode.IsDirty, only ever set by MakeLeafNode) until
+            // the bank was expanded — ObjectTreeScaffold.BuildTyped now bubbles IsDirty up to the
+            // bank node AND the type-root node from their own children.
+            var localVm = new ViewModels.LocalLibraryPaneViewModel(cache);
+            var programsRoot = localVm.Roots.First(n => n.Label == "Programs");
+            var dirtyBankNode = programsRoot.Children.First(n => n.BankRef?.Bank == 0x00);
+            Check("dirty-leaf-bubbles-to-bank-node", dirtyBankNode.IsDirty);
+            Check("dirty-leaf-bubbles-to-type-root", programsRoot.IsDirty);
+            var combisRoot = localVm.Roots.First(n => n.Label == "Combis");
+            Check("clean-type-root-stays-clean", !combisRoot.IsDirty);
+
             var result2 = await LibraryPullPipeline.PullAsync(exec, cache, full: false);
             Check("unrelated-pull-preserves-edit",
                 cache.IsDirty(LibObj.Program, 0x00, 0) && !cache.IsConflicted(LibObj.Program, 0x00, 0));

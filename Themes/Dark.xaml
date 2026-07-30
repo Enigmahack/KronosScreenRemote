@@ -543,16 +543,18 @@
     <SolidColorBrush x:Key="SelectionHighlightBrush" Color="#FF88AADD"/>
 
     <!-- Git-style staging color for the Librarian's local pane (TV_Local in Views/
-         LibrarianShellWindow.xaml) — Staged/red = a local edit hasn't been pushed yet;
-         Committed/green = this session's Sync/Commit wrote it. Same content-level-Border
-         technique as SelectionHighlightBrush, for the same reason (the stock TreeViewItem
-         template's own IsSelected trigger would otherwise win). -->
-    <SolidColorBrush x:Key="StagedHighlightBrush" Color="#FF6E1A1A"/>
+         LibrarianShellWindow.xaml) — Committed/green = this session's Sync/Commit wrote it.
+         (The Staged/red counterpart, for a local edit that hasn't been pushed yet, used to
+         live here as a whole-row Background fill — StagedHighlightBrush — but that fought
+         with the row's own selection highlight; IsDirty now drives a small red dot using
+         DangerTextBrush instead, so it no longer needs its own brush.) Same content-level-
+         Border technique as SelectionHighlightBrush, for the same reason (the stock
+         TreeViewItem template's own IsSelected trigger would otherwise win). -->
     <SolidColorBrush x:Key="CommittedHighlightBrush" Color="#FF1A6E2A"/>
 
     <!-- New Librarian rebuild (Views/LibrarianShellWindow.xaml): a local edit whose bank
          changed on hardware since baseline — flagged, distinct from the plain "dirty/
-         uncommitted" red above, since it needs the user's attention before it can push.
+         uncommitted" state above, since it needs the user's attention before it can push.
          Same content-level-Border technique, same reason. -->
     <SolidColorBrush x:Key="ConflictHighlightBrush" Color="#FFC08A20"/>
 

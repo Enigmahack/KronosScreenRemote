@@ -62,12 +62,21 @@ sealed class MergeCache
 
     public IReadOnlyCollection<MergeEntry> Entries => _byHash.Values;
 
+    // Raised immediately BEFORE any change to what's staged (a pull, a removal, a clear, a
+    // placement record). The Librarian's linear undo (Core/LocalLibrary/LibrarianUndo.cs) is the
+    // only subscriber, and it uses this to snapshot the staging state LAZILY — only actions that
+    // actually touch the Merge Window pay for copying it, so an unrelated rename doesn't.
+    public event Action? Mutating;
+
     public MergeCache(IMergeCachePersistence persistence)
     {
         _persistence = persistence;
-        var snapshot = _persistence.Load();
-        if (snapshot == null) return;
+        if (_persistence.Load() is { } snapshot) LoadFrom(snapshot);
+    }
 
+    // Shared by the constructor (disk snapshot) and Restore (an undo step's snapshot).
+    void LoadFrom(MergeCacheSnapshot snapshot)
+    {
         foreach (var e in snapshot.Entries)
         {
             var entry = new MergeEntry
@@ -82,6 +91,25 @@ sealed class MergeCache
         }
         foreach (var (hash, loc) in snapshot.PlacedAddresses) _placedAddresses[hash] = loc;
         RebuildPendingGapIndex();
+    }
+
+    // A snapshot safe to HOLD (unlike Save's, which is serialized immediately): MergeRefSite is a
+    // mutable class whose ResolvedContentHash is written in place by ReconcileGaps, so a held
+    // snapshot that shared those objects would silently change under the undo stack. Bodies are
+    // shared deliberately — nothing ever mutates one in place (ResolveReferencesForPlacement
+    // clones before patching), so copying them would only waste memory.
+    public MergeCacheSnapshot Snapshot() => BuildSnapshot(deepCopyRefSites: true);
+
+    // Replaces everything staged with `snapshot` — the Merge Window half of an undo step. Rebuilds
+    // the pending-gap index from the restored entries (it's derived state) and persists, so an
+    // undo survives a restart exactly like the placement it rolled back did.
+    public void Restore(MergeCacheSnapshot snapshot)
+    {
+        _byHash.Clear();
+        _pendingGapSites.Clear();
+        _placedAddresses.Clear();
+        LoadFrom(snapshot);
+        Save();
     }
 
     void RebuildPendingGapIndex()
@@ -151,6 +179,7 @@ sealed class MergeCache
     (List<MergeEntry> Added, List<(ObjLoc MissingRef, string RefKind)> Gaps) Pull(
         MergePullSource source, string sourceLabel, ObjLoc loc)
     {
+        Mutating?.Invoke();
         var added = new List<MergeEntry>();
         var gaps = new List<(ObjLoc, string)>();
         PullRecursive(source, sourceLabel, loc, isTopLevel: true, added, gaps);
@@ -236,6 +265,8 @@ sealed class MergeCache
     // staged resolve against it later.
     public bool Remove(string contentHash)
     {
+        if (!_byHash.ContainsKey(contentHash)) return false;
+        Mutating?.Invoke();
         if (!_byHash.Remove(contentHash)) return false;
         Save();
         return true;
@@ -246,6 +277,7 @@ sealed class MergeCache
     // remains that could ever look it up again.
     public void Clear()
     {
+        Mutating?.Invoke();
         _byHash.Clear();
         _pendingGapSites.Clear();
         _placedAddresses.Clear();
@@ -258,6 +290,7 @@ sealed class MergeCache
     // next time ResolveReferencesForPlacement runs on it.
     public void RecordPlacement(string contentHash, ObjLoc destLoc)
     {
+        Mutating?.Invoke();
         _placedAddresses[contentHash] = destLoc;
         Save();
     }
@@ -312,9 +345,21 @@ sealed class MergeCache
         return (body, unresolved);
     }
 
-    void Save() => _persistence.Save(new MergeCacheSnapshot(
+    void Save() => _persistence.Save(BuildSnapshot(deepCopyRefSites: false));
+
+    // deepCopyRefSites: false for Save (serialized or discarded immediately, so sharing the live
+    // MergeRefSite objects is free and safe); true for Snapshot, which is held indefinitely — see
+    // its own comment.
+    MergeCacheSnapshot BuildSnapshot(bool deepCopyRefSites) => new(
         _byHash.Values.Select(e => new MergeEntrySnapshot(
             e.ContentHash, e.ObjType, e.Body, e.Version, e.DisplayName, e.IsTopLevelPull,
-            e.Origins.ToList(), e.ReferencedBy.ToList(), e.RefSites.ToList())).ToList(),
-        new Dictionary<string, ObjLoc>(_placedAddresses)));
+            e.Origins.ToList(), e.ReferencedBy.ToList(),
+            deepCopyRefSites
+                ? e.RefSites.Select(s => new MergeRefSite
+                {
+                    OwnerHash = s.OwnerHash, RefKind = s.RefKind, Site = s.Site,
+                    TargetLoc = s.TargetLoc, ResolvedContentHash = s.ResolvedContentHash,
+                }).ToList()
+                : e.RefSites.ToList())).ToList(),
+        new Dictionary<string, ObjLoc>(_placedAddresses));
 }

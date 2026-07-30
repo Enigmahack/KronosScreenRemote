@@ -10,6 +10,22 @@
         ResizeMode="CanResize"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
+    <!-- Ctrl+Z: bound as ApplicationCommands.Undo rather than a raw KeyBinding on purpose. WPF
+         already ships Ctrl+Z as that command's input gesture, and a focused TextBox (a Rename/
+         Properties dialog field) handles the command itself before it can bubble up to this
+         window — so typing undo inside a text field still means "undo my typing", not "roll back
+         the last library edit". CanExecute keeps the gesture and the toolbar button in step with
+         the undo stack's actual depth (LibrarianShellViewModel.CanUndo). -->
+    <Window.CommandBindings>
+        <CommandBinding Command="ApplicationCommands.Undo" Executed="OnUndoCommand" CanExecute="OnCanUndoCommand"/>
+    </Window.CommandBindings>
+    <!-- Explicit gesture as well as the binding above: WPF's own Ctrl+Z InputGesture for this
+         command is only guaranteed to be consulted for elements that register it (TextBoxBase
+         does), so this makes the shortcut fire with a TREE focused too. Gesture translation walks
+         from the FOCUSED element upward, so a text field's own Ctrl+Z still wins over this. -->
+    <Window.InputBindings>
+        <KeyBinding Key="Z" Modifiers="Control" Command="ApplicationCommands.Undo"/>
+    </Window.InputBindings>
     <Window.Resources>
         <local:NullOrEmptyToVisibilityConverter x:Key="NullToCollapsed"/>
         <local:EmptyStringToNullConverter x:Key="EmptyToNull"/>
@@ -70,27 +86,29 @@
                 <Border.Style>
                     <Style TargetType="Border" BasedOn="{StaticResource TreeNodeSelectionStyle}">
                         <Style.Triggers>
+                            <!-- IsDirty deliberately does NOT set Background/Foreground here (it
+                                 used to, via StagedHighlightBrush — a dark RED fill): that fought
+                                 with the base style's own IsSelected trigger, since a derived
+                                 style's trigger wins over its base's for the same property, so a
+                                 selected+dirty row showed the red dirty fill with no visible way
+                                 to tell it was ALSO selected. IsDirty now drives a small red dot
+                                 instead (below, in the StackPanel) — a Foreground-only marker that
+                                 can't clash with Background, so selection stays visible on a dirty
+                                 row exactly as it does on a clean one. -->
                             <!-- Explicitly resets Foreground back to normal (not just Background)
-                                 so a selected+dirty/conflicted row — Background here wins over
-                                 the base style's per WPF's derived-style-wins-on-conflict rule —
-                                 doesn't end up with TreeNodeSelectionStyle's dark selected-text
-                                 color stranded against a dark red/orange fill. -->
-                            <DataTrigger Binding="{Binding IsDirty}" Value="True">
-                                <Setter Property="Background" Value="{StaticResource StagedHighlightBrush}"/>
-                                <Setter Property="TextElement.Foreground" Value="{StaticResource TextBrush}"/>
-                            </DataTrigger>
-                            <!-- Ordered after IsDirty deliberately — Conflicted needs the
-                                 user's attention and should visually win over plain-dirty
-                                 when both apply. -->
+                                 so a selected+conflicted row — Background here wins over the base
+                                 style's per WPF's derived-style-wins-on-conflict rule — doesn't
+                                 end up with TreeNodeSelectionStyle's dark selected-text color
+                                 stranded against a dark orange fill. -->
                             <DataTrigger Binding="{Binding IsConflicted}" Value="True">
                                 <Setter Property="Background" Value="{StaticResource ConflictHighlightBrush}"/>
                                 <Setter Property="TextElement.Foreground" Value="{StaticResource TextBrush}"/>
                             </DataTrigger>
                             <!-- Ordered after IsConflicted deliberately — pending-delete should
-                                 visually dominate dirty/conflicted (it supersedes them: hitting
-                                 Delete on a dirty item reverts the edit first, see
+                                 visually dominate conflicted (it supersedes dirty/conflicted too:
+                                 hitting Delete on a dirty item reverts the edit first, see
                                  LocalLibraryPaneViewModel.ToggleDelete). Same explicit-Foreground-
-                                 reset pattern as the two triggers above, for the same reason. -->
+                                 reset pattern as the trigger above, for the same reason. -->
                             <DataTrigger Binding="{Binding IsPendingDelete}" Value="True">
                                 <Setter Property="Background" Value="{StaticResource PendingDeleteHighlightBrush}"/>
                                 <Setter Property="TextElement.Foreground" Value="{StaticResource MutedTextBrush}"/>
@@ -123,11 +141,30 @@
                             </ContextMenu>
                         </TextBlock.ContextMenu>
                     </TextBlock>
-                    <!-- Dependency-completeness dot — a signal distinct from this row's own
-                         dirty/conflicted Background fill above (per the feature's design
-                         conversation: "let's have distinct visuals instead" of folding it into
-                         the same background). Green = every reference resolves locally, still
-                         pending Sync/Commit; red = at least one reference is still missing. -->
+                    <!-- Local-edit dot — replaces the old whole-row red Background for IsDirty
+                         (see the Border.Style trigger comment above for why): a locally-changed
+                         object not yet pushed to hardware (a potential merge/change once Sync/
+                         Commit runs) gets a small red dot here instead, so it stays visible —
+                         and the row's OWN selection highlight stays visible too — whether or not
+                         this row happens to be selected right now. -->
+                    <TextBlock Text="●" FontSize="9" Margin="5 0 0 0" VerticalAlignment="Center" Visibility="Collapsed">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsDirty}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Setter Property="Foreground" Value="{StaticResource DangerTextBrush}"/>
+                                        <Setter Property="ToolTip" Value="Locally changed — pending Sync/Commit."/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <!-- Dependency-completeness dot — a signal distinct from IsDirty's dot above
+                         (per the feature's design conversation: "let's have distinct visuals
+                         instead" of folding it into the same indicator). Green = every reference
+                         resolves locally, still pending Sync/Commit; red = at least one
+                         reference is still missing. -->
                     <TextBlock Text="●" FontSize="9" Margin="5 0 0 0" VerticalAlignment="Center" Visibility="Collapsed">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
@@ -235,6 +272,13 @@
             <CheckBox Content="Force Full Sync" VerticalAlignment="Center" Margin="10 0 0 0"
                       IsChecked="{Binding ForceFullPull}"
                       ToolTip="Instead of syncing changes, forces a complete sync for all programs/combis/set lists on the Kronos."/>
+            <!-- Window-wide (all three panes), not per-pane: one step per user gesture, so an
+                 accidental whole-bank drag out of the Merge Window is a single press. Greys out
+                 when there's nothing to undo, and its tooltip names the exact step that's next
+                 (UndoLabel) rather than a generic hint. Nothing already pushed to hardware is
+                 ever offered here — a successful Sync/Commit empties the stack. -->
+            <Button x:Name="BTN_Undo" Content="Undo" Padding="10 2" Margin="16 0 0 0"
+                    Command="{Binding UndoCommand}" ToolTip="{Binding UndoLabel}"/>
             <TextBlock VerticalAlignment="Center" Margin="16 0 0 0"
                        Foreground="{StaticResource AccentBrush}" TextTrimming="CharacterEllipsis"
                        Text="{Binding StatusText}" ToolTip="{Binding StatusText, Converter={StaticResource EmptyToNull}}"/>
@@ -343,9 +387,21 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <Button Grid.Row="0" Content="Clear Merge" Padding="10 2" HorizontalAlignment="Left" Margin="0 0 0 6"
-                            Click="OnClearMergeButton"
-                            ToolTip="Abandons everything staged here, whether or not any of it has been placed into Local Library yet."/>
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0 0 0 6">
+                        <Button Content="Clear Merge" Padding="10 2" HorizontalAlignment="Left"
+                                Click="OnClearMergeButton"
+                                ToolTip="Abandons everything staged here, whether or not any of it has been placed into Local Library yet."/>
+                        <!-- Bypasses PlanBatchMove's orphan gate (Core/BatchMoveModel.cs), which
+                             otherwise REFUSEs placing onto a slot still referenced by another
+                             local Combi/Set List. Read at the moment of placement by
+                             LibrarianShellViewModel's PlaceFromMerge/PlaceMergeGroupSequentially/
+                             PlaceMergeBankWithTypeChange (see MergePaneViewModel.ForceOverwrite) —
+                             leave it unchecked unless a placement was just REFUSED for exactly
+                             this reason. -->
+                        <CheckBox Content="Force Overwrite" VerticalAlignment="Center" Margin="12 0 0 0"
+                                  IsChecked="{Binding MergePane.ForceOverwrite}"
+                                  ToolTip="Placing onto a slot still referenced by another Combi/Set List normally refuses, to avoid silently breaking that reference. Check this to overwrite it anyway — the referrer(s) will then resolve to the NEW object instead of the old one. The old occupant is still diverted to the session clipboard, never lost outright."/>
+                    </StackPanel>
 
                     <TextBlock Grid.Row="1" Margin="0 0 0 6" FontSize="11" Foreground="{StaticResource AccentBrush}"
                                TextTrimming="CharacterEllipsis" Text="{Binding MergePane.StatusText}"

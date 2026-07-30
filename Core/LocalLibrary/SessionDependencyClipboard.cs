@@ -41,4 +41,13 @@ sealed class SessionDependencyClipboard
     public void Remove(SessionDependencyEntry entry) => _entries.Remove(entry);
 
     public void Clear() => _entries.Clear();
+
+    // Puts the whole pending list back as an undo step captured it (Core/LocalLibrary/
+    // LibrarianUndo.cs) — a placement that tracked new unresolved dependencies must stop
+    // reporting them once that placement is rolled back.
+    public void ReplaceAll(IReadOnlyList<SessionDependencyEntry> entries)
+    {
+        _entries.Clear();
+        _entries.AddRange(entries);
+    }
 }

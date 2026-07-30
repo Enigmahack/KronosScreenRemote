@@ -13,13 +13,19 @@ namespace KronosScreenRemote.ViewModels;
 // (PCG -> local, requirement 12) lives HERE rather than on either pane's own ViewModel,
 // since it's the one thing that genuinely needs both panes plus the session clipboard at
 // once — LocalPane and PcgPane individually don't know about each other.
-partial class LibrarianShellViewModel : ObservableObject
+partial class LibrarianShellViewModel : ObservableObject, IDisposable
 {
     readonly ILibrarianService _sysEx;
     readonly LocalLibraryCache _cache;
     readonly AppSettings _settings;
     readonly string _host;
     readonly SessionDependencyClipboard _sessionClipboard = new();
+
+    // Linear undo over every LOCAL (pre-Commit) edit made in this window — see
+    // Core/LocalLibrary/LibrarianUndo.cs for the capture model and what's deliberately out of
+    // scope. Every mutating action here (and on LocalPane, via its injected BeginUndo) wraps
+    // itself in one scope, so one user gesture is one Ctrl+Z.
+    readonly LibrarianUndoRecorder _undo;
 
     // Live-queried (func 0x61) + persisted Program Bank Types — seeded from the on-disk cache
     // at construction, refreshed from real hardware in the background (WarmProgramBankTypesAsync).
@@ -57,6 +63,18 @@ partial class LibrarianShellViewModel : ObservableObject
         LocalPane = new LocalLibraryPaneViewModel(cache);
         MergePane = new MergePaneViewModel(new MergeCache(BuildMergePersistence(settings)));
         LocalPane.BankTypeOf = BankTypeOf;
+
+        _undo = new LibrarianUndoRecorder(
+            cache,
+            MergePane.Snapshot, MergePane.Restore,
+            h => MergePane.CacheMutating += h, h => MergePane.CacheMutating -= h,
+            () => _sessionClipboard.Pending, RestoreSessionDependencies);
+        _undo.Changed += OnUndoStackChanged;
+        // The Local pane's own edits (rename/paste/delete/discard/properties) are captured by the
+        // same recorder — it has no access to it directly, same injection pattern BankTypeOf uses.
+        LocalPane.BeginUndo = _undo.Begin;
+        MergePane.BeginUndo = _undo.Begin;
+
         RefreshHistory();
 
         // Kicks off the cache's one-time referrer-catalog build (see LocalLibraryCache.
@@ -171,6 +189,67 @@ partial class LibrarianShellViewModel : ObservableObject
         RefreshHistory();
     }
 
+    // ── Undo (Ctrl+Z / the toolbar's Undo button) ─────────────────────────────────────────
+    // One step per user gesture, over LOCAL state only — see Core/LocalLibrary/LibrarianUndo.cs
+    // for the capture model, and its class comment for what's deliberately outside undo's reach
+    // (the displaced-occupant safety clipboard, anything already pushed to hardware, Clear History).
+    // Every mutating method below opens exactly one scope; the Local/Merge panes' own actions do
+    // the same via their injected BeginUndo.
+
+    [ObservableProperty] string undoLabel = AppMessages.Librarian.Shell.UndoNothingTooltip;
+
+    // Gated on !IsBusy for the same reason Sync/Commit are, plus one that's specific to undo:
+    // RestoreSlots puts a whole prior LocalIndexEntry back, BaselineHash included, so an undo
+    // landing while a push is mid-flight could roll a baseline RecordPushSuccesses had just
+    // advanced BACKWARD — re-dirtying an object that was in fact already written to hardware.
+    // Every other local edit path only ever preserves the existing baseline; this is the one that
+    // can move it, so it must not run concurrently with a push.
+    public bool CanUndo => _undo.CanUndo && !IsBusy;
+
+    [RelayCommand(CanExecute = nameof(CanUndo))]
+    void Undo()
+    {
+        if (_undo.Undo() is not { } description)
+        {
+            StatusText = AppMessages.Librarian.Shell.NothingToUndo;
+            return;
+        }
+        // The Merge pane and the pending-dependency list refresh themselves as part of the
+        // restore (MergePane.Restore / RestoreSessionDependencies); the Local tree and the
+        // History panel are this method's to refresh. Missing any one of these reads to the
+        // user as "undo did nothing."
+        LocalPane.RefreshTree();
+        NotifyLocalEditMade();
+        // The per-pane lines describe the action that was just rolled back ("Placed 3…",
+        // "Pulled 3 object(s)…") — stale now, same reasoning as after a successful push.
+        ClearPaneStatuses();
+        StatusText = AppMessages.Librarian.Shell.Undone(description);
+    }
+
+    void OnUndoStackChanged()
+    {
+        UndoLabel = _undo.TopDescription is { } description
+            ? AppMessages.Librarian.Shell.UndoTooltip(description)
+            : AppMessages.Librarian.Shell.UndoNothingTooltip;
+        UndoCommand.NotifyCanExecuteChanged();
+    }
+
+    void RestoreSessionDependencies(IReadOnlyList<SessionDependencyEntry> entries)
+    {
+        _sessionClipboard.ReplaceAll(entries);
+        RefreshSessionClipboard();
+    }
+
+    // The cache and the merge cache both outlive this ViewModel's own window, so the recorder's
+    // event subscriptions have to be released when the window closes (LibrarianShellWindow's
+    // Closing handler) — otherwise a reopened Librarian's edits would also be observed by the
+    // previous session's dead recorder.
+    public void Dispose()
+    {
+        _undo.Changed -= OnUndoStackChanged;
+        _undo.Dispose();
+    }
+
     [RelayCommand(CanExecute = nameof(CanRunHardwareOp))]
     async Task SyncLibraryAsync()
     {
@@ -182,7 +261,7 @@ partial class LibrarianShellViewModel : ObservableObject
                 _sysEx, _cache, _sessionClipboard, ForceFullPull, m => StatusText = m);
             StatusText = AppMessages.Librarian.Shell.SyncResult(pull.ObjectsFetched, pull.Conflicts, push.Written, push.Deleted);
             if (!push.Ok) WarningText = push.Error;
-            else ClearPaneStatuses();   // requirement 5: the per-pane "Cut …/Placed …" lines are stale once pushed
+            else ClearAfterSuccessfulPush();
             AppLog.Info($"[librarian] sync done: fetched={pull.ObjectsFetched} pushed={push.Written} hasObjects={_cache.HasAnyObjects}");
         }
         catch (Exception ex)
@@ -214,7 +293,7 @@ partial class LibrarianShellViewModel : ObservableObject
                 ? AppMessages.Librarian.Shell.CommitResult(result.Written, result.Deleted)
                 : AppMessages.Librarian.Shell.CommitFailed;
             if (!result.Ok) WarningText = result.Error;
-            else ClearPaneStatuses();   // requirement 5: the per-pane "Cut …/Placed …" lines are stale once pushed
+            else ClearAfterSuccessfulPush();
         }
         catch (Exception ex)
         {
@@ -266,11 +345,23 @@ partial class LibrarianShellViewModel : ObservableObject
     {
         SyncLibraryCommand.NotifyCanExecuteChanged();
         CommitChangesCommand.NotifyCanExecuteChanged();
+        UndoCommand.NotifyCanExecuteChanged();   // see CanUndo — undo must not race a push
     }
 
     // Called after any local edit (rename/move/discard/placement) so the permanent history
     // panel reflects it immediately rather than only after a Sync/Commit.
     public void NotifyLocalEditMade() => RefreshHistory();
+
+    // Runs only after a push actually succeeded: the per-pane status lines are stale
+    // (ClearPaneStatuses, requirement 5), and every undo step below now describes local state
+    // that has been written to hardware — which this stack has no way to roll back (see
+    // LibrarianUndoRecorder.Clear), so it's dropped rather than left offering a rollback it
+    // can't honour.
+    void ClearAfterSuccessfulPush()
+    {
+        ClearPaneStatuses();
+        _undo.Clear();
+    }
 
     // Requirement 5: after a successful Sync/Commit, the per-pane status lines under each pane's
     // buttons ("Cut …", "Placed at …", "Pulled N object(s)…") describe work that's now been
@@ -296,6 +387,11 @@ partial class LibrarianShellViewModel : ObservableObject
 
     public (bool Ok, string? Error) PlaceFromPcg(ObjLoc pcgLoc, ObjLoc destLoc)
     {
+        // One undo step for the whole placement, including whatever occupant it displaces. A
+        // guard below that returns before writing anything captures nothing, so no empty step
+        // is pushed (see LibrarianUndoStep.CapturedNothing).
+        using var undo = _undo.Begin(AppMessages.Librarian.Shell.UndoPlacedAt(pcgLoc.Label(), destLoc.Label()));
+
         // Cross-type guard, same as BatchPlaceFromPcg's per-item check: the single-item drop
         // path has no upstream type check (OnLocalDrop filters on drag format only), and combi
         // bank numbers are a numeric subset of program bank numbers — a mismatched drop would
@@ -336,67 +432,118 @@ partial class LibrarianShellViewModel : ObservableObject
         MergePane.PullFromPcg(view, PcgPane.LoadedFileName ?? "(unknown)", pcgLoc);
     }
 
+    // Multi-item entry point (a multi-select or a whole-bank drag/context-menu action). Exists so
+    // ONE gesture is ONE undo step: the per-loc overload above is called in a loop, and without a
+    // scope around the whole loop, dragging a bank of 128 into the Merge Window would take 128
+    // Ctrl+Z presses to walk back. Nested Begins inside the loop join this step (see
+    // LibrarianUndoRecorder.Begin).
+    public void PullIntoMerge(IReadOnlyList<ObjLoc> pcgLocs)
+    {
+        if (pcgLocs.Count == 0) return;
+        using var undo = _undo.Begin(AppMessages.Librarian.Shell.UndoPulledIntoMerge(pcgLocs.Count));
+        foreach (var loc in pcgLocs) PullIntoMerge(loc);
+    }
+
     // ── Local -> Merge Window (requirement 3, transitive — see MergeCache.PullFromLocal) ──
     // The Merge Window as a general scratchpad: stage an already-placed Local object (plus its
     // local dependencies) back in so it can be moved/rearranged and pushed somewhere else.
     public void PullLocalIntoMerge(ObjLoc localLoc) => MergePane.PullFromLocal(_cache, localLoc);
 
+    // Same one-gesture-one-step reasoning as PullIntoMerge's list overload above.
+    public void PullLocalIntoMerge(IReadOnlyList<ObjLoc> localLocs)
+    {
+        if (localLocs.Count == 0) return;
+        using var undo = _undo.Begin(AppMessages.Librarian.Shell.UndoPulledIntoMerge(localLocs.Count));
+        foreach (var loc in localLocs) PullLocalIntoMerge(loc);
+    }
+
     // ── Merge Window group -> Local (bulk placement of a multi-item Merge selection) ─────
     // Dragging a multi-item Merge Window selection — typically the whole "Set Lists"/"Combis"/
     // "Programs" group node (LibrarianShellWindow's Merge pane bank-equivalent selection), but
     // works equally for any multi-leaf Ctrl+click selection sharing one type — onto a local
-    // bank or a specific slot within one, instead of placing one staged item at a time. Fills
-    // sequentially starting at destBank's own first free slot (LocalEditOps.FindNextFreeSlot)
-    // — exactly the same convention BatchPlaceFromPcg's own multi-item drop already uses, not
-    // "must be completely empty" (an earlier, more conservative version of this method
-    // required that; real use showed a partially-filled bank with plenty of room left was the
-    // common case, not the exception). An occupied-but-unreferenced slot in the way is
-    // overwritten with its occupant diverted to the persisted clipboard (never lost) — the
-    // same safety net every other batch placement in this app already relies on; a referenced
-    // occupant still REFUSEs via LocalEditOps.BatchPlace's own orphan gate. Only entries
-    // matching destBank's own type are placed (silently drops anything else, e.g. a stray
-    // different-type hash) — nested dependency Programs/Combis stay staged for individual
+    // bank or a specific slot within one, instead of placing one staged item at a time. If the
+    // drop landed on a specific slot, destSlot is that slot's index and the fill starts EXACTLY
+    // there — the user pointed at it, so that's where placement begins, not wherever the first
+    // free slot happens to be. Dropping on the bank/group node itself instead (destSlot null)
+    // falls back to destBank's own first free slot (LocalEditOps.FindNextFreeSlot). Either way,
+    // fill is sequential, not "must be completely empty" (an earlier, more conservative version
+    // of this method required that; real use showed a partially-filled bank with plenty of room
+    // left was the common case, not the exception). An occupied-but-unreferenced slot in the
+    // way is overwritten with its occupant diverted to the persisted clipboard (never lost) —
+    // the same safety net every other batch placement in this app already relies on; a
+    // referenced occupant still REFUSEs via LocalEditOps.BatchPlace's own orphan gate. Only
+    // entries matching destBank's own type are placed (silently drops anything else, e.g. a
+    // stray different-type hash) — nested dependency Programs/Combis stay staged for individual
     // placement afterward, exactly like PlaceFromMerge above already works (this doesn't
     // cascade into placing dependencies either). Anything beyond the bank's remaining room
     // stays staged too (never lost), same "flag what didn't fit" convention BatchPlaceFromPcg
     // uses.
-    public (bool Ok, string? Message) PlaceMergeGroupSequentially(int objType, int destBank, IReadOnlyList<string> contentHashes)
+    public (bool Ok, string? Message) PlaceMergeGroupSequentially(int objType, int destBank, IReadOnlyList<string> contentHashes, int? destSlot = null)
     {
         var descriptor = ObjectTypeRegistry.Get(objType);
+        // The exact gesture this feature exists for: one accidental whole-bank drag out of the
+        // Merge Window is one Ctrl+Z, restoring both the staged entries and every local slot the
+        // batch wrote (plus any occupant it overwrote).
+        using var undo = _undo.Begin(AppMessages.Librarian.Shell.UndoPlacedGroup(contentHashes.Count, descriptor.BankLabel(destBank)));
         var group = contentHashes.Select(h => MergePane.TryGet(h)).Where(e => e != null && e!.ObjType == objType).Select(e => e!).ToList();
         if (group.Count == 0) return (false, "nothing to place for this bank's type");
 
-        int startSlot = FindNextFreeSlot(objType, destBank);
-        int take = Math.Min(group.Count, descriptor.SlotCount - startSlot);
-        if (take <= 0) return (false, $"{descriptor.BankLabel(destBank)} is full — no free slots left.");
+        // Duplicate-content guard (same as PlaceFromMerge's single-item path): anything whose
+        // content already lives elsewhere in Local Library is repointed there instead of
+        // consuming a destination slot for a second copy — never even reaches the sequential
+        // fill below.
+        var dedupedLocs = new List<ObjLoc>();
+        var toPlace = new List<MergeEntry>();
+        foreach (var entry in group)
+        {
+            if (!WasStagedFromLocal(entry) && _cache.FindByContentHash(entry.ObjType, entry.ContentHash) is { } existingLoc)
+            {
+                MergePane.CommitPlacement(entry.ContentHash, existingLoc);
+                dedupedLocs.Add(existingLoc);
+            }
+            else toPlace.Add(entry);
+        }
+        string dedupNote = dedupedLocs.Count > 0 ? AppMessages.Librarian.Shell.ReusedExistingContentCount(dedupedLocs.Count) : "";
+
+        if (toPlace.Count == 0) return (true, dedupNote);
+
+        int startSlot = destSlot ?? FindNextFreeSlot(objType, destBank);
+        int take = Math.Min(toPlace.Count, descriptor.SlotCount - startSlot);
+        if (take <= 0)
+        {
+            return (false, destSlot is { } s
+                ? $"not enough room in {descriptor.BankLabel(destBank)} from {new ObjLoc(objType, destBank, s).Label()} onward."
+                : $"{descriptor.BankLabel(destBank)} is full — no free slots left.");
+        }
 
         var bodies = new byte[take][];
         var unresolvedPerItem = new List<MergeRefSite>[take];
         var placements = new List<BatchPlacement>();
         for (int i = 0; i < take; i++)
         {
-            var entry = group[i];
+            var entry = toPlace[i];
             (bodies[i], unresolvedPerItem[i]) = MergePane.ResolveReferencesForPlacement(entry, LocalLookup);
             placements.Add(new BatchPlacement(null, new ObjLoc(objType, destBank, startSlot + i),
                 new ObjectDump(objType, destBank, startSlot + i, entry.Version, bodies[i]), entry.DisplayName));
         }
 
-        var (ok, error, clipboardAdds) = LocalEditOps.BatchPlace(_cache, objType, placements, divertDisplacedToClipboard: true, BankTypeOf, DateTime.UtcNow);
+        var (ok, error, clipboardAdds) = LocalEditOps.BatchPlace(_cache, objType, placements, divertDisplacedToClipboard: true, BankTypeOf, DateTime.UtcNow, MergePane.ForceOverwrite);
         if (!ok) return (false, error);
 
         MergeDisplacedIntoPersistentClipboard(clipboardAdds);
         for (int i = 0; i < take; i++)
         {
             var destLoc = new ObjLoc(objType, destBank, startSlot + i);
-            MergePane.CommitPlacement(group[i].ContentHash, destLoc);
+            MergePane.CommitPlacement(toPlace[i].ContentHash, destLoc);
             TrackMergeDependencies(unresolvedPerItem[i], destLoc);
         }
         LocalPane.RefreshTree();
         NotifyLocalEditMade();
 
-        string msg = take < group.Count
-            ? $"Placed {take}; {group.Count - take} didn't fit ({descriptor.BankLabel(destBank)} is full) — still staged in the Merge Window"
+        string msg = take < toPlace.Count
+            ? $"Placed {take}; {toPlace.Count - take} didn't fit ({descriptor.BankLabel(destBank)} is full) — still staged in the Merge Window"
             : $"Placed {take}";
+        if (dedupNote.Length > 0) msg += $"; {dedupNote}";
         return (true, msg);
     }
 
@@ -447,6 +594,11 @@ partial class LibrarianShellViewModel : ObservableObject
     public (bool Ok, string? Message) PlaceMergeBankWithTypeChange(int destBank, IReadOnlyList<string> contentHashes, bool targetIsExi)
     {
         var descriptor = ObjectTypeRegistry.Get(LibObj.Program);
+        // The most destructive placement in the Librarian (it drops every local Program in destBank
+        // before writing) and the one where a mid-way REFUSE from BatchPlace would otherwise leave
+        // the bank wiped with no way back: the scope captures those removals as they happen, so the
+        // step is pushed — and Ctrl+Z recovers the bank — even on the failure path.
+        using var undo = _undo.Begin(AppMessages.Librarian.Shell.UndoCopiedBankWithTypeChange(descriptor.BankLabel(destBank)));
         var group = contentHashes.Select(h => MergePane.TryGet(h)).Where(e => e is { ObjType: LibObj.Program }).Select(e => e!).ToList();
         if (group.Count == 0) return (false, "nothing to place for this bank");
         if (group.Count > descriptor.SlotCount) group = group.Take(descriptor.SlotCount).ToList();
@@ -464,12 +616,15 @@ partial class LibrarianShellViewModel : ObservableObject
                 new ObjectDump(LibObj.Program, destBank, i, group[i].Version, body), group[i].DisplayName));
         }
 
-        var (ok, error, clipboardAdds) = LocalEditOps.BatchPlace(_cache, LibObj.Program, placements, divertDisplacedToClipboard: true, bankTypeOf: null, DateTime.UtcNow);
+        var (ok, error, clipboardAdds) = LocalEditOps.BatchPlace(_cache, LibObj.Program, placements, divertDisplacedToClipboard: true, bankTypeOf: null, DateTime.UtcNow, MergePane.ForceOverwrite);
         if (!ok) return (false, error);
 
         MergeDisplacedIntoPersistentClipboard(clipboardAdds);
         for (int i = 0; i < group.Count; i++)
             MergePane.CommitPlacement(group[i].ContentHash, new ObjLoc(LibObj.Program, destBank, i));
+        // Index metadata, not a slot write — the undo recorder's slot-level observation can't see
+        // this one, so the prior intent (often "none at all") is captured explicitly here.
+        _undo.CapturePendingBankTypeChange(destBank);
         _cache.SetPendingBankTypeChange(destBank, targetIsExi);
         _cache.Save();
         LocalPane.RefreshTree();
@@ -482,14 +637,39 @@ partial class LibrarianShellViewModel : ObservableObject
     // including a dependency's, since only they know whether a bank should stay empty or a
     // partially-filled one should be continued; see this feature's own design conversation). ──
 
+    // The duplicate-content guard below only applies to genuinely NEW content (pulled from a
+    // .pcg file) — an entry the Merge Window staged FROM Local Library itself (PullLocalIntoMerge,
+    // "Move to Merge Window") already has a known local home; placing it elsewhere is the whole
+    // point of that feature (an intentional copy/rearrange), not an accidental duplicate to warn
+    // about or redirect. Without this exclusion, FindByContentHash would always find the entry's
+    // own origin and silently no-op the placement.
+    static bool WasStagedFromLocal(MergeEntry entry) =>
+        entry.Origins.Any(o => o.PcgFileName == MergeCache.LocalSourceLabel);
+
     public (bool Ok, string? Error) PlaceFromMerge(string mergeContentHash, ObjLoc destLoc)
     {
+        using var undo = _undo.Begin(AppMessages.Librarian.Shell.UndoPlacedMergeItemAt(destLoc.Label()));
         var entry = MergePane.TryGet(mergeContentHash);
         if (entry == null) return (false, "not found in the Merge Window");
         // Cross-type guard — see PlaceFromPcg's identical check for why this can't be
         // left to the drop handlers.
         if (entry.ObjType != destLoc.ObjType)
             return (false, $"can't place a {ObjectTypeRegistry.Get(entry.ObjType).DisplayName} on a {ObjectTypeRegistry.Get(destLoc.ObjType).DisplayName} slot");
+
+        // Duplicate-content guard: this entry's OWN content (not just its references — see
+        // ResolveReferencesForPlacement below for that) may already be sitting somewhere else
+        // in Local Library, byte-identical. Rather than writing a second copy, repoint this
+        // hash at that existing location the same way a dependency would (RecordPlacement),
+        // so any Merge-staged sibling that references it resolves to the ONE copy. Skipped
+        // when the match IS the requested destination — that's just re-placing onto its own
+        // slot, not a duplicate elsewhere.
+        if (!WasStagedFromLocal(entry) &&
+            _cache.FindByContentHash(entry.ObjType, entry.ContentHash) is { } existingLoc && !existingLoc.Equals(destLoc))
+        {
+            MergePane.CommitPlacement(mergeContentHash, existingLoc);
+            return (true, AppMessages.Librarian.Shell.ReusedExistingContent(existingLoc.Label()));
+        }
+
         // Patches whatever of this entry's OWN dependency references resolve — either because
         // the dependency was ALSO placed via Merge this session (_placedAddresses), or because
         // it already exists ANYWHERE in Local Library (LocalLookup, by content) — the
@@ -499,7 +679,7 @@ partial class LibrarianShellViewModel : ObservableObject
 
         var (ok, error, clipboardAdds) = LocalEditOps.PlaceObject(
             _cache, destLoc, entry.ObjType, entry.Version, body, entry.DisplayName,
-            divertDisplacedToClipboard: true, DateTime.UtcNow, BankTypeOf);
+            divertDisplacedToClipboard: true, DateTime.UtcNow, BankTypeOf, MergePane.ForceOverwrite);
         if (!ok) return (false, error);
 
         MergeDisplacedIntoPersistentClipboard(clipboardAdds);
@@ -517,6 +697,8 @@ partial class LibrarianShellViewModel : ObservableObject
     // overflow logic the persisted clipboard's Paste Multi/All already uses.
     public (bool Ok, string? Message) BatchPlaceFromPcg(int objType, IReadOnlyList<ObjLoc> pcgLocs, int destBank)
     {
+        using var undo = _undo.Begin(AppMessages.Librarian.Shell.UndoPlacedGroup(
+            pcgLocs.Count, ObjectTypeRegistry.Get(objType).BankLabel(destBank)));
         var pending = new List<ClipboardEntry>();
         foreach (var loc in pcgLocs)
         {

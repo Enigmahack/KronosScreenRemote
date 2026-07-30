@@ -23,6 +23,26 @@ partial class MergePaneViewModel : ObservableObject
 
     [ObservableProperty] string statusText = "";
 
+    // "Force Overwrite" (Views/LibrarianShellWindow.xaml's Merge Window GroupBox): bypasses
+    // BatchLibrarian.PlanBatchMove's orphan gate, which otherwise REFUSEs placing onto a slot
+    // still referenced by another local Combi/Set List (overwriting it would leave that
+    // referrer resolving to nothing). Read by LibrarianShellViewModel's own Merge -> Local
+    // placement methods (PlaceFromMerge/PlaceMergeGroupSequentially/
+    // PlaceMergeBankWithTypeChange) at the moment of placement — checking this box doesn't
+    // retroactively re-plan anything already placed. The old occupant is still diverted to the
+    // session clipboard (never lost outright); only its referrer(s) end up repointed to the
+    // NEW object instead of the old one.
+    [ObservableProperty] bool forceOverwrite;
+
+    // Injected by LibrarianShellViewModel (same pattern as LocalLibraryPaneViewModel.BankTypeOf):
+    // opens one undo capture scope per action here. Null in a headless self-test that constructs
+    // this pane directly — every action below then simply isn't undoable, never broken. A scope
+    // opened inside an OUTER one (the shell's own pull loops) joins that step rather than
+    // splitting it, so one gesture stays one Ctrl+Z.
+    public Func<string, IDisposable>? BeginUndo { get; set; }
+
+    IDisposable? Undoable(string description) => BeginUndo?.Invoke(description);
+
     public MergePaneViewModel(MergeCache cache)
     {
         _cache = cache;
@@ -35,6 +55,7 @@ partial class MergePaneViewModel : ObservableObject
     // block" contract DependencyScanner's existing gap-tracking already uses.
     public void PullFromPcg(PcgLibraryView pcg, string pcgFileName, ObjLoc loc)
     {
+        using var undo = Undoable(AppMessages.Librarian.Shell.UndoPulledIntoMerge(1));
         var (added, gaps) = _cache.PullFromPcg(pcg, pcgFileName, loc);
         RefreshTree();
         StatusText = gaps.Count == 0
@@ -48,6 +69,7 @@ partial class MergePaneViewModel : ObservableObject
     // pane only ever holds the MergeCache.
     public void PullFromLocal(LocalLibraryCache localCache, ObjLoc loc)
     {
+        using var undo = Undoable(AppMessages.Librarian.Shell.UndoPulledIntoMerge(1));
         var (added, gaps) = _cache.PullFromLocal(localCache, loc);
         RefreshTree();
         StatusText = gaps.Count == 0
@@ -59,9 +81,29 @@ partial class MergePaneViewModel : ObservableObject
     // comment). Confirmation lives in code-behind, same split as ClearHistory.
     public void Clear()
     {
+        using var undo = Undoable(AppMessages.Librarian.Shell.UndoClearedMerge);
         _cache.Clear();
         RefreshTree();
         StatusText = AppMessages.Librarian.Merge.Cleared;
+    }
+
+    // ── Undo support (Core/LocalLibrary/LibrarianUndo.cs) ────────────────────────────────
+    // The recorder needs the staging state itself, plus a signal for WHEN it changes so it can
+    // snapshot lazily; the MergeCache stays private (this pane owns it), so all three are
+    // forwarded rather than handing the cache out.
+
+    public MergeCacheSnapshot Snapshot() => _cache.Snapshot();
+
+    public void Restore(MergeCacheSnapshot snapshot)
+    {
+        _cache.Restore(snapshot);
+        RefreshTree();
+    }
+
+    public event Action CacheMutating
+    {
+        add => _cache.Mutating += value;
+        remove => _cache.Mutating -= value;
     }
 
     public MergeEntry? TryGet(string contentHash) => _cache.TryGet(contentHash);
@@ -76,6 +118,7 @@ partial class MergePaneViewModel : ObservableObject
     // referenced by something else staged, or the user may want to keep them regardless.
     public void Remove(IReadOnlyList<string> contentHashes)
     {
+        using var undo = Undoable(AppMessages.Librarian.Shell.UndoRemovedFromMerge(contentHashes.Count));
         int removed = 0;
         foreach (var hash in contentHashes)
             if (_cache.Remove(hash)) removed++;

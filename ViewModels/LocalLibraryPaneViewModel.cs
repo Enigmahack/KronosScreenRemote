@@ -45,6 +45,14 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     // PasteBatch's own bank-type check can't verify — advisory only, never blocks.
     public Func<int, bool?>? BankTypeOf { get; set; }
 
+    // Injected by LibrarianShellViewModel the same way BankTypeOf is: opens one undo capture scope
+    // (Core/LocalLibrary/LibrarianUndo.cs) per user action here, so Ctrl+Z walks back a paste/
+    // rename/delete/discard exactly as it does a Merge Window drop. Null in a headless self-test
+    // that constructs this pane on its own — the action then simply isn't undoable, never broken.
+    public Func<string, IDisposable>? BeginUndo { get; set; }
+
+    IDisposable? Undoable(string description) => BeginUndo?.Invoke(description);
+
     public enum ClipboardMode { None, Cut, Copy }
 
     // Field named `mode` (not `clipMode`) deliberately — CommunityToolkit's generated
@@ -239,6 +247,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     // more than one (same fill behavior as PasteIntoBank below).
     public (bool Ok, string? Message) PasteIntoSlot(ObjLoc dest)
     {
+        using var undo = Undoable(AppMessages.Librarian.Shell.UndoPastedAt(dest.Label()));
         if (!HasClipboard) return (false, AppMessages.Librarian.Local.NothingCutOrCopied);
         if (_clipItems.Any(l => l.ObjType != dest.ObjType)) return (false, AppMessages.Librarian.Local.TypeMismatch);
 
@@ -257,6 +266,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     // occupied slot instead, or use Copy.
     public (bool Ok, string? Message) PasteIntoBank(int objType, int bank)
     {
+        using var undo = Undoable(AppMessages.Librarian.Shell.UndoPastedAt(ObjectTypeRegistry.Get(objType).BankLabel(bank)));
         if (!HasClipboard) return (false, AppMessages.Librarian.Local.NothingCutOrCopied);
         if (_clipItems.Any(l => l.ObjType != objType)) return (false, AppMessages.Librarian.Local.TypeMismatch);
         if (Mode == ClipboardMode.Cut)
@@ -348,6 +358,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
 
     public void Rename(ObjLoc loc, string newName)
     {
+        using var undo = Undoable(AppMessages.Librarian.Shell.UndoRenamed(loc.Label()));
         var (ok, error) = LocalEditOps.Rename(_cache, loc, newName, DateTime.UtcNow);
         StatusText = ok ? AppMessages.Librarian.Local.Renamed(loc.Label(), newName) : AppMessages.Librarian.Local.RenameFailed(error);
         if (ok) RefreshTree();
@@ -355,6 +366,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
 
     public void Discard(ObjLoc loc)
     {
+        using var undo = Undoable(AppMessages.Librarian.Shell.UndoDiscarded(loc.Label()));
         var (ok, error) = LocalEditOps.Discard(_cache, loc, DateTime.UtcNow);
         StatusText = ok ? AppMessages.Librarian.Local.Discarded(loc.Label()) : AppMessages.Librarian.Local.DiscardFailed(error);
         if (ok) RefreshTree();
@@ -366,6 +378,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     public void DiscardMany(IReadOnlyList<ObjLoc> locs)
     {
         if (locs.Count == 0) return;
+        using var undo = Undoable(AppMessages.Librarian.Shell.UndoDiscardedMany(locs.Count));
         int ok = 0;
         foreach (var loc in locs)
             if (LocalEditOps.Discard(_cache, loc, DateTime.UtcNow).Ok) ok++;
@@ -381,6 +394,9 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     public void ToggleDelete(ObjLoc loc)
     {
         bool markForDeletion = !_cache.IsPendingDelete(loc.ObjType, loc.Bank, loc.Number);
+        // Discard + SetPendingDelete both write this same slot; the capture keeps the FIRST prior
+        // state per slot, so one Ctrl+Z restores the pending edit AND the flag together.
+        using var undo = Undoable(AppMessages.Librarian.Shell.UndoDeletedOrRestored(markForDeletion, loc.Label()));
         if (markForDeletion) LocalEditOps.Discard(_cache, loc, DateTime.UtcNow);
         var (ok, error) = LocalEditOps.SetPendingDelete(_cache, loc, markForDeletion, DateTime.UtcNow);
         StatusText = ok
@@ -397,6 +413,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     {
         if (locs.Count == 0) return;
         bool markForDeletion = !locs.All(l => _cache.IsPendingDelete(l.ObjType, l.Bank, l.Number));
+        using var undo = Undoable(AppMessages.Librarian.Shell.UndoDeletedOrRestoredMany(markForDeletion, locs.Count));
         int ok = 0;
         foreach (var loc in locs)
         {
@@ -419,6 +436,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     {
         var locs = _cache.DirtyObjects().Concat(_cache.PendingDeleteObjects()).Distinct().ToList();
         if (locs.Count == 0) { StatusText = AppMessages.Librarian.Local.NothingToClear; return; }
+        using var undo = Undoable(AppMessages.Librarian.Shell.UndoClearedChanges(locs.Count));
         int ok = 0;
         foreach (var loc in locs)
         {
@@ -444,6 +462,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
 
     public void EditProperties(ObjLoc loc, string? name, int? category, int? subCategory)
     {
+        using var undo = Undoable(AppMessages.Librarian.Shell.UndoEdited(loc.Label()));
         var (ok, error) = LocalEditOps.EditProperties(_cache, loc, name, category, subCategory, DateTime.UtcNow);
         StatusText = ok ? AppMessages.Librarian.Local.Edited(loc.Label()) : AppMessages.Librarian.Local.EditFailed(error);
         if (ok) RefreshTree();
@@ -451,6 +470,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
 
     public void EditSetListSlot(ObjLoc loc, int slot, string? name, int? color, string? comments)
     {
+        using var undo = Undoable(AppMessages.Librarian.Shell.UndoEditedSlot(loc.Label(), slot));
         var (ok, error) = LocalEditOps.EditSetListSlot(_cache, loc, slot, name, color, comments, DateTime.UtcNow);
         StatusText = ok ? AppMessages.Librarian.Local.EditedSlot(loc.Label(), slot) : AppMessages.Librarian.Local.EditFailed(error);
         if (ok) RefreshTree();

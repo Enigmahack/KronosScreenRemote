@@ -68,6 +68,46 @@ static class MergeGroupPlacementSelfTests
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
 
+        // ── Dropped on a specific slot -> fill starts EXACTLY there, not at the bank's first
+        //    free slot (the bug this comment's sibling test above doesn't cover): a user
+        //    dragging Combis onto slot U-E003 expects the paste to begin at 003, even though an
+        //    earlier free slot (e.g. 000) exists elsewhere in the bank. ────────────────────────
+        string slotRoot = Path.Combine(Path.GetTempPath(), "kronos_selftest_merge_group_placement_slot");
+        if (Directory.Exists(slotRoot)) Directory.Delete(slotRoot, recursive: true);
+        try
+        {
+            var exec = new FakeMoveExecutor();
+            var cache = new LocalLibraryCache(slotRoot);
+            await LibraryPullPipeline.PullAsync(exec, cache, full: true);
+
+            var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), "");
+
+            var pcgBuffer = BuildSyntheticPcg(out var combiABody, out var combiBBody, out var combiCBody);
+            var file = PcgFile.Open(pcgBuffer);
+            Check("slot-pcg-opens", file != null);
+            if (file == null) return fails;
+
+            vm.PcgPane.LoadForTesting(new PcgLibraryView(file));
+            vm.PullIntoMerge(new ObjLoc(LibObj.Combi, 0x00, 0));
+            vm.PullIntoMerge(new ObjLoc(LibObj.Combi, 0x00, 1));
+            vm.PullIntoMerge(new ObjLoc(LibObj.Combi, 0x00, 2));
+
+            string hashA = LocalObjectStore.ComputeHash(combiABody);
+            string hashB = LocalObjectStore.ComputeHash(combiBBody);
+            string hashC = LocalObjectStore.ComputeHash(combiCBody);
+
+            // Slot 0 is left free on purpose — if startSlot fell back to FindNextFreeSlot instead
+            // of honoring destSlot, the group would land at 0/1/2 instead of 3/4/5.
+            var (ok, _) = vm.PlaceMergeGroupSequentially(LibObj.Combi, 0x40, new[] { hashA, hashB, hashC }, destSlot: 3);
+            Check("slot-group-drop-ok", ok);
+
+            Check("slot-combiA-at-dropped-slot-3", cache.GetDisplayName(LibObj.Combi, 0x40, 3) == "COMBI A");
+            Check("slot-combiB-at-slot-4", cache.GetDisplayName(LibObj.Combi, 0x40, 4) == "COMBI B");
+            Check("slot-combiC-at-slot-5", cache.GetDisplayName(LibObj.Combi, 0x40, 5) == "COMBI C");
+            Check("slot-0-left-empty", !cache.Exists(LibObj.Combi, 0x40, 0));
+        }
+        finally { if (Directory.Exists(slotRoot)) Directory.Delete(slotRoot, recursive: true); }
+
         // ── Whole-bank copy with EXi/HD-1 type change (requirement 4), via PullFromLocal so no
         //    synthetic-PCG program encoding is needed: seed EXi programs in source bank I-A and
         //    HD-1 programs in destination bank U-A, pull the EXi bank into the Merge Window, then
@@ -120,6 +160,67 @@ static class MergeGroupPlacementSelfTests
             Check("tc-source-untouched", cache.Exists(LibObj.Program, srcBank, 0));
         }
         finally { if (Directory.Exists(tcRoot)) Directory.Delete(tcRoot, recursive: true); }
+
+        // ── Duplicate-content guard: placing a Merge-staged item whose content is byte-
+        //    identical to something ALREADY elsewhere in Local Library reuses that location
+        //    instead of writing a second copy — single-item (PlaceFromMerge) and group
+        //    (PlaceMergeGroupSequentially) paths both covered. ──────────────────────────────────
+        string dedupRoot = Path.Combine(Path.GetTempPath(), "kronos_selftest_merge_dedup");
+        if (Directory.Exists(dedupRoot)) Directory.Delete(dedupRoot, recursive: true);
+        try
+        {
+            var exec = new FakeMoveExecutor();
+            var cache = new LocalLibraryCache(dedupRoot);
+            await LibraryPullPipeline.PullAsync(exec, cache, full: true);   // empty local library
+
+            var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), "");
+
+            var pcgBuffer = BuildSyntheticPcg(out var combiABody, out var combiBBody, out var combiCBody);
+            var file = PcgFile.Open(pcgBuffer);
+            Check("dedup-pcg-opens", file != null);
+            if (file == null) return fails;
+            vm.PcgPane.LoadForTesting(new PcgLibraryView(file));
+
+            // Seed A's exact content already in the library, at a location distinct from
+            // anything the placements below target.
+            var existingLoc = new ObjLoc(LibObj.Combi, 0x40, 50);
+            var (seedOk, _, _) = LocalEditOps.PlaceObject(cache, existingLoc, LibObj.Combi, 1, combiABody, "PRE-EXISTING A", true, DateTime.UtcNow);
+            Check("dedup-seed-ok", seedOk);
+            // Display name is decoded from the wire body itself (matches "COMBI A" baked into
+            // combiABody by BuildSyntheticPcg), not the friendly-name argument above — same as
+            // every other placement test in this file (e.g. combiA-at-slot-2 below).
+
+            string hashA = LocalObjectStore.ComputeHash(combiABody);
+            string hashB = LocalObjectStore.ComputeHash(combiBBody);
+            string hashC = LocalObjectStore.ComputeHash(combiCBody);
+
+            // Single-item path: dragging A onto a fresh slot must NOT write a second copy —
+            // it reuses the pre-existing location and reports it in the returned message.
+            vm.PullIntoMerge(new ObjLoc(LibObj.Combi, 0x00, 0));
+            var destForA = new ObjLoc(LibObj.Combi, 0x40, 60);
+            var (aOk, aNote) = vm.PlaceFromMerge(hashA, destForA);
+            Check("dedup-single-ok", aOk);
+            Check("dedup-single-not-written-at-requested-dest", !cache.Exists(LibObj.Combi, 0x40, 60));
+            Check("dedup-single-existing-untouched", cache.GetDisplayName(LibObj.Combi, 0x40, 50) == "COMBI A");
+            Check("dedup-single-note-names-existing-loc", aNote != null && aNote.Contains(existingLoc.Label()));
+            Check("dedup-single-removed-from-merge", vm.MergePane.TryGet(hashA) == null);
+
+            // Group path: B and C are genuinely new; re-stage A alongside them (it's fine for
+            // Merge to hold a duplicate entry again) and drop all three as a group — only B/C
+            // should consume destination slots, A should dedup without taking one.
+            vm.PullIntoMerge(new ObjLoc(LibObj.Combi, 0x00, 0));   // A, restaged
+            vm.PullIntoMerge(new ObjLoc(LibObj.Combi, 0x00, 1));   // B
+            vm.PullIntoMerge(new ObjLoc(LibObj.Combi, 0x00, 2));   // C
+            var (groupOk, groupMsg) = vm.PlaceMergeGroupSequentially(LibObj.Combi, 0x40, new[] { hashA, hashB, hashC });
+            Check("dedup-group-ok", groupOk);
+            Check("dedup-group-b-at-first-free-slot", cache.GetDisplayName(LibObj.Combi, 0x40, 0) == "COMBI B");
+            Check("dedup-group-c-at-next-slot", cache.GetDisplayName(LibObj.Combi, 0x40, 1) == "COMBI C");
+            Check("dedup-group-a-not-duplicated", !cache.Exists(LibObj.Combi, 0x40, 2));
+            Check("dedup-group-message-mentions-reuse", groupMsg != null && groupMsg.Contains("already existed elsewhere"));
+            Check("dedup-group-all-removed-from-merge", vm.MergePane.TryGet(hashA) == null &&
+                vm.MergePane.TryGet(hashB) == null && vm.MergePane.TryGet(hashC) == null);
+        }
+        finally { if (Directory.Exists(dedupRoot)) Directory.Delete(dedupRoot, recursive: true); }
 
         return fails;
     }

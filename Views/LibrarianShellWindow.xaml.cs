@@ -50,7 +50,9 @@ internal partial class LibrarianShellWindow : ThemedWindow
         // window had focus (known WPF owner-activation bug) — without it, closing a maximized
         // Librarian would sometimes send MainWindow to the system tray. Same one-line fix
         // FileManagerWindow.OnClosing already uses for the identical reason.
-        Closing += (_, _) => Owner = null;
+        // Disposing the ViewModel here releases the undo recorder's subscriptions to the
+        // LocalLibraryCache, which outlives this window (see LibrarianShellViewModel.Dispose).
+        Closing += (_, _) => { Owner = null; _vm.Dispose(); };
 
         // Step 4 of the auto-heal placement pipeline — the ViewModel stays free of WPF types
         // (same split as every other confirmation in this file), so it calls back into this
@@ -157,6 +159,14 @@ internal partial class LibrarianShellWindow : ThemedWindow
     // touch hardware until Sync/Commit" model) — there's nothing for Cancel to roll back beyond
     // what Clear Changes above already does explicitly, so this is just a close.
     void OnCancelButton(object sender, RoutedEventArgs e) => Close();
+
+    // ApplicationCommands.Undo (Ctrl+Z, and the top row's Undo button via the same ViewModel
+    // command) — see the CommandBinding's own comment in the XAML for why the gesture is routed
+    // through the standard command rather than a raw KeyBinding. No confirmation: undo is the
+    // recovery action, and a step only ever rolls back local state (never hardware).
+    void OnUndoCommand(object sender, ExecutedRoutedEventArgs e) => _vm.UndoCommand.Execute(null);
+
+    void OnCanUndoCommand(object sender, CanExecuteRoutedEventArgs e) => e.CanExecute = _vm.CanUndo;
 
     // ── Local pane: multi-select ─────────────────────────────────────────────────
     // Ctrl+Click toggles one; Shift+Click extends a contiguous range among the anchor's
@@ -385,8 +395,10 @@ internal partial class LibrarianShellWindow : ThemedWindow
     // as dragging them onto it (OnMergeDrop's LocalDragFormat branch).
     void OnMoveLocalToMergeMenuItem(object sender, RoutedEventArgs e)
     {
+        // The list overload, not a loop over the single-loc one: staging a whole bank has to be
+        // ONE undo step, not one per item (see LibrarianShellViewModel.PullLocalIntoMerge).
         if (((MenuItem)sender).DataContext is ObjectTreeNode { Loc: { } } or ObjectTreeNode { BankRef: { } })
-            foreach (var loc in SelectedLocs()) _vm.PullLocalIntoMerge(loc);
+            _vm.PullLocalIntoMerge(SelectedLocs());
     }
 
     // Toolbar handlers — act on the current selection (Paste/Rename need exactly one leaf).
@@ -463,7 +475,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
     // triggered from the context menu instead of a drop.
     void OnMoveToMergeMenuItem(object sender, RoutedEventArgs e)
     {
-        foreach (var loc in PcgSelectedLocs()) _vm.PullIntoMerge(loc);
+        _vm.PullIntoMerge(PcgSelectedLocs());   // one undo step for the whole selection
     }
 
     void OnPcgPreviewMouseMove(object sender, MouseEventArgs e)
@@ -609,12 +621,20 @@ internal partial class LibrarianShellWindow : ThemedWindow
                 _vm.MergePane.StatusText = AppMessages.Librarian.Shell.DropOntoSpecificSlot;
                 return;
             }
-            var (ok, error) = _vm.PlaceFromMerge(payload.ContentHashes[0], destLoc);
-            _vm.MergePane.StatusText = ok ? AppMessages.Librarian.Shell.PlacedAtWhere(destLoc.Label()) : AppMessages.Librarian.Shell.PlaceFailedDetail(error);
+            var (ok, note) = _vm.PlaceFromMerge(payload.ContentHashes[0], destLoc);
+            _vm.MergePane.StatusText = ok
+                ? (note ?? AppMessages.Librarian.Shell.PlacedAtWhere(destLoc.Label()))
+                : AppMessages.Librarian.Shell.PlaceFailedDetail(note);
             return;
         }
 
-        (int ObjType, int Bank)? destBank = target?.Loc is { } slotLoc ? (slotLoc.ObjType, slotLoc.Bank) : target?.BankRef;
+        // Dropped on a specific slot -> that slot is where the sequential fill starts (the
+        // user pointed at it, so honor it, same as the single-item exact-placement path above);
+        // dropped on the bank/group node itself -> no specific slot was picked, fall back to
+        // the bank's first free slot (PlaceMergeGroupSequentially's own default).
+        (int ObjType, int Bank, int? Slot)? destBank = target?.Loc is { } slotLoc ? (slotLoc.ObjType, slotLoc.Bank, slotLoc.Number)
+            : target?.BankRef is { } bankRef ? (bankRef.ObjType, bankRef.Bank, (int?)null)
+            : null;
         if (destBank is not { } db)
         {
             _vm.MergePane.StatusText = AppMessages.Librarian.Shell.DropOntoSlotOrBankForGroup;
@@ -639,7 +659,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
             return;
         }
 
-        var (bulkOk, msg) = _vm.PlaceMergeGroupSequentially(db.ObjType, db.Bank, payload.ContentHashes);
+        var (bulkOk, msg) = _vm.PlaceMergeGroupSequentially(db.ObjType, db.Bank, payload.ContentHashes, db.Slot);
         _vm.MergePane.StatusText = msg ?? (bulkOk ? AppMessages.Librarian.Placed : AppMessages.Librarian.PlaceFailed);
     }
 
@@ -719,9 +739,11 @@ internal partial class LibrarianShellWindow : ThemedWindow
     // Local Library).
     void OnMergeDrop(object sender, DragEventArgs e)
     {
+        // Both go through the list overloads so one drag — however many items it carried — is one
+        // undo step (see LibrarianShellViewModel.PullIntoMerge's list overload).
         if (e.Data.GetData(LocalDragFormat) is LocalDragPayload localPayload)
         {
-            foreach (var loc in localPayload.Locs) _vm.PullLocalIntoMerge(loc);
+            _vm.PullLocalIntoMerge(localPayload.Locs);
             return;
         }
         if (e.Data.GetData(PcgDragFormat) is not PcgDragPayload payload)
@@ -729,7 +751,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
             _vm.MergePane.StatusText = AppMessages.Librarian.Shell.DropNotRecognizedLibraryObject;
             return;
         }
-        foreach (var loc in payload.Locs) _vm.PullIntoMerge(loc);
+        _vm.PullIntoMerge(payload.Locs);
     }
 
     // Confirmation lives here (not the ViewModel), same split as OnClearHistoryButton.
