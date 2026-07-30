@@ -30,6 +30,28 @@ static class UiThemeSmokeTest
             _ => b.GetType().Name
         };
 
+        static void ExpandAll(System.Windows.Controls.ItemsControl parent)
+        {
+            parent.UpdateLayout();
+            foreach (var item in parent.Items)
+            {
+                if (parent.ItemContainerGenerator.ContainerFromItem(item) is not System.Windows.Controls.TreeViewItem child)
+                    continue;
+                child.IsExpanded = true;
+                ExpandAll(child);
+            }
+        }
+
+        static IEnumerable<T> VisualDescendants<T>(DependencyObject parent) where T : DependencyObject
+        {
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T match) yield return match;
+                foreach (var descendant in VisualDescendants<T>(child)) yield return descendant;
+            }
+        }
+
         void Try(string name, Func<Window> ctor)
         {
             try
@@ -141,6 +163,23 @@ static class UiThemeSmokeTest
             string undoDetail = gestureDeclared ? "Ctrl+Z gesture declared" : "NO Ctrl+Z KeyBinding on the window";
             bool routed = false;
             var librarianVm = librarian.DataContext as ViewModels.LibrarianShellViewModel;
+            if (librarianVm != null && librarian.FindName("TV_Local") is System.Windows.Controls.TreeView localTree)
+            {
+                for (int i = 0; i < 100 && !librarianVm.LocalPane.ShowTree; i++)
+                {
+                    Thread.Sleep(10);
+                    librarian.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Background);
+                }
+                ExpandAll(localTree);
+                librarian.UpdateLayout();
+                bool dotVisible = VisualDescendants<System.Windows.Controls.TextBlock>(localTree).Any(
+                    t => t.Text == "●" &&
+                         t.Visibility == Visibility.Visible &&
+                         Equals(t.ToolTip, "Locally changed — pending Sync/Commit."));
+                results.Add(("  Librarian dirty local-object dot", dotVisible,
+                    dotVisible ? null : "Dirty local object did not render its red-dot marker"));
+            }
+
             if (librarianVm != null && librarian.FindName("TV_Local") is IInputElement fromPane)
             {
                 librarianVm.LocalPane.Rename(seedLoc, "SMOKE UNDO");

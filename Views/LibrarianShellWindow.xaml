@@ -147,9 +147,10 @@
                          Commit runs) gets a small red dot here instead, so it stays visible —
                          and the row's OWN selection highlight stays visible too — whether or not
                          this row happens to be selected right now. -->
-                    <TextBlock Text="●" FontSize="9" Margin="5 0 0 0" VerticalAlignment="Center" Visibility="Collapsed">
+                    <TextBlock Text="●" FontSize="9" Margin="5 0 0 0" VerticalAlignment="Center">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding IsDirty}" Value="True">
                                         <Setter Property="Visibility" Value="Visible"/>
@@ -165,9 +166,10 @@
                          instead" of folding it into the same indicator). Green = every reference
                          resolves locally, still pending Sync/Commit; red = at least one
                          reference is still missing. -->
-                    <TextBlock Text="●" FontSize="9" Margin="5 0 0 0" VerticalAlignment="Center" Visibility="Collapsed">
+                    <TextBlock Text="●" FontSize="9" Margin="5 0 0 0" VerticalAlignment="Center">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed"/>
                                 <Style.Triggers>
                                     <DataTrigger Binding="{Binding DependencyStatus}" Value="True">
                                         <Setter Property="Visibility" Value="Visible"/>

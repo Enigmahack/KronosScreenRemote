@@ -61,12 +61,10 @@ public partial class MainWindow
                 WindowState = WindowState.Maximized;
         }, DispatcherPriority.Loaded);
 
-        // Double-click on frame exits fullscreen; handled in preview to suppress the
-        // second TOUCH_DOWN that would otherwise be sent to Kronos on click 2.
-        FrameImage.PreviewMouseLeftButtonDown += (_, e) =>
-        {
-            if (e.ClickCount == 2 && _fs.Active) { ToggleFullscreen(); e.Handled = true; }
-        };
+        // Screen gestures must use the preview route so a handled Image event cannot drop them.
+        // Keep the window's normal mouse route for all other controls, especially menus.
+        FrameImage.PreviewMouseLeftButtonDown += OnFramePreviewMouseDown;
+        FrameImage.PreviewMouseLeftButtonUp += OnFramePreviewMouseUp;
 
         ApplyMidiMonitorMenuState();
         UpdateMidiLinkBadge();   // reflect the transport chosen during ctor startup
@@ -619,6 +617,26 @@ public partial class MainWindow
                 OverlayLayer.InvalidateVisual();
             }
         }
+    }
+
+    void OnFramePreviewMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        // Suppress the second touch in a fullscreen double-click before starting a gesture.
+        if (e.ClickCount == 2 && _fs.Active)
+        {
+            ToggleFullscreen();
+            e.Handled = true;
+            return;
+        }
+
+        OnMouseDown(sender, e);
+        e.Handled = true;
+    }
+
+    void OnFramePreviewMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        OnMouseUp(sender, e);
+        e.Handled = true;
     }
 
     void OnMouseUp(object s, MouseButtonEventArgs e)

@@ -238,11 +238,11 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
 
         KeyDown    += OnKeyDown;
         KeyUp      += OnKeyUp;
-        MouseMove         += OnMouseMove;
-        PreviewMouseDown  += OnMouseDown;
-        PreviewMouseUp    += OnMouseUp;
-        MouseLeave        += OnMouseLeave;
-        MouseWheel        += OnMouseWheel;
+        MouseMove  += OnMouseMove;
+        MouseDown  += OnMouseDown;
+        MouseUp    += OnMouseUp;
+        MouseLeave += OnMouseLeave;
+        MouseWheel += OnMouseWheel;
         FrameImage.LostMouseCapture += OnFrameLostMouseCapture;
         SizeChanged += (sender, e) => RefreshFrameRect();
 
