@@ -1,7 +1,6 @@
 namespace KronosScreenRemote;
 
 using System.IO;
-using System.Text.Json;
 
 // One tracked object's pointers into the CAS blob store, keyed "type:bank:number".
 // CurrentHash == BaselineHash means clean/not-dirty. Conflicted is set by a Pull that
@@ -48,6 +47,9 @@ sealed record LocalIndexEntry(
 // single global store; the Kronos's IP can change but the objects don't.
 sealed class LocalLibraryIndex
 {
+    static readonly object FileCachesLock = new();
+    static readonly Dictionary<string, JsonFileCache<Dto>> FileCaches = new(StringComparer.OrdinalIgnoreCase);
+
     public Dictionary<string, LocalIndexEntry> Entries { get; } = new();       // key: "type:bank:number"
     public Dictionary<string, string> BankDigestBaseline { get; } = new();     // key: "type:bank", value: hex SHA-1
 
@@ -78,32 +80,41 @@ sealed class LocalLibraryIndex
 
     static string PathFor(string root) => Path.Combine(root, "index.json");
 
+    static JsonFileCache<Dto> FileFor(string root)
+    {
+        string path = Path.GetFullPath(PathFor(root));
+        lock (FileCachesLock)
+        {
+            if (!FileCaches.TryGetValue(path, out var file))
+            {
+                file = new JsonFileCache<Dto>(() => path, "local-library-index");
+                FileCaches[path] = file;
+            }
+            return file;
+        }
+    }
+
     public static LocalLibraryIndex Load(string root)
     {
         var idx = new LocalLibraryIndex();
-        string path = PathFor(root);
-        if (!File.Exists(path)) return idx;
-        try
-        {
-            var dto = JsonSerializer.Deserialize<Dto>(File.ReadAllText(path));
-            if (dto == null) return idx;
-            foreach (var kv in dto.Entries) idx.Entries[kv.Key] = kv.Value;
-            foreach (var kv in dto.BankDigestBaseline) idx.BankDigestBaseline[kv.Key] = kv.Value;
-            if (dto.PendingProgramBankTypeChanges != null)
-                foreach (var kv in dto.PendingProgramBankTypeChanges) idx.PendingProgramBankTypeChanges[kv.Key] = kv.Value;
-        }
-        catch (Exception ex) { AppLog.Warn($"[local-library] index load failed: {ex.Message}"); }
+        var dto = FileFor(root).Read();
+        if (dto == null) return idx;
+        foreach (var kv in dto.Entries) idx.Entries[kv.Key] = kv.Value;
+        foreach (var kv in dto.BankDigestBaseline) idx.BankDigestBaseline[kv.Key] = kv.Value;
+        if (dto.PendingProgramBankTypeChanges != null)
+            foreach (var kv in dto.PendingProgramBankTypeChanges) idx.PendingProgramBankTypeChanges[kv.Key] = kv.Value;
         return idx;
     }
 
     public void Save(string root)
     {
-        try
+        try { Directory.CreateDirectory(root); }
+        catch (Exception ex)
         {
-            Directory.CreateDirectory(root);
-            File.WriteAllText(PathFor(root), JsonSerializer.Serialize(new Dto(Entries, BankDigestBaseline, PendingProgramBankTypeChanges)));
+            AppLog.Warn($"[local-library-index] save failed: {ex.Message}");
+            return;
         }
-        catch (Exception ex) { AppLog.Warn($"[local-library] index save failed: {ex.Message}"); }
+        FileFor(root).Write(new Dto(Entries, BankDigestBaseline, PendingProgramBankTypeChanges));
     }
 
     // Replays the op-log, last-writer-wins per (type,bank,number) by timestamp order (the

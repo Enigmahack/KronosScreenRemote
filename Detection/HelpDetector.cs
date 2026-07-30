@@ -19,8 +19,8 @@ using System.Windows.Media.Imaging;
 // Score = matched / total_masked. Help declared active when score ≥ 97%
 // (must be fully rendered, not partial).
 //
-// Loading is lazy (first call) and happens once per app lifetime.
-static class HelpDetector
+// Loading is lazy (first call) and happens once per detector lifetime.
+sealed class HelpDetector
 {
     readonly struct PixelRef(int x, int y, byte r, byte g, byte b)
     {
@@ -28,20 +28,20 @@ static class HelpDetector
         public readonly byte R = r, G = g, B = b;
     }
 
-    static PixelRef[]? _helpRef;
-    static bool _loaded;
+    PixelRef[]? _helpRef;
+    bool _loaded;
 
     const byte   ColorTolerance = 30;   // ±30 per channel (~12 % of 255)
     const double HelpThreshold  = 0.97; // 97 % — help must be fully rendered, not partial
 
     // lut[index] = (R<<16)|(G<<8)|B  (MainWindow._lut).
-    public static bool IsHelpActive(byte[] frame8bpp, int frameW, int[] lut)
+    public bool IsHelpActive(byte[] frame8bpp, int frameW, int[] lut)
     {
         EnsureLoaded();
         return Score(_helpRef, frame8bpp, frameW, lut) >= HelpThreshold;
     }
 
-    static void EnsureLoaded() { if (!_loaded) { _helpRef = TryLoad(); _loaded = true; } }
+    void EnsureLoaded() { if (!_loaded) { _helpRef = TryLoad(); _loaded = true; } }
 
     static double Score(PixelRef[]? refs, byte[] frame8bpp, int frameW, int[] lut)
     {
@@ -95,5 +95,19 @@ static class HelpDetector
                 pixels[o + 0])); // B  (BGRA32: offset +0)
         }
         return list.ToArray();
+    }
+
+    internal static List<string> SelfTest()
+    {
+        var fails = new List<string>();
+        var refs = new[] { new PixelRef(0, 0, 10, 20, 30), new PixelRef(1, 0, 40, 50, 60) };
+        var frame = new byte[] { 1, 2 };
+        var lut = new int[256];
+        lut[1] = 0x0A141E;
+        lut[2] = 0x28323C;
+        if (Score(refs, frame, 2, lut) != 1.0) fails.Add("help-detector-exact-match");
+        lut[2] = 0;
+        if (Score(refs, frame, 2, lut) != 0.5) fails.Add("help-detector-mismatch");
+        return fails;
     }
 }

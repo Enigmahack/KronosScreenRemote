@@ -55,6 +55,22 @@ static class LocalLibrarySelfTests
             Check("index-roundtrip-digest",
                 reloaded.BankDigestBaseline[LocalLibraryIndex.BankKey(LibObj.Program, 0x00)] == "deadbeef");
 
+            // The per-path JsonFileCache serializes whole-file index reads and writes.
+            // Any read racing these writes must still observe a complete index.
+            bool concurrentReadFailed = false;
+            Parallel.Invoke(
+                () =>
+                {
+                    for (int i = 0; i < 100; i++) idx.Save(root);
+                },
+                () =>
+                {
+                    for (int i = 0; i < 100; i++)
+                        if (!LocalLibraryIndex.Load(root).Entries.ContainsKey(LocalLibraryIndex.Key(LibObj.Program, 0x00, 3)))
+                            concurrentReadFailed = true;
+                });
+            Check("index-concurrent-read-write", !concurrentReadFailed);
+
             var folded = LocalLibraryIndex.RebuildCurrentFromOpLog(read);
             Check("index-fold-matches", folded[LocalLibraryIndex.Key(LibObj.Program, 0x00, 3)] == hashA);
         }

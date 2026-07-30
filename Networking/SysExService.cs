@@ -273,7 +273,7 @@ sealed class SysExService : ISysExService
 
         // Mode Change (SysEx func 0x4E): F0 42 3g 68 4E 0m F7 — passive live-stream
         // signal. The UI no longer treats this as a mode source (the daemon's STATE
-        // command is authoritative there — see MainWindow.Streaming.cs's ModePollLoop),
+        // command is authoritative there — see ScreenSession's STATE polling),
         // but it's still the freshest available seed for _stateMode, which
         // Program-Change stream decode below needs to resolve the right bank.
         if (KronosSysEx.HasKorgHeaderAt(raw, 0, 0x4E) && raw.Length >= 7)

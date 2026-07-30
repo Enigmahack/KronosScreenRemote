@@ -39,7 +39,10 @@ sealed class LocalLibraryCache
 
     public static LocalLibraryCache Open() => new(System.IO.Path.Combine(Storage.DataDir, "local_library"));
 
-    public void Save() => _index.Save(Root);
+    public void Save()
+    {
+        lock (_lock) _index.Save(Root);
+    }
 
     // ── Reads ─────────────────────────────────────────────────────────────────
 
@@ -78,6 +81,11 @@ sealed class LocalLibraryCache
     // (e.g. building a tree), since GetCurrentBody reads the full blob from the CAS store.
     public bool Exists(int objType, int bank, int number) =>
         _index.Entries.ContainsKey(LocalLibraryIndex.Key(objType, bank, number));
+
+    // "Does the library hold anything at all?" — index-only, no disk I/O. Drives the pane's
+    // empty-state hint (LocalLibraryPaneViewModel.ShowEmptyHint): a fresh install, or the exe
+    // run from a folder with no library beside it, starts with zero entries.
+    public bool HasAnyObjects => _index.Entries.Count > 0;
 
     // The cached name, decoded once at write time — NEVER touches the CAS blob store. Use
     // this for any display purpose (tree labels, dialog pre-fill); reserve GetCurrentBody

@@ -153,19 +153,15 @@ public partial class MainWindow
 
         _trayIcon?.Dispose();
         CompositionTarget.Rendering -= RenderTick;
+        _screenSession?.Dispose();
         if (_ctrl != null && _ctrlErrorHandler != null) _ctrl.CtrlError -= _ctrlErrorHandler;
         _ctrlErrorHandler = null;
         (_ctrl as IDisposable)?.Dispose();
         _midiCoord?.Dispose();
         _sysExService?.Reset();
         CleanupAudio();
-        _connectCts?.Cancel();
-        _connectCts?.Dispose();
         _pingCts?.Cancel();
         _pingCts?.Dispose();
-        _modePollCts?.Cancel();
-        _modePollCts?.Dispose();
-        _receiver?.Dispose();
         if (_llKbHook != IntPtr.Zero) { UnhookWindowsHookEx(_llKbHook); _llKbHook = IntPtr.Zero; }
     }
 

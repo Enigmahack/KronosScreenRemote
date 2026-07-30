@@ -313,10 +313,12 @@ static class Storage
 
         try
         {
-            string? json = File.Exists(CalPath)
-                ? File.ReadAllText(CalPath)
-                : ReadEmbedded("cal_data.json");
-            if (json == null) return (new CalMesh(), dots);
+            // No user calibration file -> default (identity mesh, no bias dots): the same
+            // "cleared" state the in-app Reset (R) / Clear-dots (X) keys produce. A fresh
+            // install and a post-"Reset settings" run (which deletes cal_data.json) therefore
+            // both start uncalibrated, rather than inheriting a baked-in factory mesh.
+            if (!File.Exists(CalPath)) return (new CalMesh(), dots);
+            string json = File.ReadAllText(CalPath);
 
             var root = JsonNode.Parse(json)?.AsObject();
             if (root == null) return (new CalMesh(), dots);

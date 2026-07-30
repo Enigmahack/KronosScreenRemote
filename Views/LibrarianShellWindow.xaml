@@ -299,7 +299,7 @@
                                ToolTip="{Binding LocalPane.StatusText, Converter={StaticResource EmptyToNull}}"/>
 
                     <TreeView Grid.Row="2" x:Name="TV_Local" ItemsSource="{Binding LocalPane.Roots}"
-                              Visibility="{Binding LocalPane.IsReady, Converter={StaticResource BoolToVis}}"
+                              Visibility="{Binding LocalPane.ShowTree, Converter={StaticResource BoolToVis}}"
                               Style="{StaticResource LibraryTreeStyle}"
                               ItemTemplate="{StaticResource LocalNodeTemplate}"
                               ItemContainerStyle="{StaticResource LibraryTreeItemStyle}"
@@ -312,6 +312,17 @@
                          LibrarianShellViewModel.WarmCatalogAsync / LocalPane.IsIndexing). -->
                     <TextBlock Grid.Row="2" Text="{Binding LocalPane.IndexingPlaceholder}"
                                Visibility="{Binding LocalPane.IsIndexing, Converter={StaticResource BoolToVis}}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               TextAlignment="Center" TextWrapping="Wrap" FontStyle="Italic"
+                               Foreground="{StaticResource AccentBrush}"/>
+
+                    <!-- Empty-state hint shown in the tree's place (TV_Local is hidden via
+                         ShowTree) when the local library holds nothing yet — a fresh install, or
+                         the exe run from a folder with no library beside it (DataDir is the exe's
+                         own directory). No bare type-root headers appear until the first Sync
+                         populates the library (see LocalPane.ShowEmptyHint / ShowTree). -->
+                    <TextBlock Grid.Row="2" Text="{Binding LocalPane.EmptyLibraryHint}"
+                               Visibility="{Binding LocalPane.ShowEmptyHint, Converter={StaticResource BoolToVis}}"
                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                TextAlignment="Center" TextWrapping="Wrap" FontStyle="Italic"
                                Foreground="{StaticResource AccentBrush}"/>

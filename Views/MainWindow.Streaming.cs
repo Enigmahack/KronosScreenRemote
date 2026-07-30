@@ -7,294 +7,134 @@ namespace KronosScreenRemote;
 
 public partial class MainWindow
 {
-    // Tear down the current connection and start a fresh one (user reconnect, host change,
-    // or streaming-parameter change).
     void TriggerReconnect()
     {
-        _modePollCts?.Cancel();  // stop the old connection's mode-poll loop; ConnectAsync recreates it
-        TearDownReceiver();
         BeginConnect();
     }
 
-    // Dispose the live receiver and drop the persistent ctrl socket.  Shared by every teardown
-    // path (reconnect + explicit disconnect) so the two can't drift.
-    void TearDownReceiver()
-    {
-        var rcv = _receiver;
-        _receiver = null;
-        rcv?.Dispose();
-        _ctrl.Reset();  // drop persistent ctrl socket; new one will be created on next Send
-    }
-
-    // Single entry point for starting a connection attempt.  Cancels any in-flight attempt so a
-    // newer request always supersedes a stuck one (FTP verify / 10 s TCP watchdog) instead of
-    // no-op'ing behind a "connecting" guard and silently dropping the reconnect.
     void BeginConnect()
-    {
-        var prev = _connectCts;
-        _connectCts = new CancellationTokenSource();
-        var ct = _connectCts.Token;
-        prev?.Cancel();
-        prev?.Dispose();
-
-        SetConnectionStatus(ConnState.Connecting);  // immediate UI-thread feedback
-        _ = Task.Run(() => ConnectAsync(ct));
-    }
-
-    async Task ConnectAsync(CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(_host))
         {
-            await Dispatcher.InvokeAsync(() =>
-            {
-                UpdateTitle("Not Connected");
-                MessageBox.Show(
-                    AppMessages.Connection.NoIpConfigured,
-                    AppMessages.Connection.NoIpTitle, MessageBoxButton.OK, MessageBoxImage.Information);
-                OpenSettingsDialog(SettingsTab.Connection);
-            }, DispatcherPriority.Normal, ct).Task.ConfigureAwait(false);
-            SetConnectionStatus(ConnState.Disconnected);  // BeginConnect set Connecting; undo it
-            return;
-        }
-
-        if (!await EnsureFtpLoginAsync())
-        {
-            if (ct.IsCancellationRequested) return;
+            _screenSession.Disconnect();
+            SetConnectionStatus(ConnState.Connecting);
+            UpdateTitle("Not Connected");
+            MessageBox.Show(
+                AppMessages.Connection.NoIpConfigured,
+                AppMessages.Connection.NoIpTitle, MessageBoxButton.OK, MessageBoxImage.Information);
+            OpenSettingsDialog(SettingsTab.Connection);
             SetConnectionStatus(ConnState.Disconnected);
-            await Dispatcher.InvokeAsync(() => UpdateTitle("Not Connected"), DispatcherPriority.Normal, ct).Task.ConfigureAwait(false);
             return;
         }
-        if (ct.IsCancellationRequested) return;  // superseded during login
 
         AppLog.Info($"[conn] connecting to {_host}:{_port} mode={(_pullMode ? "pull" : "change")} fps={_fps}");
         SetConnectionStatus(ConnState.Connecting);
-        // ConfigureAwait(false) keeps subsequent code on the thread-pool thread.
-        // Without it, DispatcherOperation.GetAwaiter() resumes on the UI thread,
-        // capturing DispatcherSynchronizationContext for all downstream awaits —
-        // including the Task.WhenAny watchdog in StreamReceiver — which then can't
-        // fire until the Dispatcher is idle, breaking the 10-second timeout.
-        await Dispatcher.InvokeAsync(() =>
-            UpdateTitle($"Connecting to {_host}…")).Task.ConfigureAwait(false);
-
-        // Build the receiver locally and publish it to _receiver only after the handshake
-        // succeeds, so a superseding disconnect/reconnect can't resurrect a half-connected
-        // socket.  Disconnected is identity-guarded on ReferenceEquals(_receiver, receiver), and
-        // RenderTick only ever polls the current _receiver, so a stale receiver winding down can
-        // neither fire the disconnect handler nor deliver frames to the UI.
-        var receiver = new StreamReceiver(_host, _port, _pullMode, _fps,
-                                          _settings.FtpUsername, _settings.FtpPassword);
-        receiver.Disconnected  += ()   => { if (ReferenceEquals(_receiver, receiver)) OnDisconnected(); };
-
-        try
-        {
-            await receiver.ConnectAsync(ct);
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
-        {
-            receiver.Dispose();
-            return;  // superseded by a newer connect or an explicit disconnect — stay quiet
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            receiver.Dispose();
-            KronosFtpSession.ResetAuthentication();
-            await ShowConnectError(
-                $"[conn] auth rejected: {ex.Message}",
-                AppMessages.Titles.AuthenticationFailed,
-                AppMessages.Titles.AuthenticationFailed,
-                AppMessages.Connection.DaemonRejectedCredentials);
-            return;
-        }
-        catch (Exception ex) when (ex is TimeoutException or OperationCanceledException)
-        {
-            receiver.Dispose();
-            await ShowConnectError(
-                $"[conn] timeout: {ex.Message}",
-                AppMessages.Connection.TimedOutTitle,
-                AppMessages.Connection.TimedOutTitle,
-                ex.Message);
-            return;
-        }
-        catch (Exception ex)
-        {
-            receiver.Dispose();
-            await ShowConnectError(
-                $"[conn] failed: {ex.GetType().Name}: {ex.Message}",
-                "Connection Failed",
-                AppMessages.Connection.FailedTitle,
-                AppMessages.Connection.Failed(ex.Message));
-            return;
-        }
-
-        if (ct.IsCancellationRequested) { receiver.Dispose(); return; }  // superseded during handshake
-
-        // Publish the live receiver.
-        _receiver = receiver;
-
-        // A Disconnect() or superseding connect can land in the window between the check above
-        // and this publish: it cancels ct, sets _receiver = null, and disposes whatever it sees
-        // (nothing yet).  Re-check so the just-published receiver can't outlive that teardown as
-        // an orphaned, still-streaming socket.  Only roll back our own receiver — a newer attempt
-        // may already have replaced it.  (Dispose is idempotent, so a double-dispose here is safe.)
-        if (ct.IsCancellationRequested)
-        {
-            if (ReferenceEquals(_receiver, receiver)) _receiver = null;
-            receiver.Dispose();
-            return;
-        }
-
-        _frameW  = receiver.Width;
-        _frameH  = receiver.Height;
-        _basePal = receiver.Palette;
-        RebuildLut();
-
-        AppLog.Info($"[conn] connected — {_frameW}×{_frameH} {(_pullMode ? "pull" : "change-driven")} cap={_fps}fps");
-        SetConnectionStatus(ConnState.Connected);
-        await Dispatcher.InvokeAsync(() =>
-        {
-            UpdateTitle(_host);
-            AddRecentHost(_host);
-            _wb   = new WriteableBitmap(_frameW, _frameH, 96, 96,
-                                        PixelFormats.Bgr32, null);
-            FrameImage.Source = _wb;
-        });
-        await Dispatcher.InvokeAsync(RefreshFrameRect, DispatcherPriority.Background, ct)
-            .Task.ConfigureAwait(false);
-
-        // Push saved VGA mirror + screensaver settings to the daemon on every connect
-        _mirrorState = _settings.VgaMirrorEnabled;
-        Ctrl(DaemonCommand.VgaMirror(_mirrorState));
-        Ctrl(DaemonCommand.ScreensaverTimeout(_settings.ScreensaverTimeout));
-
-        _modePollCts?.Cancel();
-        _modePollCts?.Dispose();
-        _modePollCts = new CancellationTokenSource();
-        TopLeftOcr.Reset();   // ensure the first frame re-evaluates help-overlay state
-        _ = ModePollLoop(_modePollCts.Token);
-
-        _sysExService.ApplyMidiSettings(
-            _settings.MidiMonitorEnabled, _settings.ProactiveSysExPolling,
-            _settings.SysExPollIntervalSec, _settings.SysExPollOnChanges);
-        // Hand the TCP endpoint to the coordinator; it picks TCP or (preferring)
-        // USB per the transport-mode setting and (re)starts the SysEx service.
-        _midiCoord.SetScreenConnection(true, _host, _ctrlPort);
+        UpdateTitle($"Connecting to {_host}…");
+        _screenSession.Start(
+            new ScreenConnection(_host, _port, _pullMode, _fps,
+                                 _settings.FtpUsername, _settings.FtpPassword),
+            _ => EnsureFtpLoginAsync());
     }
 
-    // Single teardown path for every explicit disconnect (menu / context / tray / command
-    // palette).  Cancels any in-flight connect and background loops, then resets to disconnected.
     void Disconnect(string title = "Not Connected")
     {
-        _connectCts?.Cancel();
-        _modePollCts?.Cancel();
-
-        TearDownReceiver();
-
-        SetConnectionStatus(ConnState.Disconnected);  // also resets sysex, stops ping/audio, clears frame
+        _screenSession.Disconnect();
+        SetConnectionStatus(ConnState.Disconnected);
         UpdateTitle(title);
     }
 
-    // Delegates to KronosFtpSession.EnsureLoginAsync (promoted from this method, Phase 6 of
-    // the Librarian rebuild) so the new Librarian's PCG-from-Kronos loader can share the
-    // exact same silent-verify-then-LoginDialog flow instead of a second copy.
     Task<bool> EnsureFtpLoginAsync() => KronosFtpSession.EnsureLoginAsync(this, _settings, _host);
 
-    async Task ShowConnectError(string logMsg, string titleSuffix, string dialogTitle, string dialogMsg)
+    void OnSessionConnected(ScreenSessionInfo info)
     {
-        AppLog.Error(logMsg);
-        SetConnectionStatus(ConnState.Disconnected);
-        await Dispatcher.InvokeAsync(() =>
+        Dispatcher.Invoke(() =>
         {
-            UpdateTitle(titleSuffix);
-            MessageBox.Show(dialogMsg, dialogTitle, MessageBoxButton.OK, MessageBoxImage.Error);
+            if (!_screenSession.IsCurrent(info.Id)) return;
+            _frameW = info.Width;
+            _frameH = info.Height;
+            _basePal = info.Palette;
+            RebuildLut();
+            AppLog.Info($"[conn] connected — {_frameW}×{_frameH} {(_pullMode ? "pull" : "change-driven")} cap={_fps}fps");
+            SetConnectionStatus(ConnState.Connected);
+            UpdateTitle(info.Connection.Host);
+            AddRecentHost(info.Connection.Host);
+            _wb = new WriteableBitmap(_frameW, _frameH, 96, 96, PixelFormats.Bgr32, null);
+            FrameImage.Source = _wb;
+            RefreshFrameRect();
+            _mirrorState = _settings.VgaMirrorEnabled;
+            Ctrl(DaemonCommand.VgaMirror(_mirrorState));
+            Ctrl(DaemonCommand.ScreensaverTimeout(_settings.ScreensaverTimeout));
+            _topLeftOcr.Reset();
+            _sysExService.ApplyMidiSettings(
+                _settings.MidiMonitorEnabled, _settings.ProactiveSysExPolling,
+                _settings.SysExPollIntervalSec, _settings.SysExPollOnChanges);
+            _midiCoord.SetScreenConnection(true, _host, _ctrlPort);
         });
     }
 
-    void OnDisconnected()
+    void OnSessionConnectionFailed(ScreenSessionFailure failure)
     {
-        AppLog.Info("[conn] disconnected");
-        _modePollCts?.Cancel();
-        TopLeftOcr.Reset();
-        _ctrl.Reset();
-        // Don't Reset() the SysEx service directly — SetConnectionStatus routes the
-        // screen-drop through the coordinator, which keeps a standalone USB transport
-        // alive (Auto/USB mode) instead of killing MIDI on every video hiccup.
-        SetConnectionStatus(ConnState.Disconnected);
-        Dispatcher.InvokeAsync(() =>
+        Dispatcher.Invoke(() =>
         {
-            _helpActive       = false;
+            if (!_screenSession.IsLatest(failure.Id)) return;
+            if (failure.Error == null)
+            {
+                SetConnectionStatus(ConnState.Disconnected);
+                UpdateTitle("Not Connected");
+                return;
+            }
+
+            string titleSuffix, dialogTitle, dialogMessage, logMessage;
+            if (failure.Error is UnauthorizedAccessException)
+            {
+                KronosFtpSession.ResetAuthentication();
+                titleSuffix = dialogTitle = AppMessages.Titles.AuthenticationFailed;
+                dialogMessage = AppMessages.Connection.DaemonRejectedCredentials;
+                logMessage = $"[conn] auth rejected: {failure.Error.Message}";
+            }
+            else if (failure.Error is TimeoutException or OperationCanceledException)
+            {
+                titleSuffix = dialogTitle = AppMessages.Connection.TimedOutTitle;
+                dialogMessage = failure.Error.Message;
+                logMessage = $"[conn] timeout: {failure.Error.Message}";
+            }
+            else
+            {
+                titleSuffix = "Connection Failed";
+                dialogTitle = AppMessages.Connection.FailedTitle;
+                dialogMessage = AppMessages.Connection.Failed(failure.Error.Message);
+                logMessage = $"[conn] failed: {failure.Error.GetType().Name}: {failure.Error.Message}";
+            }
+            AppLog.Error(logMessage);
+            SetConnectionStatus(ConnState.Disconnected);
+            UpdateTitle(titleSuffix);
+            MessageBox.Show(dialogMessage, dialogTitle, MessageBoxButton.OK, MessageBoxImage.Error);
+        });
+    }
+
+    void OnSessionDisconnected(long id)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            if (!_screenSession.IsLatest(id)) return;
+            AppLog.Info("[conn] disconnected");
+            _topLeftOcr.Reset();
+            SetConnectionStatus(ConnState.Disconnected);
+            _helpActive = false;
             BTN_Help.IsActive = false;
-            ModeText.Text     = "";
+            ModeText.Text = "";
             UpdateTitle("Connection Lost");
         });
     }
 
-    const int ModePollIntervalMs = 500;
-
-    // The daemon's STATE command is the sole, unconditional mode/edit-context source —
-    // no pixel scanning, no SysEx fallback. Polled continuously for as long as a stream
-    // connection is live.
-    async Task ModePollLoop(CancellationToken ct)
+    void OnSessionStateReceived(ScreenDaemonState state)
     {
-        while (!ct.IsCancellationRequested)
+        Dispatcher.InvokeAsync(() =>
         {
-            try
-            {
-                var state = await QueryStateAsync().ConfigureAwait(false);
-                if (state is { } s)
-                    await Dispatcher.InvokeAsync(() =>
-                    {
-                        _daemonBooting = s.Boot;
-                        ApplyDaemonState(s.Mode, s.EditCtx);
-                    }, DispatcherPriority.Background, ct).Task.ConfigureAwait(false);
-                await Task.Delay(ModePollIntervalMs, ct).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) { break; }
-        }
-    }
-
-    // Ask the daemon for its current operating mode, edit context, and boot-gate state
-    // ("STATE" → "MODE=<n> EDITCTX=<e> BOOT=<0|1>"). Returns null if the query failed or
-    // the reply carried no MODE field. MODE/EDITCTX are already the daemon's own safe
-    // sentinels (0/0) while BOOT=1 - see KronosScreenRemoteDaemon/docs/api.md's "Boot
-    // gate" section - so no separate handling is needed here beyond reading BOOT itself.
-    async Task<(Mode Mode, EditContext EditCtx, bool Boot)?> QueryStateAsync()
-    {
-        var resp = await _ctrl.QueryAsync(DaemonCommand.QueryState).ConfigureAwait(false);
-        if (resp == null) return null;
-
-        // TryParse sets its out-param to 0 (not left unchanged) on failure, so every
-        // field below explicitly checks the return value rather than relying on that
-        // implicitly. -1 is the "no valid MODE seen" sentinel the return check further
-        // down relies on, so a malformed "MODE=" token has to be put back to -1, not
-        // left at TryParse's own 0 default - otherwise it'd be indistinguishable from a
-        // genuine, valid "MODE=0". EDITCTX falls back to None (0) either way. BOOT
-        // deliberately does NOT use TryParse's 0 default on failure - it fails safe to
-        // 1 ("assume still booting"), same reasoning as _daemonBooting's own fail-safe
-        // default: silently treating a malformed/missing BOOT as "not booting" risks
-        // trusting data we don't actually know is safe yet.
-        int mode = -1, editCtx = 0, boot = 1;
-        foreach (var tok in resp.Split(' ', StringSplitOptions.RemoveEmptyEntries))
-        {
-            int eq = tok.IndexOf('=');
-            if (eq <= 0) continue;
-            var val = tok[(eq + 1)..];
-            if (tok.StartsWith("MODE=", StringComparison.Ordinal))
-            {
-                if (!int.TryParse(val, out mode))
-                    mode = -1;
-            }
-            else if (tok.StartsWith("EDITCTX=", StringComparison.Ordinal))
-            {
-                if (!int.TryParse(val, out editCtx))
-                    editCtx = 0;
-            }
-            else if (tok.StartsWith("BOOT=", StringComparison.Ordinal))
-            {
-                if (!int.TryParse(val, out boot))
-                    boot = 1;   // malformed - fail safe, assume still booting
-            }
-        }
-        return mode >= 0 ? ((Mode)mode, (EditContext)editCtx, boot != 0) : null;
+            if (!_screenSession.IsCurrent(state.Id)) return;
+            _daemonBooting = state.Booting;
+            ApplyDaemonState(state.Mode, state.EditContext);
+        }, DispatcherPriority.Background);
     }
 
     // Apply one STATE poll result. EDITCTX (only ever non-zero while MODE=Program)
@@ -413,11 +253,11 @@ public partial class MainWindow
         bool newFrame = false;
         byte[]? raw   = null;
         int frameSize = _frameW * _frameH;
-        if (_receiver != null && frameSize > 0)
+        if (frameSize > 0)
         {
             var buf = _frameBuf;
             if (buf == null || buf.Length != frameSize) { buf = new byte[frameSize]; _frameBuf = buf; }
-            if (_receiver.TryCopyLatestFrame(buf)) { raw = buf; newFrame = true; }
+            if (_screenSession.TryCopyLatestFrame(buf)) { raw = buf; newFrame = true; }
         }
 
         if (newFrame && raw != null)
@@ -429,15 +269,15 @@ public partial class MainWindow
             ApplyLut();
 
             // Top-left 140×55 changed — re-check help-overlay state (rows 27–55 of the ROI).
-            // Mode/edit-context no longer come from pixels at all — see ModePollLoop, which
-            // polls the daemon's STATE command directly. Guard on !_daemonBooting (the
+            // Mode/edit-context no longer come from pixels at all — ScreenSession polls the
+            // daemon's STATE command directly. Guard on !_daemonBooting (the
             // daemon's own authoritative BOOT= field, also read via that same STATE poll):
             // dark help-banner reference pixels score as false positives against the
             // still-mostly-black boot frame, so skip detection until the daemon itself
             // says the board is up.
-            if (TopLeftOcr.HasChanged(raw, _frameW) && !_daemonBooting)
+            if (_topLeftOcr.HasChanged(raw, _frameW) && !_daemonBooting)
             {
-                _helpActive       = HelpDetector.IsHelpActive(raw, _frameW, _lut);
+                _helpActive       = _helpDetector.IsHelpActive(raw, _frameW, _lut);
                 BTN_Help.IsActive = _helpActive;
             }
         }

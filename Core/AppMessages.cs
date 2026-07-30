@@ -266,6 +266,14 @@ public static class AppMessages
             public const string IndexingPlaceholder =
                 "Indexing local library…\nThe library will appear here once indexing is complete.";
 
+            // Shown in place of the tree when the local library holds no objects at all — a
+            // fresh install, or the exe run from a folder that has no library beside it (DataDir
+            // is the exe's own directory). The tree (even its bare type-root headers) stays
+            // hidden until the first Sync populates it, so an empty library reads as "nothing
+            // synced yet" rather than a broken, un-expandable tree.
+            public const string EmptyLibraryHint =
+                "Your local library is empty.\nClick “Sync Library” to pull it from your Kronos.";
+
             public const string NothingToCut = "Nothing selected to cut.";
             public const string CutOneAtATime =
                 "Cut works on one item at a time — select a single item, or use Copy for multiple.";
@@ -351,6 +359,9 @@ public static class AppMessages
                 $"Pushed {written} object(s)." + (deleted > 0 ? $" Deleted {deleted}." : "");
             public const string CommitFailed         = "Commit failed — see warning.";
             public const string CancelledPendingDeps = "Cancelled — unresolved dependencies still pending.";
+            // A Sync/Commit that threw partway (as opposed to a clean push failure returning an
+            // error) — surfaced so the operation doesn't look like it silently did nothing.
+            public static string OperationFailed(string detail) => $"Operation failed — {detail}";
 
             // ── Destructive confirmations (code-behind) ──
             public const string ClearHistoryTitle = "Clear History";

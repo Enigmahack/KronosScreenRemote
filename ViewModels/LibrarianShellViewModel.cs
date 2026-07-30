@@ -183,10 +183,23 @@ partial class LibrarianShellViewModel : ObservableObject
             StatusText = AppMessages.Librarian.Shell.SyncResult(pull.ObjectsFetched, pull.Conflicts, push.Written, push.Deleted);
             if (!push.Ok) WarningText = push.Error;
             else ClearPaneStatuses();   // requirement 5: the per-pane "Cut …/Placed …" lines are stale once pushed
+            AppLog.Info($"[librarian] sync done: fetched={pull.ObjectsFetched} pushed={push.Written} hasObjects={_cache.HasAnyObjects}");
+        }
+        catch (Exception ex)
+        {
+            // The pull half commits its objects to the cache BEFORE the push half runs, so a throw
+            // in the push must not leave the pane showing an empty/stale tree until the next reopen
+            // (the finally below re-reads the cache). Surface it too — an AsyncRelayCommand would
+            // otherwise swallow it into its ExecutionTask, so the Sync would look like it did nothing.
+            AppLog.Warn($"[librarian] sync failed: {ex}");
+            WarningText = AppMessages.Librarian.Shell.OperationFailed(ex.Message);
+        }
+        finally
+        {
             LocalPane.RefreshTree();
             RefreshHistory();
+            IsBusy = false;
         }
-        finally { IsBusy = false; }
     }
 
     [RelayCommand(CanExecute = nameof(CanRunHardwareOp))]
@@ -202,10 +215,20 @@ partial class LibrarianShellViewModel : ObservableObject
                 : AppMessages.Librarian.Shell.CommitFailed;
             if (!result.Ok) WarningText = result.Error;
             else ClearPaneStatuses();   // requirement 5: the per-pane "Cut …/Placed …" lines are stale once pushed
+        }
+        catch (Exception ex)
+        {
+            // Same rationale as SyncLibraryAsync: refresh the pane from the cache no matter what
+            // (finally), and surface a thrown error rather than letting the command swallow it.
+            AppLog.Warn($"[librarian] commit failed: {ex}");
+            WarningText = AppMessages.Librarian.Shell.OperationFailed(ex.Message);
+        }
+        finally
+        {
             LocalPane.RefreshTree();
             RefreshHistory();
+            IsBusy = false;
         }
-        finally { IsBusy = false; }
     }
 
     // Runs right before every Sync/Commit — the "lazy" half of the auto-heal placement

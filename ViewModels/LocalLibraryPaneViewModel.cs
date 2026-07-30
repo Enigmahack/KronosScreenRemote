@@ -64,13 +64,34 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     // against a half-built index. Defaults true so the pane starts hidden until indexing completes.
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsReady))]
+    [NotifyPropertyChangedFor(nameof(ShowTree))]
+    [NotifyPropertyChangedFor(nameof(ShowEmptyHint))]
     bool isIndexing = true;
 
-    // Binding convenience: the tree/toolbar are shown/enabled only when NOT indexing.
+    // Binding convenience: the toolbar is enabled only when NOT indexing.
     public bool IsReady => !IsIndexing;
 
     // The centered placeholder shown in the tree's place while indexing (see AppMessages).
     public string IndexingPlaceholder => AppMessages.Librarian.Local.IndexingPlaceholder;
+
+    // True when the library holds no objects at all — set from _cache.HasAnyObjects on every
+    // RefreshTree(). A fresh install (or the exe run from a folder with no library beside it,
+    // since DataDir is the exe's own directory) starts here.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowTree))]
+    [NotifyPropertyChangedFor(nameof(ShowEmptyHint))]
+    bool isLibraryEmpty;
+
+    // The tree shows only once indexing is done AND the library actually holds something — an
+    // empty library shows the Sync hint in its place instead, so the bare type-root headers
+    // (Programs/Combis/Set Lists) never appear until the first Sync populates them.
+    public bool ShowTree => !IsIndexing && !IsLibraryEmpty;
+
+    // The Sync hint takes the tree's place when indexing is done (instant for an empty library)
+    // AND there's genuinely nothing to show — the exact complement of ShowTree within IsReady.
+    public bool ShowEmptyHint => !IsIndexing && IsLibraryEmpty;
+
+    public string EmptyLibraryHint => AppMessages.Librarian.Local.EmptyLibraryHint;
 
     public bool HasClipboard => Mode != ClipboardMode.None && _clipItems.Count > 0;
     public string ClipboardLabel => Mode switch
@@ -100,6 +121,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
             makeLeaf: MakeLeafNode,
             bankLabel: (objType, bank) => BankNodeLabel(objType, ObjectTypeRegistry.Get(objType), bank),
             keepEmptyRoots: true);
+        IsLibraryEmpty = !_cache.HasAnyObjects;
         TreeRefreshed?.Invoke();
     }
 

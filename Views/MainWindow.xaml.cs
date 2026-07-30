@@ -65,8 +65,6 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     // ── Calibration state (mesh, bias dots, drag/hover, undo stack) ────────────
     readonly CalibrationState _cal = new();
 
-    // ── Mode polling ──────────────────────────────────────────────────────────
-    CancellationTokenSource? _modePollCts;
     bool     _helpActive          = false;
     Mode     _pendingMode         = Mode.Unknown; // set while awaiting detection confirmation
     DateTime _pendingModeDeadline = DateTime.MinValue;
@@ -102,11 +100,8 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     // ── Misc ──────────────────────────────────────────────────────────────────
     System.Windows.Forms.NotifyIcon? _trayIcon;
 
-    // Cancels an in-flight connect when a newer connect/disconnect supersedes it, so a reconnect
-    // issued while a prior attempt is stuck (FTP verify / 10 s TCP watchdog) is no longer swallowed.
-    CancellationTokenSource? _connectCts;
-    IStreamReceiver? _receiver;
     ICtrlClient      _ctrl        = null!;
+    ScreenSession    _screenSession = null!;
     Action<string>?  _ctrlErrorHandler;   // held so SetCtrlClient/OnClosing can move or detach the instance CtrlError subscription
     readonly SeqTransportViewModel _seqTransport;
     double           _pixPerDip   = 1.0;
@@ -133,16 +128,15 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     enum ConnState { Disconnected, Connecting, Connected }
     ConnState _connState     = ConnState.Disconnected;
 
-    // Single source of truth for "a live stream is connected".  _connState is authoritative;
-    // _receiver can briefly outlive the Connected state after a silent drop (OnDisconnected sets
-    // Disconnected without nulling _receiver), so gate connected-only behaviour on this, never on
-    // _receiver != null.
+    // Single source of truth for "a live stream is connected".
     bool IsConnected => _connState == ConnState.Connected;
     readonly FpsCounter _fpsCounter = new();
 
     // Frame classification — read by mode + combi + help detection.
     bool _detectedModeEver = false;  // set by SetModeButton
     bool _daemonBooting    = true;   // daemon's own authoritative BOOT= field (STATE poll) — fail-safe default until the first poll response, mirroring the daemon's own fail-safe default
+    readonly TopLeftOcr _topLeftOcr = new();
+    readonly HelpDetector _helpDetector = new();
 
     // ── Layout preset ─────────────────────────────────────────────────────────
     LayoutPreset           _layoutPreset      = LayoutPreset.Full;
@@ -180,6 +174,11 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             SetNotification(msg, isError: true);
         };
         SetCtrlClient(_host, _ctrlPort);
+        _screenSession = new ScreenSession(_ctrl);
+        _screenSession.Connected += OnSessionConnected;
+        _screenSession.ConnectionFailed += OnSessionConnectionFailed;
+        _screenSession.Disconnected += OnSessionDisconnected;
+        _screenSession.StateReceived += OnSessionStateReceived;
         _sysExService = new SysExService(Dispatcher);
         _sysExService.ValueSliderCc = _settings.ValueSliderCc;
         _sysExService.PullNamesOnChange = _settings.PullNamesOnChange;
@@ -1176,6 +1175,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         var next = new CtrlClient(host, port);
         if (_ctrlErrorHandler != null) next.CtrlError += _ctrlErrorHandler;
         _ctrl = next;
+        _screenSession?.SetCtrlClient(next);
     }
 
     void ICtrlSender.Send(string cmd) => Ctrl(cmd);

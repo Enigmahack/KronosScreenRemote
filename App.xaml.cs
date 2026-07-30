@@ -32,7 +32,9 @@ public partial class App : Application
             fails.AddRange(MergeTreeVisibilitySelfTests.SelfTest());
             fails.AddRange(PaneSelectionSelfTests.SelfTest());
             fails.AddRange(RawKeyMapSelfTests.SelfTest());
+            fails.AddRange(DetectionSelfTests.SelfTest());
             fails.AddRange(DumpGateSelfTests.SelfTest());
+            fails.AddRange(ScreenSessionSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(MidiTransportReplySelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(MergeGroupPlacementSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             var outPath = Path.Combine(Path.GetTempPath(), "kronos_librarian_selftest.txt");

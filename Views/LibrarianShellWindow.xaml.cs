@@ -46,6 +46,12 @@ internal partial class LibrarianShellWindow : ThemedWindow
         _vm = new LibrarianShellViewModel(sysEx, cache, settings, host);
         DataContext = _vm;
 
+        // Break the Owner link before closing so WPF doesn't minimize the parent when this
+        // window had focus (known WPF owner-activation bug) — without it, closing a maximized
+        // Librarian would sometimes send MainWindow to the system tray. Same one-line fix
+        // FileManagerWindow.OnClosing already uses for the identical reason.
+        Closing += (_, _) => Owner = null;
+
         // Step 4 of the auto-heal placement pipeline — the ViewModel stays free of WPF types
         // (same split as every other confirmation in this file), so it calls back into this
         // delegate only once ResolvePendingDependencies couldn't clear everything on its own.
