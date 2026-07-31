@@ -85,9 +85,63 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         // against a half-built index; the pane reveals itself once the build completes.
         _ = WarmCatalogAsync();
 
+        // Set Lists are the one type whose "is this an empty placeholder?" can't be answered from
+        // the cached display name, so a library synced by a build without LocalIndexEntry.IsInit
+        // needs its 128 Set List bodies read once to fill that in — see BackfillInitFlags. Off the
+        // UI thread and fire-and-forget: nothing blocks on it, and until it lands the only effect
+        // is that Set List auto-fill still sees blank slots as occupied, exactly as before.
+        _ = Task.Run(() =>
+        {
+            try { _cache.BackfillInitFlags(LibObj.SetList); }
+            catch (Exception ex) { AppLog.Warn($"[librarian] set-list init backfill failed: {ex.Message}"); }
+        });
+
         _programBankTypes = Storage.LoadProgramBankTypes(_host) is { } cached ? new ProgramBankTypes(cached) : null;
         _ = WarmProgramBankTypesAsync();
+
+        // TryCreate, never a direct construction: the cache file is untrusted input (truncated,
+        // hand-edited, or written by a different build), and a short array would only surface as a
+        // crash when the Properties dialog indexes it. Anything malformed degrades to numeric.
+        CategoryNames = (Storage.LoadCategoryNames(_host) is { } names
+            ? CategoryNames.TryCreate(names.Program, names.ProgramSub, names.Combi, names.CombiSub)
+            : null) ?? CategoryNames.Numeric();
+        _ = WarmCategoryNamesAsync();
     }
+
+    // ── Category names (requirement 4) ──────────────────────────────────────────────────────
+    // The Program/Combi Category + Sub-Category names the Properties dialog labels its dropdowns
+    // with. NEVER null: seeded from the per-host disk cache at construction, falling back to plain
+    // numeric labels (CategoryNames.Numeric) — the exact display this had before the feature — so
+    // the dialog needs no "not synced yet" branch and works identically offline.
+    public CategoryNames CategoryNames { get; private set; }
+
+    // Same "seed from disk, refresh live in the background" shape as WarmProgramBankTypesAsync,
+    // and the same failure policy: a Kronos that can't be reached (or a reply too short to decode)
+    // leaves whatever labels are already in place. Category names live in the Global object
+    // (obj 0x03, bank 0, index 0 — "for all other types bank must be 0", KRONOS_MIDI_SysEx.txt *2);
+    // that dump is ~24 KB, so it's fetched once per window rather than per dialog.
+    async Task WarmCategoryNamesAsync()
+    {
+        try
+        {
+            var dump = await _sysEx.DumpObjectAsync(LibObj.Global, 0, 0);
+            if (dump?.Body is not { } body || GlobalBody.ReadCategoryNames(body) is not { } names) return;
+            CategoryNames = names;
+            Storage.SaveCategoryNames(_host, new Storage.CategoryNamesDto(names.Program, names.ProgramSub, names.Combi, names.CombiSub));
+        }
+        catch (Exception ex)
+        {
+            // Fire-and-forget from the ctor: the exception must still be observed and logged, but
+            // failing to LABEL a dropdown is never worth surfacing to the user — the numeric
+            // fallback is already showing.
+            AppLog.Warn($"[librarian] category-name warm-up failed: {ex.Message}");
+        }
+    }
+
+    // Testing-only entry point, same rationale as WarmProgramBankTypesForTestingAsync: lets a
+    // self-test deterministically await the constructor's own fire-and-forget warm-up instead of
+    // relying on incidental continuation timing.
+    internal Task WarmCategoryNamesForTestingAsync() => WarmCategoryNamesAsync();
 
     async Task WarmCatalogAsync()
     {
@@ -95,7 +149,8 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         StatusText = AppMessages.Librarian.Shell.Indexing;
         try
         {
-            await _cache.BuildCatalogAsync();
+            var catalog = await _cache.BuildCatalogAsync();
+            RefreshStaleDependencyFlags(catalog);
             if (StatusText == AppMessages.Librarian.Shell.Indexing) StatusText = "";
         }
         catch (Exception ex)
@@ -112,6 +167,26 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
             // leaving the pane stuck on the indexing placeholder.
             LocalPane.IsIndexing = false;
         }
+    }
+
+    // Re-derives the tree's cached dependency dot for everything still pending Sync/Commit, using
+    // bodies the catalog build just read anyway — no extra disk I/O (see
+    // LocalLibraryCache.RecomputeResolvedDependencies for why a cached bit needs sweeping at all).
+    // Scoped to the DIRTY set because that's exactly where the dot is shown
+    // (LocalLibraryPaneViewModel.MakeLeafNode), so a big clean library costs nothing here; any
+    // object edited later recomputes its own bit at write time under the current rules.
+    void RefreshStaleDependencyFlags(LibraryCatalog catalog)
+    {
+        var recompute = new List<(int, int, int, byte[])>();
+        foreach (var loc in _cache.DirtyObjects())
+        {
+            if (loc.ObjType == LibObj.Combi && catalog.Combis.TryGetValue((loc.Bank, loc.Number), out var combi))
+                recompute.Add((loc.ObjType, loc.Bank, loc.Number, combi.Body));
+            else if (loc.ObjType == LibObj.SetList && catalog.Setlists.TryGetValue(loc.Number, out var setList))
+                recompute.Add((loc.ObjType, loc.Bank, loc.Number, setList.Body));
+        }
+        if (recompute.Count == 0) return;
+        if (_cache.RecomputeResolvedDependencies(recompute) > 0) LocalPane.RefreshTree();
     }
 
     // Refreshes _programBankTypes from real hardware (func 0x61) in the background, same
@@ -507,8 +582,16 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
 
         if (toPlace.Count == 0) return (true, dedupNote);
 
+        // A drop on a SPECIFIC slot fills contiguously from exactly there — the user pointed at it,
+        // so overwriting whatever follows is their explicit intent. A drop on a bank/header is an
+        // auto-fill, and must land only on slots free of real content: init placeholders count as
+        // free, which makes those holes scattered rather than one contiguous tail, so a plain
+        // startSlot+i walk would write over real patches sitting past the first placeholder.
         int startSlot = destSlot ?? FindNextFreeSlot(objType, destBank);
-        int take = Math.Min(toPlace.Count, descriptor.SlotCount - startSlot);
+        var targetSlots = destSlot is { } fixedStart
+            ? Enumerable.Range(fixedStart, Math.Max(0, Math.Min(toPlace.Count, descriptor.SlotCount - fixedStart))).ToList()
+            : LocalEditOps.AvailableSlotsFrom(_cache, objType, destBank, startSlot, toPlace.Count);
+        int take = targetSlots.Count;
         if (take <= 0)
         {
             return (false, destSlot is { } s
@@ -523,8 +606,8 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         {
             var entry = toPlace[i];
             (bodies[i], unresolvedPerItem[i]) = MergePane.ResolveReferencesForPlacement(entry, LocalLookup);
-            placements.Add(new BatchPlacement(null, new ObjLoc(objType, destBank, startSlot + i),
-                new ObjectDump(objType, destBank, startSlot + i, entry.Version, bodies[i]), entry.DisplayName));
+            placements.Add(new BatchPlacement(null, new ObjLoc(objType, destBank, targetSlots[i]),
+                new ObjectDump(objType, destBank, targetSlots[i], entry.Version, bodies[i]), entry.DisplayName));
         }
 
         var (ok, error, clipboardAdds) = LocalEditOps.BatchPlace(_cache, objType, placements, divertDisplacedToClipboard: true, BankTypeOf, DateTime.UtcNow, MergePane.ForceOverwrite);
@@ -533,7 +616,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         MergeDisplacedIntoPersistentClipboard(clipboardAdds);
         for (int i = 0; i < take; i++)
         {
-            var destLoc = new ObjLoc(objType, destBank, startSlot + i);
+            var destLoc = new ObjLoc(objType, destBank, targetSlots[i]);
             MergePane.CommitPlacement(toPlace[i].ContentHash, destLoc);
             TrackMergeDependencies(unresolvedPerItem[i], destLoc);
         }
@@ -574,15 +657,53 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         return destIsExi is bool d && d != groupIsExi ? groupIsExi : null;
     }
 
-    // The HD-1/EXi format of a destination Program bank as Local Library currently sees it — the
-    // cached IsExi of the first Program already in that bank (index-only, no blob read). Null if
-    // the bank is empty locally (nothing to infer a type from).
-    bool? LocalProgramBankFormat(int bank)
+    // The HD-1/EXi format of a destination Program bank as Local Library currently sees it. Null if
+    // the bank is empty locally (nothing to infer a type from) — see LocalEditOps' own comment.
+    bool? LocalProgramBankFormat(int bank) => LocalEditOps.LocalProgramBankFormat(_cache, bank);
+
+    // ── Type-root ("Programs"/"Combis"/"Set Lists" header) drop targets, requirement 6 ──────
+    // A drop on the header names a TYPE but no bank, so each entry point below resolves it to the
+    // first bank with room — passing the incoming Programs' own HD-1/EXi format so the chosen bank
+    // can't be one the placement would then REFUSE as wrong-format (see
+    // LocalEditOps.FindBankWithFreeSlot). Null means every writable bank of that type is full.
+
+    public int? FindBankForPcgDrop(int objType, IReadOnlyList<ObjLoc> pcgLocs) =>
+        LocalEditOps.FindBankWithFreeSlot(_cache, objType, PcgGroupIsExi(objType, pcgLocs), BankTypeOf);
+
+    public int? FindBankForMergeDrop(int objType, IReadOnlyList<string> contentHashes) =>
+        LocalEditOps.FindBankWithFreeSlot(_cache, objType, MergeGroupIsExi(objType, contentHashes), BankTypeOf);
+
+    // The first free slot in one specific bank, or null if it's full — for a SINGLE item dropped on
+    // a bank/header, where a "slot 0" fallback would silently overwrite whatever sits there.
+    public int? NextFreeSlotIn(int objType, int bank) => LocalEditOps.TryFindNextFreeSlot(_cache, objType, bank);
+
+    // The wire format shared by a group of incoming Programs, or null when they're mixed, not
+    // Programs, or unreadable — the body's own length says EXi vs HD-1 deterministically, the same
+    // primitive BankTypeChangeNeeded already relies on. Public because the View needs the same
+    // answer a moment later to word the "no bank of THIS format has room" refusal.
+    public bool? PcgGroupIsExi(int objType, IReadOnlyList<ObjLoc> pcgLocs)
     {
-        var descriptor = ObjectTypeRegistry.Get(LibObj.Program);
-        for (int n = 0; n < descriptor.SlotCount; n++)
-            if (_cache.Exists(LibObj.Program, bank, n)) return _cache.IsExi(LibObj.Program, bank, n);
-        return null;
+        if (objType != LibObj.Program) return null;
+        var lengths = pcgLocs
+            .Select(l => PcgPane.Get(l))
+            .Where(e => e != null)
+            .Select(e => ProgramFormatConverter.WireBodyFromPcgEntry(LibObj.Program, e!)?.Length)
+            .Where(len => len != null)
+            .Distinct()
+            .ToList();
+        return lengths.Count == 1 ? lengths[0] == ProgramFormatConverter.WireSizeExi : null;
+    }
+
+    public bool? MergeGroupIsExi(int objType, IReadOnlyList<string> contentHashes)
+    {
+        if (objType != LibObj.Program) return null;
+        var lengths = contentHashes
+            .Select(h => MergePane.TryGet(h))
+            .Where(e => e is { ObjType: LibObj.Program })
+            .Select(e => e!.Body.Length)
+            .Distinct()
+            .ToList();
+        return lengths.Count == 1 ? lengths[0] == ProgramFormatConverter.WireSizeExi : null;
     }
 
     // Copies a whole Program bank from the Merge Window into destBank, changing destBank's
@@ -717,7 +838,8 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         if (pending.Count == 0) return (false, "nothing to place");
 
         int startSlot = FindNextFreeSlot(objType, destBank);
-        var (placed, stillPending) = BatchLibrarian.ResolveSequentialFill(pending, objType, destBank, startSlot, bankTypeOf: null);
+        var (placed, stillPending) = BatchLibrarian.ResolveSequentialFill(pending, objType, destBank, startSlot, bankTypeOf: null,
+            slotAvailable: s => !_cache.HasContent(objType, destBank, s));
         if (placed.Count == 0) return (false, "nothing could be placed (bank full or type mismatch)");
 
         // Repoint each placed item's OWN references before writing, same as the single-item
@@ -842,18 +964,39 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         ReplaceObjectDependencies(rows);
     }
 
-    void CollectLocalDeps(ObjLoc loc, HashSet<ObjLoc> seen, List<ObjectDependencyRow> rows)
+    // `missing` is optional: the selection-driven panel only wants display rows, while
+    // InspectDependencies wants the gaps from the SAME walk rather than a second one.
+    void CollectLocalDeps(ObjLoc loc, HashSet<ObjLoc> seen, List<ObjectDependencyRow> rows,
+                          List<MissingDependency>? missing = null)
     {
         if (_cache.GetCurrentBody(loc.ObjType, loc.Bank, loc.Number) is not { } body) return;
-        foreach (var (_, _, refLoc) in ObjectReferenceWalker.Walk(loc.ObjType, body))
+        foreach (var (refKind, site, refLoc) in ObjectReferenceWalker.Walk(loc.ObjType, body))
         {
             if (!seen.Add(refLoc)) continue;
+            // A ROM (GM/g) reference is shown, but never as missing — it resolves on the
+            // instrument no matter what the local library holds (ObjectReferenceWalker.
+            // IsAlwaysAvailable), and nothing can be pulled or placed to "fix" it.
+            if (ObjectReferenceWalker.IsAlwaysAvailable(refLoc))
+            {
+                rows.Add(new ObjectDependencyRow(DescribeRomDependency(refLoc)));
+                continue;
+            }
             // Cached at write time (LocalIndexEntry.DisplayName) — never a blob read, same
             // discipline as the tree's own labels (LocalLibraryPaneViewModel.MakeLeafNode).
             bool found = _cache.Exists(refLoc.ObjType, refLoc.Bank, refLoc.Number);
             string name = found ? _cache.GetDisplayName(refLoc.ObjType, refLoc.Bank, refLoc.Number) : "";
-            rows.Add(new ObjectDependencyRow(DescribeDependency(refLoc, name, found, "locally")));
-            if (found && refLoc.ObjType != LibObj.Program) CollectLocalDeps(refLoc, seen, rows);
+            // An INIT Program satisfies the reference technically but is a placeholder, not the
+            // sound the referrer expects — worth saying so, since it's also the case that places
+            // freely (see ProgramBody.IsInit and BatchLibrarian.PlanBatchMove's orphan gate).
+            rows.Add(new ObjectDependencyRow(
+                found && refLoc.ObjType == LibObj.Program && ProgramBody.IsInitName(name)
+                    ? $"{TypeName(refLoc.ObjType)}: {refLoc.Label()} — {name} {AppMessages.Librarian.Shell.InitPlaceholderSuffix}"
+                    : DescribeDependency(refLoc, name, found, "locally")));
+            // A ROM reference is listed but is never a gap (IsAlwaysAvailable — it resolves on the
+            // instrument and can't be searched for), so it never enters `missing`.
+            if (!found && missing != null && !ObjectReferenceWalker.IsAlwaysAvailable(refLoc))
+                missing.Add(new MissingDependency(refLoc, refKind, site, loc));
+            if (found && refLoc.ObjType != LibObj.Program) CollectLocalDeps(refLoc, seen, rows, missing);
         }
     }
 
@@ -877,6 +1020,11 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         foreach (var (_, _, refLoc) in ObjectReferenceWalker.Walk(loc.ObjType, body))
         {
             if (!seen.Add(refLoc)) continue;
+            if (ObjectReferenceWalker.IsAlwaysAvailable(refLoc))   // see CollectLocalDeps
+            {
+                rows.Add(new ObjectDependencyRow(DescribeRomDependency(refLoc)));
+                continue;
+            }
             var depEntry = view.Get(refLoc);
             rows.Add(new ObjectDependencyRow(DescribeDependency(refLoc, depEntry?.Name ?? "", depEntry != null, "in this PCG")));
             if (depEntry != null && refLoc.ObjType != LibObj.Program) CollectPcgDeps(view, refLoc, seen, rows);
@@ -916,6 +1064,124 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
 
     public void ClearObjectDependencies() => ObjectDependencyRows.Clear();
 
+    // ── Per-object dependency detail (the Properties dialog's own lists, requirement 1) ──────
+    // Same data the "Object Dependencies" panel shows, but for ONE object and in both directions:
+    // what it REQUIRES (its own outgoing references, transitively — a Set List's Combis and their
+    // Programs) and what USES it (incoming referrers). The panel is selection-driven and
+    // outgoing-only; this is the "tell me everything about this one object" view.
+
+    // One reference site with nothing local behind it. Site is carried (not just RefKind) because
+    // resolving it later means patching THAT byte site inside RequiredBy — see
+    // LocalEditOps.RepatchReference.
+    public readonly record struct MissingDependency(ObjLoc Missing, string RefKind, int Site, ObjLoc RequiredBy);
+
+    // Both dependency views in ONE transitive walk. Each level reads the owner's full body off the
+    // CAS store, so a Set List with 128 populated slots is ~129 blob reads — fine once per user
+    // action, not fine repeated per caller. Callers that need both the display rows and the gaps
+    // (the Properties dialog needs exactly that) must use this rather than calling the two
+    // convenience wrappers below in sequence.
+    public (IReadOnlyList<string> Rows, IReadOnlyList<MissingDependency> Missing) InspectDependencies(ObjLoc loc)
+    {
+        var rows = new List<ObjectDependencyRow>();
+        var missing = new List<MissingDependency>();
+        if (loc.ObjType != LibObj.Program) CollectLocalDeps(loc, new HashSet<ObjLoc>(), rows, missing);
+        return (rows.Select(r => r.Description).ToList(), missing);
+    }
+
+    public IReadOnlyList<string> DescribeRequirements(ObjLoc loc) => InspectDependencies(loc).Rows;
+
+    // What currently points AT `loc` (Combi timbres / Set List slots) — the delete-warning's own
+    // referrer lookup, surfaced read-only. Empty for a Set List (nothing ever references one).
+    public IReadOnlyList<string> DescribeReferrers(ObjLoc loc) => LocalPane.DescribeReferrers(loc);
+
+    // Every reference of `loc` (transitively) with nothing local behind it — what a "find this
+    // dependency" action has to go looking for. ROM (GM/g) references are excluded by
+    // construction: they resolve on the instrument and can't be searched for.
+    public IReadOnlyList<MissingDependency> MissingDependenciesOf(ObjLoc loc) => InspectDependencies(loc).Missing;
+
+    // ── "Scan PCG for dependency" (requirement 2) ────────────────────────────────────────────
+    // The manual counterpart to the automatic auto-heal pipeline: when an object shows unmet
+    // dependencies, point this at a .pcg file and whatever it contains is staged into the Merge
+    // Window, ready to place. Deliberately staged rather than placed automatically — only the user
+    // knows which bank/slot a recovered dependency belongs in (the same reasoning the Merge
+    // Window's manual placement rests on), and staging is undoable in one step.
+    //
+    // Reads the file into a PcgLibraryView of its own instead of loading it into the PCG pane: the
+    // user is mid-task on whatever is already loaded there, and a scan for a missing Program
+    // shouldn't replace it. Each found dependency comes in transitively (MergeCache.PullFromPcg),
+    // so a recovered Combi brings its own Programs too.
+    // Searches one .pcg for ONE specific missing address — the Unresolved Dependencies dialog's
+    // right-click action, where the user is looking at a single reported gap rather than an
+    // object's whole dependency set. Anything found is staged transitively, exactly like the
+    // object-level scan; no new session-clipboard tracking is needed here because these entries
+    // are ALREADY tracked (that's why they're in the dialog), so ResolvePendingDependencies will
+    // repoint them by content wherever the user places them.
+    public (bool Found, string? Error) ScanPcgForOneDependency(ObjLoc missing, byte[] pcgBytes, string fileName)
+    {
+        var file = PcgFile.Open(pcgBytes);
+        if (file == null) return (false, AppMessages.Librarian.Pcg.NotRecognizedPcg(fileName));
+
+        var view = new PcgLibraryView(file);
+        if (view.Get(missing) == null) return (false, null);
+
+        using var undo = _undo.Begin(AppMessages.Librarian.Shell.UndoScannedPcgForDependencies(fileName));
+        MergePane.PullFromPcg(view, fileName, missing);
+        return (true, null);
+    }
+
+    // A display name for an address, wherever it can be found — Local Library first (the cached
+    // DisplayName, no blob read), then the loaded PCG. Empty when neither knows it, which is itself
+    // informative in the unresolved list: nothing loaded has this object at all.
+    public string DescribeMissingName(ObjLoc loc)
+    {
+        if (_cache.Exists(loc.ObjType, loc.Bank, loc.Number))
+            return _cache.GetDisplayName(loc.ObjType, loc.Bank, loc.Number);
+        return PcgPane.Get(loc)?.Name ?? "";
+    }
+
+    // `missing` comes from the caller's own InspectDependencies/MissingDependenciesOf call, so the
+    // transitive walk (one blob read per owner object) happens ONCE per user action rather than
+    // again in here.
+    public (int Found, int Missing, string? Error) ScanPcgForDependencies(
+        ObjLoc loc, IReadOnlyList<MissingDependency> missing, byte[] pcgBytes, string fileName)
+    {
+        if (missing.Count == 0) return (0, 0, null);
+
+        var file = PcgFile.Open(pcgBytes);
+        if (file == null) return (0, missing.Count, AppMessages.Librarian.Pcg.NotRecognizedPcg(fileName));
+        var view = new PcgLibraryView(file);
+
+        // One undo step for the whole scan, however many dependencies it recovers — same
+        // one-gesture-one-step rule as PullIntoMerge's list overload.
+        using var undo = _undo.Begin(AppMessages.Librarian.Shell.UndoScannedPcgForDependencies(fileName));
+        int found = 0;
+        bool tracked = false;
+        foreach (var gap in missing)
+        {
+            var entry = view.Get(gap.Missing);
+            if (entry == null) continue;
+            MergePane.PullFromPcg(view, fileName, gap.Missing);
+            found++;
+
+            // Staging alone doesn't repair anything: the referrer still encodes the OLD address,
+            // and the user is free to place the recovered object anywhere. Tracking the gap in the
+            // session clipboard — keyed by the CONTENT hash of what the PCG holds, exactly like
+            // the direct-PCG placement path (StageAndTrackPcgDependencies) — is what lets
+            // ResolvePendingDependencies find it by content at the next Sync/Commit and repatch
+            // the reference to wherever it actually landed. Without this the feature would find
+            // the dependency and still leave the referrer pointing at nothing unless the user
+            // happened to place it at the exact original address.
+            if (ProgramFormatConverter.WireBodyFromPcgEntry(gap.Missing.ObjType, entry) is { } wireBody)
+            {
+                _sessionClipboard.Add(new SessionDependencyEntry(
+                    gap.Missing, gap.RefKind, gap.Site, gap.RequiredBy, LocalObjectStore.ComputeHash(wireBody)));
+                tracked = true;
+            }
+        }
+        if (tracked) RefreshSessionClipboard();
+        return (found, missing.Count, null);
+    }
+
     void ReplaceObjectDependencies(List<ObjectDependencyRow> rows)
     {
         ObjectDependencyRows.Clear();
@@ -927,6 +1193,11 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     // Shared row format for the Local/PCG collectors above (Merge has no real address, so it
     // formats its own rows separately) — slot address alone isn't useful on its own, hence
     // type + name alongside it.
+    // A read-only ROM (GM/g) Program reference — present on every Kronos, so it's listed for
+    // completeness but never as a gap. See ObjectReferenceWalker.IsAlwaysAvailable.
+    static string DescribeRomDependency(ObjLoc loc) =>
+        $"{TypeName(loc.ObjType)}: {loc.Label()} — {AppMessages.Librarian.Shell.RomBankAlwaysAvailable}";
+
     static string DescribeDependency(ObjLoc loc, string name, bool found, string whereMissing) =>
         found
             ? $"{TypeName(loc.ObjType)}: {loc.Label()} — {(string.IsNullOrEmpty(name) ? "(unnamed)" : name)}"
@@ -952,8 +1223,13 @@ sealed class HistoryRow
 sealed class SessionClipboardRow
 {
     public string Description { get; }
+
+    // Type names on BOTH addresses, not bare labels: Program and Combi bank labels are identical
+    // strings ("I-C:008" is a valid address in either), so without them a row can't be read at all
+    // — the same ambiguity the Unresolved Dependencies dialog was reported for.
     public SessionClipboardRow(SessionDependencyEntry e) =>
-        Description = $"{e.MissingRef.Label()} — needed by {e.RequiredBy.Label()} ({e.RefKind})";
+        Description = $"{ObjectTypeRegistry.Get(e.MissingRef.ObjType).DisplayName} {e.MissingRef.Label()} — needed by " +
+                      $"{ObjectTypeRegistry.Get(e.RequiredBy.ObjType).DisplayName} {e.RequiredBy.Label()} ({e.RefKind})";
 }
 
 // Display wrapper for one entry in the "Object Dependencies" panel — see

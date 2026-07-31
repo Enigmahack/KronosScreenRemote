@@ -35,10 +35,17 @@ using System.IO;
 // constructs a brand-new LocalIndexEntry from scratch (RecordPullBaselines/push-baseline
 // advance), so PendingDelete resets to false there with no extra code — matching Delete's own
 // tooltip claim that a Pull restores a locally-deleted object.
+// IsInit (see InitObjects) is cached at write time for the same reason IsExi is — the free-slot
+// search scans whole banks (128 slots x 21 banks) and must not read a blob per slot. It is
+// NULLABLE on purpose: null means "written by a build before this field existed", not "not init".
+// LocalLibraryCache.IsInitSlot degrades those to the name-only check against the cached
+// DisplayName, which is EXACT for Programs and catches the named case for Combis — so an already-
+// synced library gets init-aware free slots immediately, with no re-Pull and no migration sweep.
 sealed record LocalIndexEntry(
     byte Version, string BaselineHash, string CurrentHash, string DisplayName,
     DateTime? LastPulledUtc, DateTime? LastPushedUtc, bool Conflicted,
-    bool HasResolvedDependencies = true, bool IsExi = true, bool PendingDelete = false);
+    bool HasResolvedDependencies = true, bool IsExi = true, bool PendingDelete = false,
+    bool? IsInit = null);
 
 // Persisted at {root}/index.json. This is a CACHE, not a second source of truth:
 // CurrentHash is exactly "fold the op-log forward from Baseline" (RebuildCurrentFromOpLog

@@ -108,8 +108,16 @@ static class BatchLibrarian
     // tree-selection-based version this replaced).
     //   bankTypeOf — Program HD-1/EXi lookup (true=EXi/false=HD-1/null=unknown-or-untyped-bank,
     //   e.g. I-G). Ignored entirely for Combis and Set Lists, which have no such typing.
+    //   slotAvailable — optional "may an auto-fill write to slot N?" filter (see LocalEditOps.
+    //   AvailableSlotsFrom). Supplied by the auto-fill callers only. Since a slot holding nothing
+    //   but an INIT placeholder now counts as free, the writable slots in a bank are commonly
+    //   SCATTERED rather than one contiguous tail, and a plain startSlot+i walk would write over
+    //   real patches sitting past the first placeholder. Null keeps the original contiguous
+    //   behaviour, which is what a drop on a SPECIFIC slot wants: the user pointed at it, so
+    //   filling from exactly there — occupants and all — is the explicit intent.
     public static (List<(ClipboardEntry Entry, int Slot)> Placed, List<(ClipboardEntry Entry, string Reason)> StillPending)
-        ResolveSequentialFill(IReadOnlyList<ClipboardEntry> pending, int objType, int destBank, int startSlot, Func<int, bool?>? bankTypeOf)
+        ResolveSequentialFill(IReadOnlyList<ClipboardEntry> pending, int objType, int destBank, int startSlot, Func<int, bool?>? bankTypeOf,
+                              Func<int, bool>? slotAvailable = null)
     {
         var placeable = new List<ClipboardEntry>();
         var stillPending = new List<(ClipboardEntry, string)>();
@@ -129,11 +137,18 @@ static class BatchLibrarian
         else placeable.AddRange(pending);
 
         var placed = new List<(ClipboardEntry, int)>();
+        int next = startSlot;
         for (int i = 0; i < placeable.Count; i++)
         {
-            int slot = startSlot + i;
+            int slot;
+            if (slotAvailable == null) slot = startSlot + i;
+            else
+            {
+                while (next < BankSlotCount && !slotAvailable(next)) next++;
+                slot = next++;
+            }
             if (slot >= BankSlotCount)
-                stillPending.Add((placeable[i], $"destination bank full — slot {slot} is past the last slot ({BankSlotCount - 1}) starting from {startSlot}"));
+                stillPending.Add((placeable[i], $"destination bank full — no free slot left at or after slot {startSlot}"));
             else
                 placed.Add((placeable[i], slot));
         }
@@ -250,7 +265,21 @@ static class BatchLibrarian
             // silently destroyed).
             bool identical = destOccupants.TryGetValue(to, out var occ)
                 && real.First(p => p.To.Equals(to)).Body.Body.AsSpan().SequenceEqual(occ.Body);
+
+            // An INIT occupant — Program OR Combi — is a placeholder, not data: the Kronos has no
+            // empty slot, so an unused one holds a full INIT body (see InitObjects). Overwriting it
+            // destroys nothing, so the fact that something still POINTS at that address is not a
+            // reason to refuse: the referrer was pointing at an init patch (i.e. already
+            // effectively broken) and will simply resolve to the real object now landing there.
+            // Downgraded to a CHECK exactly like forceOverwrite, so the write proceeds through (5)
+            // below and the placeholder is still diverted to the clipboard rather than lost — the
+            // user just doesn't have to reach for Force Overwrite to place onto an empty-looking
+            // slot, which is what made this feel like a false blocker.
+            bool occupantIsInit = destOccupants.TryGetValue(to, out var initOcc)
+                && InitObjects.IsInit(objType, initOcc.Body);
+
             plan.Warnings.Add(identical ? AppMessages.Librarian.Move.AlreadyContainsExact(to.Label())
+                : occupantIsInit ? AppMessages.Librarian.Move.InitOccupantOverwritten(to.Label(), displacedRefs.Count)
                 : forceOverwrite ? AppMessages.Librarian.Move.ForcedOverwriteReferenced(to.Label(), displacedRefs.Count)
                 : AppMessages.Librarian.Move.ReferencedWouldBeOverwritten(to.Label(), displacedRefs.Count));
         }
@@ -484,6 +513,69 @@ static class BatchLibrarian
             forcedPlan.Warnings.Any(w => w.StartsWith("CHECK:", StringComparison.Ordinal) && w.Contains("Force Overwrite")));
         Check("orphan-gate-forced-write-present", forcedPlan.Writes.Any(w => w.Bank == orphanDst.Bank && w.Index == orphanDst.Number));
         Check("orphan-gate-forced-displaced-to-clipboard", forcedPlan.ClipboardAdds.Any(c => c.Origin.Equals(orphanDst)));
+
+        // 4d. Orphan gate: an INIT Program occupant is a placeholder, not data — the same
+        // referenced/non-relocated shape as 4 must NOT refuse when the slot merely holds an init
+        // patch, and must not need Force Overwrite to get through (requirement 5). The displaced
+        // placeholder is still diverted to the clipboard, exactly like the forced path.
+        var initOccupantBody = ProgramBody.WriteName(new byte[ProgramFormatConverter.WireSizeHd1], "Init EXi Program");
+        var initOccupants = new Dictionary<ObjLoc, ObjectDump>
+        {
+            [orphanDst] = new ObjectDump(LibObj.Program, 0x40, 10, 1, initOccupantBody),
+        };
+        var initPlan = PlanBatchMove(cat1, LibObj.Program, orphanPlacements, initOccupants, divertDisplacedToClipboard: true);
+        Check("orphan-gate-init-occupant-not-refused", !initPlan.IsRefusable &&
+            initPlan.Warnings.Any(w => w.StartsWith("CHECK:", StringComparison.Ordinal) && w.Contains("INIT placeholder")));
+        Check("orphan-gate-init-write-present", initPlan.Writes.Any(w => w.Bank == orphanDst.Bank && w.Index == orphanDst.Number));
+        Check("orphan-gate-init-displaced-to-clipboard", initPlan.ClipboardAdds.Any(c => c.Origin.Equals(orphanDst)));
+
+        // 4e. The exemption covers an INIT COMBI occupant too, not just a Program (an unused Combi
+        // slot is just as much a placeholder), while a REAL Combi occupant still refuses. The two
+        // occupants below differ only in whether their timbres point anywhere — which is exactly
+        // what CombiBody.IsInit keys off.
+        var combiRefCat = new LibraryCatalog();
+        var slRefBody = new byte[69416];
+        LibRefs.SetSetListSlotRef(slRefBody, 0, KronosBanks.ObjBankToFunc33(0, 0x40), 0, type: 0);   // -> Combi U-A:000
+        combiRefCat.AddSetlist(new ObjectDump(LibObj.SetList, 0, 0, 0, slRefBody));
+        var combiDst = new ObjLoc(LibObj.Combi, 0x40, 0);
+        var combiPlacements = new List<BatchPlacement>
+        {
+            new(new ObjLoc(LibObj.Combi, 0x00, 1), combiDst, new ObjectDump(LibObj.Combi, 0x00, 1, 1, new byte[7810]), "combi src"),
+        };
+
+        // Every timbre still at the zero default = an init Combi.
+        var initCombiOccupants = new Dictionary<ObjLoc, ObjectDump>
+        {
+            [combiDst] = new ObjectDump(LibObj.Combi, 0x40, 0, 1, CombiBody.WriteName(new byte[7810], "Init Combi")),
+        };
+        var initCombiPlan = PlanBatchMove(combiRefCat, LibObj.Combi, combiPlacements, initCombiOccupants, divertDisplacedToClipboard: true);
+        Check("orphan-gate-init-combi-not-refused", !initCombiPlan.IsRefusable);
+
+        // A real Combi (timbres actually assigned) referenced by that same Set List still refuses.
+        var realCombiBody = new byte[7810];
+        for (int t = 0; t < LibRefs.TimbreCount; t++) LibRefs.SetCombiTimbreRef(realCombiBody, t, 17, t + 1);   // U-A:001..016
+        var realCombiOccupants = new Dictionary<ObjLoc, ObjectDump>
+        {
+            [combiDst] = new ObjectDump(LibObj.Combi, 0x40, 0, 1, CombiBody.WriteName(realCombiBody, "Real Combi")),
+        };
+        var realCombiPlan = PlanBatchMove(combiRefCat, LibObj.Combi, combiPlacements, realCombiOccupants, divertDisplacedToClipboard: true);
+        Check("orphan-gate-real-combi-still-refuses", realCombiPlan.IsRefusable &&
+            realCombiPlan.Warnings.Any(w => w.Contains("referenced by")));
+
+        // 4f. An INIT Combi contributes NO dependencies: its 16 timbres all hold the zero default,
+        // which encodes "nothing assigned" — not a real dependency on Program I-A:000. This is the
+        // phantom that made one address appear "needed by" every init Combi in the library at once.
+        var initCombiForWalk = CombiBody.WriteName(new byte[7810], "Init Combi");
+        Check("init-combi-walks-no-refs", !ObjectReferenceWalker.Walk(LibObj.Combi, initCombiForWalk).Any());
+        Check("init-combi-detected-unnamed", CombiBody.IsInit(new byte[7810]));
+        Check("real-combi-not-init", !CombiBody.IsInit(realCombiBody));
+        // One assigned timbre is enough to make it a real Combi whose references still count.
+        var oneTimbreCombi = new byte[7810];
+        LibRefs.SetCombiTimbreRef(oneTimbreCombi, 4, 17, 9);
+        Check("one-assigned-timbre-is-not-init", !CombiBody.IsInit(oneTimbreCombi));
+        Check("one-assigned-timbre-walks-refs", ObjectReferenceWalker.Walk(LibObj.Combi, oneTimbreCombi).Any());
+        // A truncated body must not read as "all defaults" just because it holds fewer than 16.
+        Check("short-combi-not-init", !CombiBody.IsInit(new byte[5000]));
 
         // 5. THE crux case: one referrer touched by TWO placements in the same batch gets
         // both patches merged into a single write, not two independent (stomping) writes.

@@ -11,6 +11,11 @@ using System.Text;
 // BatchPlaceFromPcg's own long-standing multi-item behavior, instead of requiring emptiness.
 static class MergeGroupPlacementSelfTests
 {
+    // Never the empty host: LibrarianShellViewModel seeds its Program bank types from a REAL,
+    // global, host-keyed cache next to the exe, so a shared key lets one self-test's persisted
+    // answer decide another's placements. See CrossPanePlacementSelfTests' own comment.
+    const string MergeGroupHost = "selftest-mergegroup-host";
+
     public static async Task<List<string>> SelfTestAsync()
     {
         var fails = new List<string>();
@@ -24,7 +29,7 @@ static class MergeGroupPlacementSelfTests
             var cache = new LocalLibraryCache(root);
             await LibraryPullPipeline.PullAsync(exec, cache, full: true);   // nothing seeded — empty local library
 
-            var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), "");
+            var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), MergeGroupHost);
 
             var pcgBuffer = BuildSyntheticPcg(out var combiABody, out var combiBBody, out var combiCBody);
             var file = PcgFile.Open(pcgBuffer);
@@ -44,21 +49,43 @@ static class MergeGroupPlacementSelfTests
             // Occupy slots 0 and 1 of the destination bank BEFORE the group drop — the exact
             // shape of the user's report: the bank isn't empty, but there's plenty of free
             // room from slot 2 onward.
+            // Each seed gets a non-default timbre reference so it reads as REAL content: a merely
+            // named Combi still has all 16 timbres at the zero default, which is the defining shape
+            // of an INIT placeholder (CombiBody.AllTimbresAtDefault) — and init slots now count as
+            // free space, so a slot meant to be pre-OCCUPIED has to hold something genuine.
+            int seedRefBank = KronosBanks.ObjBankToFunc33(1, 0x40);
             var seed0Body = new byte[7810];
             Encoding.ASCII.GetBytes("SEED 0").CopyTo(seed0Body, 0);
+            LibRefs.SetCombiTimbreRef(seed0Body, 0, seedRefBank, 11);
             var seed1Body = new byte[7810];
             Encoding.ASCII.GetBytes("SEED 1").CopyTo(seed1Body, 0);
+            LibRefs.SetCombiTimbreRef(seed1Body, 0, seedRefBank, 12);
+            // Slot 2 gets an INIT Combi (named, but every timbre still at the zero default) and
+            // slot 3 more REAL content. That interleaving is the whole point: the fill must treat
+            // 2 as free and STEP OVER 3, landing on 2, 4, 5. A contiguous startSlot+i walk would
+            // put COMBI B on slot 3 and destroy "SEED 3" — the data loss init-awareness introduces
+            // if the fill isn't slot-aware (see LocalEditOps.AvailableSlotsFrom).
+            var seed2Body = new byte[7810];
+            Encoding.ASCII.GetBytes("INIT COMBI").CopyTo(seed2Body, 0);
+            var seed3Body = new byte[7810];
+            Encoding.ASCII.GetBytes("SEED 3").CopyTo(seed3Body, 0);
+            LibRefs.SetCombiTimbreRef(seed3Body, 0, seedRefBank, 13);
             var (seedOk1, _, _) = LocalEditOps.PlaceObject(cache, new ObjLoc(LibObj.Combi, 0x40, 0), LibObj.Combi, 1, seed0Body, "seed0", true, DateTime.UtcNow);
             var (seedOk2, _, _) = LocalEditOps.PlaceObject(cache, new ObjLoc(LibObj.Combi, 0x40, 1), LibObj.Combi, 1, seed1Body, "seed1", true, DateTime.UtcNow);
-            Check("seed-slots-ok", seedOk1 && seedOk2);
+            var (seedOk3, _, _) = LocalEditOps.PlaceObject(cache, new ObjLoc(LibObj.Combi, 0x40, 2), LibObj.Combi, 1, seed2Body, "seed2", true, DateTime.UtcNow);
+            var (seedOk4, _, _) = LocalEditOps.PlaceObject(cache, new ObjLoc(LibObj.Combi, 0x40, 3), LibObj.Combi, 1, seed3Body, "seed3", true, DateTime.UtcNow);
+            Check("seed-slots-ok", seedOk1 && seedOk2 && seedOk3 && seedOk4);
+            Check("seed-slot-2-reads-as-init", cache.IsInitSlot(LibObj.Combi, 0x40, 2));
 
             var (ok, msg) = vm.PlaceMergeGroupSequentially(LibObj.Combi, 0x40, new[] { hashA, hashB, hashC });
             Check("group-drop-not-refused-for-nonempty-bank", ok);
 
-            // Lands starting at the first free slot (2), leaving the pre-occupied 0/1 untouched.
+            // Lands on the first free slot (2 — the init placeholder), then STEPS OVER the real
+            // content at 3, continuing on 4 and 5. The pre-occupied 0/1/3 are all left untouched.
             Check("combiA-at-slot-2", cache.GetDisplayName(LibObj.Combi, 0x40, 2) == "COMBI A");
-            Check("combiB-at-slot-3", cache.GetDisplayName(LibObj.Combi, 0x40, 3) == "COMBI B");
-            Check("combiC-at-slot-4", cache.GetDisplayName(LibObj.Combi, 0x40, 4) == "COMBI C");
+            Check("combiB-at-slot-4", cache.GetDisplayName(LibObj.Combi, 0x40, 4) == "COMBI B");
+            Check("combiC-at-slot-5", cache.GetDisplayName(LibObj.Combi, 0x40, 5) == "COMBI C");
+            Check("seed-slot-3-not-overwritten", cache.GetDisplayName(LibObj.Combi, 0x40, 3) == "SEED 3");
             Check("seed-slot-0-untouched", cache.GetDisplayName(LibObj.Combi, 0x40, 0) == "SEED 0");
             Check("seed-slot-1-untouched", cache.GetDisplayName(LibObj.Combi, 0x40, 1) == "SEED 1");
 
@@ -80,7 +107,7 @@ static class MergeGroupPlacementSelfTests
             var cache = new LocalLibraryCache(slotRoot);
             await LibraryPullPipeline.PullAsync(exec, cache, full: true);
 
-            var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), "");
+            var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), MergeGroupHost);
 
             var pcgBuffer = BuildSyntheticPcg(out var combiABody, out var combiBBody, out var combiCBody);
             var file = PcgFile.Open(pcgBuffer);
@@ -173,7 +200,7 @@ static class MergeGroupPlacementSelfTests
             var cache = new LocalLibraryCache(dedupRoot);
             await LibraryPullPipeline.PullAsync(exec, cache, full: true);   // empty local library
 
-            var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), "");
+            var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), MergeGroupHost);
 
             var pcgBuffer = BuildSyntheticPcg(out var combiABody, out var combiBBody, out var combiCBody);
             var file = PcgFile.Open(pcgBuffer);

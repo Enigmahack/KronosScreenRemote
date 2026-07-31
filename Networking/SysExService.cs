@@ -831,9 +831,11 @@ sealed class SysExService : ISysExService
         try
         {
             var req  = SysExDumpCollector.ObjectDumpRequest(obj, bank, index);
-            // Set Lists are ~79 KB and slow to serialize — give the "no activity" window headroom.
+            // Set Lists (~79 KB) and Global (~24 KB) are the big, slow-to-serialize objects —
+            // give their "no activity" window headroom rather than timing out on a reply that
+            // was on its way.
             var msgs = await dump.CollectAsync(req, (byte)obj, expectedCount: 1,
-                                    noResponseMs: obj == 0x0D ? 10000 : 6000).ConfigureAwait(false);
+                                    noResponseMs: obj is 0x0D or LibObj.Global ? 10000 : 6000).ConfigureAwait(false);
             var msg = msgs.Count > 0 ? msgs[0] : null;
             return msg != null ? KronosSysEx.ParseObjectDump(msg) : null;
         }

@@ -24,6 +24,30 @@ static class ProgramBody
         return (packed & 0x1F, (packed >> 5) & 0x07);
     }
 
+    // Is this Program an INIT/placeholder rather than a real patch? Both wire formats name
+    // theirs with some spelling of "Init … Program" ("Init Program", "Init EXi Program"), and
+    // this app's own erase path writes "INIT PROGRAM" (Core/LocalLibrary/EraseBody.cs) — so a
+    // case-insensitive "contains INIT and PROGRAM" catches the hardware's naming and ours alike,
+    // without hardcoding a single exact string that a future OS revision could change.
+    //
+    // The NAME is the only thing that can answer this: a Kronos slot is never empty (the protocol
+    // has no "delete" — see EraseBody's own comment), so an unused slot holds a full, valid INIT
+    // body whose bytes are otherwise indistinguishable from a real patch's. That's exactly what
+    // the user sees in the Librarian, and what the placement gate keys off (BatchLibrarian.
+    // PlanBatchMove's orphan gate): overwriting a slot whose occupant is merely INIT destroys
+    // nothing, so it must not demand a Force Overwrite the way a real referenced patch does.
+    public static bool IsInit(byte[] body) => IsInitName(ReadName(body));
+
+    // Name-only overload, for callers that already hold the decoded display name and must not
+    // pay a blob read to answer this (LocalLibraryCache.GetDisplayName is cached at write time —
+    // see LocalIndexEntry's own comment).
+    public static bool IsInitName(string name)
+    {
+        string trimmed = name.Trim();
+        return trimmed.Contains("INIT", StringComparison.OrdinalIgnoreCase) &&
+               trimmed.Contains("PROGRAM", StringComparison.OrdinalIgnoreCase);
+    }
+
     // Same bytes as `body`, only the Category/Sub-Category byte replaced — every
     // other byte preserved exactly (same discipline as Librarian.BuildRenamedBody).
     public static byte[] WriteCategory(byte[] body, int category, int subCategory)

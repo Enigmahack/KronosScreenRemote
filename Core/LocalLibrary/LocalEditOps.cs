@@ -186,12 +186,107 @@ static class LocalEditOps
     // own Paste-onto-a-bank) — first empty slot in bank order, or 0 if the bank is full
     // (callers that care about "full" find out via the placement/fill result, same as
     // LibrarianShellViewModel's PCG-batch path already relies on).
+    //
+    // "Free" means LocalLibraryCache.HasContent is false — unindexed, OR holding nothing but an
+    // INIT/blank placeholder. On a Kronos the second case is the normal one: the protocol has no
+    // empty slot, so a synced library indexes all 128 slots of every bank and an Exists-based scan
+    // reports even a bank of 128 "Init Program"s as full.
     public static int FindNextFreeSlot(LocalLibraryCache cache, int objType, int bank)
     {
         var descriptor = ObjectTypeRegistry.Get(objType);
         for (int i = 0; i < descriptor.SlotCount; i++)
-            if (!cache.Exists(objType, bank, i)) return i;
+            if (!cache.HasContent(objType, bank, i)) return i;
         return 0;
     }
 
+    // The next `max` slots at or after `startSlot` that an auto-fill may write to, skipping any
+    // holding real content. Init-awareness makes interior holes normal (a bank is commonly real
+    // patches up to slot N and init placeholders after, but the two DO interleave), so an
+    // auto-fill can no longer assume slots startSlot..startSlot+n-1 are all writable — doing so
+    // would overwrite real patches sitting past the first placeholder. Fewer than `max` entries
+    // means the bank ran out; callers report the shortfall rather than placing past the end.
+    public static List<int> AvailableSlotsFrom(LocalLibraryCache cache, int objType, int bank, int startSlot, int max)
+    {
+        var descriptor = ObjectTypeRegistry.Get(objType);
+        var slots = new List<int>();
+        for (int i = Math.Max(0, startSlot); i < descriptor.SlotCount && slots.Count < max; i++)
+            if (!cache.HasContent(objType, bank, i)) slots.Add(i);
+        return slots;
+    }
+
+    // Same scan as FindNextFreeSlot, but says "full" instead of silently answering slot 0 — for
+    // callers that place a SINGLE object at whatever slot comes back (a drop on a bank/header),
+    // where falling back to 0 would overwrite whatever occupies it.
+    public static int? TryFindNextFreeSlot(LocalLibraryCache cache, int objType, int bank)
+    {
+        var descriptor = ObjectTypeRegistry.Get(objType);
+        for (int i = 0; i < descriptor.SlotCount; i++)
+            if (!cache.HasContent(objType, bank, i)) return i;
+        return null;
+    }
+
+    // The bank a drop onto a TYPE-ROOT header ("Programs"/"Combis"/"Set Lists") should land in:
+    // the first bank that actually has room. Requirement 6 — dropping on the header used to be
+    // refused outright ("drop onto a specific bank or slot"), even though "anywhere there's space"
+    // is a perfectly clear intent. Null only when EVERY writable bank of this type is full.
+    //
+    // USER banks are tried before INT ones regardless of tree order: "put this somewhere" means a
+    // user bank on a Kronos: INT banks hold factory content, and on a fully-synced library they're
+    // full anyway, so this only ever differs on a partially-populated library — where landing in
+    // I-A would be the surprising outcome, not the helpful one. Read-only GM/g banks are skipped
+    // entirely (nothing can be written there at all).
+    //
+    // incomingIsExi (Programs only) confines the search to banks of the MATCHING HD-1/EXi format.
+    // That is a HARD filter, not a preference — an HD-1 group must never resolve to an EXi bank
+    // (or vice versa), because both ways out of that are bad:
+    //   - a single-item drop fails with PlanBatchMove's wrong-format REFUSE, and
+    //   - a multi-item drop is worse still: OnMergeToLocalDrop feeds this bank straight into
+    //     BankTypeChangeNeeded, so a wrong-format answer escalates the drop into the whole-bank
+    //     "Change Program Bank Type" prompt — a func 0x7C that ERASES the destination bank.
+    // A drop on the type-root header means "put this somewhere convenient"; it must never do
+    // either. Null means no bank of the incoming format has room — callers report that naming the
+    // format, since a bare "every Program bank is full" reads as a lie while the user can see empty
+    // slots in banks of the OTHER format.
+    //
+    // A bank whose type can't be determined at all (no live func-0x61 answer AND empty locally — in
+    // practice I-G, which func 0x61's bitmap doesn't cover at all) stays eligible, but only as a
+    // SECOND choice: a confirmed format match anywhere wins over it. Landing on an unverifiable
+    // bank degrades to PlanBatchMove's advisory CHECK rather than a hard refusal, so preferring it
+    // over a known-good bank would silently defer a real format error to the hardware write.
+    public static int? FindBankWithFreeSlot(
+        LocalLibraryCache cache, int objType, bool? incomingIsExi = null, Func<int, bool?>? bankTypeOf = null)
+    {
+        var descriptor = ObjectTypeRegistry.Get(objType);
+        var banks = descriptor.EditableBanks()
+            .Where(b => !descriptor.IsReadOnlyBank(b))
+            .OrderByDescending(b => b >= 0x40)   // USER banks first, each group otherwise in registry order
+            .ToList();
+
+        int? firstUnverifiable = null;
+        foreach (var bank in banks)
+        {
+            bool hasRoom = false;
+            for (int i = 0; i < descriptor.SlotCount && !hasRoom; i++)
+                if (!cache.HasContent(objType, bank, i)) hasRoom = true;
+            if (!hasRoom) continue;
+
+            if (objType != LibObj.Program || incomingIsExi is not bool wantExi) return bank;
+
+            bool? bankIsExi = bankTypeOf?.Invoke(bank) ?? LocalProgramBankFormat(cache, bank);
+            if (bankIsExi is not bool isExi) firstUnverifiable ??= bank;   // keep looking for a real match
+            else if (isExi == wantExi) return bank;
+        }
+        return firstUnverifiable;
+    }
+
+    // The HD-1/EXi format of a Program bank as Local Library currently sees it — the cached IsExi
+    // of the first Program already in that bank (index-only, no blob read; every Program in one
+    // bank shares its format). Null if the bank is empty locally, i.e. nothing to infer from.
+    public static bool? LocalProgramBankFormat(LocalLibraryCache cache, int bank)
+    {
+        var descriptor = ObjectTypeRegistry.Get(LibObj.Program);
+        for (int n = 0; n < descriptor.SlotCount; n++)
+            if (cache.Exists(LibObj.Program, bank, n)) return cache.IsExi(LibObj.Program, bank, n);
+        return null;
+    }
 }

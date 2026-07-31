@@ -223,7 +223,11 @@ sealed class MergeCache
         added.Add(entry);
         ReconcileGaps(loc, hash);
 
-        foreach (var (refKind, site, refLoc) in ObjectReferenceWalker.Walk(loc.ObjType, wireBody))
+        // WalkResolvable, not Walk: a reference into a read-only ROM Program bank (GM/g) needs no
+        // staging and can never be satisfied by pulling — creating a RefSite for one would leave
+        // HasUnresolvedDependencies permanently true and block every push. See
+        // ObjectReferenceWalker.IsAlwaysAvailable.
+        foreach (var (refKind, site, refLoc) in ObjectReferenceWalker.WalkResolvable(loc.ObjType, wireBody))
         {
             string? depHash = PullRecursive(source, sourceLabel, refLoc, isTopLevel: false, added, gaps);
             var refSite = new MergeRefSite { OwnerHash = hash, RefKind = refKind, Site = site, TargetLoc = refLoc, ResolvedContentHash = depHash };

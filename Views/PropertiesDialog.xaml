@@ -14,6 +14,7 @@
             <RowDefinition Height="6"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="12"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -23,14 +24,27 @@
         <TextBlock Grid.Row="1" Text="Name"/>
         <TextBox Grid.Row="3" x:Name="TXT_Name" MaxLength="24"/>
 
-        <!-- Program/Combi: Category & Sub-Category (numeric — no name table exists for
-             these values anywhere in the documented format, see the plan's flagged gap). -->
-        <StackPanel Grid.Row="4" x:Name="PNL_Category" Orientation="Horizontal" Margin="0 10 0 0" Visibility="Collapsed">
-            <TextBlock Text="Category" VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
-            <ComboBox x:Name="CMB_Category" Width="70" Margin="8 0 0 0"/>
-            <TextBlock Text="Sub-Category" VerticalAlignment="Center" Margin="16 0 0 0" Foreground="{StaticResource MutedTextBrush}"/>
-            <ComboBox x:Name="CMB_SubCategory" Width="60" Margin="8 0 0 0"/>
-        </StackPanel>
+        <!-- Program/Combi: Category & Sub-Category, shown by NAME as well as number (requirement
+             4). The names come from the instrument's own Global object, synced and cached per host
+             (Core/ObjectBody/GlobalBody.cs); with nothing synced yet they read as plain "Category
+             05", exactly as this dialog behaved before. Sized for real names ("Guitar", "Acoustic
+             Guitar") rather than the two digits these fields used to show. -->
+        <Grid Grid.Row="4" x:Name="PNL_Category" Margin="0 10 0 0" Visibility="Collapsed">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Category" VerticalAlignment="Center"
+                       Margin="0 0 8 0" Foreground="{StaticResource MutedTextBrush}"/>
+            <ComboBox Grid.Row="0" Grid.Column="1" x:Name="CMB_Category"/>
+            <TextBlock Grid.Row="1" Grid.Column="0" Text="Sub-Category" VerticalAlignment="Center"
+                       Margin="0 8 8 0" Foreground="{StaticResource MutedTextBrush}"/>
+            <ComboBox Grid.Row="1" Grid.Column="1" x:Name="CMB_SubCategory" Margin="0 8 0 0"/>
+        </Grid>
 
         <!-- Set List: browse its slots and edit whichever one is selected (Name/Color/
              Comments) — this absorbs Views/SetListWindow.xaml's functionality into one
@@ -61,7 +75,38 @@
                      TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto" IsEnabled="False"/>
         </Grid>
 
-        <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right">
+        <!-- Requirement 1: what this object needs, and what needs it. Both lists are FIXED
+             height with their own scrollbar, never Auto: this dialog is SizeToContent="Height",
+             so a heavily-referenced Program's referrer list would otherwise grow the window until
+             the OK/Cancel buttons scrolled off-screen — the exact failure
+             UnresolvedDependenciesDialog exists to fix. "Scan PCG…" (requirement 2) is the manual
+             recovery path for whatever the Requires list shows as missing. -->
+        <GroupBox Grid.Row="5" x:Name="PNL_Dependencies" Header="Dependencies" Margin="0 14 0 0" Visibility="Collapsed">
+            <Grid Margin="0 4 0 0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" x:Name="TXT_RequiresHeader" Margin="0 0 0 4"
+                           Foreground="{StaticResource MutedTextBrush}"/>
+                <ListBox Grid.Row="1" x:Name="LST_Requires" Height="88" FontFamily="Consolas" FontSize="11"
+                         HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+
+                <TextBlock Grid.Row="2" x:Name="TXT_UsedByHeader" Margin="0 10 0 4"
+                           Foreground="{StaticResource MutedTextBrush}"/>
+                <ListBox Grid.Row="3" x:Name="LST_UsedBy" Height="88" FontFamily="Consolas" FontSize="11"
+                         HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+
+                <Button Grid.Row="4" x:Name="BTN_ScanPcg" HorizontalAlignment="Left" Margin="0 10 0 0"
+                        Click="OnScanPcg" Style="{StaticResource DialogButtonStyle}"/>
+            </Grid>
+        </GroupBox>
+
+        <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button x:Name="BTN_Cancel" Content="Cancel" IsCancel="True" Click="OnCancel" Margin="0 0 8 0" Style="{StaticResource DialogButtonStyle}"/>
             <Button x:Name="BTN_Ok" Content="OK" IsDefault="True" Click="OnOk" Style="{StaticResource DialogButtonStyle}"/>
         </StackPanel>

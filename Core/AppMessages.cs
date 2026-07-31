@@ -294,6 +294,21 @@ public static class AppMessages
             public static string MoveFailed(string? error)         => $"Move failed: {error}";
             public static string EmptySlotCut(string dest) =>
                 $"{dest} is empty — Cut can only be pasted onto an occupied slot (to swap). Use Copy to place a copy there instead.";
+            // A drop/paste onto a type-root header ("Programs"/"Combis"/"Set Lists") found no bank
+            // with a free slot at all — requirement 6's one genuine failure case.
+            //
+            // incomingIsExi (Programs only) names the HD-1/EXi format the search was confined to
+            // (LocalEditOps.FindBankWithFreeSlot). Without it the message reads as a flat lie in
+            // exactly the case it fires: the user can see empty slots in banks of the OTHER format,
+            // so "every Program bank is full" looks wrong and the real reason stays invisible.
+            public static string NoRoomInAnyBank(string typeName, bool? incomingIsExi = null) =>
+                incomingIsExi is bool exi
+                    ? $"every {(exi ? "EXi" : "HD-1")} {typeName} bank is full — free a slot in one, or drop onto a specific bank instead"
+                    : $"every {typeName} bank is full — free a slot, or drop onto a specific bank instead";
+            // One specific bank was targeted and has no free slot — distinct from NoRoomInAnyBank,
+            // which is about the header drop's library-wide search.
+            public static string BankIsFull(string bankLabel) =>
+                $"{bankLabel} is full — no free slots left; drop onto another bank instead";
             public const string NothingToPaste       = "nothing to paste";
             public const string NothingCouldBePlaced = "nothing could be placed (bank full or type mismatch)";
             public static string PlacedCount(int placed, int stillPending) =>
@@ -412,6 +427,32 @@ public static class AppMessages
             public static string ReusedExistingContentCount(int count) =>
                 $"{count} item(s) already existed elsewhere — reused instead of copying";
 
+            // Shown in the dependency lists for a reference into a read-only ROM Program bank
+            // (GM, g(1)-g(9), g(d)) — those live on the instrument itself, so they're never a gap
+            // and never something to place. See ObjectReferenceWalker.IsAlwaysAvailable.
+            public const string RomBankAlwaysAvailable = "ROM bank, always available on the Kronos";
+
+            // A reference that resolves to an INIT/placeholder Program — satisfied, but not really
+            // the sound the referrer wants. See ProgramBody.IsInit.
+            public const string InitPlaceholderSuffix = "(INIT placeholder)";
+
+            // ── Properties dialog: dependency lists + "Scan PCG…" (requirements 1 and 2) ──
+            public const string DependenciesHeader   = "Dependencies";
+            public const string RequiresHeader       = "Requires (what this object needs)";
+            public const string UsedByHeader         = "Used by (what needs this object)";
+            public const string RequiresNothing      = "Nothing — this object references no others.";
+            public const string UsedByNothing        = "Nothing currently references this object.";
+            public const string ScanPcgButton        = "Scan PCG for missing…";
+            public const string ScanPcgDialogTitle   = "Scan a PCG for missing dependencies";
+            public const string ScanNothingMissing   = "Nothing missing — every dependency already resolves.";
+            public static string ScanFoundInPcg(int found, int missing, string fileName) =>
+                $"Found {found} of {missing} missing dependency(ies) in {fileName} — staged in the Merge Window, ready to place.";
+            public static string ScanFoundNoneInPcg(int missing, string fileName) =>
+                $"{fileName} has none of the {missing} missing dependency(ies) — try another PCG.";
+            public static string ScanFailed(string detail) => $"Scan failed: {detail}";
+            public static string UndoScannedPcgForDependencies(string fileName) =>
+                $"Staged dependencies found in {fileName}";
+
             // ── Undo (Ctrl+Z — see Core/LocalLibrary/LibrarianUndo.cs) ──
             // Step descriptions are past-tense phrases naming the action, so they read correctly in
             // BOTH surroundings they appear in: the button's "Undo: <desc> (Ctrl+Z)" tooltip and the
@@ -489,6 +530,8 @@ public static class AppMessages
                 $"REFUSE: {toLabel} already contains this exact object — nothing to place.";
             public static string ReferencedWouldBeOverwritten(string toLabel, int refCount) =>
                 $"REFUSE: {toLabel} is referenced by {refCount} object(s) and would be overwritten without being relocated itself — add it to this batch as a source, or choose a different destination.";
+            public static string InitOccupantOverwritten(string toLabel, int refCount) =>
+                $"CHECK: {toLabel} held an INIT placeholder referenced by {refCount} object(s) — placed anyway (an INIT slot is a placeholder, not data), so those referrer(s) now resolve to the new object.";
             public static string ForcedOverwriteReferenced(string toLabel, int refCount) =>
                 $"CHECK: {toLabel} was referenced by {refCount} object(s) — Force Overwrite placed it anyway, so those referrer(s) now resolve to the NEW object instead of the old one.";
             public static string CheckOverwrittenNotDiverted(string toLabel) =>
@@ -509,11 +552,36 @@ public static class AppMessages
     /// <summary>Unresolved-dependencies gate dialog (UnresolvedDependenciesDialog).</summary>
     public static class UnresolvedDependencies
     {
+        // Says plainly WHAT is wrong and WHERE the address lives, because the old wording didn't:
+        // "I-C:008 — needed by 1 object" left it ambiguous whether that address was a Program or a
+        // Combi, whether it referred to something in the loaded PCG or in Local Library, and what
+        // the user was supposed to do about it other than pick one of two buttons.
         public static string Heading(int count) =>
-            $"{count} dependency reference{(count == 1 ? "" : "s")} still unresolved and will sound wrong until placed:\n\n" +
-            "Continue anyway, or cancel to fix them first (e.g. place the staged dependency in the Merge Window)?";
-        public static string Row(string label, int count) =>
-            $"{label} — needed by {count} object{(count == 1 ? "" : "s")}";
+            $"{count} reference{(count == 1 ? "" : "s")} below point at an object that isn't in your Local Library.\n\n" +
+            "These are addresses INSIDE the Combis/Set Lists you're about to push: each one names a slot the " +
+            "Kronos will look in, which is currently empty (or holds something else). Those objects will load, " +
+            "but the listed timbres/slots will sound wrong.\n\n" +
+            "Right-click any row to see what needs it, or to search a .pcg file for the missing object — " +
+            "anything found is staged in the Merge Window, and placing it anywhere repoints the reference " +
+            "automatically at the next Sync/Commit.";
+
+        // Type name first ("Program I-C:008", never a bare "I-C:008" — Program and Combi bank
+        // labels look identical), then who needs it and through which site.
+        public static string Row(string typeName, string label, string name, int count) =>
+            $"{typeName} {label}{(string.IsNullOrEmpty(name) ? "" : $"  “{name}”")} — needed by {count} object{(count == 1 ? "" : "s")}";
+
+        public static string RowReferrer(string typeName, string label, string refKind) =>
+            $"        ↳ {typeName} {label} ({refKind})";
+        public static string RowReferrerMore(int more) => $"        ↳ … and {more} more";
+
+        public const string ScanMenuItem   = "Search a PCG for this object…";
+        public const string CopyMenuItem   = "Copy all details";
+        public const string CopiedToClipboard = "Details copied to the clipboard.";
+        public static string ScanFound(string label, string fileName) =>
+            $"Found {label} in {fileName} — staged in the Merge Window. Place it anywhere; the reference repoints on the next Sync/Commit.";
+        public static string ScanNotFound(string label, string fileName) =>
+            $"{fileName} doesn't contain {label} — try another .pcg file.";
+        public static string ScanFailed(string detail) => $"Search failed: {detail}";
     }
 
     /// <summary>Remote file picker (RemoteFilePickerDialog) status line.</summary>

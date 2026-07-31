@@ -76,8 +76,7 @@ public partial class SettingsWindow : ThemedWindow
         TxtFtpPort.Text    = Result.FtpPort.ToString();
 
         // Streaming
-        RbChange.IsChecked  = !Result.PullMode;
-        RbPull.IsChecked    = Result.PullMode;
+        CMB_StreamMode.SelectedIndex = Result.PullMode ? 1 : 0;
         SlFps.Value         = Result.MaxFps;
 
         // General
@@ -119,9 +118,12 @@ public partial class SettingsWindow : ThemedWindow
         SlZoomWindowSize.Value = Result.ZoomWindowSize;
 
         // Image
-        RbScaleSharp.IsChecked  = Result.ImageScalingMode == ScalingQuality.Sharp;
-        RbScaleSmooth.IsChecked = Result.ImageScalingMode == ScalingQuality.Smooth;
-        RbScaleHQ.IsChecked     = Result.ImageScalingMode == ScalingQuality.HighQuality;
+        CMB_ScalingMode.SelectedIndex = Result.ImageScalingMode switch
+        {
+            ScalingQuality.Sharp  => 0,
+            ScalingQuality.Smooth => 1,
+            _                     => 2,   // High Quality
+        };
         SlBrightness.Value = Result.ImageBrightness;
         SlContrast.Value   = Result.ImageContrast;
         SlGamma.Value      = Result.ImageGamma;
@@ -314,7 +316,7 @@ public partial class SettingsWindow : ThemedWindow
             Result.FtpPort = fp;
 
         // Streaming
-        Result.PullMode             = RbPull.IsChecked == true;
+        Result.PullMode             = CMB_StreamMode.SelectedIndex == 1;
         Result.MaxFps               = (int)SlFps.Value;
 
         // General
@@ -361,9 +363,12 @@ public partial class SettingsWindow : ThemedWindow
         Result.ZoomWindowSize   = SlZoomWindowSize.Value;
 
         // Image
-        Result.ImageScalingMode = RbScaleSharp.IsChecked  == true ? ScalingQuality.Sharp
-                                : RbScaleSmooth.IsChecked == true ? ScalingQuality.Smooth
-                                : ScalingQuality.HighQuality;
+        Result.ImageScalingMode = CMB_ScalingMode.SelectedIndex switch
+        {
+            0 => ScalingQuality.Sharp,
+            1 => ScalingQuality.Smooth,
+            _ => ScalingQuality.HighQuality,
+        };
         Result.ImageBrightness = (int)SlBrightness.Value;
         Result.ImageContrast   = (int)SlContrast.Value;
         Result.ImageGamma      = SlGamma.Value;

@@ -10,6 +10,13 @@ static class ObjectReferenceWalker
 {
     public static IEnumerable<(string RefKind, int Site, ObjLoc Ref)> Walk(int objType, byte[] body)
     {
+        // An INIT/placeholder object references nothing meaningful — its timbres still hold the
+        // zero default, which encodes "nothing assigned", not a dependency on Program I-A:000.
+        // Walking them anyway made every init Combi in a library report one phantom unresolved
+        // dependency on the same address, which then dominated the unresolved list and blocked the
+        // push. Same rationale as the blank Set List slot skip below, one level up. See InitObjects.
+        if (InitObjects.IsInit(objType, body)) yield break;
+
         if (objType == LibObj.Combi)
         {
             foreach (var (t, fbank, num) in LibRefs.IterCombiTimbreRefs(body))
@@ -42,6 +49,32 @@ static class ObjectReferenceWalker
             yield return ($"slot {slot.Number + 1}", slot.Number, new ObjLoc(refObjType, objBank, slot.Index));
         }
     }
+
+    // A reference that can NEVER be missing, because its target isn't part of the library at all:
+    // the read-only ROM Program banks (GM, g(1)-g(9), g(d) — object banks 0x10..0x1A). Those banks
+    // are factory content burned into the instrument; LibraryPullPlanner deliberately never fetches
+    // them (ObjectTypeRegistry.EditableBanks scopes to the 21 writable Program banks), no .pcg file
+    // carries them, and nothing can ever place one — so a Combi timbre or Set List slot pointing at
+    // GM:012 always resolves ON THE INSTRUMENT, however empty the local library is.
+    //
+    // Without this, every such reference read as a permanently-unresolvable dependency: a red dot on
+    // the Combi forever, a pending session-clipboard entry that no retry could ever clear, and —
+    // worst — a hard REFUSE of the whole push from ChangesetBuilder's step-3 referential check. GM
+    // references are extremely common (factory Combis use them, and any timbre left pointing at a
+    // GM program does too), which is exactly why "many GM banks appear as unresolved dependencies
+    // in almost all cases."
+    //
+    // Deliberately a CLASSIFIER, not a filter inside Walk: the dependency panels still want to SHOW
+    // these references (labelled as ROM/always-available), they just must never be treated as
+    // something to resolve, pull, repoint, or block on.
+    public static bool IsAlwaysAvailable(ObjLoc reference) =>
+        reference.ObjType == LibObj.Program && KronosBanks.IsReadOnlyProgramBank(reference.Bank);
+
+    // Walk, minus the references nothing can ever resolve because they don't need resolving — the
+    // shape every RESOLUTION path wants (DependencyScanner.Scan/HasAllDependencies/
+    // RepointPcgReferences, MergeCache.PullRecursive). Display paths keep using Walk directly.
+    public static IEnumerable<(string RefKind, int Site, ObjLoc Ref)> WalkResolvable(int objType, byte[] body) =>
+        Walk(objType, body).Where(r => !IsAlwaysAvailable(r.Ref));
 }
 
 // Scans an incoming object body (about to be placed into the local pane, e.g. from a
@@ -50,7 +83,7 @@ static class ObjectReferenceWalker
 static class DependencyScanner
 {
     public static IEnumerable<(ObjLoc MissingRef, string RefKind)> Scan(LocalLibraryCache cache, int incomingObjType, byte[] incomingBody) =>
-        ObjectReferenceWalker.Walk(incomingObjType, incomingBody)
+        ObjectReferenceWalker.WalkResolvable(incomingObjType, incomingBody)
             .Where(r => cache.GetCurrentBody(r.Ref.ObjType, r.Ref.Bank, r.Ref.Number) == null)
             .Select(r => (r.Ref, r.RefKind));
 
@@ -60,7 +93,7 @@ static class DependencyScanner
     // every referenced blob on every tree refresh — the same synchronous full-disk-read stall
     // already fixed once for LocalLibraryCache.BuildCatalog.
     public static bool HasAllDependencies(LocalLibraryCache cache, int objType, byte[] body) =>
-        ObjectReferenceWalker.Walk(objType, body).All(r => cache.Exists(r.Ref.ObjType, r.Ref.Bank, r.Ref.Number));
+        ObjectReferenceWalker.WalkResolvable(objType, body).All(r => cache.Exists(r.Ref.ObjType, r.Ref.Bank, r.Ref.Number));
 
     // Direct PCG -> Local placement (LibrarianShellViewModel.PlaceFromPcg/BatchPlaceFromPcg)
     // never patches references at all today — every outgoing reference is left exactly as the
@@ -84,7 +117,11 @@ static class DependencyScanner
     {
         var patched = (byte[])body.Clone();
         var unresolved = new List<(string, int, ObjLoc, string?)>();
-        foreach (var (refKind, site, refLoc) in ObjectReferenceWalker.Walk(objType, body))
+        // WalkResolvable, not Walk: a GM/g reference is already correct exactly as the PCG encoded
+        // it (the ROM bank exists on every Kronos) — repointing it is impossible and reporting it
+        // unresolved would stage a dependency that can never be satisfied. See
+        // ObjectReferenceWalker.IsAlwaysAvailable.
+        foreach (var (refKind, site, refLoc) in ObjectReferenceWalker.WalkResolvable(objType, body))
         {
             var pcgEntry = pcg.Get(refLoc);
             var expectedBody = pcgEntry == null ? null : ProgramFormatConverter.WireBodyFromPcgEntry(refLoc.ObjType, pcgEntry);

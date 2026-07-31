@@ -293,6 +293,27 @@ static class Storage
 
     public static void SaveProgramBankTypes(string host, bool[] flags) => _programBankTypes.Save(host, flags);
 
+    // ── Category name cache (requirement 4) ───────────────────────────────────
+    // The Program/Combi Category + Sub-Category NAMES decoded from a Global object dump
+    // (GlobalBody.ReadCategoryNames), persisted per host exactly like the bank types above and for
+    // the same reason: they're user-editable ON the instrument, so they belong to that instrument,
+    // and re-dumping ~24 KB of Global just to label a dropdown on every window open would be
+    // wasteful. Seeded from here at Librarian open, refreshed live in the background.
+
+    // A flat DTO rather than persisting CategoryNames directly: that type uses `required init`
+    // members, which System.Text.Json can populate but only with a matching constructor shape —
+    // a plain mutable record keeps the on-disk format independent of the model's own API.
+    public sealed record CategoryNamesDto(string[] Program, string[][] ProgramSub, string[] Combi, string[][] CombiSub);
+
+    static string CategoryNamesPath => Path.Combine(DataDir, "category_names_cache.json");
+    static readonly HostKeyedCache<CategoryNamesDto> _categoryNames = new(() => CategoryNamesPath, "category-names");
+
+    // Null when this host's categories were never synced — the caller falls back to
+    // CategoryNames.Numeric() (plain "Category 05" labels), never to an error.
+    public static CategoryNamesDto? LoadCategoryNames(string host) => _categoryNames.Load(host);
+
+    public static void SaveCategoryNames(string host, CategoryNamesDto names) => _categoryNames.Save(host, names);
+
     // ── Librarian backups ──────────────────────────────────────────────────────
     // Shared by the move feature (Librarian.ApplyMoveAsync) and the Store-Bank
     // verification tool — both back up pre-images to timestamped .syx files here

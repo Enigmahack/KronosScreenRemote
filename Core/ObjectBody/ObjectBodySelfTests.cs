@@ -37,6 +37,53 @@ static class ObjectBodySelfTests
         var combiNamed = CombiBody.WriteName(combi, "TESTCOMBI");
         Check("combi-name-roundtrip", CombiBody.ReadName(combiNamed) == "TESTCOMBI");
 
+        // ── INIT-Program detection (requirement 5) ──
+        // Drives the placement gate that lets an INIT slot be overwritten without Force Overwrite
+        // (BatchLibrarian.PlanBatchMove's orphan gate), so it must accept both the instrument's own
+        // spellings and this app's erase output, and reject anything that merely mentions "init".
+        Check("isinit-hd1", ProgramBody.IsInit(ProgramBody.WriteName(prog, "Init Program")));
+        Check("isinit-exi", ProgramBody.IsInit(ProgramBody.WriteName(prog, "Init EXi Program")));
+        Check("isinit-erasebody-spelling", ProgramBody.IsInit(ProgramBody.WriteName(prog, "INIT PROGRAM")));
+        Check("isinit-padded", ProgramBody.IsInit(ProgramBody.WriteName(prog, "  Init Program  ")));
+        Check("isinit-rejects-real-patch", !ProgramBody.IsInit(ProgramBody.WriteName(prog, "Grand Piano")));
+        Check("isinit-rejects-partial-match", !ProgramBody.IsInit(ProgramBody.WriteName(prog, "Initial Attack")));
+
+        // ── Global: Category / Sub-Category names (requirement 4) ──
+        // Offsets come from Documentation/MIDI implementation/SysExDumps/Global.txt's offset
+        // column; this pins them (and the Program-vs-Combi separation) against a synthetic body
+        // written at exactly those addresses. A real Global dump is ~24 KB.
+        var global = new byte[GlobalBody.MinimumBodyLength];
+        void WriteField(int offset, string text)
+        {
+            var bytes = System.Text.Encoding.ASCII.GetBytes(text.PadRight(24).Substring(0, 24));
+            bytes.CopyTo(global, offset);
+        }
+        WriteField(12912, "Keyboard");                        // Program category 00
+        WriteField(12912 + 5 * 24, "Guitar/Plucked");         // Program category 05
+        WriteField(13344 + (5 * 8 + 2) * 24, "Acoustic");     // Program category 05, sub 02
+        WriteField(16800 + 3 * 24, "Combi Keys");             // Combi category 03
+        WriteField(17232 + (3 * 8 + 1) * 24, "Layered");      // Combi category 03, sub 01
+
+        var names = GlobalBody.ReadCategoryNames(global);
+        Check("global-names-decoded", names != null);
+        Check("global-program-category", names?.CategoryLabel(LibObj.Program, 5) == "Guitar/Plucked");
+        Check("global-program-subcategory", names?.SubCategoryLabel(LibObj.Program, 5, 2) == "Acoustic");
+        Check("global-combi-category", names?.CategoryLabel(LibObj.Combi, 3) == "Combi Keys");
+        Check("global-combi-subcategory", names?.SubCategoryLabel(LibObj.Combi, 3, 1) == "Layered");
+        // Program and Combi tables are independent — the same index must not bleed across.
+        Check("global-program-combi-independent", names?.CategoryLabel(LibObj.Combi, 5) != "Guitar/Plucked");
+        // An unnamed category falls back to its numeric label rather than showing an empty row.
+        Check("global-unnamed-falls-back", names?.CategoryLabel(LibObj.Program, 17) == "Category 17");
+        // Out-of-range indexes are labelled, never thrown on.
+        Check("global-out-of-range-category", names?.CategoryLabel(LibObj.Program, 99) == "Category 99");
+        Check("global-out-of-range-sub", names?.SubCategoryLabel(LibObj.Program, 5, 99) == "Sub 99");
+        // A truncated/rejected reply must decode to null so the caller keeps its existing labels.
+        Check("global-short-body-null", GlobalBody.ReadCategoryNames(new byte[1000]) == null);
+        // The always-available fallback has the same shape as a real decode.
+        var numeric = CategoryNames.Numeric();
+        Check("global-numeric-fallback", numeric.CategoryLabel(LibObj.Program, 5) == "Category 05" &&
+            numeric.SubCategoryLabel(LibObj.Combi, 5, 2) == "Sub 02");
+
         // ── SetListBody.FromRawBody: build a synthetic raw body, decode it directly,
         //    then confirm SetListData.FromObjectDump (via the refactored wire path)
         //    produces the byte-identical result — the shared-decoder regression pin. ──

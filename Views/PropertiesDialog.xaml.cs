@@ -33,6 +33,8 @@ internal partial class PropertiesDialog : ThemedWindow
     }
 
     bool _isSetListMode;
+    int _categoryObjType = LibObj.Program;
+    CategoryNames _categoryNames = CategoryNames.Numeric();
     IReadOnlyList<SetListSlot> _slots = Array.Empty<SetListSlot>();
     int? _selectedSlotNumber;
 
@@ -52,15 +54,48 @@ internal partial class PropertiesDialog : ThemedWindow
         Loaded += (_, _) => { TXT_Name.SelectAll(); TXT_Name.Focus(); };
     }
 
-    public static PropertiesDialog ForProgramOrCombi(string heading, string currentName, int category, int subCategory)
+    // objType + names (requirement 4): the two category fields are plain numbers in the body, but
+    // the instrument shows the user-editable NAMES its Global object holds for them ("Guitar /
+    // Acoustic", not "5 / 2"). `names` is never null — CategoryNames.Numeric() supplies the old
+    // numeric labels when nothing has been synced yet or the Kronos is unreachable — so there's no
+    // "unsynced" branch anywhere below. Programs and Combis have INDEPENDENT category names, hence
+    // objType; sub-category names belong to a specific category, so the sub list is rebuilt
+    // whenever the category selection changes.
+    public static PropertiesDialog ForProgramOrCombi(
+        string heading, string currentName, int category, int subCategory, int objType = LibObj.Program, CategoryNames? names = null)
     {
-        var dlg = new PropertiesDialog(heading, currentName);
+        var dlg = new PropertiesDialog(heading, currentName)
+        {
+            _categoryObjType = objType,
+            _categoryNames = names ?? CategoryNames.Numeric(),
+        };
         dlg.PNL_Category.Visibility = Visibility.Visible;
-        for (int i = 0; i <= 0x11; i++) dlg.CMB_Category.Items.Add(i);
-        for (int i = 0; i <= 7; i++) dlg.CMB_SubCategory.Items.Add(i);
-        dlg.CMB_Category.SelectedItem = category;
-        dlg.CMB_SubCategory.SelectedItem = subCategory;
+
+        for (int i = 0; i < CategoryNames.CategoryCount; i++)
+            dlg.CMB_Category.Items.Add(new CategoryChoice(i, dlg._categoryNames.CategoryLabel(objType, i)));
+        dlg.CMB_Category.SelectedIndex = category >= 0 && category < CategoryNames.CategoryCount ? category : 0;
+        dlg.FillSubCategories(subCategory);
+        // Wired AFTER the initial fill so the pre-selected sub-category isn't clobbered by the
+        // rebuild the handler performs.
+        dlg.CMB_Category.SelectionChanged += (_, _) => dlg.FillSubCategories(0);
         return dlg;
+    }
+
+    // The sub-category names of whichever category is selected right now.
+    void FillSubCategories(int select)
+    {
+        int category = CMB_Category.SelectedIndex >= 0 ? CMB_Category.SelectedIndex : 0;
+        CMB_SubCategory.Items.Clear();
+        for (int i = 0; i < CategoryNames.SubCategoryCount; i++)
+            CMB_SubCategory.Items.Add(new CategoryChoice(i, _categoryNames.SubCategoryLabel(_categoryObjType, category, i)));
+        CMB_SubCategory.SelectedIndex = select >= 0 && select < CategoryNames.SubCategoryCount ? select : 0;
+    }
+
+    // One dropdown row: the stored NUMBER (what actually goes into the body) plus the label shown.
+    // ToString is what the ComboBox renders, so no ItemTemplate/DisplayMemberPath is needed.
+    sealed record CategoryChoice(int Value, string Label)
+    {
+        public override string ToString() => $"{Value:D2}  {Label}";
     }
 
     public static PropertiesDialog ForSetList(string heading, string currentName, SetListData data)
@@ -116,13 +151,54 @@ internal partial class PropertiesDialog : ThemedWindow
         TXT_SlotComments.IsEnabled = enabled;
     }
 
+    // ── Dependencies (requirement 1) + "Scan PCG for missing…" (requirement 2) ──────────────
+    // Both lists are plain pre-formatted strings supplied by the caller: deciding what "requires"
+    // and "used by" MEAN (transitive walks, ROM/INIT labelling, the referrer catalog) is
+    // ViewModel work — this dialog only displays it, same split as everything else here.
+
+    // Raised when "Scan PCG for missing…" is clicked. The owner runs the file picker and the scan
+    // (a WPF + ViewModel concern), then calls SetDependencies again with the refreshed lists —
+    // recovered dependencies are staged in the Merge Window, so what's still missing changes.
+    public Action? ScanForDependenciesRequested { get; set; }
+
+    public void SetDependencies(IReadOnlyList<string> requires, IReadOnlyList<string> usedBy, bool canScan)
+    {
+        PNL_Dependencies.Visibility = Visibility.Visible;
+        PNL_Dependencies.Header = AppMessages.Librarian.Shell.DependenciesHeader;
+        TXT_RequiresHeader.Text = AppMessages.Librarian.Shell.RequiresHeader;
+        TXT_UsedByHeader.Text = AppMessages.Librarian.Shell.UsedByHeader;
+        BTN_ScanPcg.Content = AppMessages.Librarian.Shell.ScanPcgButton;
+
+        Fill(LST_Requires, requires, AppMessages.Librarian.Shell.RequiresNothing);
+        Fill(LST_UsedBy, usedBy, AppMessages.Librarian.Shell.UsedByNothing);
+
+        // Only offer the scan where it can do something: a Program references nothing, and an
+        // object with no gaps has nothing to look for.
+        BTN_ScanPcg.Visibility = canScan ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    // The "nothing here" placeholder is a disabled row rather than an empty box, so an empty list
+    // reads as an answer instead of a control that failed to populate.
+    static void Fill(ListBox list, IReadOnlyList<string> rows, string emptyText)
+    {
+        list.Items.Clear();
+        if (rows.Count == 0)
+        {
+            list.Items.Add(new ListBoxItem { Content = emptyText, IsEnabled = false });
+            return;
+        }
+        foreach (var row in rows) list.Items.Add(row);
+    }
+
+    void OnScanPcg(object sender, RoutedEventArgs e) => ScanForDependenciesRequested?.Invoke();
+
     void OnOk(object sender, RoutedEventArgs e)
     {
         NewName = TXT_Name.Text.Trim();
 
         if (PNL_Category.Visibility == Visibility.Visible &&
-            CMB_Category.SelectedItem is int cat && CMB_SubCategory.SelectedItem is int sub)
-            NewCategory = (cat, sub);
+            CMB_Category.SelectedItem is CategoryChoice cat && CMB_SubCategory.SelectedItem is CategoryChoice sub)
+            NewCategory = (cat.Value, sub.Value);
 
         if (_isSetListMode && _selectedSlotNumber is int slotNumber)
         {

@@ -29,7 +29,12 @@ static class DependencyResolutionSelfTests
             var cache = new LocalLibraryCache(root);
             await LibraryPullPipeline.PullAsync(exec, cache, full: true);   // nothing seeded — empty local library
 
-            var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), "");
+            // A UNIQUE host key, never the empty one: LibrarianShellViewModel's constructor seeds
+            // its Program bank types from the REAL, global, host-keyed cache file next to the exe,
+            // so sharing a key with another self-test means loading whatever that test persisted —
+            // an all-HD-1 answer here would REFUSE every EXi placement below. See
+            // CrossPanePlacementSelfTests' own comment for the full history.
+            var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), "selftest-depresolution-host");
 
             var pcgBuffer = BuildSyntheticPcg(out var progABody, out var combiXBody, out var combiZBody);
             var file = PcgFile.Open(pcgBuffer);

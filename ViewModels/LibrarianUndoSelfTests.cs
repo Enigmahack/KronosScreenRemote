@@ -37,7 +37,7 @@ static class LibrarianUndoSelfTests
             }
             // An occupant in the destination bank the sequential fill must skip (and undo must
             // leave alone) — the fill starts at the first FREE slot, so this stays at slot 0.
-            exec.Seed(LibObj.Combi, destBank, 0, 1, MakeCombi("OCCUPANT"));
+            exec.Seed(LibObj.Combi, destBank, 0, 1, MakeCombi("OCCUPANT", real: true));
 
             var cache = new LocalLibraryCache(root);
             await LibraryPullPipeline.PullAsync(exec, cache, full: true);
@@ -199,10 +199,16 @@ static class LibrarianUndoSelfTests
         return fails;
     }
 
-    static byte[] MakeCombi(string name)
+    // real: give one timbre a non-default reference so the Combi reads as genuine content rather
+    // than an INIT placeholder. A body that is merely named still has all 16 timbres pointing at
+    // the zero default, which IS the defining shape of an init Combi (CombiBody.AllTimbresAtDefault)
+    // — and init slots now count as free space for auto-fill, so an occupant meant to be SKIPPED
+    // has to be real. See InitObjects.
+    static byte[] MakeCombi(string name, bool real = false)
     {
         var body = new byte[CombiWireSize];
         Encoding.ASCII.GetBytes(name).CopyTo(body, 0);
+        if (real) LibRefs.SetCombiTimbreRef(body, 0, KronosBanks.ObjBankToFunc33(1, 0x40), 7);
         return body;
     }
 }

@@ -55,7 +55,10 @@ static class ObjectTreeScaffold
         Func<ObjLoc, ObjectTreeNode> makeLeaf,
         Func<int, Bank, string> bankLabel)
     {
-        var typeRoot = new ObjectTreeNode(rootLabel);
+        // typeRootObjType (not bankRef — this level has no bank): lets a drop landing on the
+        // "Programs"/"Combis" header resolve to a bank with room instead of being refused. See
+        // ObjectTreeNode.TypeRootObjType.
+        var typeRoot = new ObjectTreeNode(rootLabel, typeRootObjType: objType);
         foreach (var bank in banksFor(objType))
         {
             if (bank.Locs.Count == 0) continue;   // an empty bank never becomes a node

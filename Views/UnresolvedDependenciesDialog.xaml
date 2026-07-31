@@ -12,6 +12,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="12"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -27,10 +28,32 @@
             <ListBox x:Name="LST_Dependencies" FontFamily="Consolas" FontSize="12"
                      Background="{StaticResource PanelBackgroundBrush}" Foreground="{StaticResource TextBrush}"
                      BorderThickness="0" ScrollViewer.VerticalScrollBarVisibility="Auto"
-                     DisplayMemberPath="Description"/>
+                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                     DisplayMemberPath="Description"
+                     ContextMenuOpening="OnContextMenuOpening">
+                <!-- Right-click has to reach the ROW, not just the list, so the menu can act on
+                     the specific missing object under the cursor — the whole point of making this
+                     dialog actionable instead of a dead end. -->
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <EventSetter Event="PreviewMouseRightButtonDown" Handler="OnRowRightDown"/>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem x:Name="MI_ScanForRow" Header="Search a PCG for this object…" Click="OnScanForRow"/>
+                        <MenuItem x:Name="MI_CopyAll" Header="Copy all details" Click="OnCopyAll"/>
+                    </ContextMenu>
+                </ListBox.ContextMenu>
+            </ListBox>
         </Border>
 
-        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
+        <!-- Result of a right-click search / copy, shown in place rather than as another modal on
+             top of this one (which is itself already blocking a Sync/Commit). -->
+        <TextBlock Grid.Row="2" x:Name="TXT_Status" TextWrapping="Wrap" Margin="0 8 0 0"
+                   Foreground="{StaticResource MutedTextBrush}"/>
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button x:Name="BTN_Cancel" Content="Cancel" IsCancel="True" IsDefault="True" Click="OnCancel" Margin="0 0 8 0" Style="{StaticResource DialogButtonStyle}"/>
             <Button x:Name="BTN_Continue" Content="Continue Anyway" Click="OnContinue" MinWidth="120"/>
         </StackPanel>

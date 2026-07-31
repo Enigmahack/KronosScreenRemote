@@ -273,9 +273,38 @@ partial class LocalLibraryPaneViewModel : ObservableObject
             return (false, AppMessages.Librarian.Local.CutNeedsOccupiedSlot);
 
         int startSlot = LocalEditOps.FindNextFreeSlot(_cache, objType, bank);
-        var result = PasteBatch(_clipItems, objType, bank, startSlot);
+        var result = PasteBatch(_clipItems, objType, bank, startSlot, autoFill: true);
         FinishPaste(result.Ok, cut: false);
         return result;
+    }
+
+    // Paste onto a TYPE-ROOT header ("Programs"/"Combis"/"Set Lists") — requirement 6: no bank was
+    // named, so land in the first one with room, then reuse PasteIntoBank exactly as if that bank
+    // had been the drop target. Cut still refuses there for the same reason it does on a bank (see
+    // PasteIntoBank). Null bank = every writable bank of this type is full.
+    public (bool Ok, string? Message) PasteIntoTypeRoot(int objType)
+    {
+        if (FindBankForPaste(objType) is not { } bank)
+            return (false, AppMessages.Librarian.Local.NoRoomInAnyBank(
+                ObjectTypeRegistry.Get(objType).DisplayName, ClipboardIsExi(objType)));
+        return PasteIntoBank(objType, bank);
+    }
+
+    // The clipboard's own Programs decide which banks are eligible (HD-1 vs EXi) — see
+    // LocalEditOps.FindBankWithFreeSlot. Public so the View can resolve a drop target's bank
+    // before deciding what to call.
+    public int? FindBankForPaste(int objType) =>
+        LocalEditOps.FindBankWithFreeSlot(_cache, objType, ClipboardIsExi(objType), BankTypeOf);
+
+    public bool? ClipboardIsExi(int objType)
+    {
+        if (objType != LibObj.Program) return null;
+        var formats = _clipItems
+            .Where(l => l.ObjType == LibObj.Program && _cache.Exists(l.ObjType, l.Bank, l.Number))
+            .Select(l => _cache.IsExi(l.ObjType, l.Bank, l.Number))
+            .Distinct()
+            .ToList();
+        return formats.Count == 1 ? formats[0] : null;
     }
 
     void FinishPaste(bool ok, bool cut)
@@ -317,7 +346,11 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     // N-item Copy, auto-filling free slots in destBank starting at startSlot. Copy-only:
     // Cut is capped at one item and never reaches this (see Cut's and PasteIntoBank's
     // comments), so there is no source to vacate and no `From` to repoint here.
-    (bool Ok, string? Message) PasteBatch(IReadOnlyList<ObjLoc> srcs, int objType, int destBank, int startSlot)
+    // autoFill: the caller picked startSlot itself (a paste onto a BANK/type-root), so the fill may
+    // skip past slots holding real content — init placeholders make those holes scattered rather
+    // than a contiguous tail. A paste onto a SPECIFIC slot passes false: the user pointed at it,
+    // and filling from exactly there is the explicit intent. See ResolveSequentialFill.
+    (bool Ok, string? Message) PasteBatch(IReadOnlyList<ObjLoc> srcs, int objType, int destBank, int startSlot, bool autoFill = false)
     {
         var pending = new List<ClipboardEntry>();
         foreach (var src in srcs)
@@ -332,7 +365,8 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         }
         if (pending.Count == 0) return (false, AppMessages.Librarian.Local.NothingToPaste);
 
-        var (placed, stillPending) = BatchLibrarian.ResolveSequentialFill(pending, objType, destBank, startSlot, bankTypeOf: null);
+        var (placed, stillPending) = BatchLibrarian.ResolveSequentialFill(pending, objType, destBank, startSlot, bankTypeOf: null,
+            slotAvailable: autoFill ? s => !_cache.HasContent(objType, destBank, s) : null);
         if (placed.Count == 0) return (false, AppMessages.Librarian.Local.NothingCouldBePlaced);
 
         var placements = placed

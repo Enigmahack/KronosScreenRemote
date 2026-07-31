@@ -21,6 +21,12 @@ static class LibObj
     public const int Combi   = 0x01;
     public const int SetList = 0x0D;
 
+    // The instrument's single Global settings object (bank 0, index 0). NOT a Librarian object
+    // type — it's never catalogued, moved, placed or pushed; the Librarian reads exactly one
+    // thing out of it (the Category/Sub-Category names, see GlobalBody), which is why it has no
+    // ObjectTypeRegistry descriptor and no CurrentObjectVersion entry.
+    public const int Global  = 0x03;
+
     // The func-0x73 Object Dump "version" byte the CURRENT Kronos OS's documented structure
     // uses per type (Documentation/MIDI implementation/SysExDumps/{Prog_HD-1,
     // Prog_EXi_Common,CombiAndSongTimbreSet,SetList}.txt, each headed "Object Version: N" —

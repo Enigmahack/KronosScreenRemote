@@ -21,11 +21,20 @@ static class CrossPanePlacementSelfTests
 
         // Storage.SaveProgramBankTypes persists to a REAL, GLOBAL, host-keyed file next to the
         // running exe — not scratch state under `root` like everything else here. The
-        // bank-type test below writes fake data under this ViewModel's own (empty) host key,
-        // which every OTHER self-test file that also constructs a ViewModel with host "" would
-        // otherwise load right back out via Storage.LoadProgramBankTypes at construction —
-        // exactly the cross-test pollution that broke DependencyResolutionSelfTests the first
-        // time this was written. Snapshot and restore it verbatim, regardless of outcome.
+        // bank-type test below writes fake data under this ViewModel's own host key, which every
+        // OTHER self-test file that also constructs a ViewModel with the SAME key would otherwise
+        // load right back out via Storage.LoadProgramBankTypes at construction — exactly the
+        // cross-test pollution that broke DependencyResolutionSelfTests the first time this was
+        // written. Two independent defences, because one wasn't enough:
+        //   • a UNIQUE host key (below), so nothing else can ever read what this test wrote — the
+        //     empty host "" this used to share with DependencyResolutionSelfTests is the same
+        //     mistake the type-change tests already fixed by naming their own hosts;
+        //   • snapshot + verbatim restore of the file, so nothing is left behind at all.
+        // The restore alone was insufficient: it only puts back what was there when THIS test
+        // started, so a stale "" entry written by an earlier build (before the unique-host fix)
+        // survived every subsequent run and kept refusing every EXi placement — the failure was
+        // reproducible on a completely clean checkout, since it lived in the exe's data dir.
+        const string bankTypesHost = "selftest-crosspane-host";
         string bankTypesCachePath = Path.Combine(Storage.DataDir, "program_bank_types_cache.json");
         string? bankTypesCacheBackup = File.Exists(bankTypesCachePath) ? File.ReadAllText(bankTypesCachePath) : null;
         try
@@ -34,7 +43,7 @@ static class CrossPanePlacementSelfTests
             var cache = new LocalLibraryCache(root);
             await LibraryPullPipeline.PullAsync(exec, cache, full: true);   // nothing seeded — empty local library
 
-            var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), "");
+            var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), bankTypesHost);
 
             var pcgBuffer = BuildSyntheticPcg(out var programExiName, out var programHd1Name, out var combiName,
                 out var combiDepExiName, out var combiDepHd1Name);

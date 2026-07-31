@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 
 namespace KronosScreenRemote;
 
@@ -8,36 +9,114 @@ namespace KronosScreenRemote;
 // missing many Combis/Programs) until its own Yes/No buttons scrolled off-screen and couldn't
 // be clicked at all. The list here is capped (XAML's Border MaxHeight) and scrolls instead,
 // with Continue/Cancel always pinned below it.
+//
+// This used to be a dead end: a bare address per row ("I-C:008 — needed by 1 object" — Program or
+// Combi? in the PCG or in Local Library?) and exactly two ways out, neither of which fixed
+// anything. Now every row names the TYPE and the objects that need it, and right-clicking one
+// searches a .pcg for that specific object — the same recovery the Librarian's own "Scan PCG for
+// dependencies…" offers, reachable from the moment the problem is actually reported.
 internal partial class UnresolvedDependenciesDialog : ThemedWindow
 {
-    UnresolvedDependenciesDialog(string heading, IEnumerable<string> descriptions)
+    // Set by the owner (LibrarianShellWindow): runs the file picker + scan for ONE missing object,
+    // and returns the status line to show. Null (a headless construction) just disables the action.
+    public Func<ObjLoc, string>? ScanForDependencyRequested { get; set; }
+
+    UnresolvedDependenciesDialog(string heading, IEnumerable<Row> rows)
     {
         InitializeComponent();
         TXT_Heading.Text = heading;
-        foreach (var d in descriptions) LST_Dependencies.Items.Add(new Row(d));
+        foreach (var row in rows) LST_Dependencies.Items.Add(row);
     }
 
     // Same missing dependency needed by several different objects collapses to ONE row here
     // instead of one row per referrer/site — SessionDependencyClipboard tracks those
     // separately (it needs the per-site granularity to repatch each referrer individually; see
     // LibrarianShellViewModel.ResolvePendingDependencies), but repeating "I-A:000" a dozen
-    // times in a row in THIS list would just be noise, not information.
-    public static UnresolvedDependenciesDialog For(IReadOnlyList<SessionDependencyEntry> pending)
+    // times in a row in THIS list would just be noise, not information. The referrers are shown
+    // as indented detail lines under the row instead, capped so one heavily-shared Program can't
+    // push everything else out of view.
+    //
+    // `nameOf` resolves a display name for an address when something is known about it (the loaded
+    // PCG, or Local Library) — optional, since neither is guaranteed to be available.
+    public static UnresolvedDependenciesDialog For(
+        IReadOnlyList<SessionDependencyEntry> pending, Func<ObjLoc, string>? nameOf = null)
     {
-        int count = pending.Count;
-        string heading = AppMessages.UnresolvedDependencies.Heading(count);
+        const int maxReferrersShown = 3;
 
-        var grouped = pending
-            .GroupBy(e => (e.MissingRef, e.ExpectedContentHash))
-            .Select(g => AppMessages.UnresolvedDependencies.Row(g.Key.MissingRef.Label(), g.Count()));
+        var rows = new List<Row>();
+        foreach (var group in pending.GroupBy(e => e.MissingRef))
+        {
+            var entries = group.ToList();
+            rows.Add(new Row(
+                AppMessages.UnresolvedDependencies.Row(
+                    ObjectTypeRegistry.Get(group.Key.ObjType).DisplayName,
+                    group.Key.Label(),
+                    nameOf?.Invoke(group.Key) ?? "",
+                    entries.Count),
+                group.Key));
 
-        return new UnresolvedDependenciesDialog(heading, grouped);
+            foreach (var entry in entries.Take(maxReferrersShown))
+                rows.Add(new Row(
+                    AppMessages.UnresolvedDependencies.RowReferrer(
+                        ObjectTypeRegistry.Get(entry.RequiredBy.ObjType).DisplayName,
+                        entry.RequiredBy.Label(),
+                        entry.RefKind),
+                    group.Key));
+            if (entries.Count > maxReferrersShown)
+                rows.Add(new Row(AppMessages.UnresolvedDependencies.RowReferrerMore(entries.Count - maxReferrersShown), group.Key));
+        }
+
+        return new UnresolvedDependenciesDialog(AppMessages.UnresolvedDependencies.Heading(pending.Count), rows);
     }
 
+    // Every row — heading line or indented referrer detail — carries the missing address it belongs
+    // to, so right-clicking anywhere in a group acts on that group's object.
     sealed class Row
     {
         public string Description { get; }
-        public Row(string description) => Description = description;
+        public ObjLoc Missing { get; }
+        public Row(string description, ObjLoc missing) { Description = description; Missing = missing; }
+    }
+
+    // Right-click selects first (Explorer convention), so the menu always acts on the row actually
+    // under the cursor rather than a stale prior selection.
+    void OnRowRightDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is ListBoxItem item) item.IsSelected = true;
+    }
+
+    void OnScanForRow(object sender, RoutedEventArgs e)
+    {
+        if (LST_Dependencies.SelectedItem is not Row row || ScanForDependencyRequested == null) return;
+        TXT_Status.Text = ScanForDependencyRequested(row.Missing);
+    }
+
+    // The whole list as text — for anyone who wants to work through the gaps outside this dialog
+    // (a spreadsheet, a note, a message to someone else) rather than one right-click at a time.
+    void OnCopyAll(object sender, RoutedEventArgs e)
+    {
+        var lines = LST_Dependencies.Items.OfType<Row>().Select(r => r.Description);
+        try
+        {
+            Clipboard.SetText(string.Join(Environment.NewLine, lines));
+            TXT_Status.Text = AppMessages.UnresolvedDependencies.CopiedToClipboard;
+        }
+        catch (Exception ex)
+        {
+            // The Windows clipboard can be locked by another process — a failed copy must not take
+            // down the dialog the user still has to answer.
+            AppLog.Warn($"[librarian] clipboard copy failed: {ex.Message}");
+            TXT_Status.Text = AppMessages.UnresolvedDependencies.ScanFailed(ex.Message);
+        }
+    }
+
+    void OnContextMenuOpening(object sender, ContextMenuEventArgs e)
+    {
+        if (sender is not FrameworkElement { ContextMenu: { } menu }) return;
+        bool hasRow = LST_Dependencies.SelectedItem is Row;
+        foreach (var item in menu.Items)
+            if (item is MenuItem { Name: "MI_ScanForRow" } mi)
+                mi.IsEnabled = hasRow && ScanForDependencyRequested != null;
     }
 
     void OnCancel(object sender, RoutedEventArgs e) => DialogResult = false;

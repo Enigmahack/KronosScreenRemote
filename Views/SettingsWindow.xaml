@@ -168,12 +168,14 @@
             <TabItem Header="Streaming">
                 <StackPanel>
                     <TextBlock Text="Stream mode" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 4 0 8"/>
-                    <RadioButton x:Name="RbChange" Content="Change-driven — send frames only when the screen changes (recommended)"
-                                 Margin="0 0 0 6" GroupName="StreamMode"
-                                 ToolTip="Recommended. The daemon sends a frame only when the display changes — uses almost no CPU when the Kronos is idle."/>
-                    <RadioButton x:Name="RbPull"   Content="Pull — client requests each frame individually"
-                                 GroupName="StreamMode"
-                                 ToolTip="The client requests each frame individually. Try this if frames are occasionally missed in change-driven mode."/>
+                    <ComboBox x:Name="CMB_StreamMode" HorizontalAlignment="Left" MinWidth="200"
+                              BorderBrush="#FF555555"
+                              ToolTip="How frames are delivered from the daemon. Takes effect on the next connect.">
+                        <ComboBoxItem Content="Change-driven — send frames only when the screen changes (recommended)"
+                                      ToolTip="Recommended. The daemon sends a frame only when the display changes — uses almost no CPU when the Kronos is idle."/>
+                        <ComboBoxItem Content="Pull — client requests each frame individually"
+                                      ToolTip="The client requests each frame individually. Try this if frames are occasionally missed in change-driven mode."/>
+                    </ComboBox>
 
                     <TextBlock Text="Max frame rate" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 18 0 8"/>
                     <DockPanel LastChildFill="True">
@@ -240,15 +242,16 @@
             <TabItem Header="Image">
                 <StackPanel Margin="0 4 0 0">
                     <TextBlock Text="Upscaling filter" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 0 0 8"/>
-                    <RadioButton x:Name="RbScaleSharp" GroupName="ScalingMode" Margin="0 0 0 5"
-                                 Content="Sharp — crisp, blocky pixels (nearest-neighbor)"
-                                 ToolTip="No interpolation. Razor-sharp edges, but visible pixel blocks when enlarged."/>
-                    <RadioButton x:Name="RbScaleSmooth" GroupName="ScalingMode" Margin="0 0 0 5"
-                                 Content="Smooth — soft, fast (bilinear)"
-                                 ToolTip="Bilinear filtering. Soft and inexpensive."/>
-                    <RadioButton x:Name="RbScaleHQ" GroupName="ScalingMode"
-                                 Content="High Quality — best resample (Fant)"
-                                 ToolTip="Fant resampling. Best quality; the default."/>
+                    <ComboBox x:Name="CMB_ScalingMode" HorizontalAlignment="Left" MinWidth="200"
+                              BorderBrush="#FF555555"
+                              ToolTip="How the 800×600 Kronos screen is resampled when enlarged to fill the window.">
+                        <ComboBoxItem Content="Sharp — crisp, blocky pixels (nearest-neighbor)"
+                                      ToolTip="No interpolation. Razor-sharp edges, but visible pixel blocks when enlarged."/>
+                        <ComboBoxItem Content="Smooth — soft, fast (bilinear)"
+                                      ToolTip="Bilinear filtering. Soft and inexpensive."/>
+                        <ComboBoxItem Content="High Quality — best resample (Fant)"
+                                      ToolTip="Fant resampling. Best quality; the default."/>
+                    </ComboBox>
                     <TextBlock Margin="0 8 0 0" Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
                                Text="Controls how the 800×600 Kronos screen is scaled up to fill the window. Also available from View → Scaling Quality and the frame right-click menu."/>
 

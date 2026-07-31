@@ -91,6 +91,64 @@ sealed class LocalLibraryCache
     public bool Exists(int objType, int bank, int number) =>
         _index.Entries.ContainsKey(LocalLibraryIndex.Key(objType, bank, number));
 
+    // Is this slot's occupant merely an INIT/blank placeholder? Index-only, no blob read — the
+    // cached flag when we have one, else the name-only fallback for entries written before that
+    // field existed (see LocalIndexEntry's own comment on why null is not "false").
+    public bool IsInitSlot(int objType, int bank, int number) =>
+        _index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e)
+        && (e.IsInit ?? InitObjects.IsInitName(objType, e.DisplayName));
+
+    // "Is there real content here?" — the test the free-slot search wants, as opposed to Exists,
+    // which only asks whether the slot is INDEXED. On a Kronos those differ for most of a library:
+    // the protocol has no empty slot and no delete (see EraseBody), so a synced library indexes all
+    // 128 slots of every bank and Exists is true everywhere — which is why "every Combi bank is
+    // full" was reported against a library whose USER banks are almost entirely init placeholders.
+    //
+    // NOT a drop-in replacement for Exists. Deliberately still Exists-based:
+    //   • LocalEditOps.LocalProgramBankFormat — an init HD-1 Program still proves its bank is
+    //     HD-1, and reading it as "empty" would put the bank's type back to unknown, re-opening
+    //     the wrong-format-bank hole FindBankWithFreeSlot exists to close;
+    //   • tree building and HasAnyObjects/IsLibraryEmpty — init objects are real rows the user
+    //     can select, rename and overwrite, and an all-init library is synced, not empty.
+    public bool HasContent(int objType, int bank, int number) =>
+        Exists(objType, bank, number) && !IsInitSlot(objType, bank, number);
+
+    // One-time upgrade of entries written before IsInit existed, for the ONE object type whose
+    // emptiness a cached display name can't answer: a Set List's is the aggregate of its 128 slots
+    // (SetListData.IsEmpty), and an untouched one is named "Set List 042", not "Init …". Without
+    // this, a library synced by an earlier build reports its Set List root as full forever — the
+    // IsInit==null entries fall back to IsInitName, which is false for Set Lists by construction.
+    //
+    // Programs need no equivalent pass (ProgramBody.IsInit IS the name check, so the fallback is
+    // already exact) and Combis are covered well enough by their name signal, so this stays scoped
+    // to one pseudo-bank of 128 objects rather than sweeping the whole library. Re-entrant and
+    // idempotent: it only fills nulls, re-checks under the lock before writing, and saves once.
+    public int BackfillInitFlags(int objType)
+    {
+        var descriptor = ObjectTypeRegistry.Get(objType);
+        int changed = 0;
+        foreach (var bank in descriptor.EditableBanks())
+            for (int n = 0; n < descriptor.SlotCount; n++)
+            {
+                string key = LocalLibraryIndex.Key(objType, bank, n);
+                lock (_lock)
+                {
+                    if (!_index.Entries.TryGetValue(key, out var e) || e.IsInit != null) continue;
+                }
+                var body = GetCurrentBody(objType, bank, n);   // blob read, deliberately outside the lock
+                if (body == null) continue;
+                bool isInit = ComputeIsInit(objType, body);
+                lock (_lock)
+                {
+                    if (!_index.Entries.TryGetValue(key, out var cur) || cur.IsInit != null) continue;
+                    _index.Entries[key] = cur with { IsInit = isInit };
+                    changed++;
+                }
+            }
+        if (changed > 0) Save();
+        return changed;
+    }
+
     // "Does the library hold anything at all?" — index-only, no disk I/O. Drives the pane's
     // empty-state hint (LocalLibraryPaneViewModel.ShowEmptyHint): a fresh install, or the exe
     // run from a folder with no library beside it, starts with zero entries.
@@ -189,6 +247,11 @@ sealed class LocalLibraryCache
     static bool ComputeIsExi(int objType, byte[] body) =>
         objType != LibObj.Program || body.Length == ProgramFormatConverter.WireSizeExi;
 
+    // Whether this object is merely an INIT/blank placeholder (see InitObjects) — cached at write
+    // time exactly like IsExi above, because the free-slot search scans whole banks and a blob read
+    // per slot would make every drop pay for 128 of them.
+    static bool ComputeIsInit(int objType, byte[] body) => InitObjects.IsInit(objType, body);
+
     // ── Mutations ─────────────────────────────────────────────────────────────
 
     // Advances Baseline=Current=hash(freshBody) for every successfully re-dumped object from
@@ -216,7 +279,8 @@ sealed class LocalLibraryCache
                 _index.Entries.TryGetValue(key, out var prev);
                 _index.Entries[key] = new LocalIndexEntry(p.Version, hash, hash, ExtractDisplayName(p.ObjType, p.Body),
                     utcNow, prev?.LastPushedUtc, Conflicted: false,
-                    ComputeHasResolvedDependencies(p.ObjType, p.Body), ComputeIsExi(p.ObjType, p.Body));
+                    ComputeHasResolvedDependencies(p.ObjType, p.Body), ComputeIsExi(p.ObjType, p.Body),
+                    IsInit: ComputeIsInit(p.ObjType, p.Body));
             }
             targets.Add(new OpLogTarget(p.ObjType, p.Bank, p.Number, hash));
             PatchCatalog(p.ObjType, p.Bank, p.Number, p.Version, p.Body);
@@ -246,7 +310,8 @@ sealed class LocalLibraryCache
                 _index.Entries.TryGetValue(key, out var prev);
                 _index.Entries[key] = new LocalIndexEntry(p.Version, hash, hash, ExtractDisplayName(p.ObjType, p.Body),
                     prev?.LastPulledUtc, utcNow, Conflicted: false,
-                    ComputeHasResolvedDependencies(p.ObjType, p.Body), ComputeIsExi(p.ObjType, p.Body));
+                    ComputeHasResolvedDependencies(p.ObjType, p.Body), ComputeIsExi(p.ObjType, p.Body),
+                    IsInit: ComputeIsInit(p.ObjType, p.Body));
             }
             targets.Add(new OpLogTarget(p.ObjType, p.Bank, p.Number, hash));
             PatchCatalog(p.ObjType, p.Bank, p.Number, p.Version, p.Body);
@@ -294,7 +359,8 @@ sealed class LocalLibraryCache
                 string baseline = existing?.BaselineHash ?? LocalLibraryIndex.NoBaselineSentinel;
                 _index.Entries[key] = new LocalIndexEntry(w.Version, baseline, hash, ExtractDisplayName(w.ObjType, w.Body),
                     existing?.LastPulledUtc, existing?.LastPushedUtc, Conflicted: false,
-                    ComputeHasResolvedDependencies(w.ObjType, w.Body), ComputeIsExi(w.ObjType, w.Body));
+                    ComputeHasResolvedDependencies(w.ObjType, w.Body), ComputeIsExi(w.ObjType, w.Body),
+                    IsInit: ComputeIsInit(w.ObjType, w.Body));
             }
             targets.Add(new OpLogTarget(w.ObjType, w.Bank, w.Number, hash));
             PatchCatalog(w.ObjType, w.Bank, w.Number, w.Version, w.Body);
@@ -328,12 +394,14 @@ sealed class LocalLibraryCache
         string baselineName = baselineBody != null ? ExtractDisplayName(objType, baselineBody) : e.DisplayName;
         bool baselineHasResolvedDeps = baselineBody != null ? ComputeHasResolvedDependencies(objType, baselineBody) : e.HasResolvedDependencies;
         bool baselineIsExi = baselineBody != null ? ComputeIsExi(objType, baselineBody) : e.IsExi;
+        bool? baselineIsInit = baselineBody != null ? ComputeIsInit(objType, baselineBody) : e.IsInit;
         lock (_lock)
         {
             _index.Entries[key] = e with
             {
                 CurrentHash = e.BaselineHash, DisplayName = baselineName, Conflicted = false,
                 HasResolvedDependencies = baselineHasResolvedDeps, IsExi = baselineIsExi,
+                IsInit = baselineIsInit,
             };
         }
         if (baselineBody != null) PatchCatalog(objType, bank, number, e.Version, baselineBody);
@@ -421,6 +489,38 @@ sealed class LocalLibraryCache
         if (targets.Count == 0) return;
         OpLog.Append(Root, new OpLogEntry(Guid.NewGuid(), utcNow, "Undo", targets, description, null, null));
         Save();
+    }
+
+    // Re-derives the cached dependency-completeness bit (HasResolvedDependencies) for slots whose
+    // bodies the caller ALREADY holds — no blob reads here at all.
+    //
+    // That bit is computed once, at write time, and never revisited; it drives the Local tree's
+    // red/green dependency dot. So when the RULES change — as they did when references into the
+    // read-only ROM Program banks stopped counting as dependencies (see
+    // ObjectReferenceWalker.IsAlwaysAvailable) — every object already in the library keeps
+    // displaying a verdict reached under the old rules. Everything computed fresh (the push's
+    // referential gate, the dependency panels) corrects itself immediately; only this cached bit
+    // needs sweeping, or a Combi referencing GM keeps its red dot forever and the fix looks like
+    // it didn't work.
+    //
+    // Returns how many entries actually changed, and persists only if something did.
+    public int RecomputeResolvedDependencies(IEnumerable<(int ObjType, int Bank, int Number, byte[] Body)> objects)
+    {
+        int changed = 0;
+        foreach (var (objType, bank, number, body) in objects)
+        {
+            string key = LocalLibraryIndex.Key(objType, bank, number);
+            lock (_lock)
+            {
+                if (!_index.Entries.TryGetValue(key, out var e)) continue;
+                bool resolved = ComputeHasResolvedDependencies(objType, body);
+                if (resolved == e.HasResolvedDependencies) continue;
+                _index.Entries[key] = e with { HasResolvedDependencies = resolved };
+                changed++;
+            }
+        }
+        if (changed > 0) Save();
+        return changed;
     }
 
     // Cached at write time, same discipline as HasResolvedDependencies/IsExi above — index-only,

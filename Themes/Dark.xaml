@@ -236,7 +236,9 @@
                                     MaxHeight="{TemplateBinding MaxDropDownHeight}"
                                     Background="{StaticResource PanelBackgroundBrush}"
                                     BorderBrush="{StaticResource BorderBrush1}" BorderThickness="1">
-                                <ScrollViewer CanContentScroll="True">
+                                <!-- Vertical must be Auto: ScrollViewer defaults to Visible, which
+                                     parks a dead scrollbar next to short (2-3 item) dropdowns. -->
+                                <ScrollViewer CanContentScroll="True" VerticalScrollBarVisibility="Auto">
                                     <ItemsPresenter/>
                                 </ScrollViewer>
                             </Border>

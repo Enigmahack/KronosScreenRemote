@@ -62,7 +62,10 @@ internal partial class LibrarianShellWindow : ThemedWindow
         // UnresolvedDependenciesDialog's own comment).
         _vm.ConfirmContinueWithPendingDependencies = pending =>
         {
-            var dlg = UnresolvedDependenciesDialog.For(pending).OwnedBy(this);
+            var dlg = UnresolvedDependenciesDialog.For(pending, _vm.DescribeMissingName).OwnedBy(this);
+            // Makes the dialog actionable instead of a Continue/Cancel dead end: right-clicking a
+            // reported gap searches a .pcg for that exact object and stages whatever it finds.
+            dlg.ScanForDependencyRequested = SearchPcgForMissingObject;
             return Task.FromResult(dlg.ShowDialog() == true);
         };
 
@@ -220,6 +223,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
             var data = SetListBody.FromRawBody(loc.Number, dump.Body);
             if (data == null) return;
             var setListDlg = PropertiesDialog.ForSetList($"{loc.Label()} Properties", currentName, data).OwnedBy(this);
+            AttachDependencies(setListDlg, loc);
             if (setListDlg.ShowDialog() != true) return;
 
             bool changed = false;
@@ -240,7 +244,12 @@ internal partial class LibrarianShellWindow : ThemedWindow
         var (category, subCategory) = loc.ObjType == LibObj.Program
             ? ProgramBody.ReadCategory(dump.Body)
             : CombiBody.ReadCategory(dump.Body);
-        var propDlg = PropertiesDialog.ForProgramOrCombi($"{loc.Label()} Properties", currentName, category, subCategory).OwnedBy(this);
+        // Category/Sub-Category are shown by NAME (requirement 4) — Programs and Combis have their
+        // own independent name tables, both read from the instrument's Global object and cached
+        // per host; _vm.CategoryNames falls back to numeric labels when nothing's synced yet.
+        var propDlg = PropertiesDialog.ForProgramOrCombi(
+            $"{loc.Label()} Properties", currentName, category, subCategory, loc.ObjType, _vm.CategoryNames).OwnedBy(this);
+        AttachDependencies(propDlg, loc);
         if (propDlg.ShowDialog() != true) return;
 
         string? name = propDlg.NewName != null && propDlg.NewName != currentName ? propDlg.NewName : null;
@@ -254,6 +263,99 @@ internal partial class LibrarianShellWindow : ThemedWindow
 
         _vm.LocalPane.EditProperties(loc, name, newCategory, newSubCategory);
         _vm.NotifyLocalEditMade();
+    }
+
+    // Requirement 1: fills the Properties dialog's two dependency lists, and wires its "Scan PCG
+    // for missing…" button to the same recovery flow the context menu offers. Re-filled after a
+    // scan, since staging a recovered dependency doesn't itself resolve anything — but it does
+    // change what the user is looking at, and a stale list would read as "the scan did nothing."
+    void AttachDependencies(PropertiesDialog dlg, ObjLoc loc)
+    {
+        // ONE InspectDependencies call per refresh, not a DescribeRequirements + a
+        // MissingDependenciesOf: each is a transitive walk that reads one full body per referenced
+        // object off the CAS store, so doing it twice doubles a real cost on an SMB-mounted DataDir.
+        void Refresh()
+        {
+            var (rows, missing) = _vm.InspectDependencies(loc);
+            dlg.SetDependencies(rows, _vm.DescribeReferrers(loc), canScan: missing.Count > 0);
+        }
+
+        dlg.ScanForDependenciesRequested = () => { ScanPcgForDependencies(loc); Refresh(); };
+        Refresh();
+    }
+
+    // Requirement 2: the UI-friendly manual dependency resolution — pick a .pcg, and anything in
+    // it that this object is missing is staged into the Merge Window for placing. The file picker
+    // lives here (a WPF concern, same split as every other dialog in this file); the scan itself
+    // is LibrarianShellViewModel.ScanPcgForDependencies.
+    void ScanPcgForDependencies(ObjLoc loc)
+    {
+        // Walked once here and handed to the scan below, rather than recomputed inside it.
+        var missing = _vm.MissingDependenciesOf(loc);
+        if (missing.Count == 0)
+        {
+            _vm.LocalPane.StatusText = AppMessages.Librarian.Shell.ScanNothingMissing;
+            return;
+        }
+
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = AppMessages.Librarian.Shell.ScanPcgDialogTitle,
+            Filter = "Korg PCG Files|*.pcg|All Files|*.*",
+        };
+        if (dlg.ShowDialog(this) != true) return;
+
+        string fileName = System.IO.Path.GetFileName(dlg.FileName);
+        byte[] bytes;
+        try
+        {
+            bytes = System.IO.File.ReadAllBytes(dlg.FileName);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error($"[librarian] dependency scan read failed: {ex}");
+            _vm.LocalPane.StatusText = AppMessages.Librarian.Shell.ScanFailed(ex.Message);
+            return;
+        }
+
+        var (found, total, error) = _vm.ScanPcgForDependencies(loc, missing, bytes, fileName);
+        _vm.LocalPane.StatusText = error != null ? AppMessages.Librarian.Shell.ScanFailed(error)
+            : found > 0 ? AppMessages.Librarian.Shell.ScanFoundInPcg(found, total, fileName)
+            : AppMessages.Librarian.Shell.ScanFoundNoneInPcg(total, fileName);
+    }
+
+    // The Unresolved Dependencies dialog's right-click search: same file picker as the object-level
+    // scan above, but for ONE reported address. Returns the status line for the dialog to show in
+    // place — it's already modal over a Sync/Commit, so stacking another dialog on it to report a
+    // result would be worse than useless.
+    string SearchPcgForMissingObject(ObjLoc missing)
+    {
+        var dlg = new Microsoft.Win32.OpenFileDialog
+        {
+            Title = AppMessages.Librarian.Shell.ScanPcgDialogTitle,
+            Filter = "Korg PCG Files|*.pcg|All Files|*.*",
+        };
+        if (dlg.ShowDialog(this) != true) return "";
+
+        string fileName = System.IO.Path.GetFileName(dlg.FileName);
+        try
+        {
+            var (found, error) = _vm.ScanPcgForOneDependency(missing, System.IO.File.ReadAllBytes(dlg.FileName), fileName);
+            if (error != null) return AppMessages.UnresolvedDependencies.ScanFailed(error);
+            return found
+                ? AppMessages.UnresolvedDependencies.ScanFound(missing.Label(), fileName)
+                : AppMessages.UnresolvedDependencies.ScanNotFound(missing.Label(), fileName);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error($"[librarian] dependency search failed: {ex}");
+            return AppMessages.UnresolvedDependencies.ScanFailed(ex.Message);
+        }
+    }
+
+    void OnScanDependenciesMenuItem(object sender, RoutedEventArgs e)
+    {
+        if (((MenuItem)sender).DataContext is ObjectTreeNode { Loc: { } loc }) ScanPcgForDependencies(loc);
     }
 
     // ── Local pane: Cut / Copy / Paste / Rename / Delete ─────────────────────────
@@ -282,6 +384,13 @@ internal partial class LibrarianShellWindow : ThemedWindow
         else if (target?.BankRef is { } bankRef)
         {
             var (ok, msg) = _vm.LocalPane.PasteIntoBank(bankRef.ObjType, bankRef.Bank);
+            _vm.LocalPane.StatusText = msg ?? (ok ? AppMessages.Librarian.Pasted : AppMessages.Librarian.PasteFailed);
+        }
+        else if (target?.TypeRootObjType is int typeRoot)
+        {
+            // Requirement 6: the "Programs"/"Combis" header names a type but no bank — fill the
+            // first bank with room instead of refusing (see LocalLibraryPaneViewModel.PasteIntoTypeRoot).
+            var (ok, msg) = _vm.LocalPane.PasteIntoTypeRoot(typeRoot);
             _vm.LocalPane.StatusText = msg ?? (ok ? AppMessages.Librarian.Pasted : AppMessages.Librarian.PasteFailed);
         }
         else
@@ -366,6 +475,18 @@ internal partial class LibrarianShellWindow : ThemedWindow
                 // bank selection to every item inside it (SelectedLocs), so they show for both.
                 case MenuItem { Name: "MI_Rename" or "MI_Properties" } mi:
                     mi.Visibility = isLeaf ? Visibility.Visible : Visibility.Collapsed;
+                    break;
+                // Requirement 2: shown on any object that CAN have dependencies (a Combi or Set
+                // List — a Program references nothing). Deliberately NOT gated on actually having
+                // a gap right now: answering that means walking the object's references
+                // transitively and reading each referenced body off the CAS store, which is a
+                // per-right-click disk cost on a possibly SMB-mounted DataDir — the exact stall
+                // this codebase already fixed once for the tree and the referrer catalog. A scan
+                // launched on a healthy object simply reports "nothing missing" and does no work
+                // (see ScanPcgForDependencies).
+                case MenuItem { Name: "MI_ScanDeps" } mi:
+                    mi.Visibility = fe.DataContext is ObjectTreeNode { Loc: { ObjType: not LibObj.Program } }
+                        ? Visibility.Visible : Visibility.Collapsed;
                     break;
                 case MenuItem { Name: "MI_Cut" or "MI_Copy" or "MI_MoveToMerge" } mi:
                     mi.Visibility = isLeaf || isBank ? Visibility.Visible : Visibility.Collapsed;
@@ -559,6 +680,19 @@ internal partial class LibrarianShellWindow : ThemedWindow
             var (ok, msg) = _vm.BatchPlaceFromPcg(bankRef.ObjType, payload.Locs, bankRef.Bank);
             _vm.StatusText = msg ?? (ok ? AppMessages.Librarian.Placed : AppMessages.Librarian.PlaceFailed);
         }
+        else if (target.TypeRootObjType is int typeRoot)
+        {
+            // Requirement 6: dropped on the "Programs"/"Combis" header — resolve it to the first
+            // bank with room (format-matched for Programs) and auto-fill there.
+            if (_vm.FindBankForPcgDrop(typeRoot, payload.Locs) is not { } destBank)
+            {
+                _vm.StatusText = AppMessages.Librarian.Local.NoRoomInAnyBank(
+                    ObjectTypeRegistry.Get(typeRoot).DisplayName, _vm.PcgGroupIsExi(typeRoot, payload.Locs));
+                return;
+            }
+            var (ok, msg) = _vm.BatchPlaceFromPcg(typeRoot, payload.Locs, destBank);
+            _vm.StatusText = msg ?? (ok ? AppMessages.Librarian.Placed : AppMessages.Librarian.PlaceFailed);
+        }
         else
         {
             _vm.StatusText = AppMessages.Librarian.Shell.DropOntoBankOrSlot;
@@ -616,14 +750,27 @@ internal partial class LibrarianShellWindow : ThemedWindow
 
         if (payload.ContentHashes.Count == 1)
         {
-            if (target?.Loc is not { } destLoc)
+            // A specific slot is still an exact placement. Landing on a bank — or, requirement 6,
+            // on the "Programs"/"Combis"/"Set Lists" HEADER, which names no bank at all — used to
+            // be refused outright; both now resolve to the first free slot with room, matching what
+            // the PCG pane's own drop already does for a bank.
+            var destLoc = target?.Loc ?? ResolveFreeSlotTarget(target, payload.ContentHashes);
+            if (destLoc is not { } dest)
             {
-                _vm.MergePane.StatusText = AppMessages.Librarian.Shell.DropOntoSpecificSlot;
+                // Two different failures share this branch, and only the header one is about the
+                // library-wide search: a BankRef target that came back null means THAT bank is
+                // full, so it must not claim every bank of the format is.
+                _vm.MergePane.StatusText = target?.TypeRootObjType is int fullRoot
+                    ? AppMessages.Librarian.Local.NoRoomInAnyBank(
+                        ObjectTypeRegistry.Get(fullRoot).DisplayName, _vm.MergeGroupIsExi(fullRoot, payload.ContentHashes))
+                    : target?.BankRef is { } fullBank
+                        ? AppMessages.Librarian.Local.BankIsFull(ObjectTypeRegistry.Get(fullBank.ObjType).BankLabel(fullBank.Bank))
+                        : AppMessages.Librarian.Shell.DropOntoSpecificSlot;
                 return;
             }
-            var (ok, note) = _vm.PlaceFromMerge(payload.ContentHashes[0], destLoc);
+            var (ok, note) = _vm.PlaceFromMerge(payload.ContentHashes[0], dest);
             _vm.MergePane.StatusText = ok
-                ? (note ?? AppMessages.Librarian.Shell.PlacedAtWhere(destLoc.Label()))
+                ? (note ?? AppMessages.Librarian.Shell.PlacedAtWhere(dest.Label()))
                 : AppMessages.Librarian.Shell.PlaceFailedDetail(note);
             return;
         }
@@ -632,12 +779,19 @@ internal partial class LibrarianShellWindow : ThemedWindow
         // user pointed at it, so honor it, same as the single-item exact-placement path above);
         // dropped on the bank/group node itself -> no specific slot was picked, fall back to
         // the bank's first free slot (PlaceMergeGroupSequentially's own default).
+        // Dropped on the type-root HEADER (requirement 6) names no bank at all — resolve it to the
+        // first bank with room, then continue exactly as a bank drop would.
         (int ObjType, int Bank, int? Slot)? destBank = target?.Loc is { } slotLoc ? (slotLoc.ObjType, slotLoc.Bank, slotLoc.Number)
             : target?.BankRef is { } bankRef ? (bankRef.ObjType, bankRef.Bank, (int?)null)
-            : null;
+            : target?.TypeRootObjType is int typeRoot && _vm.FindBankForMergeDrop(typeRoot, payload.ContentHashes) is { } rootBank
+                ? (typeRoot, rootBank, (int?)null)
+                : null;
         if (destBank is not { } db)
         {
-            _vm.MergePane.StatusText = AppMessages.Librarian.Shell.DropOntoSlotOrBankForGroup;
+            _vm.MergePane.StatusText = target?.TypeRootObjType is int fullType
+                ? AppMessages.Librarian.Local.NoRoomInAnyBank(
+                    ObjectTypeRegistry.Get(fullType).DisplayName, _vm.MergeGroupIsExi(fullType, payload.ContentHashes))
+                : AppMessages.Librarian.Shell.DropOntoSlotOrBankForGroup;
             return;
         }
 
@@ -661,6 +815,21 @@ internal partial class LibrarianShellWindow : ThemedWindow
 
         var (bulkOk, msg) = _vm.PlaceMergeGroupSequentially(db.ObjType, db.Bank, payload.ContentHashes, db.Slot);
         _vm.MergePane.StatusText = msg ?? (bulkOk ? AppMessages.Librarian.Placed : AppMessages.Librarian.PlaceFailed);
+    }
+
+    // Where a SINGLE Merge Window item dropped on a non-slot node should land (requirement 6): the
+    // first free slot of the bank that was dropped on, or — for a type-root header, which names no
+    // bank — of the first bank with room (format-matched for Programs, see
+    // LocalEditOps.FindBankWithFreeSlot). Null when the target isn't addressable at all, or
+    // everything eligible is full; the caller distinguishes those two for its status message.
+    ObjLoc? ResolveFreeSlotTarget(ObjectTreeNode? target, IReadOnlyList<string> contentHashes)
+    {
+        (int ObjType, int Bank)? bank = target?.BankRef is { } bankRef ? (bankRef.ObjType, bankRef.Bank)
+            : target?.TypeRootObjType is int typeRoot && _vm.FindBankForMergeDrop(typeRoot, contentHashes) is { } rootBank
+                ? (typeRoot, rootBank)
+                : null;
+        if (bank is not { } b) return null;
+        return _vm.NextFreeSlotIn(b.ObjType, b.Bank) is { } slot ? new ObjLoc(b.ObjType, b.Bank, slot) : null;
     }
 
     // ── Merge Window: selection + drag source (onto Local) + drop target (from PCG) ──────

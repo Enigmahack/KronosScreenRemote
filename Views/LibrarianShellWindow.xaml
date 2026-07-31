@@ -132,6 +132,12 @@
                                 <Separator x:Name="SEP_MergeMove"/>
                                 <MenuItem x:Name="MI_MoveToMerge" Header="Move to Merge Window" Click="OnMoveLocalToMergeMenuItem"
                                           ToolTip="Stage this (and its dependencies) in the Merge Window to rearrange and push it somewhere else."/>
+                                <!-- Requirement 2: manual dependency recovery — shown only on an
+                                     object that actually HAS unmet dependencies (see
+                                     OnLocalContextMenuOpening), so it never advertises itself as
+                                     something to try on a healthy object. -->
+                                <MenuItem x:Name="MI_ScanDeps" Header="Scan PCG for dependencies…" Click="OnScanDependenciesMenuItem"
+                                          ToolTip="Pick a .pcg file and stage whatever it holds of this object's missing dependencies into the Merge Window."/>
                                 <Separator x:Name="SEP_1"/>
                                 <MenuItem x:Name="MI_Rename" Header="Rename…" InputGestureText="F2" Click="OnRenameMenuItem"/>
                                 <MenuItem x:Name="MI_Properties" Header="Properties…" Click="OnOpenProperties"/>

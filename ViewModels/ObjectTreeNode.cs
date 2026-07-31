@@ -25,6 +25,13 @@ partial class ObjectTreeNode : ObservableObject
     // deliberately bag-based; see its own class doc). Never set alongside Loc.
     public string? MergeContentHash { get; }
 
+    // Set for the "Programs"/"Combis" TYPE-ROOT node — the one grouping level that has no bank of
+    // its own, so BankRef can't carry it (the Set Lists root DOES have a bank concept and keeps
+    // using BankRef instead). Exists so a drop landing on the header still knows which object type
+    // was targeted, and can be resolved to a concrete bank + free slot rather than refused with
+    // "drop onto a specific bank or slot" — see LocalEditOps.FindBankWithFreeSlot.
+    public int? TypeRootObjType { get; }
+
     [ObservableProperty] bool isDirty;
     [ObservableProperty] bool isConflicted;
     [ObservableProperty] bool isExpanded;
@@ -48,12 +55,14 @@ partial class ObjectTreeNode : ObservableObject
 
     public System.Collections.ObjectModel.ObservableCollection<ObjectTreeNode> Children { get; } = new();
 
-    public ObjectTreeNode(string label, ObjLoc? loc = null, (int ObjType, int Bank)? bankRef = null, string? mergeContentHash = null)
+    public ObjectTreeNode(string label, ObjLoc? loc = null, (int ObjType, int Bank)? bankRef = null,
+                          string? mergeContentHash = null, int? typeRootObjType = null)
     {
         Label = label;
         Loc = loc;
         BankRef = bankRef;
         MergeContentHash = mergeContentHash;
+        TypeRootObjType = typeRootObjType;
     }
 
     // Every Loc among this node's own descendants (this node included) — the "expand a bank
