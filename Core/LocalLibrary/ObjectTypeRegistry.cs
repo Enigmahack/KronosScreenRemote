@@ -2,13 +2,13 @@ namespace KronosScreenRemote;
 
 // Per-object-type behavior, so Core/UI code iterates the registry instead of
 // hardcoding switch/if-chains per LibObj type. Each descriptor DELEGATES to the
-// existing KronosBanks/LibObj logic — it does not reimplement it.
+// existing KronosBanks/LibObj logic - it does not reimplement it.
 //
 // This is the extension seam for future object types (DrumKits, Wave Sequences,
 // read-only GM-bank browsing, all named as likely v2 additions): adding one means
 // writing one new IObjectTypeDescriptor + one new Core/ObjectBody decoder, without
 // touching LibrarianModel.cs, BatchMoveModel.cs, or any registry-driven UI code.
-// Deliberately populated with exactly the 3 real types that exist today — no
+// Deliberately populated with exactly the 3 real types that exist today - no
 // speculative stub entries for types nobody has asked for yet.
 interface IObjectTypeDescriptor
 {

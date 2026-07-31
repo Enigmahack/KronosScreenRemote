@@ -9,7 +9,7 @@ using System.Text;
 // Set List body decodes identically to an equivalent live-dump-shaped wire message).
 //
 // IMPORTANT: this proves internal self-consistency of THIS parser's assumed header
-// layout — it does not, and cannot, prove that layout matches a real Kronos-exported .pcg
+// layout - it does not, and cannot, prove that layout matches a real Kronos-exported .pcg
 // file. That still needs a real file (see the plan's Phase 4 manual verification step).
 static class PcgFileSelfTests
 {
@@ -40,7 +40,7 @@ static class PcgFileSelfTests
 
         // Shared-decoder proof: decoding the PCG-sliced Set List body directly must match
         // decoding an equivalent live-dump-shaped wire message wrapping the SAME raw bytes
-        // — the concrete evidence for design point (d)'s "one decoder, two ingestion paths."
+        // - the concrete evidence for design point (d)'s "one decoder, two ingestion paths."
         if (slBody != null && decoded != null)
         {
             var encoded = KronosSysEx.Encode7to8(slBody, 0, slBody.Length);
@@ -72,7 +72,7 @@ static class PcgFileSelfTests
             var viewG = new PcgLibraryView(fileWithGarbage);
             Check("garbage-does-not-corrupt-real-extraction", viewG.GetName(progLoc) == programName);
             // The rejection diagnostic (surfaced by PcgPaneViewModel.Load) must actually see
-            // this — a bank silently missing from the tree should never be invisible again.
+            // this - a bank silently missing from the tree should never be invisible again.
             Check("garbage-tag-tracked-as-rejected",
                 fileWithGarbage.RejectedBanks.Any(r => r.Tag == "MBK1" && r.Reason.Contains("count")));
         }
@@ -80,10 +80,10 @@ static class PcgFileSelfTests
         // Not a valid PCG file at all (bad magic) -> Open returns null, not an exception.
         Check("rejects-non-pcg", PcgFile.Open(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }) == null);
 
-        // Real-file bank-id encoding (confirmed against an actual factory PRELOAD.PCG, and —
-        // critically — against a real user file with confirmed U-GG content; see
+        // Real-file bank-id encoding (confirmed against an actual factory PRELOAD.PCG, and -
+        // critically - against a real user file with confirmed U-GG content; see
         // PcgObjectExtractor's class comment). Program: literal 0..4 for I-A..I-E, a
-        // dedicated 0x8000 flag for I-F, then 0x20000+N (N=0..13) directly for U-A..U-GG —
+        // dedicated 0x8000 flag for I-F, then 0x20000+N (N=0..13) directly for U-A..U-GG -
         // NO "I-G" slot (Program has only 6 int banks, unlike Combi's 7). This pins the exact
         // regression that silently dropped U-GG: an earlier version routed Program through
         // the 7-int-bank EditableBanks() list, shifting every user bank down by one so
@@ -159,7 +159,7 @@ static class PcgFileSelfTests
         setListComment = "synthetic slot comment";
 
         // Real .pcg Program slots are always 4960 bytes on disk (the wire dump can be
-        // smaller for HD-1 — see ProgramFormatConverter — but that's a placement-time
+        // smaller for HD-1 - see ProgramFormatConverter - but that's a placement-time
         // conversion, not how the file itself stores the record).
         const int programSize = ProgramFormatConverter.PcgSlotSize, combiSize = 7810, setListSize = 69416;
 
@@ -177,7 +177,7 @@ static class PcgFileSelfTests
         void WriteBank(string tag, int count, int itemSize, int bankId, byte[] record)
         {
             WriteAscii(tag);
-            WriteBE32(0);           // chunk length — not read by the extractor
+            WriteBE32(0);           // chunk length - not read by the extractor
             WriteBE32(0);           // reserved/meta
             WriteBE32(count);
             WriteBE32(itemSize);

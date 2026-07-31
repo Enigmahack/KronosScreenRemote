@@ -6,7 +6,7 @@ using NAudio.Midi;
 //
 // A Kronos plugged into USB enumerates as a standard USB-MIDI class device named
 // like "KRONOS" (Windows may prefix a disambiguating number for a second unit,
-// e.g. "2- KRONOS"), so matching is a case-insensitive substring — never a fixed
+// e.g. "2- KRONOS"), so matching is a case-insensitive substring - never a fixed
 // device index, satisfying "not hard-coded to a specific USB slot."
 //
 // IMPORTANT: input and output are SEPARATE winmm enumerations; the Kronos's input
@@ -62,7 +62,7 @@ static class KronosMidiDevices
 
     // Lightweight, non-disruptive test that BOTH the Kronos input and output ports
     // can be opened right now. winmm ports are exclusive, so a device held by another
-    // app (a DAW) enumerates as present but fails to open — this reveals that without
+    // app (a DAW) enumerates as present but fails to open - this reveals that without
     // disturbing any live transport. Opens then immediately disposes each. Used by the
     // coordinator to retry a previously-failed USB open before committing to switch.
     public static bool CanOpen(string match = DefaultMatch)

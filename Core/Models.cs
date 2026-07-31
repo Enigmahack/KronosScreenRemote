@@ -47,7 +47,7 @@ public readonly record struct Keybind(Key Key, ModifierKeys Modifiers = Modifier
                 case "Win":   mods |= ModifierKeys.Windows; break;
                 default:
                     var token = part.Trim();
-                    // "1"–"9"/"0" → Key.D1…Key.D0 (reverse of KeyLabel)
+                    // "1"–"9"/"0" → Key.D1...Key.D0 (reverse of KeyLabel)
                     if (token.Length == 1 && char.IsDigit(token[0]))
                         token = "D" + token;
                     if (System.Enum.TryParse<Key>(token, out var k) && k != Key.None)
@@ -201,8 +201,8 @@ static class WindowTheme
     }
 
     // Clear WS_MINIMIZEBOX so the window can't be minimized (its minimize button greys out,
-    // maximize/resize is untouched). Runs at SourceInitialized — the earliest point the HWND
-    // exists — so the button never flashes enabled before the window is shown. Applied by
+    // maximize/resize is untouched). Runs at SourceInitialized - the earliest point the HWND
+    // exists - so the button never flashes enabled before the window is shown. Applied by
     // ThemedWindow to every window except the ones that opt in via AllowMinimize (MainWindow).
     public static void DisableMinimizeBox(Window w)
     {
@@ -212,7 +212,7 @@ static class WindowTheme
             if (h == IntPtr.Zero) return;
             int style = GetWindowLong(h, GWL_STYLE);
             SetWindowLong(h, GWL_STYLE, style & ~WS_MINIMIZEBOX);
-            // Force the non-client frame to redraw so the style change actually takes effect —
+            // Force the non-client frame to redraw so the style change actually takes effect -
             // SetWindowLong alone is silently ignored often enough that this nudge is required.
             SetWindowPos(h, IntPtr.Zero, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
         }

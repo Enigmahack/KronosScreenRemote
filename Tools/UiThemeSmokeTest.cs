@@ -13,7 +13,7 @@ namespace KronosScreenRemote;
 // any real dependency is touched, so this exercises 100% of the XAML/resource-resolution
 // path without presenting a visible window or requiring a live Kronos connection. The Librarian
 // ownership check temporarily shows invisible windows to exercise its real close path. Not a
-// substitute for actually looking at the app — see the report this writes for what it does and
+// substitute for actually looking at the app - see the report this writes for what it does and
 // doesn't prove.
 static class UiThemeSmokeTest
 {
@@ -70,7 +70,7 @@ static class UiThemeSmokeTest
             {
                 // Any other exception happens only after InitializeComponent() has already
                 // succeeded (every ctor below calls it within its first few lines), so the
-                // XAML/resource path is proven fine — this is just a dummy-arg side effect.
+                // XAML/resource path is proven fine - this is just a dummy-arg side effect.
                 results.Add((name, true, "(non-XAML exception after load, ignored: " + ex.GetType().Name + ")"));
             }
         }
@@ -99,7 +99,7 @@ static class UiThemeSmokeTest
             var w = new LibrarianShellWindow(fakeSysEx, cache, settings, "");
             if (w.FindName("TV_Local") is System.Windows.Controls.TreeView tv)
             {
-                // Force the ItemsSource binding to flush before reading Items.Count — an
+                // Force the ItemsSource binding to flush before reading Items.Count - an
                 // unshown window (never pumped through Show()/the message loop) doesn't
                 // guarantee a pending binding update has applied yet. Same technique the
                 // old LibrarianWindow check above uses for TV_Objects, same reason.
@@ -128,7 +128,7 @@ static class UiThemeSmokeTest
             owner.Show();
             owner.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             // Seeded with one throwaway Combi purely so the Undo check below has something to
-            // edit — a routed-command probe against an EMPTY undo stack can't tell "wired but
+            // edit - a routed-command probe against an EMPTY undo stack can't tell "wired but
             // correctly refusing" from "not wired at all" (RoutedCommand.Execute skips the
             // Executed handler whenever CanExecute says false).
             var ownerCache = new LocalLibraryCache(scratch);
@@ -152,7 +152,7 @@ static class UiThemeSmokeTest
             //  1. the gesture is declared (Window.InputBindings' Ctrl+Z -> ApplicationCommands.Undo);
             //     translating a real keypress into that command is WPF's own job, not testable here.
             //  2. the command ROUTES from a focused pane up to the window's CommandBinding and
-            //     actually rolls the last edit back — armed by renaming the seeded Combi, then
+            //     actually rolls the last edit back - armed by renaming the seeded Combi, then
             //     executing the routed command from TV_Local (exactly where the Ctrl+Z gesture
             //     lands with a tree focused) and checking BOTH the status line and the restored
             //     name. A missing/mis-wired CommandBinding leaves both untouched.
@@ -175,7 +175,7 @@ static class UiThemeSmokeTest
                 bool dotVisible = VisualDescendants<System.Windows.Controls.TextBlock>(localTree).Any(
                     t => t.Text == "●" &&
                          t.Visibility == Visibility.Visible &&
-                         Equals(t.ToolTip, "Locally changed — pending Sync/Commit."));
+                         Equals(t.ToolTip, "Locally changed - pending Sync/Commit."));
                 results.Add(("  Librarian dirty local-object dot", dotVisible,
                     dotVisible ? null : "Dirty local object did not render its red-dot marker"));
             }
@@ -221,7 +221,7 @@ static class UiThemeSmokeTest
         // rendering pipeline meant for a live app session, not a construct-and-dispose probe.
 
         var outPath = Path.Combine(Path.GetTempPath(), "kronos_ui_theme_smoketest.txt");
-        var lines = results.Select(r => (r.Passed ? "OK   " : "FAIL ") + r.Name + (r.Detail is null ? "" : "  — " + r.Detail));
+        var lines = results.Select(r => (r.Passed ? "OK   " : "FAIL ") + r.Name + (r.Detail is null ? "" : "  - " + r.Detail));
         File.WriteAllLines(outPath, lines);
         Environment.Exit(results.All(r => r.Passed) ? 0 : 1);
     }
@@ -230,7 +230,7 @@ static class UiThemeSmokeTest
 // Promoted from `file`-scoped to `internal` so later self-tests (Core/LocalLibrary) can
 // reuse this construction-only stub instead of writing a second copy. FakeMoveExecutor
 // (Core/LocalLibrary/Testing) is a separate, stateful fake for a different purpose (real
-// Pull/Push behavior, not just XAML-construction stubs) — the two are not merged.
+// Pull/Push behavior, not just XAML-construction stubs) - the two are not merged.
 internal sealed class FakeSysExService : ISysExService
 {
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;

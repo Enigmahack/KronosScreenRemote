@@ -119,14 +119,14 @@ static class LocalEditOpsSelfTests
             // ── ROM (GM/g) references are never a dependency gap ──
             // The read-only GM/g Program banks are factory content on the instrument and are
             // deliberately never pulled (LibraryPullPlanner/ObjectTypeRegistry.EditableBanks), so a
-            // timbre pointing at one used to read as a PERMANENTLY unresolvable dependency — a red
+            // timbre pointing at one used to read as a PERMANENTLY unresolvable dependency - a red
             // dot that never cleared, a session-clipboard entry no retry could clear, and a hard
             // REFUSE of the whole push from ChangesetBuilder's referential check. See
             // ObjectReferenceWalker.IsAlwaysAvailable.
             int fbGm = KronosBanks.ObjBankToFunc33(1, 0x10);          // GM
-            int fbGd = KronosBanks.ObjBankToFunc33(1, 0x1A);          // g(d) — the far end of the ROM range
+            int fbGd = KronosBanks.ObjBankToFunc33(1, 0x1A);          // g(d) - the far end of the ROM range
             // EVERY timbre is set, not just the two of interest: a Combi body always carries all 16
-            // timbre references, and a zero-filled one reads as 16 references to I-A:000 — which
+            // timbre references, and a zero-filled one reads as 16 references to I-A:000 - which
             // would drown out what these checks are actually about.
             var romCombiBody = new byte[7810];
             for (int t = 0; t < LibRefs.TimbreCount; t++)
@@ -141,7 +141,7 @@ static class LocalEditOpsSelfTests
             Check("rom-classifier-not-int-prog", !ObjectReferenceWalker.IsAlwaysAvailable(new ObjLoc(LibObj.Program, 0x00, 0)));
             Check("rom-classifier-not-combi", !ObjectReferenceWalker.IsAlwaysAvailable(new ObjLoc(LibObj.Combi, 0x10, 0)));
             // A body mixing a ROM ref with a genuinely-missing one still reports exactly the
-            // missing one — the fix must not blanket-suppress real gaps.
+            // missing one - the fix must not blanket-suppress real gaps.
             var mixedCombiBody = new byte[7810];
             for (int t = 0; t < LibRefs.TimbreCount; t++) LibRefs.SetCombiTimbreRef(mixedCombiBody, t, fbGm, 5);
             LibRefs.SetCombiTimbreRef(mixedCombiBody, 1, fbUnseen, 77);   // -> U-B:077, not present locally
@@ -152,7 +152,7 @@ static class LocalEditOpsSelfTests
             // ── Type-root drop target: "first bank with room" (requirement 6) ──
             // Dropping on the "Programs"/"Combis" header names a type but no bank. USER banks are
             // preferred over INT ones, and for Programs the chosen bank must match the incoming
-            // wire format — otherwise this would just trade "drop onto a specific bank" for
+            // wire format - otherwise this would just trade "drop onto a specific bank" for
             // PlanBatchMove's wrong-format REFUSE. This fixture holds only HD-1 Programs (3706-byte
             // bodies) in U-A/U-B, so an EXi drop must skip past both to an unformatted (empty) bank.
             Check("typeroot-combi-prefers-user-bank",
@@ -172,7 +172,7 @@ static class LocalEditOpsSelfTests
                     bankTypeOf: b => b == 0x40 ? true : false) == 0x40);
             // The format filter is HARD: with every bank reporting EXi, an HD-1 group has nowhere
             // to go and must come back null. Answering "some EXi bank with room" instead is how an
-            // HD-1 drop on the Programs header used to end up aimed at an EXi bank — where a
+            // HD-1 drop on the Programs header used to end up aimed at an EXi bank - where a
             // single-item drop hits PlanBatchMove's wrong-format REFUSE and a multi-item drop
             // escalates to the whole-bank "Change Program Bank Type" prompt (a func 0x7C that
             // ERASES that bank). The caller reports the null, naming the format.
@@ -182,7 +182,7 @@ static class LocalEditOpsSelfTests
             Check("typeroot-program-no-matching-format-refuses-other-way",
                 LocalEditOps.FindBankWithFreeSlot(cache, LibObj.Program, incomingIsExi: true,
                     bankTypeOf: _ => false) == null);
-            // A bank of UNVERIFIABLE type (no live answer AND empty locally — in practice I-G,
+            // A bank of UNVERIFIABLE type (no live answer AND empty locally - in practice I-G,
             // which func 0x61's bitmap doesn't cover) is a fallback, never a first choice: U-C/U-D
             // are unverifiable and come first in bank order, but U-E is a CONFIRMED EXi match, so
             // it wins. Taking U-C would have deferred a real format error to the hardware write,
@@ -197,7 +197,7 @@ static class LocalEditOpsSelfTests
                     bankTypeOf: _ => null) == 0x42);
 
             // The reported bug, in its exact shape. I-G has no bit in func 0x61's Program Bank
-            // Types bitmap, so the LIVE lookup can only ever answer null for it — but once any
+            // Types bitmap, so the LIVE lookup can only ever answer null for it - but once any
             // Program lands there its format is perfectly well known locally. That's how an HD-1
             // group dropped on the Programs header came to be aimed at a bank holding EXi
             // programs: nothing but the local inference can rule it out. Seed one EXi Program into
@@ -218,10 +218,10 @@ static class LocalEditOpsSelfTests
                 !KronosBanks.IsReadOnlyProgramBank(anyBank));
             // ── INIT placeholders count as free space ──────────────────────────────────────
             // The Kronos protocol has no empty slot, so a synced library indexes all 128 slots of
-            // every bank and an Exists-based scan calls a bank of 128 "Init Program"s FULL — the
+            // every bank and an Exists-based scan calls a bank of 128 "Init Program"s FULL - the
             // reported bug ("every Combi bank is full" against a library with hundreds of free
             // init slots). U-C is untouched here, so fill it: real content at 0-1, init at 2, real
-            // at 3, then init to the end. Note the INTERLEAVING — that is the shape init-awareness
+            // at 3, then init to the end. Note the INTERLEAVING - that is the shape init-awareness
             // creates and the reason an auto-fill can no longer walk startSlot+i blindly.
             var realProg = ProgramBody.WriteName(new byte[ProgramFormatConverter.WireSizeHd1], "REAL PATCH");
             var initProg = ProgramBody.WriteName(new byte[ProgramFormatConverter.WireSizeHd1], "Init Program");
@@ -239,7 +239,7 @@ static class LocalEditOpsSelfTests
             Check("init-bank-not-reported-full", LocalEditOps.TryFindNextFreeSlot(cache, LibObj.Program, 0x42) == 2);
             Check("init-next-free-slot-skips-real", LocalEditOps.FindNextFreeSlot(cache, LibObj.Program, 0x42) == 2);
             // The data-loss guard: slot 3 holds a REAL patch between two init slots, so a 3-item
-            // auto-fill starting at 2 must land on 2,4,5 — never on 3. A startSlot+i walk would
+            // auto-fill starting at 2 must land on 2,4,5 - never on 3. A startSlot+i walk would
             // have overwritten it, which is exactly what init-awareness would otherwise introduce.
             var avail = LocalEditOps.AvailableSlotsFrom(cache, LibObj.Program, 0x42, 2, 3);
             Check("available-slots-skip-real-content", avail.SequenceEqual(new[] { 2, 4, 5 }));
@@ -255,7 +255,7 @@ static class LocalEditOpsSelfTests
 
             // ── Set Lists: emptiness is the aggregate of the slots, and needs the backfill ──
             // The fixture's Set List 0 has one filled slot (slot 2 was seeded + edited above), so
-            // it is real content. A Set List whose slots are ALL blank is an empty placeholder —
+            // it is real content. A Set List whose slots are ALL blank is an empty placeholder -
             // but only the BODY can say so (no "Init Set List" naming convention exists), which is
             // why BackfillInitFlags has to read them once for a library synced by an older build.
             var blankSetList = new byte[69416];
@@ -263,7 +263,7 @@ static class LocalEditOpsSelfTests
                 blankSetList, "blank-sl", divertDisplacedToClipboard: false, utcNow);
             Check("blank-setlist-is-init", cache.IsInitSlot(LibObj.SetList, 0, 5));
             // The case blank-slot-names alone misses: every slot still points at the zero default
-            // (Program I-A:000 = "nothing assigned"), but the object and its slots ARE named — the
+            // (Program I-A:000 = "nothing assigned"), but the object and its slots ARE named - the
             // instrument ships them named "Set List 000".., and a user can rename one without ever
             // assigning anything. Names must not make an unassigned Set List look like content.
             var namedButUnassigned = SetListBody.WriteName(new byte[69416], "MY EMPTY LIST");
@@ -286,7 +286,7 @@ static class LocalEditOpsSelfTests
                 oneAssigned, "one-assigned-sl", divertDisplacedToClipboard: false, utcNow);
             Check("one-assigned-slot-setlist-is-not-init", !cache.IsInitSlot(LibObj.SetList, 0, 8));
             Check("blank-setlist-has-no-content", !cache.HasContent(LibObj.SetList, 0, 5));
-            // A NAMED slot is what makes a Set List real content — SetListSlot.IsEmpty keys on the
+            // A NAMED slot is what makes a Set List real content - SetListSlot.IsEmpty keys on the
             // slot's name, not its reference (an unused slot still carries a default prog/combi
             // pointer, so the refs can't distinguish the two). The fixture's own Set List 0 has a
             // slot REFERENCE but no slot name, so it correctly reads as an empty placeholder.
@@ -294,7 +294,7 @@ static class LocalEditOpsSelfTests
             LocalEditOps.PlaceObject(cache, new ObjLoc(LibObj.SetList, 0, 6), LibObj.SetList, 0,
                 namedSetList, "named-sl", divertDisplacedToClipboard: false, utcNow);
             Check("populated-setlist-still-real", cache.HasContent(LibObj.SetList, 0, 6));
-            // Backfill is idempotent — everything above was written with IsInit already computed,
+            // Backfill is idempotent - everything above was written with IsInit already computed,
             // so a second pass has nothing left to fill in.
             Check("setlist-backfill-idempotent", cache.BackfillInitFlags(LibObj.SetList) == 0);
 
@@ -306,7 +306,7 @@ static class LocalEditOpsSelfTests
             var sessionClip = new SessionDependencyClipboard();
             var otherMissing = new ObjLoc(LibObj.Program, 0x41, 55);
             sessionClip.Add(new SessionDependencyEntry(otherMissing, "timbre 1", 0, new ObjLoc(LibObj.Combi, 0x00, 0), null));
-            sessionClip.Add(new SessionDependencyEntry(otherMissing, "timbre 1", 0, new ObjLoc(LibObj.Combi, 0x00, 0), null));   // duplicate — must not double-add
+            sessionClip.Add(new SessionDependencyEntry(otherMissing, "timbre 1", 0, new ObjLoc(LibObj.Combi, 0x00, 0), null));   // duplicate - must not double-add
             Check("session-clipboard-add-dedup", sessionClip.Pending.Count == 1);
             sessionClip.Resolve(otherMissing);
             Check("session-clipboard-resolve", sessionClip.Pending.Count == 0);

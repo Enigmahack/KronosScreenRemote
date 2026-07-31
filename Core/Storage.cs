@@ -200,7 +200,7 @@ static class Storage
     static readonly HostKeyedCache<Dictionary<int, SetListData>> _setLists = new(() => SetListCachePath, "setlist-cache");
 
     // NOTE: Load/Save read + JSON-(de)serialize the whole cache file. Callers on the UI
-    // thread (viewer open, load/refresh, sync) MUST wrap them in Task.Run — a full Set
+    // thread (viewer open, load/refresh, sync) MUST wrap them in Task.Run - a full Set
     // List is ~79 KB of decoded data, so a populated cache is heavy to (de)serialize and
     // would freeze the window. HostKeyedCache serializes both against each other under one
     // lock (Save is an atomic read-modify-write), so a UI-thread save racing a background
@@ -255,11 +255,11 @@ static class Storage
 
     // ── Librarian reference-graph cache ───────────────────────────────────────
     // ── Librarian clipboard (Core/BatchMoveModel.cs's BatchClipboard) ───────────
-    // A flat list, not a Dictionary<host,...> like the caches above — deliberately not
+    // A flat list, not a Dictionary<host,...> like the caches above - deliberately not
     // host-keyed, because the local library it belongs to (Core/LocalLibrary) is a single
     // global store: the Kronos's IP can change but the objects don't. (The old per-host
-    // reference-graph cache and host-keyed clipboard this file used to also carry — for
-    // the classic, now-retired LibrarianWindow — were removed in the Phase 7 cutover, along
+    // reference-graph cache and host-keyed clipboard this file used to also carry - for
+    // the classic, now-retired LibrarianWindow - were removed in the Phase 7 cutover, along
     // with that window itself.)
 
     public sealed record ClipboardEntryDto(
@@ -269,7 +269,7 @@ static class Storage
 
     static string ClipboardGlobalPath => Path.Combine(DataDir, "local_library_clipboard.json");
     // Flat, not host-keyed (see the note above), so it rides the JsonFileCache base directly
-    // rather than HostKeyedCache — same lock/I/O plumbing, whole-file value.
+    // rather than HostKeyedCache - same lock/I/O plumbing, whole-file value.
     static readonly JsonFileCache<List<ClipboardEntryDto>> _clipboard = new(() => ClipboardGlobalPath, "local-library-clipboard");
 
     public static List<ClipboardEntryDto> LoadClipboardGlobal() => _clipboard.Read() ?? new();
@@ -278,7 +278,7 @@ static class Storage
 
     // ── Program bank type cache ───────────────────────────────────────────────
     // Persists the func-0x61 Program Bank Types bitmap (HD-1 vs EXi) per host. Currently
-    // unused by the new Librarian (Views/LibrarianShellWindow.xaml) — its batch-place path
+    // unused by the new Librarian (Views/LibrarianShellWindow.xaml) - its batch-place path
     // (ViewModels/LibrarianShellViewModel.cs's BatchPlaceFromPcg) doesn't yet gate on
     // bank-type compatibility the way the old, now-retired LibrarianWindow's batch-move did
     // (a known, flagged gap, not a silent regression). Left in place rather than deleted:
@@ -288,7 +288,7 @@ static class Storage
     static string ProgramBankTypesPath => Path.Combine(DataDir, "program_bank_types_cache.json");
     static readonly HostKeyedCache<bool[]> _programBankTypes = new(() => ProgramBankTypesPath, "program-bank-types");
 
-    // Null (not empty) when the host was never dumped — callers distinguish the two.
+    // Null (not empty) when the host was never dumped - callers distinguish the two.
     public static bool[]? LoadProgramBankTypes(string host) => _programBankTypes.Load(host);
 
     public static void SaveProgramBankTypes(string host, bool[] flags) => _programBankTypes.Save(host, flags);
@@ -301,14 +301,14 @@ static class Storage
     // wasteful. Seeded from here at Librarian open, refreshed live in the background.
 
     // A flat DTO rather than persisting CategoryNames directly: that type uses `required init`
-    // members, which System.Text.Json can populate but only with a matching constructor shape —
+    // members, which System.Text.Json can populate but only with a matching constructor shape -
     // a plain mutable record keeps the on-disk format independent of the model's own API.
     public sealed record CategoryNamesDto(string[] Program, string[][] ProgramSub, string[] Combi, string[][] CombiSub);
 
     static string CategoryNamesPath => Path.Combine(DataDir, "category_names_cache.json");
     static readonly HostKeyedCache<CategoryNamesDto> _categoryNames = new(() => CategoryNamesPath, "category-names");
 
-    // Null when this host's categories were never synced — the caller falls back to
+    // Null when this host's categories were never synced - the caller falls back to
     // CategoryNames.Numeric() (plain "Category 05" labels), never to an error.
     public static CategoryNamesDto? LoadCategoryNames(string host) => _categoryNames.Load(host);
 
@@ -316,7 +316,7 @@ static class Storage
 
     // ── Librarian backups ──────────────────────────────────────────────────────
     // Shared by the move feature (Librarian.ApplyMoveAsync) and the Store-Bank
-    // verification tool — both back up pre-images to timestamped .syx files here
+    // verification tool - both back up pre-images to timestamped .syx files here
     // before writing anything.
 
     public static string BackupDir()

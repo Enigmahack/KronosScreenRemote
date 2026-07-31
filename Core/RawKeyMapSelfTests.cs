@@ -2,8 +2,8 @@ using System.Windows.Input;
 
 namespace KronosScreenRemote;
 
-// Off-hardware self-test for RawKeyMap's pure logic — upsert (replace-in-place vs append,
-// shift-variant independence) and its legacy JSON round-trip / skip-bad-row resilience —
+// Off-hardware self-test for RawKeyMap's pure logic - upsert (replace-in-place vs append,
+// shift-variant independence) and its legacy JSON round-trip / skip-bad-row resilience -
 // none of which touch disk or the live Entries global. This is the "testable without
 // touching disk" payoff of folding RawKeyMap onto JsonFileCache. Wired into App.xaml.cs's
 // --librarian-selftest; returns failing check names (empty == pass).

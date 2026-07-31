@@ -27,7 +27,7 @@ public partial class SettingsWindow : ThemedWindow
     RawMapping? _rawEditOriginal;
     bool        _rawEditListening;
     // Raw-map edits apply to a live global (shared with the Input Tester).  Snapshot on open so
-    // Cancel can undo edits made in *this* dialog — but only when the Input Tester wasn't opened
+    // Cancel can undo edits made in *this* dialog - but only when the Input Tester wasn't opened
     // this session, since its edits to the same global must not be reverted out from under it.
     readonly List<RawMapping> _rawSnapshot = RawKeyMap.Snapshot();
     bool        _rawEdited;
@@ -62,7 +62,7 @@ public partial class SettingsWindow : ThemedWindow
         _onImagePreview  = onImagePreview;
         BtnInputTester.IsEnabled = showInputTester != null;
 
-        // Full deep copy — Clone() carries every field (including pass-through fields not exposed
+        // Full deep copy - Clone() carries every field (including pass-through fields not exposed
         // in this dialog, e.g. FocusedDataExpanded/FocusedValueExpanded, which the old hand-written
         // copy silently dropped).  BtnOK_Click overwrites the UI-bound fields from the controls.
         Result = settings.Clone();
@@ -130,14 +130,14 @@ public partial class SettingsWindow : ThemedWindow
         SlSaturation.Value = Result.ImageSaturation;
         SlSharpen.Value    = Result.ImageSharpen;
         UpdateImageLabels();
-        _imagePreviewArmed = true;   // initial values applied — live preview may fire from here on
+        _imagePreviewArmed = true;   // initial values applied - live preview may fire from here on
 
         // Key bindings
         foreach (var (action, label, _) in AppSettings.Rebindable)
             _rows.Add(new KeybindRow { Action = action, Label = label, BoundKey = Result.GetKeybind(action) });
         KeyList.ItemsSource = _rows;
 
-        // Macros — deep copy so Cancel leaves the originals untouched
+        // Macros - deep copy so Cancel leaves the originals untouched
         foreach (var m in settings.Macros)
             _macroRows.Add(new MacroRow(new MacroDefinition
             {
@@ -230,7 +230,7 @@ public partial class SettingsWindow : ThemedWindow
         TxtSharpenLabel.Text    = ((int)SlSharpen.Value).ToString();
     }
 
-    // Resets the adjustment sliders only — leaves the upscaling-filter choice untouched.
+    // Resets the adjustment sliders only - leaves the upscaling-filter choice untouched.
     void OnResetImageAdjust(object s, RoutedEventArgs e)
     {
         SlBrightness.Value = 0;
@@ -282,7 +282,7 @@ public partial class SettingsWindow : ThemedWindow
             return;
         }
 
-        // Ignore standalone modifier keystrokes — wait for the base key
+        // Ignore standalone modifier keystrokes - wait for the base key
         Key baseKey = e.Key == Key.System ? e.SystemKey : e.Key;
         if (baseKey is Key.LeftShift or Key.RightShift or
                        Key.LeftCtrl  or Key.RightCtrl  or
@@ -348,7 +348,7 @@ public partial class SettingsWindow : ThemedWindow
         Result.SysExPollIntervalSec  = CMB_PollInterval.SelectedIndex >= 0
             ? pollIntervals[Math.Min(CMB_PollInterval.SelectedIndex, pollIntervals.Length - 1)]
             : 60;
-        // Value slider CC# — valid MIDI controller (0-119), excluding 0 and 32
+        // Value slider CC# - valid MIDI controller (0-119), excluding 0 and 32
         // which are Bank Select MSB/LSB and drive program-change follow. Falls
         // back to the Kronos default (18) on unparseable/out-of-range input.
         Result.ValueSliderCc = int.TryParse(TXT_ValueSliderCc.Text, out int vsCc)
@@ -388,7 +388,7 @@ public partial class SettingsWindow : ThemedWindow
     void BtnCancel_Click(object s, RoutedEventArgs e)
     {
         // Undo raw-map edits made in this dialog (they persist to the live global immediately),
-        // unless the Input Tester was opened — its concurrent edits to the same global must stand.
+        // unless the Input Tester was opened - its concurrent edits to the same global must stand.
         if (_rawEdited && !_inputTesterOpened) RawKeyMap.Restore(_rawSnapshot);
         DialogResult = false;
     }
@@ -448,7 +448,7 @@ public partial class SettingsWindow : ThemedWindow
     {
         if (_macroRecording) return;
         _macroTriggerListening = true;
-        BtnMacroTrigger.Content = "[ press key… ]";
+        BtnMacroTrigger.Content = "[ press key... ]";
     }
 
     void OnMacroDelayChanged(object s, RoutedPropertyChangedEventArgs<double> e)
@@ -649,7 +649,7 @@ public partial class SettingsWindow : ThemedWindow
     {
         _rawEditPrevBtn          = BtnRawCaptureKey.Content?.ToString() ?? "(none)";
         _rawEditListening        = true;
-        BtnRawCaptureKey.Content = "[ press key… ]";
+        BtnRawCaptureKey.Content = "[ press key... ]";
     }
 
     void OnRawSave(object s, RoutedEventArgs e)
@@ -701,7 +701,7 @@ public partial class SettingsWindow : ThemedWindow
         {
             var found = KronosMidiDevices.Find(match);
             if (found != null)
-                return $"USB: Kronos detected — \"{found}\". Auto and USB modes will use it.";
+                return $"USB: Kronos detected - \"{found}\". Auto and USB modes will use it.";
             int ins = KronosMidiDevices.InputNames().Count;
             int outs = KronosMidiDevices.OutputNames().Count;
             return $"USB: no Kronos (\"{match}\") found among {ins} input / {outs} output MIDI port(s). " +
@@ -863,7 +863,7 @@ class KeybindRow : INotifyPropertyChanged
         set { _listening = value; Notify(); Notify(nameof(DisplayKey)); }
     }
 
-    public string DisplayKey => IsListening ? "[ Press a key… ]" : _boundKey.ToDisplayString();
+    public string DisplayKey => IsListening ? "[ Press a key... ]" : _boundKey.ToDisplayString();
 
     public event PropertyChangedEventHandler? PropertyChanged;
     void Notify([CallerMemberName] string? name = null)

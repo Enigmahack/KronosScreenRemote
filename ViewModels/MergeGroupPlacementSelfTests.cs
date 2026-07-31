@@ -5,7 +5,7 @@ using System.Text;
 
 // Off-hardware self-test for a real bug: PlaceMergeGroupSequentially's predecessor (
 // PlaceMergeGroupIntoEmptyBank) refused a multi-item Merge Window drag outright unless the
-// ENTIRE destination bank was completely empty — reported by a user dragging 7 Combis onto a
+// ENTIRE destination bank was completely empty - reported by a user dragging 7 Combis onto a
 // bank that had plenty of free slots, just not from slot 0. Fixed to auto-fill sequentially
 // starting at the bank's own first free slot (LocalEditOps.FindNextFreeSlot), exactly like
 // BatchPlaceFromPcg's own long-standing multi-item behavior, instead of requiring emptiness.
@@ -27,7 +27,7 @@ static class MergeGroupPlacementSelfTests
         {
             var exec = new FakeMoveExecutor();
             var cache = new LocalLibraryCache(root);
-            await LibraryPullPipeline.PullAsync(exec, cache, full: true);   // nothing seeded — empty local library
+            await LibraryPullPipeline.PullAsync(exec, cache, full: true);   // nothing seeded - empty local library
 
             var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), MergeGroupHost);
 
@@ -46,12 +46,12 @@ static class MergeGroupPlacementSelfTests
             string hashC = LocalObjectStore.ComputeHash(combiCBody);
             Check("all-three-staged", vm.MergePane.TryGet(hashA) != null && vm.MergePane.TryGet(hashB) != null && vm.MergePane.TryGet(hashC) != null);
 
-            // Occupy slots 0 and 1 of the destination bank BEFORE the group drop — the exact
+            // Occupy slots 0 and 1 of the destination bank BEFORE the group drop - the exact
             // shape of the user's report: the bank isn't empty, but there's plenty of free
             // room from slot 2 onward.
             // Each seed gets a non-default timbre reference so it reads as REAL content: a merely
             // named Combi still has all 16 timbres at the zero default, which is the defining shape
-            // of an INIT placeholder (CombiBody.AllTimbresAtDefault) — and init slots now count as
+            // of an INIT placeholder (CombiBody.AllTimbresAtDefault) - and init slots now count as
             // free space, so a slot meant to be pre-OCCUPIED has to hold something genuine.
             int seedRefBank = KronosBanks.ObjBankToFunc33(1, 0x40);
             var seed0Body = new byte[7810];
@@ -63,7 +63,7 @@ static class MergeGroupPlacementSelfTests
             // Slot 2 gets an INIT Combi (named, but every timbre still at the zero default) and
             // slot 3 more REAL content. That interleaving is the whole point: the fill must treat
             // 2 as free and STEP OVER 3, landing on 2, 4, 5. A contiguous startSlot+i walk would
-            // put COMBI B on slot 3 and destroy "SEED 3" — the data loss init-awareness introduces
+            // put COMBI B on slot 3 and destroy "SEED 3" - the data loss init-awareness introduces
             // if the fill isn't slot-aware (see LocalEditOps.AvailableSlotsFrom).
             var seed2Body = new byte[7810];
             Encoding.ASCII.GetBytes("INIT COMBI").CopyTo(seed2Body, 0);
@@ -80,7 +80,7 @@ static class MergeGroupPlacementSelfTests
             var (ok, msg) = vm.PlaceMergeGroupSequentially(LibObj.Combi, 0x40, new[] { hashA, hashB, hashC });
             Check("group-drop-not-refused-for-nonempty-bank", ok);
 
-            // Lands on the first free slot (2 — the init placeholder), then STEPS OVER the real
+            // Lands on the first free slot (2 - the init placeholder), then STEPS OVER the real
             // content at 3, continuing on 4 and 5. The pre-occupied 0/1/3 are all left untouched.
             Check("combiA-at-slot-2", cache.GetDisplayName(LibObj.Combi, 0x40, 2) == "COMBI A");
             Check("combiB-at-slot-4", cache.GetDisplayName(LibObj.Combi, 0x40, 4) == "COMBI B");
@@ -123,7 +123,7 @@ static class MergeGroupPlacementSelfTests
             string hashB = LocalObjectStore.ComputeHash(combiBBody);
             string hashC = LocalObjectStore.ComputeHash(combiCBody);
 
-            // Slot 0 is left free on purpose — if startSlot fell back to FindNextFreeSlot instead
+            // Slot 0 is left free on purpose - if startSlot fell back to FindNextFreeSlot instead
             // of honoring destSlot, the group would land at 0/1/2 instead of 3/4/5.
             var (ok, _) = vm.PlaceMergeGroupSequentially(LibObj.Combi, 0x40, new[] { hashA, hashB, hashC }, destSlot: 3);
             Check("slot-group-drop-ok", ok);
@@ -163,7 +163,7 @@ static class MergeGroupPlacementSelfTests
 
             var cache = new LocalLibraryCache(tcRoot);
             await LibraryPullPipeline.PullAsync(exec, cache, full: true);
-            // A UNIQUE host, not "" — WarmProgramBankTypesForTestingAsync persists the queried
+            // A UNIQUE host, not "" - WarmProgramBankTypesForTestingAsync persists the queried
             // types to the host-keyed global cache (program_bank_types_cache.json), so using the
             // empty host every other VM-based self-test uses would pollute their BankTypeOf and
             // make their EXi placements REFUSE. This host is read by nothing else.
@@ -190,7 +190,7 @@ static class MergeGroupPlacementSelfTests
 
         // ── Duplicate-content guard: placing a Merge-staged item whose content is byte-
         //    identical to something ALREADY elsewhere in Local Library reuses that location
-        //    instead of writing a second copy — single-item (PlaceFromMerge) and group
+        //    instead of writing a second copy - single-item (PlaceFromMerge) and group
         //    (PlaceMergeGroupSequentially) paths both covered. ──────────────────────────────────
         string dedupRoot = Path.Combine(Path.GetTempPath(), "kronos_selftest_merge_dedup");
         if (Directory.Exists(dedupRoot)) Directory.Delete(dedupRoot, recursive: true);
@@ -214,14 +214,14 @@ static class MergeGroupPlacementSelfTests
             var (seedOk, _, _) = LocalEditOps.PlaceObject(cache, existingLoc, LibObj.Combi, 1, combiABody, "PRE-EXISTING A", true, DateTime.UtcNow);
             Check("dedup-seed-ok", seedOk);
             // Display name is decoded from the wire body itself (matches "COMBI A" baked into
-            // combiABody by BuildSyntheticPcg), not the friendly-name argument above — same as
+            // combiABody by BuildSyntheticPcg), not the friendly-name argument above - same as
             // every other placement test in this file (e.g. combiA-at-slot-2 below).
 
             string hashA = LocalObjectStore.ComputeHash(combiABody);
             string hashB = LocalObjectStore.ComputeHash(combiBBody);
             string hashC = LocalObjectStore.ComputeHash(combiCBody);
 
-            // Single-item path: dragging A onto a fresh slot must NOT write a second copy —
+            // Single-item path: dragging A onto a fresh slot must NOT write a second copy -
             // it reuses the pre-existing location and reports it in the returned message.
             vm.PullIntoMerge(new ObjLoc(LibObj.Combi, 0x00, 0));
             var destForA = new ObjLoc(LibObj.Combi, 0x40, 60);
@@ -233,7 +233,7 @@ static class MergeGroupPlacementSelfTests
             Check("dedup-single-removed-from-merge", vm.MergePane.TryGet(hashA) == null);
 
             // Group path: B and C are genuinely new; re-stage A alongside them (it's fine for
-            // Merge to hold a duplicate entry again) and drop all three as a group — only B/C
+            // Merge to hold a duplicate entry again) and drop all three as a group - only B/C
             // should consume destination slots, A should dedup without taking one.
             vm.PullIntoMerge(new ObjLoc(LibObj.Combi, 0x00, 0));   // A, restaged
             vm.PullIntoMerge(new ObjLoc(LibObj.Combi, 0x00, 1));   // B

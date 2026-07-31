@@ -130,7 +130,7 @@ internal partial class InputTesterWindow : ThemedWindow
 
     void CboObserved_PreviewKeyDown(object sender, KeyEventArgs e)
     {
-        // While the dropdown is open, Enter selects the highlighted item — let ComboBox handle
+        // While the dropdown is open, Enter selects the highlighted item - let ComboBox handle
         // it naturally (DropDownClosed will fire and CommitObserved).
         if (e.Key == Key.Return && CboObserved.IsDropDownOpen) return;
         if (e.Key == Key.Tab   && CboObserved.IsDropDownOpen) return;

@@ -1,6 +1,6 @@
 namespace KronosScreenRemote;
 
-// Librarian model — catalog, dependency graph, and coherent-move planning.
+// Librarian model - catalog, dependency graph, and coherent-move planning.
 //
 // A "move" swaps a Program or Combi with another slot and rewrites every Combi
 // timbre and Set List slot that referenced either, so nothing is left dangling
@@ -22,17 +22,17 @@ static class LibObj
     public const int SetList = 0x0D;
 
     // The instrument's single Global settings object (bank 0, index 0). NOT a Librarian object
-    // type — it's never catalogued, moved, placed or pushed; the Librarian reads exactly one
+    // type - it's never catalogued, moved, placed or pushed; the Librarian reads exactly one
     // thing out of it (the Category/Sub-Category names, see GlobalBody), which is why it has no
     // ObjectTypeRegistry descriptor and no CurrentObjectVersion entry.
     public const int Global  = 0x03;
 
     // The func-0x73 Object Dump "version" byte the CURRENT Kronos OS's documented structure
     // uses per type (Documentation/MIDI implementation/SysExDumps/{Prog_HD-1,
-    // Prog_EXi_Common,CombiAndSongTimbreSet,SetList}.txt, each headed "Object Version: N" —
+    // Prog_EXi_Common,CombiAndSongTimbreSet,SetList}.txt, each headed "Object Version: N" -
     // Program is 5 for both HD-1 and EXi, Combi is 3, Set List is 0). This is a fixed
     // constant per type, not something a .pcg file carries (it has no such field) or that
-    // should be preserved from wherever an entry happened to originate — every PCG-import
+    // should be preserved from wherever an entry happened to originate - every PCG-import
     // path (MergeCache.PullRecursive, LibrarianShellViewModel.PlaceFromPcg/BatchPlaceFromPcg)
     // used to default this to a placeholder 0, which is wrong for Program (0 was coincidentally
     // right only for Set List) and produced a func-0x24 Reply Code 3 ("short or otherwise
@@ -96,7 +96,7 @@ sealed class WriteOp
     { Obj = obj; Bank = bank; Index = index; Version = version; Body = body; Note = note; }
 }
 
-// What ArmPlanAsync/ApplyMoveAsync actually need from a plan — implemented by both the
+// What ArmPlanAsync/ApplyMoveAsync actually need from a plan - implemented by both the
 // single-pair MovePlan and (Core/BatchMoveModel.cs) BatchMovePlan, so both share the exact
 // same backup/staleness-gate/write/Store/live-preview discipline with zero duplicated logic.
 interface IExecutablePlan
@@ -110,7 +110,7 @@ interface IExecutablePlan
     string BackupLabel { get; }            // filename-safe; ApplyMoveAsync prefixes it with the stamp
     bool IsRefusable { get; }
 
-    // Program banks whose HD-1/EXi type this plan changes (func 0x7C) before writing them —
+    // Program banks whose HD-1/EXi type this plan changes (func 0x7C) before writing them -
     // only the whole-bank-copy changeset (requirement 4) ever populates this; every other plan
     // shape inherits the empty default. Applied by ApplyMoveAsync after the staleness gate and
     // before the object writes, since 0x7C erases the bank.
@@ -165,7 +165,7 @@ static class LibRefs
         for (int t = 0; t < TimbreCount; t++)
         {
             int b = Timbre0Num + t * TimbreStride;
-            if (b + 1 >= body.Length) yield break;   // truncated/short dump — stop, don't throw
+            if (b + 1 >= body.Length) yield break;   // truncated/short dump - stop, don't throw
             var (bank, num) = CombiTimbreRef(body, t);
             yield return (t, bank, num);
         }
@@ -243,7 +243,7 @@ interface IMoveExecutor
     Task<int> StoreBankAsync(int obj, int bank);
     Task SendRawAsync(byte[] data);
 
-    // Change a Program bank's HD-1/EXi type (func 0x7C) — REFORMATS AND ERASES the bank when
+    // Change a Program bank's HD-1/EXi type (func 0x7C) - REFORMATS AND ERASES the bank when
     // the type actually changes (requirement 4). Reply code (0 = OK); -1 = timeout. Issued by
     // ApplyMoveAsync after the staleness gate and before that bank's writes, since the whole
     // bank must be re-written after the erase.
@@ -280,7 +280,7 @@ static class Librarian
     public static string ReadName(byte[] body) =>
         System.Text.Encoding.ASCII.GetString(body, 0, Math.Min(24, body.Length)).TrimEnd('\0', ' ');
 
-    // Same bytes as `original`, only the first 24 (the name field) replaced — every other
+    // Same bytes as `original`, only the first 24 (the name field) replaced - every other
     // byte of the object (parameters, timbres, whatever) is preserved exactly.
     public static byte[] BuildRenamedBody(byte[] original, string newName)
     {
@@ -290,7 +290,7 @@ static class Librarian
         return body;
     }
 
-    // Compute a coherent swap(src, dst). PURE — no hardware access. srcDump/dstDump
+    // Compute a coherent swap(src, dst). PURE - no hardware access. srcDump/dstDump
     // are the freshly dumped bodies of the two objects being swapped.
     public static MovePlan PlanMove(LibraryCatalog cat, ObjLoc src, ObjectDump srcDump,
                                     ObjLoc dst, ObjectDump dstDump, ObjLoc? active = null)
@@ -371,7 +371,7 @@ static class Librarian
                     plan.LivePc.Add(KronosSysEx.BuildParamChange(4, r.Site, 0, 9, 0, newNum));    // pid 9 = number
                 }
 
-        // (5) Program bank-type reminder (HD-1/EXi) — enforced at apply via Reply 64.
+        // (5) Program bank-type reminder (HD-1/EXi) - enforced at apply via Reply 64.
         if (src.ObjType == LibObj.Program && src.Bank != dst.Bank)
             plan.Warnings.Add(AppMessages.Librarian.Move.CheckProgramMoveAcrossBanks);
 
@@ -387,7 +387,7 @@ static class Librarian
         return plan;
     }
 
-    // Capture the storage digest of every affected bank — the staleness baseline
+    // Capture the storage digest of every affected bank - the staleness baseline
     // ApplyMoveAsync re-checks immediately before Storing.
     public static async Task ArmPlanAsync(IExecutablePlan plan, IMoveExecutor ex)
     {
@@ -417,16 +417,16 @@ static class Librarian
         Note($"backup {plan.PreImages.Count} pre-image object(s) -> {backupPath}");
         await ex.BackupObjectsAsync(plan.PreImages, backupPath).ConfigureAwait(false);
 
-        // 2. Staleness gate — abort if any affected bank changed since arm.
+        // 2. Staleness gate - abort if any affected bank changed since arm.
         foreach (var ((obj, bank), baseline) in plan.DigestBaseline)
         {
             var cur = await ex.BankDigestAsync(obj, bank).ConfigureAwait(false);
             if (cur != null && !cur.AsSpan().SequenceEqual(baseline))
-                return (false, steps, $"ABORT: {StoreLabel(obj, bank)} changed since preview (edited at the panel?) — nothing was Stored");
+                return (false, steps, $"ABORT: {StoreLabel(obj, bank)} changed since preview (edited at the panel?) - nothing was Stored");
         }
         Note("staleness gate passed");
 
-        // 2b. Program bank-type changes (func 0x7C) — REFORMATS AND ERASES each bank to the
+        // 2b. Program bank-type changes (func 0x7C) - REFORMATS AND ERASES each bank to the
         // requested EXi/HD-1 type. After the staleness gate (an external change is still caught
         // first) but before the writes, because 0x7C erases the bank; the changeset guarantees
         // every slot of that bank is in Writes so the whole bank is rebuilt immediately after.
@@ -435,7 +435,7 @@ static class Librarian
             int rc = await ex.ChangeProgramBankTypeAsync(bank, isExi).ConfigureAwait(false);
             Note($"change bank type {KronosBanks.ProgramLabel(bank)} -> {(isExi ? "EXi" : "HD-1")} -> Reply {rc}");
             if (rc != 0)
-                return (false, steps, $"ABORT: bank-type change rejected (Reply {rc}) for {KronosBanks.ProgramLabel(bank)} — nothing Stored");
+                return (false, steps, $"ABORT: bank-type change rejected (Reply {rc}) for {KronosBanks.ProgramLabel(bank)} - nothing Stored");
         }
 
         // 3. Send all object writes (volatile).
@@ -444,7 +444,7 @@ static class Librarian
             int rc = await ex.WriteObjectAsync(w).ConfigureAwait(false);
             Note($"write 0x73 {StoreLabel(w.Obj, w.Bank)} idx {w.Index} ({w.Note}) -> Reply {rc}");
             if (rc != 0)
-                return (false, steps, $"ABORT: write rejected (Reply {rc}) for {StoreLabel(w.Obj, w.Bank)} idx {w.Index} — nothing Stored; replay backups to be safe");
+                return (false, steps, $"ABORT: write rejected (Reply {rc}) for {StoreLabel(w.Obj, w.Bank)} idx {w.Index} - nothing Stored; replay backups to be safe");
         }
 
         // 4. Commit each affected bank.
@@ -453,7 +453,7 @@ static class Librarian
             int rc = await ex.StoreBankAsync(obj, bank).ConfigureAwait(false);
             Note($"Store 0x76 {StoreLabel(obj, bank)} -> Reply {rc}");
             if (rc != 0)
-                return (false, steps, $"ABORT: Store rejected (Reply {rc}) for {StoreLabel(obj, bank)} — replay backups");
+                return (false, steps, $"ABORT: Store rejected (Reply {rc}) for {StoreLabel(obj, bank)} - replay backups");
         }
 
         // 5. Optional live edit-buffer dual-write (audible-now, non-persisting).
@@ -495,7 +495,7 @@ static class Librarian
             if (ob >= 0) Check($"combi-inv-{idx}", KronosBanks.ObjBankToFunc33(0, ob) == idx);
         }
 
-        // 2b. Program has only SIX internal banks (I-A..I-F) in this encoding, not seven —
+        // 2b. Program has only SIX internal banks (I-A..I-F) in this encoding, not seven -
         // pinned against ground truth pulled directly from a real .pcg file's own Combi
         // timbre reference bytes (raw byte 28 -> U-EE, byte 26 -> U-CC; see KronosBanks.
         // Func33ToObjBank's own comment for the investigation this fixed). A regression back
@@ -515,7 +515,7 @@ static class Librarian
             Check($"timbre-{t}", bank == t % 30 && num == ((t * 3) & 0x7F));
 
         // 3b. A short/truncated combi body (e.g. a glitched dump) must yield whatever fits,
-        // not throw IndexOutOfRangeException — regression test for a real scan crash where
+        // not throw IndexOutOfRangeException - regression test for a real scan crash where
         // a full 128-slot bank sweep hit an unexpectedly short body.
         var shortCombi = new byte[5000];   // shorter than timbre 12's offset (4802 + 11*188 = 6870)
         var shortRefs = LibRefs.IterCombiTimbreRefs(shortCombi).ToList();
@@ -583,7 +583,7 @@ static class Librarian
         Check("padascii-pad", PadAscii("AB", 4).AsSpan().SequenceEqual(new byte[] { 0x41, 0x42, 0x20, 0x20 }));
 
         // 8. Object-version constants (Documentation/MIDI implementation/SysExDumps/*.txt,
-        // each headed "Object Version: N") — the fix for the Reply-3 "mangled message"
+        // each headed "Object Version: N") - the fix for the Reply-3 "mangled message"
         // Program write bug: PCG-imported entries used to default this to a placeholder 0,
         // wrong for Program/Combi (only coincidentally right for Set List).
         Check("objver-program", LibObj.CurrentObjectVersion(LibObj.Program) == 5);

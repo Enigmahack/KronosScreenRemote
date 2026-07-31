@@ -6,7 +6,7 @@ namespace KronosScreenRemote;
 static class KronosFtpSession
 {
     // Shared across every caller (MainWindow's own connect flow, the new Librarian's PCG
-    // pane, ...) — this is genuinely one FTP session concept for whichever Kronos is
+    // pane, ...) - this is genuinely one FTP session concept for whichever Kronos is
     // currently connected, not something each feature should track separately.
     static bool _authenticated;
     static string? _authenticatedHost;
@@ -26,7 +26,7 @@ static class KronosFtpSession
         if (_authenticated && _authenticatedHost == host) return true;
         _authenticated = false;
 
-        // Silent verify with cached credentials — if they work, skip the dialog entirely.
+        // Silent verify with cached credentials - if they work, skip the dialog entirely.
         if (!string.IsNullOrEmpty(settings.FtpUsername))
         {
             var (silentOk, _) = await VerifyAsync(host, settings.FtpPort, settings.FtpUsername, settings.FtpPassword)
@@ -39,7 +39,7 @@ static class KronosFtpSession
             }
         }
 
-        // Prompt — up to 3 interactive attempts regardless of silent verify outcome.
+        // Prompt - up to 3 interactive attempts regardless of silent verify outcome.
         bool dialogOk = false, exhausted = false;
         await owner.Dispatcher.InvokeAsync(() =>
         {

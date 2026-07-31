@@ -2,17 +2,17 @@ namespace KronosScreenRemote;
 
 using System.IO;
 
-// Headless diagnostic ONLY (see App.xaml.cs's `--dump-pcg-refs` flag) — not part of the
+// Headless diagnostic ONLY (see App.xaml.cs's `--dump-pcg-refs` flag) - not part of the
 // shipped feature set. Written to settle a specific question: the user reported the "Object
 // Dependencies" panel showing U-DD/U-EE for Combi timbre references they've confirmed are
-// actually U-EE/U-FF in the PCG file — a suspiciously consistent off-by-one. KronosBanks.
+// actually U-EE/U-FF in the PCG file - a suspiciously consistent off-by-one. KronosBanks.
 // Func33ToObjBank treats Program as having 7 internal linear banks (I-A..I-G); the .pcg
 // bankId decoder (PcgObjectExtractor.DecodeProgramObjBank) was fixed once already to treat
-// Program as having only 6 (I-A..I-F, hardware-confirmed) — the SAME asymmetry may still be
+// Program as having only 6 (I-A..I-F, hardware-confirmed) - the SAME asymmetry may still be
 // live in Func33ToObjBank, which is used for every Combi-timbre/Set-List-slot reference
 // resolution, not just display. This dumps the RAW reference byte alongside both the CURRENT
-// decode and a "6-internal-bank" hypothesis decode, so a real file's own bytes — not
-// consistency reasoning — settle which is actually correct before anything gets changed.
+// decode and a "6-internal-bank" hypothesis decode, so a real file's own bytes - not
+// consistency reasoning - settle which is actually correct before anything gets changed.
 static class PcgRefDump
 {
     public static void Run(string pcgPath, string? nameFilter)
@@ -50,8 +50,8 @@ static class PcgRefDump
         Environment.Exit(0);
     }
 
-    // Hypothesis: Program has only 6 internal linear banks (I-A..I-F), not 7 — matching
-    // PcgObjectExtractor's own hardware-confirmed finding for the .pcg bankId encoding — so
+    // Hypothesis: Program has only 6 internal linear banks (I-A..I-F), not 7 - matching
+    // PcgObjectExtractor's own hardware-confirmed finding for the .pcg bankId encoding - so
     // everything from GM onward shifts down by exactly one raw index versus KronosBanks.
     // Func33ToObjBank's current (7-internal-bank) table.
     static int ShiftedFunc33ToObjBank(int idx) => idx switch

@@ -4,9 +4,9 @@ namespace KronosScreenRemote;
 
 /// <summary>
 /// Shared base for every app window. Applies the dark-theme brushes and the dark title-bar
-/// caption from one place — collapsing the per-window <c>Background</c>/<c>Foreground</c> root
+/// caption from one place - collapsing the per-window <c>Background</c>/<c>Foreground</c> root
 /// re-declaration and the <c>WindowTheme.ApplyDarkCaption(this)</c> call that used to be copied
-/// into every constructor — and enforces consistent window behavior:
+/// into every constructor - and enforces consistent window behavior:
 /// <list type="bullet">
 ///   <item>spawns centered on its owner (<see cref="Window.WindowStartupLocation"/> = CenterOwner);</item>
 ///   <item>cannot be minimized unless it opts back in via <see cref="AllowMinimize"/>. An owned,
@@ -20,7 +20,7 @@ namespace KronosScreenRemote;
 public class ThemedWindow : Window
 {
     /// <summary>
-    /// Owned tool/dialog windows keep the default (<c>false</c>) — no minimize box. Only the
+    /// Owned tool/dialog windows keep the default (<c>false</c>) - no minimize box. Only the
     /// un-owned root window (<c>MainWindow</c>) overrides this to <c>true</c>; it legitimately
     /// minimizes to the system tray. Read from the base ctor, so overrides must be constant
     /// expression-bodied properties (no instance-field access).

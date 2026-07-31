@@ -15,7 +15,7 @@ static class KeyMap
         { Key.Z, 44 },
         { Key.D1, 2  }, { Key.D2, 3  }, { Key.D3, 4  }, { Key.D4, 5  }, { Key.D5, 6  },
         { Key.D6, 7  }, { Key.D7, 8  }, { Key.D8, 9  }, { Key.D9, 10 }, { Key.D0, 11 },
-        // Numpad digits are NOT in the keyboard map — they route to the control surface
+        // Numpad digits are NOT in the keyboard map - they route to the control surface
         // via BUTTON NUM0..NUM9 (see OnKeyDown capture block in MainWindow.xaml.cs).
         { Key.Escape,   1  },
         { Key.Space,   57  }, { Key.Back,   14  }, { Key.Tab,    15  },
@@ -40,7 +40,7 @@ static class KeyMap
         { Key.OemPeriod,       52 },  // .
         { Key.OemQuestion,     12 },  // / → send KEY_MINUS      (Kronos maps that to /)
         { Key.OemTilde,        41 },  // `
-        // Key.Subtract and Key.Decimal omitted — route to control surface in capture block
+        // Key.Subtract and Key.Decimal omitted - route to control surface in capture block
         { Key.Multiply, 55 }, { Key.Add, 78 }, { Key.Divide, 98 },
         { Key.F1,  59 }, { Key.F2,  60 }, { Key.F3,  61 }, { Key.F4,  62 },
         { Key.F5,  63 }, { Key.F6,  64 }, { Key.F7,  65 }, { Key.F8,  66 },

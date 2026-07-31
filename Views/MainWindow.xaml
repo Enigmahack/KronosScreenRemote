@@ -10,14 +10,14 @@
     <DockPanel>
         <Menu x:Name="MainMenu" DockPanel.Dock="Top">
             <MenuItem x:Name="MENU_File" Header="_File">
-                <MenuItem x:Name="MNU_SettingsDlg"    Header="_Settings…" InputGestureText="S"/>
+                <MenuItem x:Name="MNU_SettingsDlg"    Header="_Settings..." InputGestureText="S"/>
                 <Separator/>
-                <MenuItem x:Name="MNU_ImportSettings" Header="_Import Settings…"
+                <MenuItem x:Name="MNU_ImportSettings" Header="_Import Settings..."
                           ToolTip="Load application settings from a .json file and apply them now."/>
-                <MenuItem x:Name="MNU_ExportSettings" Header="_Export Settings…"
+                <MenuItem x:Name="MNU_ExportSettings" Header="_Export Settings..."
                           ToolTip="Save the current application settings to a .json file."/>
                 <Separator/>
-                <MenuItem x:Name="MNU_Screenshot"  Header="Sa_ve Screenshot…"        InputGestureText="Ctrl+S"/>
+                <MenuItem x:Name="MNU_Screenshot"  Header="Sa_ve Screenshot..."        InputGestureText="Ctrl+S"/>
                 <MenuItem x:Name="MNU_QuickSave"   Header="Q_uick Save Screenshot"/>
                 <MenuItem x:Name="MNU_CopyFrame"   Header="_Copy Frame to Clipboard"/>
                 <MenuItem x:Name="MNU_OpenScreenshotsFolder" Header="Open Screenshots _Folder"/>
@@ -35,7 +35,7 @@
                 </MenuItem>
                 <MenuItem x:Name="MNU_CopyIP" Header="Copy _IP Address"/>
                 <Separator/>
-                <MenuItem x:Name="MNU_FileManager" Header="File _Manager…" InputGestureText="M"/>
+                <MenuItem x:Name="MNU_FileManager" Header="File _Manager..." InputGestureText="M"/>
             </MenuItem>
             <MenuItem x:Name="MENU_View" Header="_View">
                 <MenuItem x:Name="MNU_AspectLock"    Header="_Aspect Lock"     IsCheckable="True" InputGestureText="A"/>
@@ -50,13 +50,13 @@
                 <MenuItem x:Name="MENU_ScalingMode" Header="Scaling _Quality"
                           ToolTip="How the 800×600 screen is scaled up to the window.">
                     <MenuItem x:Name="MNU_ScaleSharp"  Header="_Sharp (crisp pixels)"   IsCheckable="True"
-                              ToolTip="Nearest-neighbor — blocky but razor-sharp; no interpolation."/>
+                              ToolTip="Nearest-neighbor - blocky but razor-sharp; no interpolation."/>
                     <MenuItem x:Name="MNU_ScaleSmooth" Header="S_mooth (bilinear)"      IsCheckable="True"
-                              ToolTip="Bilinear — soft and fast."/>
+                              ToolTip="Bilinear - soft and fast."/>
                     <MenuItem x:Name="MNU_ScaleHQ"     Header="_High Quality (default)" IsCheckable="True"
-                              ToolTip="Fant resampling — best quality (default)."/>
+                              ToolTip="Fant resampling - best quality (default)."/>
                 </MenuItem>
-                <MenuItem x:Name="MNU_ImageAdjust" Header="_Image Adjustments…"
+                <MenuItem x:Name="MNU_ImageAdjust" Header="_Image Adjustments..."
                           ToolTip="Brightness, contrast, gamma, saturation, and sharpening."/>
                 <Separator/>
                 <MenuItem x:Name="MENU_LayoutPreset" Header="Layout _Preset">
@@ -86,12 +86,12 @@
                 <Separator/>
                 <!-- MIDI / SysEx -->
                 <MenuItem x:Name="MNU_SysExTool"    Header="Open _MIDI Monitor" InputGestureText="M"/>
-                <MenuItem x:Name="MNU_Librarian"    Header="_Librarian…" InputGestureText="L"
-                          ToolTip="Local editable library copy — Sync/Commit with the Kronos, load a .pcg file to compare and drag objects in, edit names/categories/Set List slots."/>
+                <MenuItem x:Name="MNU_Librarian"    Header="_Librarian..." InputGestureText="L"
+                          ToolTip="Local editable library copy - Sync/Commit with the Kronos, load a .pcg file to compare and drag objects in, edit names/categories/Set List slots."/>
                 <Separator/>
                 <!-- Diagnostics -->
-                <MenuItem x:Name="MNU_KeyboardInfo" Header="_Keyboard Info…"/>
-                <MenuItem x:Name="MNU_InputTester"  Header="_Input Tester…" Visibility="Collapsed"/>
+                <MenuItem x:Name="MNU_KeyboardInfo" Header="_Keyboard Info..."/>
+                <MenuItem x:Name="MNU_InputTester"  Header="_Input Tester..." Visibility="Collapsed"/>
                 <MenuItem x:Name="MNU_TestMode"     Header="Enter Kronos _Test Mode"/>
                 <Separator/>
                 <!-- Keyboard input -->
@@ -111,11 +111,11 @@
                 <MenuItem x:Name="MNU_ShowHelp"          Header="_Show Help"            InputGestureText="F1"/>
                 <MenuItem x:Name="MNU_CommandPalette"    Header="_Command Palette"      InputGestureText="Ctrl+K"/>
                 <Separator/>
-                <MenuItem x:Name="MNU_About"             Header="_About…" InputGestureText="A"/>
-                <!-- Future: Check for Updates / Report Issue — hidden until a public release pipeline exists -->
+                <MenuItem x:Name="MNU_About"             Header="_About..." InputGestureText="A"/>
+                <!-- Future: Check for Updates / Report Issue - hidden until a public release pipeline exists -->
                 <Separator x:Name="SEP_HelpExternal"    Visibility="Collapsed"/>
-                <MenuItem x:Name="MNU_CheckForUpdates"  Header="Check for _Updates…"   Visibility="Collapsed"/>
-                <MenuItem x:Name="MNU_ReportIssue"      Header="_Report Issue…"        Visibility="Collapsed"/>
+                <MenuItem x:Name="MNU_CheckForUpdates"  Header="Check for _Updates..."   Visibility="Collapsed"/>
+                <MenuItem x:Name="MNU_ReportIssue"      Header="_Report Issue..."        Visibility="Collapsed"/>
             </MenuItem>
         </Menu>
 
@@ -156,7 +156,7 @@
                             </ControlTemplate>
                         </Setter.Value>
                     </Setter>
-                    <!-- Dimmed, not hidden, when the current mode doesn't support this button —
+                    <!-- Dimmed, not hidden, when the current mode doesn't support this button -
                          keeps the footer's width/layout stable across the frequent mode switches
                          this app is built around, instead of reflowing the status bar every time. -->
                     <Style.Triggers>
@@ -196,7 +196,7 @@
                             </ControlTemplate>
                         </Setter.Value>
                     </Setter>
-                    <!-- See SeqTransportBtn — dimmed, not hidden, outside a supported mode. -->
+                    <!-- See SeqTransportBtn - dimmed, not hidden, outside a supported mode. -->
                     <Style.Triggers>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter Property="Opacity" Value="0.35"/>
@@ -234,7 +234,7 @@
             <StatusBarItem DockPanel.Dock="Right" Padding="4 0 8 0">
                 <TextBlock x:Name="ModeText" Foreground="#FF88AADD" FontSize="11"
                            VerticalAlignment="Center"
-                           ToolTip="Current Kronos display mode — right-click to change">
+                           ToolTip="Current Kronos display mode - right-click to change">
                     <TextBlock.ContextMenu>
                         <ContextMenu>
                             <MenuItem x:Name="CTX_Mode_Setlist"  Header="_Setlist"/>
@@ -261,7 +261,7 @@
                     <local:VuMeterBar x:Name="VuMeter"
                                       Width="110" Height="14"
                                       Cursor="Hand"
-                                      ToolTip="Audio output levels — click to reset clip latch"
+                                      ToolTip="Audio output levels - click to reset clip latch"
                                       Margin="0 0 3 0"/>
                     <ToggleButton x:Name="VuPickerBtn"
                                   Content="▾"
@@ -320,14 +320,14 @@
             <!-- ── Sequencer transport ───────────────────────────────────────────
                  Panel-button emulation: each sends "BUTTON SEQ_*" over the ctrl port,
                  which the daemon converts to a front-panel SEQUENCER key press. -->
-            <!-- DataContext = SeqTransportViewModel (set in MainWindow's constructor) —
+            <!-- DataContext = SeqTransportViewModel (set in MainWindow's constructor) -
                  everything below binds Command/IsChecked/IsEnabled to it directly. -->
             <StatusBarItem x:Name="SeqTransportBarItem" DockPanel.Dock="Right" Padding="2 0" VerticalContentAlignment="Center">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
                                 IsEnabled="{Binding IsTransportEnabled}"
-                                ToolTip="Sequencer transport — sends the front-panel SEQUENCER buttons to the Kronos">
+                                ToolTip="Sequencer transport - sends the front-panel SEQUENCER buttons to the Kronos">
                         <Button x:Name="BTN_SeqLocate" Style="{StaticResource SeqTransportBtn}"
-                                ToolTip="Locate — return to the locate point">
+                                ToolTip="Locate - return to the locate point">
                             <Path Fill="#FFB4B4B4" Data="M0,0 H1.8 V10 H0 Z M10,0 L3,5 L10,10 Z"/>
                         </Button>
                         <Button x:Name="BTN_SeqRew" Style="{StaticResource SeqTransportBtn}"
@@ -367,20 +367,20 @@
                  sends "BUTTON TAP_TEMPO" over the ctrl port; the daemon injects the
                  front-panel TAP TEMPO key and the Kronos averages successive taps
                  itself (two taps set the tempo), exactly like the hardware button.
-                 Global — tempo applies in every mode, not just Sequence — so it's
+                 Global - tempo applies in every mode, not just Sequence - so it's
                  enabled on connection from code-behind, not by IsTransportEnabled.
                  Click + the "Tap Tempo" keybind both route through the command
                  registry; each tap briefly flashes the button (FlashTapTempo). -->
             <StatusBarItem x:Name="TapTempoBarItem" DockPanel.Dock="Right" Padding="2 0" VerticalContentAlignment="Center">
                 <Button x:Name="BTN_TapTempo" Style="{StaticResource SeqTransportBtn}"
                         Width="30" Height="24" IsEnabled="False"
-                        ToolTip="Tap Tempo — tap in quarter-notes to set the Kronos tempo (two taps is enough)">
+                        ToolTip="Tap Tempo - tap in quarter-notes to set the Kronos tempo (two taps is enough)">
                     <Path Fill="#FFB4B4B4" Width="12" Height="12" Stretch="Uniform"
                           Data="F0 M3,0 L7,0 L9.5,10 L0.5,10 Z M5.3,2 L6.2,2 L4.7,8 L3.8,8 Z"/>
                 </Button>
             </StatusBarItem>
             <Separator DockPanel.Dock="Right" Margin="2 4" Background="#FF444444" Width="1"/>
-            <!-- Save/Write: fires the same REC/WRITE key press as Record, as a one-shot —
+            <!-- Save/Write: fires the same REC/WRITE key press as Record, as a one-shot -
                  on real hardware it's one physical key that means Record in Sequence mode
                  and Write everywhere else it applies. Its own StatusBarItem (not nested in
                  SeqTransportBarItem) since its enabled modes don't overlap with Sequence. -->
@@ -436,10 +436,10 @@
             <StatusBarItem Padding="4 0">
                 <TextBlock x:Name="FpsText" Foreground="#FF666666" FontSize="11"
                            VerticalAlignment="Center"
-                           ToolTip="Frames per second — right-click to adjust target">
+                           ToolTip="Frames per second - right-click to adjust target">
                     <TextBlock.ContextMenu>
                         <ContextMenu>
-                            <MenuItem x:Name="CTX_SetMaxFps" Header="Set _Max FPS…"/>
+                            <MenuItem x:Name="CTX_SetMaxFps" Header="Set _Max FPS..."/>
                         </ContextMenu>
                     </TextBlock.ContextMenu>
                 </TextBlock>
@@ -456,8 +456,8 @@
                 <Border x:Name="MidiLinkBadgeBorder" CornerRadius="3" Padding="5 1"
                         BorderThickness="1" BorderBrush="#FF444444" Background="#FF202020"
                         VerticalAlignment="Center"
-                        ToolTip="Active MIDI link — USB: Kronos native USB (fast); DIN: 5-pin MIDI interface (slow); TCP: network daemon.">
-                    <TextBlock x:Name="MidiLinkBadge" Text="—" FontSize="10" FontFamily="Consolas"
+                        ToolTip="Active MIDI link - USB: Kronos native USB (fast); DIN: 5-pin MIDI interface (slow); TCP: network daemon.">
+                    <TextBlock x:Name="MidiLinkBadge" Text="-" FontSize="10" FontFamily="Consolas"
                                FontWeight="Bold" Foreground="#FF777777" VerticalAlignment="Center"/>
                 </Border>
             </StatusBarItem>
@@ -493,7 +493,7 @@
                         ToolTip="Click to open log">
                     <Border.ContextMenu>
                         <ContextMenu>
-                            <MenuItem x:Name="CTX_OpenLogFile"        Header="Open _Log…"/>
+                            <MenuItem x:Name="CTX_OpenLogFile"        Header="Open _Log..."/>
                             <MenuItem x:Name="CTX_ClearNotification"  Header="_Clear Notification"/>
                         </ContextMenu>
                     </Border.ContextMenu>
@@ -526,7 +526,7 @@
                 <TextBlock Foreground="#FF88AADD" FontSize="11"
                            VerticalAlignment="Center"
                            Text="{Binding PerformanceDisplay}"
-                           ToolTip="Current performance — bank, number, and name (via SysEx)"/>
+                           ToolTip="Current performance - bank, number, and name (via SysEx)"/>
             </StatusBarItem>
         </StatusBar>
 
@@ -611,7 +611,7 @@
                     <ContextMenu>
                         <MenuItem x:Name="CTX_CopyFrame"       Header="_Copy Frame to Clipboard"/>
                         <MenuItem x:Name="CTX_QuickSave"       Header="Q_uick Save Screenshot"/>
-                        <MenuItem x:Name="CTX_Screenshot"      Header="Save _Screenshot…" InputGestureText="Ctrl+S"/>
+                        <MenuItem x:Name="CTX_Screenshot"      Header="Save _Screenshot..." InputGestureText="Ctrl+S"/>
                         <MenuItem x:Name="CTX_OpenScreenshots" Header="Open Screenshots Fo_lder"/>
                         <Separator/>
                         <MenuItem x:Name="CTX_ZoomIn"          Header="Zoom I_n"/>
@@ -626,9 +626,9 @@
                             <MenuItem x:Name="CTX_ScaleSmooth" Header="S_mooth (bilinear)"    IsCheckable="True"/>
                             <MenuItem x:Name="CTX_ScaleHQ"     Header="_High Quality"         IsCheckable="True"/>
                         </MenuItem>
-                        <MenuItem x:Name="CTX_ImageAdjust"     Header="_Image Adjustments…"/>
+                        <MenuItem x:Name="CTX_ImageAdjust"     Header="_Image Adjustments..."/>
                         <Separator/>
-                        <MenuItem x:Name="CTX_KeyboardInfo"    Header="_Keyboard Info…"/>
+                        <MenuItem x:Name="CTX_KeyboardInfo"    Header="_Keyboard Info..."/>
                         <Separator/>
                         <MenuItem x:Name="CTX_Reconnect"       Header="Reconn_ect" InputGestureText="E"/>
                         <MenuItem x:Name="CTX_Disconnect"      Header="_Disconnect" InputGestureText="D"/>
@@ -656,7 +656,7 @@
                            IsHitTestVisible="False"
                            Source="/Resources/Images/DataEntrySurfaceEmpty.png"/>
 
-                        <!-- ── Mode buttons — confirmed by detection before lighting ──── -->
+                        <!-- ── Mode buttons - confirmed by detection before lighting ──── -->
                         <local:KronosButton x:Name="BTN_Setlist"
                             Margin="87,90,603,483"
                             ToolTip="Setlist mode (F2)"
@@ -714,7 +714,7 @@
                             LitSource="/Resources/Images/LitThinButton.png"
                             ButtonMode="Toggle"/>
 
-                        <!-- ── Number pad — no animation ──────────────────────── -->
+                        <!-- ── Number pad - no animation ──────────────────────── -->
                         <local:KronosButton x:Name="BTN_data7"
                             Margin="289,250,401,325"
                             ToolTip="Send 7 to Kronos"
@@ -776,7 +776,7 @@
                             UnlitSource="/Resources/Images/UnlitWideButton.png"
                             ButtonMode="None"/>
 
-                        <!-- ── Exit / Enter — no animation ────────────────────── -->
+                        <!-- ── Exit / Enter - no animation ────────────────────── -->
                         <local:KronosButton x:Name="BTN_Exit"
                             Margin="80,493,603,80"
                             ToolTip="Send EXIT button to Kronos (Esc)"
@@ -788,16 +788,16 @@
                             UnlitSource="/Resources/Images/ExitButton.png"
                             ButtonMode="None"/>
 
-                        <!-- ── Data wheel — drag up/down to scroll ───────────── -->
+                        <!-- ── Data wheel - drag up/down to scroll ───────────── -->
                         <Image x:Name="Data_Wheel"
                            Margin="41,222,557,160"
                            Source="/Resources/Images/DataWheelTransparent.png"
                            RenderTransformOrigin="0.5,0.5"
                            Cursor="SizeNS"
-                           ToolTip="Data wheel — drag up/down or scroll to rotate; Ctrl+scroll to zoom frame">
+                           ToolTip="Data wheel - drag up/down or scroll to rotate; Ctrl+scroll to zoom frame">
                             <Image.ContextMenu>
                                 <ContextMenu>
-                                    <MenuItem x:Name="CTX_WheelSensitivity" Header="_Settings…"/>
+                                    <MenuItem x:Name="CTX_WheelSensitivity" Header="_Settings..."/>
                                     <MenuItem x:Name="CTX_WheelReset"       Header="Reset _Animation"/>
                                 </ContextMenu>
                             </Image.ContextMenu>

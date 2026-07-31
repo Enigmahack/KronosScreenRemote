@@ -12,11 +12,11 @@ namespace KronosScreenRemote;
 //  2. TRANSPORT SWITCH under an in-flight dump. When the transport is swapped (USB hot-plug,
 //     screen connect/disconnect, settings change) the old dump is orphaned against a now-disposed
 //     transport. Its End() must NOT decrement the NEW generation's depth (which NewGeneration
-//     reset to 0) — that would un-pause the loop mid-dump on the new transport. Each dump captures
+//     reset to 0) - that would un-pause the loop mid-dump on the new transport. Each dump captures
 //     its generation epoch at Begin and End is a no-op once the epoch has moved on.
 //
 // All three of epoch, depth, and their transitions live under one lock, so Begin (capture-epoch +
-// increment) and NewGeneration (bump-epoch + reset) are atomic against each other — without that,
+// increment) and NewGeneration (bump-epoch + reset) are atomic against each other - without that,
 // a Begin that read the old epoch but incremented after NewGeneration reset the depth would strand
 // a phantom count and pause the loop forever.
 sealed class DumpGate
@@ -32,7 +32,7 @@ sealed class DumpGate
         lock (_lock) { _depth++; return _epoch; }
     }
 
-    // Ends a dump. Unwinds the refcount only if the transport hasn't been switched since Begin —
+    // Ends a dump. Unwinds the refcount only if the transport hasn't been switched since Begin -
     // an orphaned old-generation dump completing is a no-op here.
     public void End(int epoch)
     {

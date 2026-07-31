@@ -5,7 +5,7 @@ using System.Windows.Data;
 namespace KronosScreenRemote;
 
 // Null/empty string -> Collapsed, anything else -> Visible. Used by LibrarianShellWindow's
-// warning banner (bound directly to the ViewModel's nullable WarningText — no separate
+// warning banner (bound directly to the ViewModel's nullable WarningText - no separate
 // "HasWarning" bool property needed).
 public sealed class NullOrEmptyToVisibilityConverter : IValueConverter
 {

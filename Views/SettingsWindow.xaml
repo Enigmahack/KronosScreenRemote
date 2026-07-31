@@ -48,7 +48,7 @@
                                    ToolTip="Folder where quick-save screenshots are stored."/>
                         <TextBox   Grid.Column="1" x:Name="TxtScreenshotDir" Margin="0 0 6 0"
                                    ToolTip="Type a path directly, or click Browse to pick one. Leave empty to save next to the app executable."/>
-                        <Button    Grid.Column="2" x:Name="BtnBrowseScreenshotDir" Content="Browse…"
+                        <Button    Grid.Column="2" x:Name="BtnBrowseScreenshotDir" Content="Browse..."
                                    Padding="8 3" Click="OnBrowseScreenshotDir"
                                    ToolTip="Open a folder picker to choose the screenshot output folder."/>
                     </Grid>
@@ -171,9 +171,9 @@
                     <ComboBox x:Name="CMB_StreamMode" HorizontalAlignment="Left" MinWidth="200"
                               BorderBrush="#FF555555"
                               ToolTip="How frames are delivered from the daemon. Takes effect on the next connect.">
-                        <ComboBoxItem Content="Change-driven — send frames only when the screen changes (recommended)"
-                                      ToolTip="Recommended. The daemon sends a frame only when the display changes — uses almost no CPU when the Kronos is idle."/>
-                        <ComboBoxItem Content="Pull — client requests each frame individually"
+                        <ComboBoxItem Content="Change-driven - send frames only when the screen changes (recommended)"
+                                      ToolTip="Recommended. The daemon sends a frame only when the display changes - uses almost no CPU when the Kronos is idle."/>
+                        <ComboBoxItem Content="Pull - client requests each frame individually"
                                       ToolTip="The client requests each frame individually. Try this if frames are occasionally missed in change-driven mode."/>
                     </ComboBox>
 
@@ -203,17 +203,17 @@
                             <ColumnDefinition Width="50"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="Default zoom level (×)" VerticalAlignment="Center"
-                                   ToolTip="Zoom multiplier used when zoom is first activated and when reset. Also the minimum — zooming out stops here."/>
+                                   ToolTip="Zoom multiplier used when zoom is first activated and when reset. Also the minimum - zooming out stops here."/>
                         <Slider    Grid.Column="1" x:Name="SlZoomLevel"
                                    Minimum="2.5" Maximum="5.0"
                                    TickFrequency="0.5" IsSnapToTickEnabled="True"
                                    ValueChanged="SlZoomLevel_ValueChanged"
-                                   ToolTip="Zoom multiplier used when zoom is first activated and when reset. Also the minimum — zooming out stops here."/>
+                                   ToolTip="Zoom multiplier used when zoom is first activated and when reset. Also the minimum - zooming out stops here."/>
                         <TextBlock Grid.Column="2" x:Name="TxtZoomLabel"
                                    VerticalAlignment="Center" Margin="6 0 0 0" TextAlignment="Right"/>
                     </Grid>
                     <TextBlock Margin="0 8 0 0" Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
-                               Text="The zoom level used when zoom is first activated and when it is reset. This is also the minimum — zooming out stops here. Zoom In/Out key bindings are set in the Key Bindings tab."/>
+                               Text="The zoom level used when zoom is first activated and when it is reset. This is also the minimum - zooming out stops here. Zoom In/Out key bindings are set in the Key Bindings tab."/>
 
                     <Border Background="#FF444444" Margin="0 16 0 12" Height="1"/>
                     <TextBlock Text="Zoom Tool" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 0 0 8"/>
@@ -245,11 +245,11 @@
                     <ComboBox x:Name="CMB_ScalingMode" HorizontalAlignment="Left" MinWidth="200"
                               BorderBrush="#FF555555"
                               ToolTip="How the 800×600 Kronos screen is resampled when enlarged to fill the window.">
-                        <ComboBoxItem Content="Sharp — crisp, blocky pixels (nearest-neighbor)"
+                        <ComboBoxItem Content="Sharp - crisp, blocky pixels (nearest-neighbor)"
                                       ToolTip="No interpolation. Razor-sharp edges, but visible pixel blocks when enlarged."/>
-                        <ComboBoxItem Content="Smooth — soft, fast (bilinear)"
+                        <ComboBoxItem Content="Smooth - soft, fast (bilinear)"
                                       ToolTip="Bilinear filtering. Soft and inexpensive."/>
-                        <ComboBoxItem Content="High Quality — best resample (Fant)"
+                        <ComboBoxItem Content="High Quality - best resample (Fant)"
                                       ToolTip="Fant resampling. Best quality; the default."/>
                     </ComboBox>
                     <TextBlock Margin="0 8 0 0" Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
@@ -581,7 +581,7 @@
                                  Background="#FF1E1E1E" Foreground="#FFBBBBBB"
                                  VerticalScrollBarVisibility="Auto" Padding="3 2"
                                  Text="(no steps recorded)"
-                                 ToolTip="The recorded key presses and releases that make up this macro. Read-only — use Record to capture new steps."/>
+                                 ToolTip="The recorded key presses and releases that make up this macro. Read-only - use Record to capture new steps."/>
 
                         <!-- Row 8: Record / Clear + hint -->
                         <DockPanel Grid.Row="8">
@@ -607,7 +607,7 @@
                     <!-- Logging -->
                     <CheckBox x:Name="ChkDebugLogging" Content="Enable debug logging"
                               Margin="0 0 0 10"
-                              ToolTip="Writes verbose DEBUG entries to the log file. Takes effect immediately. Enable only when diagnosing issues — it can grow the log quickly."/>
+                              ToolTip="Writes verbose DEBUG entries to the log file. Takes effect immediately. Enable only when diagnosing issues - it can grow the log quickly."/>
                     <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
                                Text="When enabled, verbose DEBUG entries are written to the log file. Only Info, Warn, and Error are logged when this is off. Takes effect immediately."/>
                 </StackPanel>
@@ -633,7 +633,7 @@
                     </Grid>
                     <TextBlock x:Name="TXT_UsbDeviceStatus" Foreground="#FF888888" FontSize="11"
                                TextWrapping="Wrap" Margin="0 0 0 16"
-                               Text="Detecting USB MIDI devices…"/>
+                               Text="Detecting USB MIDI devices..."/>
 
                     <Border Background="#FF444444" Margin="0 0 0 14" Height="1"/>
 
@@ -712,7 +712,7 @@
                             <ComboBoxItem Content="Temporary Memory"
                                           ToolTip="Will store in memory only. Restarting the app clears the merge data."/>
                             <ComboBoxItem Content="Local Storage"
-                                          ToolTip="Stores on local drive — persists reboots but could be slower."/>
+                                          ToolTip="Stores on local drive - persists reboots but could be slower."/>
                         </ComboBox>
                     </Grid>
                     <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
@@ -725,10 +725,10 @@
         <!-- Bottom row: Import/Export left, OK/Cancel right -->
         <Grid Grid.Row="2">
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
-                <Button x:Name="BtnExport" Content="Export…" Width="80" Margin="0 0 8 0"
+                <Button x:Name="BtnExport" Content="Export..." Width="80" Margin="0 0 8 0"
                         Click="OnExport"
                         ToolTip="Save all current settings to a JSON file for backup or sharing."/>
-                <Button x:Name="BtnImport" Content="Import…" Width="80"
+                <Button x:Name="BtnImport" Content="Import..." Width="80"
                         Click="OnImport"
                         ToolTip="Load settings from a JSON file, replacing the current configuration."/>
             </StackPanel>

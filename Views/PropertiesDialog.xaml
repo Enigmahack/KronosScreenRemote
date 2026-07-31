@@ -47,7 +47,7 @@
         </Grid>
 
         <!-- Set List: browse its slots and edit whichever one is selected (Name/Color/
-             Comments) — this absorbs Views/SetListWindow.xaml's functionality into one
+             Comments) - this absorbs Views/SetListWindow.xaml's functionality into one
              dialog instead of a separate window + a second edit dialog. -->
         <Grid Grid.Row="4" x:Name="PNL_SetList" Visibility="Collapsed">
             <Grid.RowDefinitions>
@@ -78,8 +78,8 @@
         <!-- Requirement 1: what this object needs, and what needs it. Both lists are FIXED
              height with their own scrollbar, never Auto: this dialog is SizeToContent="Height",
              so a heavily-referenced Program's referrer list would otherwise grow the window until
-             the OK/Cancel buttons scrolled off-screen — the exact failure
-             UnresolvedDependenciesDialog exists to fix. "Scan PCG…" (requirement 2) is the manual
+             the OK/Cancel buttons scrolled off-screen - the exact failure
+             UnresolvedDependenciesDialog exists to fix. "Scan PCG..." (requirement 2) is the manual
              recovery path for whatever the Requires list shows as missing. -->
         <GroupBox Grid.Row="5" x:Name="PNL_Dependencies" Header="Dependencies" Margin="0 14 0 0" Visibility="Collapsed">
             <Grid Margin="0 4 0 0">

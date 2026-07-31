@@ -3,7 +3,7 @@ namespace KronosScreenRemote;
 using System.IO;
 using System.Text.Json;
 
-// One entry as persisted to disk — a flat, JSON-friendly mirror of MergeEntry (which stays a
+// One entry as persisted to disk - a flat, JSON-friendly mirror of MergeEntry (which stays a
 // plain mutable class for the algorithm's own convenience; this record is what actually
 // round-trips through System.Text.Json without fighting required/init members mid-mutation).
 sealed record MergeEntrySnapshot(
@@ -11,14 +11,14 @@ sealed record MergeEntrySnapshot(
     List<MergeOrigin> Origins, List<string> ReferencedBy, List<MergeRefSite> RefSites);
 
 // Full on-disk state: the staged entries themselves, plus which content hashes have already
-// been placed into Local Library THIS batch and where (PlacedAddresses) — needed too, not
+// been placed into Local Library THIS batch and where (PlacedAddresses) - needed too, not
 // just the still-pending entries, so that if the app crashes mid-batch (some items placed,
 // others not yet), resuming after restart still correctly resolves a not-yet-placed Combi's
 // reference to a dependency that WAS placed before the crash (see MergeCache.
 // ResolveReferencesForPlacement).
 sealed record MergeCacheSnapshot(List<MergeEntrySnapshot> Entries, Dictionary<string, ObjLoc> PlacedAddresses);
 
-// Strategy for how (or whether) the Merge Window's staging cache survives past this process —
+// Strategy for how (or whether) the Merge Window's staging cache survives past this process -
 // selected once, at MergeCache construction, from AppSettings.MergeBehavior. New behaviors
 // (e.g. a size-capped rolling log) plug in here without MergeCache itself changing (OCP).
 interface IMergeCachePersistence
@@ -28,7 +28,7 @@ interface IMergeCachePersistence
     void Clear();
 }
 
-// MergeCacheBehavior.TemporaryMemory — never touches disk; every call is a no-op, so a fresh
+// MergeCacheBehavior.TemporaryMemory - never touches disk; every call is a no-op, so a fresh
 // MergeCache always starts (and stays) empty across restarts.
 sealed class InMemoryMergeCachePersistence : IMergeCachePersistence
 {
@@ -37,10 +37,10 @@ sealed class InMemoryMergeCachePersistence : IMergeCachePersistence
     public void Clear() { }
 }
 
-// MergeCacheBehavior.LocalStorage — one JSON snapshot file, fully rewritten on every
+// MergeCacheBehavior.LocalStorage - one JSON snapshot file, fully rewritten on every
 // mutation. Crash recovery means saves can't wait for a clean shutdown (a crash skips that
 // code entirely), so this deliberately isn't an incremental/CAS-style store like Local
-// Library's own — a rewrite-on-change of what's realistically a small, actively-curated
+// Library's own - a rewrite-on-change of what's realistically a small, actively-curated
 // working set (tens of objects, not thousands) is proportionate to what the Merge Window
 // actually is: temporary staging, not a second permanent library.
 sealed class FileMergeCachePersistence : IMergeCachePersistence

@@ -42,7 +42,7 @@ public partial class LoginDialog : ThemedWindow
 
         BtnOk.IsEnabled      = false;
         BtnCancel.IsEnabled  = false;
-        BtnOk.Content        = "Verifying…";
+        BtnOk.Content        = "Verifying...";
         ErrorText.Visibility = Visibility.Collapsed;
 
         var pass = PwdBox.Password;
@@ -54,7 +54,7 @@ public partial class LoginDialog : ThemedWindow
         catch (Exception ex)
         {
             // Never let an exception escape this async void handler (would crash the app) or
-            // leave the dialog stuck on "Verifying…" with both buttons disabled.
+            // leave the dialog stuck on "Verifying..." with both buttons disabled.
             BtnOk.IsEnabled     = true;
             BtnCancel.IsEnabled = true;
             BtnOk.Content       = "OK";

@@ -118,8 +118,8 @@ public partial class FileManagerWindow : ThemedWindow
             }
 
             // Cancel goes far-left so the app's convention holds (the bottom-right slot is never
-            // a cancel/escape). Rename/Overwrite/Skip are all "proceed" variants — no single
-            // affirmative — so they keep their established left-to-right order.
+            // a cancel/escape). Rename/Overwrite/Skip are all "proceed" variants - no single
+            // affirmative - so they keep their established left-to-right order.
             var btnRow = new StackPanel { Orientation = Orientation.Horizontal };
             btnRow.Children.Add(Btn("Cancel",    ConflictAction.Cancel));
             btnRow.Children.Add(Btn("Rename",    ConflictAction.Rename));
@@ -244,7 +244,7 @@ public partial class FileManagerWindow : ThemedWindow
         LocalList.PreviewMouseRightButtonDown  += (s, e) => PrepareContextMenu(LocalList,  isRemote: false, e);
         RemoteList.PreviewMouseRightButtonDown += (s, e) => PrepareContextMenu(RemoteList, isRemote: true,  e);
 
-        // Column sort — cache GridViewColumn refs and stamp initial ▲ on Name header
+        // Column sort - cache GridViewColumn refs and stamp initial ▲ on Name header
         var lg = (GridView)LocalList.View;
         var rg = (GridView)RemoteList.View;
         _local.NameCol  = lg.Columns[0];
@@ -303,7 +303,7 @@ public partial class FileManagerWindow : ThemedWindow
         CancelDwell();
 
         // Hand the client off to a background thread so the UI thread isn't blocked.
-        // Send QUIT first so BusyBox ftpd cleanly removes the session — without it the
+        // Send QUIT first so BusyBox ftpd cleanly removes the session - without it the
         // server holds the session open until its own timeout, accumulating ghost sessions.
         var ftp = _ftp;
         _ftp = null;
@@ -419,7 +419,7 @@ public partial class FileManagerWindow : ThemedWindow
 
     // Returns the items whose upload verifiably succeeded, so a cut/move can delete only those
     // sources.  FluentFTP's UploadFile can report Failed/Skipped WITHOUT throwing, so success is
-    // gated on FtpStatus.Success — never on mere absence of an exception (that would still delete
+    // gated on FtpStatus.Success - never on mere absence of an exception (that would still delete
     // the source of a silently-failed upload).
     async Task<List<FileEntry>> UploadItemsAsync(IList<FileEntry> items)
     {
@@ -665,7 +665,7 @@ public partial class FileManagerWindow : ThemedWindow
                 Math.Abs(pos.Y - _dragStart.Y) > SystemParameters.MinimumVerticalDragDistance)
             {
                 _dragSource          = null;
-                _deferredSelectEntry = null; // drag wins — don't collapse selection on mouseup
+                _deferredSelectEntry = null; // drag wins - don't collapse selection on mouseup
                 InitiateFileDrag(lv);
             }
         }
@@ -679,7 +679,7 @@ public partial class FileManagerWindow : ThemedWindow
         _rubberList    = lv;
         _rubberOrigin  = start;
         _rubberBanding = true;
-        // No CaptureMouse — it fights with ListViewItem's press-state tracking and
+        // No CaptureMouse - it fights with ListViewItem's press-state tracking and
         // causes rubber-band to silently fail. PreviewMouseMove fires regardless because
         // it's a tunneling event; OnPreviewMouseLeftButtonUp (Window override) ensures
         // we always terminate even if the button is released outside the list.
@@ -712,7 +712,7 @@ public partial class FileManagerWindow : ThemedWindow
     // button is released (including outside the ListView).
     // ── Keyboard shortcuts (Ctrl+C/X/V/A, Del, F2, F5, Backspace, Enter) ──────
     // WPF routes keyboard events only within the focused window's visual tree, so
-    // these never fire in the main window and macros never fire here — naturally
+    // these never fire in the main window and macros never fire here - naturally
     // isolated without any extra guards.
     protected override void OnPreviewKeyDown(KeyEventArgs e)
     {
@@ -803,7 +803,7 @@ public partial class FileManagerWindow : ThemedWindow
     {
         var lv = (ListView)s;
         if (_rubberBanding && _rubberList == lv) EndRubberBand();
-        // Mouse left without triggering a drag or click — cancel deferred state
+        // Mouse left without triggering a drag or click - cancel deferred state
         if (_dragSource == lv) { _dragSource = null; _deferredSelectEntry = null; }
     }
 
@@ -831,7 +831,7 @@ public partial class FileManagerWindow : ThemedWindow
         var payload = new DragPayload(lv == RemoteList, items);
         var data    = new DataObject(DragDataFormat, payload);
         DragDrop.DoDragDrop(lv, data, DragDropEffects.Copy | DragDropEffects.Move);
-        // Drag ended — guarantee dwell state, scroll, and button highlights are cleaned up
+        // Drag ended - guarantee dwell state, scroll, and button highlights are cleaned up
         CancelDwell();
         StopDragScroll();
         BtnLocalUp.ClearValue(BackgroundProperty);
@@ -1056,7 +1056,7 @@ public partial class FileManagerWindow : ThemedWindow
             }
             try
             {
-                // Off the UI thread — a large folder move would otherwise freeze the window.
+                // Off the UI thread - a large folder move would otherwise freeze the window.
                 await Task.Run(() =>
                 {
                     if (item.IsDirectory)
@@ -1349,7 +1349,7 @@ public partial class FileManagerWindow : ThemedWindow
             }
             try
             {
-                // Off the UI thread — a large recursive copy would otherwise freeze the window.
+                // Off the UI thread - a large recursive copy would otherwise freeze the window.
                 await Task.Run(() =>
                 {
                     if (item.IsDirectory) CopyDirectoryRecursive(item.FullPath, dest);

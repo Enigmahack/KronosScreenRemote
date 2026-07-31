@@ -11,8 +11,8 @@ public partial class AboutWindow : ThemedWindow
         TXT_ClientVer.Text   = BuildInfo.ClientVersion;
         TXT_ClientBuild.Text = BuildInfo.ClientBuildId;
 
-        TXT_DaemonVer.Text   = "…";
-        TXT_DaemonBuild.Text = "…";
+        TXT_DaemonVer.Text   = "...";
+        TXT_DaemonBuild.Text = "...";
 
         if (host is not null)
             _ = FetchDaemonVersionAsync(host, ctrlPort);
@@ -49,8 +49,8 @@ public partial class AboutWindow : ThemedWindow
         }
         catch (Exception ex)
         {
-            // Fire-and-forget task — swallow so it can't become an UnobservedTaskException,
-            // and leave the labels in a sensible state instead of a stale "…".
+            // Fire-and-forget task - swallow so it can't become an UnobservedTaskException,
+            // and leave the labels in a sensible state instead of a stale "...".
             AppLog.Debug($"[about] daemon version fetch failed: {ex.Message}");
             await Dispatcher.InvokeAsync(() => SetDaemonLabel("not reachable"));
         }

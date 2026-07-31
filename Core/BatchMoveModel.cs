@@ -2,7 +2,7 @@ namespace KronosScreenRemote;
 
 // Batch move: relocate MANY Programs or Combis (never mixed) into sequential slots of one
 // destination bank, with a "clipboard" for objects displaced or that can't land there at all.
-// Generalizes Librarian.PlanMove's pairwise swap into an arbitrary N-item reassignment —
+// Generalizes Librarian.PlanMove's pairwise swap into an arbitrary N-item reassignment -
 // see PlanBatchMove's doc comment for why this can't be N independent PlanMove calls.
 //
 // Locked semantics (confirmed with the user, do not re-derive):
@@ -10,12 +10,12 @@ namespace KronosScreenRemote;
 //   - A destination slot's current occupant is overwritten by default; a caller-supplied
 //     `divertDisplacedToClipboard` flag instead cuts it into the clipboard.
 //   - Capacity overflow (more sources than 128 slots) and (Programs only) a source/destination
-//     bank-type mismatch ALWAYS auto-clipboard, regardless of that flag — there's no valid
+//     bank-type mismatch ALWAYS auto-clipboard, regardless of that flag - there's no valid
 //     destination at all in either case.
 //   - A placement is a REFERENCE RELOCATION, not a swap: the source's own physical slot is
 //     NEVER written. Only referrers (Combi timbres / Set List slots) that pointed at the
 //     source's OLD location get repointed to the NEW one. This is the only reading consistent
-//     with references needing to move at all — a hidden swap-back was never asked for and
+//     with references needing to move at all - a hidden swap-back was never asked for and
 //     would silently duplicate/destroy data outside what was requested.
 //
 // Split for testability like LibrarianModel.cs: ResolveSequentialFill and PlanBatchMove are
@@ -25,15 +25,15 @@ namespace KronosScreenRemote;
 
 enum ClipboardProvenance { DisplacedDestination, UnplaceableSource, UserCopy }
 
-// One clipboard entry: cut on add, kept forever as history (never removed on paste — just
-// marked). `Origin` is where the object WAS *at the moment it was cut* — for a
+// One clipboard entry: cut on add, kept forever as history (never removed on paste - just
+// marked). `Origin` is where the object WAS *at the moment it was cut* - for a
 // DisplacedDestination entry that address has already been overwritten by the incoming
 // placement, so it must never be used for a fresh referrer lookup (whatever now occupies it is
 // an unrelated object). This invariant is exactly why the clipboard can never hold a
 // reference-integrity hazard: a DisplacedDestination entry is only ever created after
 // PlanBatchMove's orphan gate has confirmed it has zero live referrers, and an
 // UnplaceableSource or UserCopy entry's own original location was never touched
-// (source-untouched rule), so its referrers — if any — still resolve correctly right where
+// (source-untouched rule), so its referrers - if any - still resolve correctly right where
 // they always did (see NeedsOriginRepoint).
 sealed class ClipboardEntry
 {
@@ -51,7 +51,7 @@ sealed class ClipboardEntry
     // Ties every entry created by ONE "Copy Bank to Clipboard" action together (null for
     // individual/multi Copy-to-Clipboard entries). Paste Bank finds the most-recently-cut pending
     // group sharing this value and stages the whole group in one action, preserving each entry's
-    // original slot-within-bank offset — see BatchLibrarian's Paste Bank notes.
+    // original slot-within-bank offset - see BatchLibrarian's Paste Bank notes.
     public Guid? BankCopyGroup;
 }
 
@@ -65,14 +65,14 @@ static class ClipboardProvenanceExtensions
 {
     // Every provenance except DisplacedDestination leaves the entry's Origin untouched (never
     // written), so a paste of one of those must repoint Origin's live referrers to the paste
-    // destination — a DisplacedDestination entry never needs this (orphan-gate guaranteed
+    // destination - a DisplacedDestination entry never needs this (orphan-gate guaranteed
     // referrer-free before it could ever become a clipboard entry). Expressed as "!= Displaced"
     // rather than an explicit OR-list so a future provenance defaults to the safer behavior.
     public static bool NeedsOriginRepoint(this ClipboardProvenance p) => p != ClipboardProvenance.DisplacedDestination;
 }
 
 // One item's placement in a batch. From is the pre-state address whose LIVE referrers (if any)
-// get repointed to To — null for a clipboard paste, whose referrers (if any) were already
+// get repointed to To - null for a clipboard paste, whose referrers (if any) were already
 // resolved as correct-in-place at cut time (see ClipboardEntry's doc comment); never re-derive
 // a paste's referrers from Origin.
 readonly record struct BatchPlacement(ObjLoc? From, ObjLoc To, ObjectDump Body, string SourceLabel);
@@ -87,7 +87,7 @@ sealed class BatchMovePlan : IExecutablePlan
     public List<ReferrerSite> Referrers = new();
     public List<string> Preview = new();
     public List<string> Warnings { get; } = new();
-    public List<byte[]> LivePc { get; } = new();           // always empty — batch live-preview (0x43) is out of scope for v1
+    public List<byte[]> LivePc { get; } = new();           // always empty - batch live-preview (0x43) is out of scope for v1
     public Dictionary<(int, int), byte[]> DigestBaseline { get; } = new();
     public string BackupLabel { get; set; } = "batchmove";
 
@@ -98,23 +98,23 @@ static class BatchLibrarian
 {
     public const int BankSlotCount = 128;   // every Program/Combi bank is exactly 128 slots
 
-    // PURE. Assigns sequential destination slots to a set of PENDING clipboard entries — the
+    // PURE. Assigns sequential destination slots to a set of PENDING clipboard entries - the
     // algorithm behind drag-drop auto-fill onto a bank (ViewModels/LibrarianShellViewModel.cs's
     // BatchPlaceFromPcg): fill starting at
-    // `startSlot` (the exact slot the user right-clicked, NOT always 0 — replaces the earlier
+    // `startSlot` (the exact slot the user right-clicked, NOT always 0 - replaces the earlier
     // "always slot 0" sequential-fill tool), skip anything that doesn't fit (past slot 127) or
     // fails a Program HD-1/EXi type check, leaving it pending rather than losing it (it's already
-    // safely sitting in the clipboard — nothing to auto-clipboard here, unlike the old
+    // safely sitting in the clipboard - nothing to auto-clipboard here, unlike the old
     // tree-selection-based version this replaced).
-    //   bankTypeOf — Program HD-1/EXi lookup (true=EXi/false=HD-1/null=unknown-or-untyped-bank,
+    //   bankTypeOf - Program HD-1/EXi lookup (true=EXi/false=HD-1/null=unknown-or-untyped-bank,
     //   e.g. I-G). Ignored entirely for Combis and Set Lists, which have no such typing.
-    //   slotAvailable — optional "may an auto-fill write to slot N?" filter (see LocalEditOps.
+    //   slotAvailable - optional "may an auto-fill write to slot N?" filter (see LocalEditOps.
     //   AvailableSlotsFrom). Supplied by the auto-fill callers only. Since a slot holding nothing
     //   but an INIT placeholder now counts as free, the writable slots in a bank are commonly
     //   SCATTERED rather than one contiguous tail, and a plain startSlot+i walk would write over
     //   real patches sitting past the first placeholder. Null keeps the original contiguous
     //   behaviour, which is what a drop on a SPECIFIC slot wants: the user pointed at it, so
-    //   filling from exactly there — occupants and all — is the explicit intent.
+    //   filling from exactly there - occupants and all - is the explicit intent.
     public static (List<(ClipboardEntry Entry, int Slot)> Placed, List<(ClipboardEntry Entry, string Reason)> StillPending)
         ResolveSequentialFill(IReadOnlyList<ClipboardEntry> pending, int objType, int destBank, int startSlot, Func<int, bool?>? bankTypeOf,
                               Func<int, bool>? slotAvailable = null)
@@ -131,7 +131,7 @@ static class BatchLibrarian
                 if (destType is bool dt && srcType is bool st && dt != st)
                     stillPending.Add((e, $"type mismatch: entry is {(st ? "EXi" : "HD-1")}, destination bank is {(dt ? "EXi" : "HD-1")}"));
                 else
-                    placeable.Add(e);   // includes the "can't verify" case (I-G/unknown) — CHECK-only in PlanBatchMove
+                    placeable.Add(e);   // includes the "can't verify" case (I-G/unknown) - CHECK-only in PlanBatchMove
             }
         }
         else placeable.AddRange(pending);
@@ -148,7 +148,7 @@ static class BatchLibrarian
                 slot = next++;
             }
             if (slot >= BankSlotCount)
-                stillPending.Add((placeable[i], $"destination bank full — no free slot left at or after slot {startSlot}"));
+                stillPending.Add((placeable[i], $"destination bank full - no free slot left at or after slot {startSlot}"));
             else
                 placed.Add((placeable[i], slot));
         }
@@ -156,15 +156,15 @@ static class BatchLibrarian
     }
 
     // PURE. Generalizes Librarian.PlanMove's referrer-patch grouping across an arbitrary
-    // relocation set instead of one fixed src/dst pair — the actual crux of "batch" vs. running
+    // relocation set instead of one fixed src/dst pair - the actual crux of "batch" vs. running
     // PlanMove N times: a single Combi/Set-List referrer touched by MULTIPLE placements in this
     // same batch must get every patch merged into ONE write, computed from a single
     // old-loc->new-loc map, not N independent unaware writes that would stomp each other.
-    //   destOccupants — fresh dump of the CURRENT content at every distinct placement.To (the
+    //   destOccupants - fresh dump of the CURRENT content at every distinct placement.To (the
     //                   batch analog of PlanMove's dstDump; pre-image + orphan-gate source).
-    //   bankTypeOf    — same lookup as ResolveSequentialFill; defense-in-depth only (a manual
+    //   bankTypeOf    - same lookup as ResolveSequentialFill; defense-in-depth only (a manual
     //                   clipboard paste in a later phase can stage a crossing ResolveSequentialFill
-    //                   never saw) — REFUSE a known mismatch, CHECK an unverifiable crossing.
+    //                   never saw) - REFUSE a known mismatch, CHECK an unverifiable crossing.
     public static BatchMovePlan PlanBatchMove(
         LibraryCatalog cat, int objType,
         IReadOnlyList<BatchPlacement> placements,
@@ -199,7 +199,7 @@ static class BatchLibrarian
             {
                 if (p.From is { } from)
                 {
-                    // Local-to-local move — compare the two REAL banks' own configured types.
+                    // Local-to-local move - compare the two REAL banks' own configured types.
                     if (from.Bank == p.To.Bank) continue;
                     bool? srcType = bankTypeOf(from.Bank);
                     bool? dstType = bankTypeOf(p.To.Bank);
@@ -213,14 +213,14 @@ static class BatchLibrarian
                 }
                 else
                 {
-                    // Fresh placement (from a loaded PCG file or the Merge Window) — there's no
+                    // Fresh placement (from a loaded PCG file or the Merge Window) - there's no
                     // local source bank to compare against here, so check the actual wire
                     // bytes about to be written against what the destination bank really
                     // expects instead. The body's own length already deterministically says
-                    // EXi (4960B) or HD-1 (3706B) — no lookup needed for that half of the
+                    // EXi (4960B) or HD-1 (3706B) - no lookup needed for that half of the
                     // comparison, only for what the destination itself currently is. This is
                     // the gap that let a fresh placement's wrong-format Program body reach
-                    // hardware and get rejected (func 0x24 Reply — 3 "mangled message" or 64
+                    // hardware and get rejected (func 0x24 Reply - 3 "mangled message" or 64
                     // "wrong bank type") instead of being caught here first.
                     if (bankTypeOf(p.To.Bank) is bool dt)
                     {
@@ -235,22 +235,22 @@ static class BatchLibrarian
         }
 
         // (1) Pre-state old->new relocation map, keyed by ORIGIN. Never keyed by post-state slot
-        // occupancy — that's what lets a chain (A->B, B's occupant->C) resolve both referrer
+        // occupancy - that's what lets a chain (A->B, B's occupant->C) resolve both referrer
         // classes correctly (see SelfTest's merged-referrer case for the non-chain crux case,
         // and the orphan gate below for how a chain is recognized as safe).
         var relocation = new Dictionary<ObjLoc, ObjLoc>();
         foreach (var p in real) if (p.From is { } f) relocation[f] = p.To;
 
-        // (2) Orphan gate — UNCONDITIONAL, independent of divertDisplacedToClipboard. A
+        // (2) Orphan gate - UNCONDITIONAL, independent of divertDisplacedToClipboard. A
         // clipboard entry has no address for a referrer to repoint to, so overwriting a
         // referenced slot is only safe when that slot's occupant is ITSELF also being relocated
-        // somewhere in this same batch (i.e. it's also a From — a chain, not an orphan) — OR the
+        // somewhere in this same batch (i.e. it's also a From - a chain, not an orphan) - OR the
         // caller explicitly opted into forceOverwrite (the Merge Window's "Force Overwrite"
         // checkbox), accepting that the referrer(s) will end up pointing at the NEW object
         // instead of the old one. Forcing downgrades this from a REFUSE to a CHECK: the write
         // still proceeds through (5) below exactly like any other overwritten-but-unreferenced
         // slot, so the prior occupant is still diverted to the clipboard when
-        // divertDisplacedToClipboard is set — never silently lost, only its referrers repointed.
+        // divertDisplacedToClipboard is set - never silently lost, only its referrers repointed.
         var distinctTargets = real.Select(p => p.To).Distinct().ToList();
         foreach (var to in distinctTargets)
         {
@@ -259,20 +259,20 @@ static class BatchLibrarian
 
             // The common, non-alarming trigger for this gate: the destination already holds
             // BYTE-IDENTICAL content (e.g. re-dropping a Program the Merge Window already
-            // placed there once) — nothing would actually change, so say that plainly instead
+            // placed there once) - nothing would actually change, so say that plainly instead
             // of the generic dependency-safety warning below, which is for the genuinely
             // dangerous case (a DIFFERENT occupant, still referenced elsewhere, about to be
             // silently destroyed).
             bool identical = destOccupants.TryGetValue(to, out var occ)
                 && real.First(p => p.To.Equals(to)).Body.Body.AsSpan().SequenceEqual(occ.Body);
 
-            // An INIT occupant — Program OR Combi — is a placeholder, not data: the Kronos has no
+            // An INIT occupant - Program OR Combi - is a placeholder, not data: the Kronos has no
             // empty slot, so an unused one holds a full INIT body (see InitObjects). Overwriting it
             // destroys nothing, so the fact that something still POINTS at that address is not a
             // reason to refuse: the referrer was pointing at an init patch (i.e. already
             // effectively broken) and will simply resolve to the real object now landing there.
             // Downgraded to a CHECK exactly like forceOverwrite, so the write proceeds through (5)
-            // below and the placeholder is still diverted to the clipboard rather than lost — the
+            // below and the placeholder is still diverted to the clipboard rather than lost - the
             // user just doesn't have to reach for Force Overwrite to place onto an empty-looking
             // slot, which is what made this feel like a false blocker.
             bool occupantIsInit = destOccupants.TryGetValue(to, out var initOcc)
@@ -284,7 +284,7 @@ static class BatchLibrarian
                 : AppMessages.Librarian.Move.ReferencedWouldBeOverwritten(to.Label(), displacedRefs.Count));
         }
 
-        // (3) Referrer collection + grouping — direct generalization of PlanMove's `grouped` dict.
+        // (3) Referrer collection + grouping - direct generalization of PlanMove's `grouped` dict.
         int refType = objType == LibObj.Program ? 1 : 0;
         var grouped = new Dictionary<(int, int, int), List<(int Site, string Kind, int NewBank, int NewNumber)>>();
         void AddPatch(ReferrerSite r, int newBank, int newNumber)
@@ -301,7 +301,7 @@ static class BatchLibrarian
             foreach (var r in sites) AddPatch(r, newFunc33, to.Number);
         }
 
-        // (4) Placement writes + pre-images. Source stays UNTOUCHED — no write at From, ever.
+        // (4) Placement writes + pre-images. Source stays UNTOUCHED - no write at From, ever.
         foreach (var p in real)
         {
             plan.Writes.Add(new WriteOp(objType, p.To.Bank, p.To.Number, p.Body.Version, p.Body.Body, $"{p.SourceLabel} -> {p.To.Label()}"));
@@ -309,7 +309,7 @@ static class BatchLibrarian
                 plan.PreImages.Add(new WriteOp(objType, p.To.Bank, p.To.Number, occ.Version, occ.Body, "original (displaced)"));
         }
 
-        // (5) Displaced-occupant disposition — only for targets NOT already covered by their own
+        // (5) Displaced-occupant disposition - only for targets NOT already covered by their own
         // relocation entry (§2's chain exemption).
         foreach (var to in distinctTargets)
         {
@@ -326,7 +326,7 @@ static class BatchLibrarian
                 plan.Warnings.Add(AppMessages.Librarian.Move.CheckOverwrittenNotDiverted(to.Label()));
         }
 
-        // (6) Grouped referrer-patch writes — identical shape to PlanMove's step 2.
+        // (6) Grouped referrer-patch writes - identical shape to PlanMove's step 2.
         foreach (var ((refObj, refBank, refIndex), patches) in grouped)
         {
             ObjectDump? baseDump = refObj == LibObj.Combi
@@ -356,9 +356,9 @@ static class BatchLibrarian
 
         string typeNoun = objType switch { LibObj.Program => "programs", LibObj.Combi => "combis", _ => "set lists" };
         plan.Preview.Add($"BATCH MOVE  {real.Count} placement(s)  ({typeNoun})");
-        if (skipped > 0) plan.Preview.Add($"  ({skipped} placement(s) already at their destination — skipped)");
+        if (skipped > 0) plan.Preview.Add($"  ({skipped} placement(s) already at their destination - skipped)");
         foreach (var p in real) plan.Preview.Add($"  {p.SourceLabel}  ->  {p.To.Label()}");
-        plan.Preview.Add("  source slots keep their original contents — only references now resolve to the new copies.");
+        plan.Preview.Add("  source slots keep their original contents - only references now resolve to the new copies.");
         if (plan.ClipboardAdds.Count > 0) plan.Preview.Add($"  {plan.ClipboardAdds.Count} displaced object(s) diverted to clipboard.");
         plan.Preview.Add($"  references to rewrite: {plan.Referrers.Count}");
         plan.Preview.Add($"  objects to write (0x73): {plan.Writes.Count}");
@@ -367,7 +367,7 @@ static class BatchLibrarian
     }
 
     // ── BatchClipboard <-> persisted DTO (Storage.ClipboardEntryDto) ─────────
-    // Flat mapping only — Provenance round-trips through its string name, PastedTo through
+    // Flat mapping only - Provenance round-trips through its string name, PastedTo through
     // plain bank/number ints (its ObjType always matches the entry's own, so isn't stored twice).
     internal static Storage.ClipboardEntryDto ToDto(ClipboardEntry e) => new(
         e.ObjType, e.Origin.Bank, e.Origin.Number, e.Version, e.Body,
@@ -388,7 +388,7 @@ static class BatchLibrarian
         BankCopyGroup = d.BankCopyGroup,
     };
 
-    // The persisted pending-change clipboard is a single global store, not per-host — see
+    // The persisted pending-change clipboard is a single global store, not per-host - see
     // LocalLibraryCache's own doc comment for why (the Kronos's IP can change; the objects
     // don't). The pre-Phase-7 host-keyed variant (for the classic, now-retired
     // LibrarianWindow) has been removed along with that window.
@@ -420,7 +420,7 @@ static class BatchLibrarian
         Check("resolve-combi-sequential", placedC.Count == 3 && clipC.Count == 0 &&
             placedC[0] == (combiSrcs[0], 0) && placedC[1] == (combiSrcs[1], 1) && placedC[2] == (combiSrcs[2], 2));
 
-        // 1b. ResolveSequentialFill: fill starting at a non-zero slot (Paste All's actual use —
+        // 1b. ResolveSequentialFill: fill starting at a non-zero slot (Paste All's actual use -
         // starts exactly where the user right-clicked, not always slot 0).
         var (placedStart, clipStart) = ResolveSequentialFill(combiSrcs, LibObj.Combi, 0x40, startSlot: 12, null);
         Check("resolve-start-slot", placedStart.Count == 3 &&
@@ -438,7 +438,7 @@ static class BatchLibrarian
         Check("resolve-overflow-mid-start", placedMid.Count == 8 && clipMid.Count == 2 &&
             placedMid[^1].Slot == 127);
 
-        // 3. ResolveSequentialFill: Program bank-type mismatch leaves the entry pending (not lost —
+        // 3. ResolveSequentialFill: Program bank-type mismatch leaves the entry pending (not lost -
         // it's already safely in the clipboard).
         bool? BankType(int bank) => bank == 0x00 ? true /*EXi*/ : bank == 0x40 ? false /*HD-1*/ : (bool?)null;
         var progSrcs = new List<ClipboardEntry> { Entry(LibObj.Program, 0x00, 1), Entry(LibObj.Program, 0x40, 2) };
@@ -446,12 +446,12 @@ static class BatchLibrarian
         Check("resolve-type-mismatch", placedP.Count == 1 && placedP[0].Entry == progSrcs[1] &&
             clipP.Count == 1 && clipP[0].Entry == progSrcs[0]);
 
-        // 3b. PlanBatchMove: FRESH placement (From: null) bank-type check — the gap behind a
-        // real hardware write rejection (func 0x24 Reply — "mangled message"/"wrong bank
+        // 3b. PlanBatchMove: FRESH placement (From: null) bank-type check - the gap behind a
+        // real hardware write rejection (func 0x24 Reply - "mangled message"/"wrong bank
         // type"): a Program placed fresh (from a loaded PCG file or the Merge Window) was
         // never checked against what its destination bank is ACTUALLY configured as, only a
         // local-to-local move was. The body's own length (EXi=4960B, HD-1=3706B) must be
-        // compared directly against bankTypeOf(destBank) — no "source bank" to look up here.
+        // compared directly against bankTypeOf(destBank) - no "source bank" to look up here.
         var freshCat = new LibraryCatalog();
         var freshDest = new ObjLoc(LibObj.Program, 0x40, 20);   // BankType(0x40) => false (HD-1)
         var noOccupants = new Dictionary<ObjLoc, ObjectDump>();
@@ -488,14 +488,14 @@ static class BatchLibrarian
         var orphanDst = new ObjLoc(LibObj.Program, 0x40, 10);   // referenced, not itself relocated
         var incomingBody = new byte[100];
         var occupantBody = new byte[100];
-        occupantBody[0] = 0xFF;   // deliberately different from incomingBody — a real displacement, not a re-drop of the same content
+        occupantBody[0] = 0xFF;   // deliberately different from incomingBody - a real displacement, not a re-drop of the same content
         var orphanPlacements = new List<BatchPlacement> { new(orphanSrc, orphanDst, new ObjectDump(LibObj.Program, 0x00, 5, 1, incomingBody), orphanSrc.Label()) };
         var orphanOccupants = new Dictionary<ObjLoc, ObjectDump> { [orphanDst] = new ObjectDump(LibObj.Program, 0x40, 10, 1, occupantBody) };
         var orphanPlan = PlanBatchMove(cat1, LibObj.Program, orphanPlacements, orphanOccupants, divertDisplacedToClipboard: false);
         Check("orphan-gate-refuses", orphanPlan.IsRefusable && orphanPlan.Warnings.Any(w => w.Contains("referenced by")));
 
         // 4b. Orphan gate: same referenced/non-relocated shape, but the incoming content is
-        // BYTE-IDENTICAL to what's already there — a friendlier "already exists" message, not
+        // BYTE-IDENTICAL to what's already there - a friendlier "already exists" message, not
         // the alarming "would be overwritten" one, since nothing would actually change.
         var dupOrphanPlacements = new List<BatchPlacement> { new(orphanSrc, orphanDst, new ObjectDump(LibObj.Program, 0x00, 5, 1, occupantBody), orphanSrc.Label()) };
         var dupOrphanPlan = PlanBatchMove(cat1, LibObj.Program, dupOrphanPlacements, orphanOccupants, divertDisplacedToClipboard: false);
@@ -504,7 +504,7 @@ static class BatchLibrarian
             !dupOrphanPlan.Warnings.Any(w => w.Contains("referenced by")));
 
         // 4c. Orphan gate: forceOverwrite (the Merge Window's "Force Overwrite" checkbox)
-        // downgrades the same REFUSE to a CHECK and lets the write through — the referrer keeps
+        // downgrades the same REFUSE to a CHECK and lets the write through - the referrer keeps
         // pointing at the same address, which now holds the NEW content instead of the old, and
         // the displaced occupant is still diverted to the clipboard rather than lost outright.
         var forcedPlan = PlanBatchMove(cat1, LibObj.Program, orphanPlacements, orphanOccupants,
@@ -514,7 +514,7 @@ static class BatchLibrarian
         Check("orphan-gate-forced-write-present", forcedPlan.Writes.Any(w => w.Bank == orphanDst.Bank && w.Index == orphanDst.Number));
         Check("orphan-gate-forced-displaced-to-clipboard", forcedPlan.ClipboardAdds.Any(c => c.Origin.Equals(orphanDst)));
 
-        // 4d. Orphan gate: an INIT Program occupant is a placeholder, not data — the same
+        // 4d. Orphan gate: an INIT Program occupant is a placeholder, not data - the same
         // referenced/non-relocated shape as 4 must NOT refuse when the slot merely holds an init
         // patch, and must not need Force Overwrite to get through (requirement 5). The displaced
         // placeholder is still diverted to the clipboard, exactly like the forced path.
@@ -531,7 +531,7 @@ static class BatchLibrarian
 
         // 4e. The exemption covers an INIT COMBI occupant too, not just a Program (an unused Combi
         // slot is just as much a placeholder), while a REAL Combi occupant still refuses. The two
-        // occupants below differ only in whether their timbres point anywhere — which is exactly
+        // occupants below differ only in whether their timbres point anywhere - which is exactly
         // what CombiBody.IsInit keys off.
         var combiRefCat = new LibraryCatalog();
         var slRefBody = new byte[69416];
@@ -563,7 +563,7 @@ static class BatchLibrarian
             realCombiPlan.Warnings.Any(w => w.Contains("referenced by")));
 
         // 4f. An INIT Combi contributes NO dependencies: its 16 timbres all hold the zero default,
-        // which encodes "nothing assigned" — not a real dependency on Program I-A:000. This is the
+        // which encodes "nothing assigned" - not a real dependency on Program I-A:000. This is the
         // phantom that made one address appear "needed by" every init Combi in the library at once.
         var initCombiForWalk = CombiBody.WriteName(new byte[7810], "Init Combi");
         Check("init-combi-walks-no-refs", !ObjectReferenceWalker.Walk(LibObj.Combi, initCombiForWalk).Any());
@@ -641,7 +641,7 @@ static class BatchLibrarian
         Check("clipboard-add-on-overwrite", !clipPlan.IsRefusable && clipPlan.ClipboardAdds.Count == 1 &&
             clipPlan.ClipboardAdds[0].Provenance == ClipboardProvenance.DisplacedDestination);
 
-        // 8. Clipboard <-> DTO round-trip (pure in-memory — no disk I/O in a self-test).
+        // 8. Clipboard <-> DTO round-trip (pure in-memory - no disk I/O in a self-test).
         var clip = new BatchClipboard();
         clip.Entries.Add(new ClipboardEntry
         {
@@ -671,7 +671,7 @@ static class BatchLibrarian
         Check("repoint-unplaceable-true", ClipboardProvenance.UnplaceableSource.NeedsOriginRepoint());
         Check("repoint-usercopy-true", ClipboardProvenance.UserCopy.NeedsOriginRepoint());
 
-        // 10. LibraryCatalog.ReferrersOf must return empty for a Set List loc — nothing ever
+        // 10. LibraryCatalog.ReferrersOf must return empty for a Set List loc - nothing ever
         // references one, and the old binary Program/Combi refType assumption would otherwise
         // mistranslate it through the Combi branch.
         var slLoc = new ObjLoc(LibObj.SetList, 0, 5);
@@ -679,7 +679,7 @@ static class BatchLibrarian
 
         // 11. A Set List placement (via the batch/clipboard pipeline, now that Set Lists are
         // copy/paste-able) produces zero referrer-patch writes and never spuriously REFUSEs via the
-        // orphan gate — the direct consequence of #10 flowing through PlanBatchMove unmodified.
+        // orphan gate - the direct consequence of #10 flowing through PlanBatchMove unmodified.
         var slFrom = new ObjLoc(LibObj.SetList, 0, 10);
         var slTo = new ObjLoc(LibObj.SetList, 0, 20);
         var slPlacements = new List<BatchPlacement>

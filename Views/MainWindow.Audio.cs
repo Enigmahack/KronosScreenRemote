@@ -58,7 +58,7 @@ public partial class MainWindow
     void PopulateVuDeviceList()
     {
         VuDeviceList.Items.Clear();
-        VuDeviceList.Items.Add(new AudioDeviceItem(null, "— None (disabled) —"));
+        VuDeviceList.Items.Add(new AudioDeviceItem(null, "- None (disabled) -"));
         foreach (var dev in AudioEngine.GetDevices())
             VuDeviceList.Items.Add(new AudioDeviceItem(dev, dev.Name));
 

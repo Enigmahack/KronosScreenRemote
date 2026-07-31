@@ -132,9 +132,9 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     bool IsConnected => _connState == ConnState.Connected;
     readonly FpsCounter _fpsCounter = new();
 
-    // Frame classification — read by mode + combi + help detection.
+    // Frame classification - read by mode + combi + help detection.
     bool _detectedModeEver = false;  // set by SetModeButton
-    bool _daemonBooting    = true;   // daemon's own authoritative BOOT= field (STATE poll) — fail-safe default until the first poll response, mirroring the daemon's own fail-safe default
+    bool _daemonBooting    = true;   // daemon's own authoritative BOOT= field (STATE poll) - fail-safe default until the first poll response, mirroring the daemon's own fail-safe default
     readonly TopLeftOcr _topLeftOcr = new();
     readonly HelpDetector _helpDetector = new();
 
@@ -142,7 +142,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     LayoutPreset           _layoutPreset      = LayoutPreset.Full;
     FileManagerWindow?     _fileManagerWin;
 
-    // The only window permitted to minimize — it collapses to the system tray (see InitTrayIcon),
+    // The only window permitted to minimize - it collapses to the system tray (see InitTrayIcon),
     // rather than stranding itself in a screen corner. Every other window inherits ThemedWindow's
     // default (no minimize box).
     protected override bool AllowMinimize => true;
@@ -156,7 +156,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         _settings  = Storage.LoadSettings();
         _zoomLevel = _settings.ZoomDefaultLevel;
         AppLog.DebugEnabled = _settings.DebugLogging;
-        AppLog.Info($"[init] settings loaded — host={_settings.KronosHost} mode={(_settings.PullMode ? "pull" : "change")} fps={_settings.MaxFps} debug={_settings.DebugLogging}");
+        AppLog.Info($"[init] settings loaded - host={_settings.KronosHost} mode={(_settings.PullMode ? "pull" : "change")} fps={_settings.MaxFps} debug={_settings.DebugLogging}");
         _host     = _settings.KronosHost;
         _port     = _settings.StreamPort;
         _ctrlPort = _settings.CtrlPort;
@@ -165,11 +165,11 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         ParseArgs();  // CLI args still win
 
         // Kick off the Local Library's one-time referrer-catalog build (LocalLibraryCache.
-        // BuildCatalogAsync — see its own comment for why this is otherwise a real 10-20s
+        // BuildCatalogAsync - see its own comment for why this is otherwise a real 10-20s
         // stall) as soon as the app starts, not when the Librarian menu item is first clicked.
         // BuildCatalogAsync memoizes (a no-op if already built/building), so opening the
         // Librarian later just picks up whatever this warm-up has already finished, same as
-        // LibrarianShellViewModel's own ctor-time WarmCatalogAsync — this just gives it a
+        // LibrarianShellViewModel's own ctor-time WarmCatalogAsync - this just gives it a
         // multi-minute head start instead of starting cold at first open.
         _localLibraryCache = LocalLibraryCache.Open();
         _ = WarmLocalLibraryCatalogAsync();
@@ -247,7 +247,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         SizeChanged += (sender, e) => RefreshFrameRect();
 
         // Build the command registry BEFORE any surface wires to it (WireButtons here, WireMenu in
-        // OnLoaded). ToDictionary fails fast on a duplicate Id — a launch is what trips it.
+        // OnLoaded). ToDictionary fails fast on a duplicate Id - a launch is what trips it.
         _commands = BuildCommandRegistry().ToDictionary(c => c.Id);
         WireButtons();
         InitWheelDrag();
@@ -276,9 +276,9 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     {
         // Ignore mode changes until the board is verified booted. The Kronos front
         // panel ignores mode keys during boot anyway, so a press there does nothing
-        // useful — but it would still stamp a pending mode whose timeout fallback
+        // useful - but it would still stamp a pending mode whose timeout fallback
         // later lights the wrong button, and could perturb the boot sequence.
-        // "Booted" = a real mode has been confirmed (_detectedModeEver) — resets on
+        // "Booted" = a real mode has been confirmed (_detectedModeEver) - resets on
         // (re)connect, so a fresh connection to a still-booting board also blocks
         // until its first mode is detected. The daemon itself now also refuses
         // MODE/EDITCTX-bearing data and rejects mutating commands with
@@ -288,7 +288,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         // a stray press during boot.
         if (!IsConnected || !_detectedModeEver)
         {
-            AppLog.Debug($"[mode] SendMode({mode}) ignored — board not booted " +
+            AppLog.Debug($"[mode] SendMode({mode}) ignored - board not booted " +
                          $"(connected={IsConnected}, detectedMode={_detectedModeEver})");
             return;
         }
@@ -300,7 +300,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
 
     void WireButtons()
     {
-        // Mode buttons — send the hardware packet and record pending mode (via the shared "Mode …"
+        // Mode buttons - send the hardware packet and record pending mode (via the shared "Mode ..."
         // registry commands). Icon only lights up once detection confirms (or timeout fallback fires).
         WireCommand(BTN_Setlist,  "Mode Setlist");
         WireCommand(BTN_Combi,    "Mode Combi");
@@ -336,14 +336,14 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         BTN_Inc.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Inc));
         BTN_Dec.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Dec));
 
-        // Sequencer transport — daemon maps each to a front-panel SEQUENCER key press.
+        // Sequencer transport - daemon maps each to a front-panel SEQUENCER key press.
         // Record/Start are handled by SeqTransportBarItem's DataContext (SeqTransportViewModel)
-        // via Command/IsChecked bindings in XAML instead of code-behind — see _seqTransport.
+        // via Command/IsChecked bindings in XAML instead of code-behind - see _seqTransport.
         WireCommand(BTN_SeqLocate, "Seq Locate");
         WireCommand(BTN_SeqRew,    "Seq Rewind");
         WireCommand(BTN_SeqFf,     "Seq Forward");
         WireCommand(BTN_SeqPause,  "Seq Pause");
-        WireCommand(BTN_TapTempo,  "Tap Tempo");   // global (not seq-mode gated) — see command registry
+        WireCommand(BTN_TapTempo,  "Tap Tempo");   // global (not seq-mode gated) - see command registry
 
         // Right-click context menus on mode and toggle buttons
         foreach (var btn in new KronosButton[] { BTN_Setlist, BTN_Combi, BTN_Program, BTN_Sequence,
@@ -354,9 +354,9 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     void AddButtonContextMenu(KronosButton btn)
     {
         var cm    = new ContextMenu();
-        var miKey = new MenuItem { Header = "Map to _Key…" };
+        var miKey = new MenuItem { Header = "Map to _Key..." };
         miKey.Click += (_, _) => OpenSettingsDialog(SettingsTab.KeyBindings);
-        var miMacro = new MenuItem { Header = "_Assign Macro…" };
+        var miMacro = new MenuItem { Header = "_Assign Macro..." };
         miMacro.Click += (_, _) => OpenSettingsDialog(SettingsTab.Macros);
         cm.Items.Add(miKey);
         cm.Items.Add(miMacro);
@@ -431,7 +431,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         if ((DateTime.Now - _wheel.LastActivity).TotalMilliseconds > WheelState.AnimIdleMs)
         {
             _wheel.AnimTimer.Stop();
-            return;                 // hold current state — no snap-back
+            return;                 // hold current state - no snap-back
         }
         _wheel.AnimState = (_wheel.AnimState + _wheel.AnimDir + 3) % 3;
         SetWheelAngle(WheelState.Angles[_wheel.AnimState]);
@@ -505,7 +505,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         _vsliderValue = val;
     }
 
-    // ── SysEx-driven UI sync (runs on the UI thread — events are marshaled
+    // ── SysEx-driven UI sync (runs on the UI thread - events are marshaled
     //    by SysExService before they reach here) ────────────────────────────────
 
     // Follow the hardware VALUE slider (incoming CC#ValueSliderCc). Ignore while
@@ -640,7 +640,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         CTX_KeyboardInfo.Click += (sender, e) => OpenKeyboardInfoWindow();
         MNU_KbdWarp.Visibility = Visibility.Collapsed;
 
-        // Bank Select — items built in code to avoid 28 x:Name declarations in XAML.
+        // Bank Select - items built in code to avoid 28 x:Name declarations in XAML.
         // Nested into Internal/User/U-User sub-dropdowns (each just A-G) so the top
         // Bank Select popup stays a 3-item list instead of one flat 21-item dropdown.
         char[] bankLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
@@ -776,7 +776,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         MNU_HideValueInput.IsChecked = _hideValueInput;
     }
 
-    // Change the upscale filter from the View / context menus.  Persist and apply immediately —
+    // Change the upscale filter from the View / context menus.  Persist and apply immediately -
     // FrameImage repaints the current bitmap with the new filter without needing a fresh frame.
     void SetScalingMode(ScalingQuality mode)
     {
@@ -957,7 +957,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
 
         if (!ok)
         {
-            // Undo the live preview — restore the values in effect before the dialog opened.
+            // Undo the live preview - restore the values in effect before the dialog opened.
             PreviewImageAdjust(new ImagePreview(imgB, imgC, imgG, imgSat, imgSh));
             return;
         }
@@ -978,7 +978,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         if (_wb != null && _rawFrame != null) ApplyLut();
     }
 
-    // Applies a new settings object live — shared by the Settings dialog's OK path
+    // Applies a new settings object live - shared by the Settings dialog's OK path
     // and the File ▸ Import Settings menu action. Persists, re-derives endpoints,
     // re-bakes the image pipeline, pushes MIDI/mirror/screensaver, and reconnects
     // when streaming parameters changed.
@@ -1034,7 +1034,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
 
         if (IsConnected && streamChanged)
         {
-            // Streaming parameters changed — reconnect so new mode/fps take effect now.
+            // Streaming parameters changed - reconnect so new mode/fps take effect now.
             TriggerReconnect();
         }
         else if (IsConnected)
@@ -1171,7 +1171,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
 
     // Single funnel for (re)pointing the ctrl client at an endpoint. CtrlClient is now a
     // per-endpoint instance (not a process-global static), so every create/swap MUST move the
-    // ERR-error subscription to the new instance and dispose the old one — otherwise a host
+    // ERR-error subscription to the new instance and dispose the old one - otherwise a host
     // change leaks a send loop + socket and daemon ERR responses stop surfacing. All four call
     // sites (ctor + settings-apply + recent-host pick) go through here.
     void SetCtrlClient(string host, int port)
@@ -1258,7 +1258,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     {
         if (!Dispatcher.CheckAccess()) { Dispatcher.InvokeAsync(() => UpdateTitle(suffix)); return; }
         Title = suffix == null ? "Kronos ScreenRemote"
-                               : $"Kronos ScreenRemote — {suffix}";
+                               : $"Kronos ScreenRemote - {suffix}";
     }
 
     // ── Status bar ────────────────────────────────────────────────────────────
@@ -1266,7 +1266,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     void SetConnectionStatus(ConnState state)
     {
         _connState = state;
-        // Do NOT access IsLoaded here — FrameworkElement.IsLoaded calls VerifyAccess() in
+        // Do NOT access IsLoaded here - FrameworkElement.IsLoaded calls VerifyAccess() in
         // .NET 10 WPF and throws InvalidOperationException when called from a non-UI thread.
         // Dispatcher.InvokeAsync is safe from any thread and queues the lambda for later.
         Dispatcher.InvokeAsync(() =>
@@ -1284,7 +1284,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             {
                 ConnState.Connected  => AppMessages.Connection.Connected(_host),
                 ConnState.Connecting => AppMessages.Connection.Connecting(_host),
-                // When USB MIDI is live, say so — otherwise a disconnected screen reads
+                // When USB MIDI is live, say so - otherwise a disconnected screen reads
                 // as "broken" even though the SysEx features are fully working over USB.
                 _ when _midiCoord.UsingUsb => AppMessages.Connection.UsbMidiScreenNotConnected,
                 _                    => AppMessages.Connection.NotConnected
@@ -1358,8 +1358,8 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             if (_sysExToolWin is { IsLoaded: true } tool)
                 tool.SetActiveStream(_midiCoord.ActiveLinkLabel);
             // A USB hot-plug/removal while the screen is disconnected flips the status
-            // line between "Not connected" and "USB MIDI — screen not connected". Update
-            // just the text — not the full disconnected teardown, which would clear the
+            // line between "Not connected" and "USB MIDI - screen not connected". Update
+            // just the text - not the full disconnected teardown, which would clear the
             // mode buttons USB is actively driving.
             if (!IsConnected)
                 StatusText.Text = _midiCoord.UsingUsb
@@ -1383,7 +1383,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             MidiLinkKind.Usb => ("USB", LinkUsbBrush),
             MidiLinkKind.Din => ("DIN", LinkDinBrush),
             MidiLinkKind.Tcp => ("TCP", LinkTcpBrush),
-            _                => ("—",   LinkNoneBrush),
+            _                => ("-",   LinkNoneBrush),
         };
         MidiLinkBadge.Text            = text;
         MidiLinkBadge.Foreground      = brush;
@@ -1396,7 +1396,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         else              _sysExRxLastAt = DateTime.Now;
 
         // Coalesce: the 50 ms dim timer repaints the dots continuously, so we only
-        // need to poke it awake. One pending repaint at a time — a memory-speed event
+        // need to poke it awake. One pending repaint at a time - a memory-speed event
         // flood (or per-change name pulls) would otherwise queue a Dispatcher call per
         // message and swamp the UI thread. The timestamps above are what actually
         // drive the dot state; this just ensures the timer is running.
@@ -1458,18 +1458,18 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     }
 
     // Fire-and-forget from the constructor, mirroring LibrarianShellViewModel.WarmCatalogAsync's
-    // own exception handling — without an explicit catch/log here, a blob-IO failure (e.g. the
+    // own exception handling - without an explicit catch/log here, a blob-IO failure (e.g. the
     // library share going away) would be an unobserved task exception, invisible until the
     // Librarian window is opened and pays the same cost again. LocalPane.IsIndexing (which hides
     // the Local Library tree mid-build) is owned by LibrarianShellViewModel, not this window, so
-    // it isn't touched here — nothing local-library-shaped is on screen yet at app startup.
+    // it isn't touched here - nothing local-library-shaped is on screen yet at app startup.
     async Task WarmLocalLibraryCatalogAsync()
     {
         try { await _localLibraryCache.BuildCatalogAsync(); }
         catch (Exception ex) { AppLog.Warn($"[librarian] startup catalog warm-up failed: {ex.Message}"); }
     }
 
-    // The rebuilt Librarian — Phase 7's cutover retired the classic LibrarianWindow (and its
+    // The rebuilt Librarian - Phase 7's cutover retired the classic LibrarianWindow (and its
     // SetListWindow/SetListSlotEditDialog satellites) entirely; this is now the only entry point.
     void OpenLibrarianShellWindow()
     {
@@ -1481,7 +1481,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         }
 
         // _localLibraryCache's catalog build was already kicked off at app startup (see the
-        // constructor's WarmLocalLibraryCatalogAsync call) — LibrarianShellViewModel's own ctor
+        // constructor's WarmLocalLibraryCatalogAsync call) - LibrarianShellViewModel's own ctor
         // calls BuildCatalogAsync() again, which is a no-op if that build already finished, or
         // just awaits whatever's left of it otherwise. Either way, opening the window no longer
         // depends on paying this cost cold.
@@ -1512,18 +1512,18 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     {
         AppLog.Info("[palette] opening");
         // Fresh build so KeyHints reflect the current keybinds (a rebind since launch shows up
-        // immediately) — same behaviour as before the registry existed.
+        // immediately) - same behaviour as before the registry existed.
         var pal = new CommandPaletteWindow(BuildCommandRegistry()).OwnedBy(this);
         pal.Show();
     }
 
-    // THE command table — one definition per action. The palette consumes the whole list; the
+    // THE command table - one definition per action. The palette consumes the whole list; the
     // buttons, menu items, context items, and keybind chain each consume the subset they expose,
     // by Id (see WireCommand / RunCommand), so an action like SendMode(Setlist) is defined here
     // ONCE instead of hand-wired into five parallel dispatch tables. For rebindable actions the
     // Id is the same action-name string IsAction / GetKeyName key off ("Mode Setlist", "Bank
-    // I-A", "Seq Locate", …); palette-only entries get a unique synthetic Id. Ids MUST be unique
-    // — the ctor's ToDictionary fails fast on a duplicate.
+    // I-A", "Seq Locate", ...); palette-only entries get a unique synthetic Id. Ids MUST be unique
+    // - the ctor's ToDictionary fails fast on a duplicate.
     List<CommandEntry> BuildCommandRegistry()
     {
         string K(string action) => _settings.GetKeyName(action);
@@ -1533,7 +1533,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             new("Reconnect",       "Reconnect",       "",              () => TriggerReconnect()),
             new("RefreshDisplay",  "Refresh Display", "",              () => Ctrl(DaemonCommand.RefreshDisplay)),
             new("Disconnect",      "Disconnect",      "",              () => Disconnect()),
-            new("Settings",        "Settings…",       "",              () => OpenSettingsDialog()),
+            new("Settings",        "Settings...",       "",              () => OpenSettingsDialog()),
             // ── View
             new("Fullscreen",      "Toggle Fullscreen",  K("Fullscreen"),    () => ToggleFullscreen()),
             new("AspectLock",      "Toggle Aspect Lock", K("AspectLock"),    () => { _aspectLock = !_aspectLock; RefreshFrameRect(); }),
@@ -1553,7 +1553,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             new("KeyboardInfo",    "Keyboard Info",           "",              () => OpenKeyboardInfoWindow()),
             new("Mirror",          "Toggle VGA Mirror",       K("Mirror"),        () => { _mirrorState = !_mirrorState; Ctrl(DaemonCommand.VgaMirror(_mirrorState)); }),
             new("Calibrate",       "Toggle Calibration Mode", K("Calibrate"),     () => { _cal.Mode = !_cal.Mode; if (_cal.Mode) EnterCalMode(); else ExitCalMode(); OverlayLayer.InvalidateVisual(); }),
-            new("SaveScreenshot",  "Save Screenshot…",        "",              () => SaveScreenshot()),
+            new("SaveScreenshot",  "Save Screenshot...",        "",              () => SaveScreenshot()),
             new("ToggleKeyboardSend", "Toggle Keyboard Send", "",              () => { _kbdSendEnabled = !_kbdSendEnabled; _instantKeys.Clear(); StopRepeat(); ReleaseActiveRawKeys(); UpdateKbdStatus(); OverlayLayer.InvalidateVisual(); }),
             // ── Mode select (Id = action name; also wired to mode buttons + menu + context menu + keybinds)
             new("Mode Setlist",  "Mode: Setlist",  K("Mode Setlist"),  () => SendMode(Mode.Setlist)),
@@ -1594,7 +1594,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             new("Seq Start",   "Seq: Start/Stop",   K("Seq Start"),   () => _seqTransport.StartStopCommand.Execute(null)),
             new("Seq Save",    "Write / Save",      K("Seq Save"),    () => _seqTransport.RecordCommand.Execute(null)),
             // Tap tempo: one BUTTON TAP_TEMPO press per invocation; the Kronos averages
-            // successive taps itself. Global — enabled whenever connected, not seq-gated.
+            // successive taps itself. Global - enabled whenever connected, not seq-gated.
             new("Tap Tempo",   "Tap Tempo",         K("Tap Tempo"),   TapTempoOnce),
             // ── Help
             new("Help",  "Show Help", K("Help"), () => OpenHelpWindow()),
@@ -1605,7 +1605,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
 
     // ── Command registry dispatch ──────────────────────────────────────────────
     // Built once (ctor, before WireButtons) from BuildCommandRegistry. Lookup is BY ID AT
-    // INVOCATION so a keybind rebind — or any future registry rebuild — can never stale the
+    // INVOCATION so a keybind rebind - or any future registry rebuild - can never stale the
     // wiring that buttons/menus captured. Buttons/menus/context/keybinds all reach the action
     // through here; only the palette holds its own freshly-built entries (for live KeyHints).
     Dictionary<string, CommandEntry> _commands = new();
@@ -1617,7 +1617,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     }
 
     // Wire a button / menu item's click straight to a registry command by Id. REPLACES the
-    // old inline lambda — never add alongside one, or the command double-fires.
+    // old inline lambda - never add alongside one, or the command double-fires.
     void WireCommand(System.Windows.Controls.Primitives.ButtonBase btn, string id)
         => btn.Click += (_, _) => RunCommand(id);
     void WireCommand(MenuItem mi, string id)
@@ -1629,7 +1629,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     // command registry so the footer button, the "Tap Tempo" keybind, and the command
     // palette all share this one action. Requires the daemon ctrl channel (front-panel
     // injection is not available over the USB-MIDI-only path), so the button is enabled
-    // only while connected — see SetConnectionStatus.
+    // only while connected - see SetConnectionStatus.
     void TapTempoOnce()
     {
         FlashTapTempo();
@@ -1637,7 +1637,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     }
 
     // Briefly highlight the footer Tap Tempo button so each tap (mouse or keybind) reads
-    // as registered — the plain footer Button has no KronosButton.FlashDepress. One shared
+    // as registered - the plain footer Button has no KronosButton.FlashDepress. One shared
     // single-shot timer clears it back to the style's transparent base.
     static readonly Brush TapFlashBrush = new SolidColorBrush(Color.FromRgb(0x45, 0x45, 0x45));
     System.Windows.Threading.DispatcherTimer? _tapFlashTimer;
@@ -1660,7 +1660,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         _tapFlashTimer.Start();
     }
 
-    // The mode-select registry Ids, in button/menu order — the keybind chain iterates these so
+    // The mode-select registry Ids, in button/menu order - the keybind chain iterates these so
     // adding a mode is a one-line registry change, not a new hand-wired IsAction branch.
     static readonly string[] ModeCommandIds =
         ["Mode Setlist", "Mode Combi", "Mode Program", "Mode Sequence", "Mode Sampling", "Mode Global", "Mode Disk"];
@@ -1777,7 +1777,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
 
     // Smallest client width that still shows every footer status-bar item (icons +
     // spacing) without clipping. Measured live from the bar's own content, so adding
-    // items in XAML automatically widens the floor — there's no constant to keep in sync.
+    // items in XAML automatically widens the floor - there's no constant to keep in sync.
     // Probes at infinite width (rather than reading DesiredSize at the current width) so
     // the result is correct even when this runs while the window is already narrow, e.g.
     // when Focused is the startup preset.
@@ -1791,7 +1791,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     }
 
     // Pin the window's minimum width to the footer's natural width so it can never be
-    // dragged — or preset-sized — narrower than the status-bar icons. Computed once at
+    // dragged - or preset-sized - narrower than the status-bar icons. Computed once at
     // load while the stretchy performance-name item is still empty, so the floor is
     // "icons + spacing", not "icons + whatever performance name is showing".
     void UpdateMinimumWindowWidth()
@@ -1928,7 +1928,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             ContextMenuStrip = menu,
             Visible          = false
         };
-        // Single LEFT click restores (matches how every other tray/taskbar app behaves — a
+        // Single LEFT click restores (matches how every other tray/taskbar app behaves - a
         // double-click used to be required). Right click still falls through to the context menu.
         _trayIcon.MouseClick += (_, e) =>
         {

@@ -3,7 +3,7 @@ namespace KronosScreenRemote;
 // The seven Kronos operating modes, in the app/daemon "STATE mode" numbering (1-7,
 // with 0 = not yet detected). This is the numbering the daemon's "STATE -> MODE=<n>
 // EDITCTX=<e>" reply uses (see ScreenSession's STATE polling),
-// and that the mode-tracking fields (_currentMode / _pendingMode / …), SendMode(), and
+// and that the mode-tracking fields (_currentMode / _pendingMode / ...), SendMode(), and
 // SetModeButton() all use.
 //
 // IMPORTANT: this is NOT the Korg SysEx wire-protocol mode numbering (0=Combi, 2=Program,

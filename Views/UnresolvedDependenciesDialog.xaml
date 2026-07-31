@@ -20,7 +20,7 @@
         <TextBlock Grid.Row="0" x:Name="TXT_Heading" TextWrapping="Wrap" Margin="0 0 0 10"/>
 
         <!-- MaxHeight caps growth instead of the window unconditionally sizing to fit every
-             row — the bug this dialog replaces a plain MessageBox to fix: with a large number
+             row - the bug this dialog replaces a plain MessageBox to fix: with a large number
              of unresolved dependencies (e.g. a big Set List missing many Combis/Programs), the
              box grew so tall its own buttons scrolled off-screen and couldn't be clicked. Below
              the cap this just shows every row with no visible scrollbar; above it, it scrolls. -->
@@ -32,7 +32,7 @@
                      DisplayMemberPath="Description"
                      ContextMenuOpening="OnContextMenuOpening">
                 <!-- Right-click has to reach the ROW, not just the list, so the menu can act on
-                     the specific missing object under the cursor — the whole point of making this
+                     the specific missing object under the cursor - the whole point of making this
                      dialog actionable instead of a dead end. -->
                 <ListBox.ItemContainerStyle>
                     <Style TargetType="ListBoxItem">
@@ -41,7 +41,7 @@
                 </ListBox.ItemContainerStyle>
                 <ListBox.ContextMenu>
                     <ContextMenu>
-                        <MenuItem x:Name="MI_ScanForRow" Header="Search a PCG for this object…" Click="OnScanForRow"/>
+                        <MenuItem x:Name="MI_ScanForRow" Header="Search a PCG for this object..." Click="OnScanForRow"/>
                         <MenuItem x:Name="MI_CopyAll" Header="Copy all details" Click="OnCopyAll"/>
                     </ContextMenu>
                 </ListBox.ContextMenu>

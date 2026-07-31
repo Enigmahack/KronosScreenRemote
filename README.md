@@ -7,7 +7,7 @@ A Windows desktop application for remotely viewing and controlling a **Korg Kron
 
 | Repository | Description |
 |---|---|
-| [KronosScreenRemote](https://github.com/Enigmahack/KronosScreenRemote) | This repo — Windows desktop client |
+| [KronosScreenRemote](https://github.com/Enigmahack/KronosScreenRemote) | This repo - Windows desktop client |
 | [KronosScreenRemoteDaemon](https://github.com/Enigmahack/KronosScreenRemoteDaemon) | Kronos-side daemon (required) |
 
 > **Shared context**: this project is part of a larger Kronos RE/modding
@@ -15,35 +15,35 @@ A Windows desktop application for remotely viewing and controlling a **Korg Kron
 > [kronosology](../kronosology/) + [KronosScreenRemoteDaemon](../KronosScreenRemoteDaemon/)).
 > Cross-project architecture, shared dev environments, credentials/access
 > pointers, and agent/tooling policy live in
-> [`/home/share/PROJECT_BRAIN/BRAIN.md`](../PROJECT_BRAIN/BRAIN.md) —
+> [`/home/share/PROJECT_BRAIN/BRAIN.md`](../PROJECT_BRAIN/BRAIN.md) -
 > check there before duplicating knowledge into this repo.
 
 ---
 
 ## Features
 
-- **Live Screen Streaming** — 800×600 8-bit indexed color at up to 15 FPS via TCP; supports full-frame (pull) and change-only modes for bandwidth efficiency
-- **Value Slider** — Left-panel INC/DEC buttons and draggable 0–127 value slider mirroring the Kronos front-panel VALUE control; double-click to snap to center (64)
-- **Remote Control** — Virtual button panel (mode keys, number pad, data wheel, bank selects) with drag, scroll, and keyboard-shortcut support
-- **Mode Detection** — Automatic operating-mode tracking from live SysEx mode-change messages, with reference-image screen matching as a fallback
-- **MIDI / SysEx Integration** — Live MIDI-out monitoring with a SysEx/MIDI traffic window and on-screen keyboard; automatic mode-follow, program-change follow, and VALUE-slider mirroring from the hardware. Runs over the daemon's TCP MIDI bridge or a direct USB-MIDI link (selectable in Settings → MIDI/SysEx)
-- **Set List & Name Tools** — Dump and browse Kronos Set Lists, and sync program/combi names into a local cache for flash-free program-change display ("Sync All" collects both)
-- **Audio VU Meter** — WASAPI real-time level monitoring (L/R peak + RMS) with device selection
-<img width="1414" height="508" alt="2026-06-19 17_44_49-Kronos ValueSlider — 192 168 100 15" src="https://github.com/user-attachments/assets/fa7ad681-8056-489f-99e8-32f90af12e98" />
+- **Live Screen Streaming** - 800×600 8-bit indexed color at up to 15 FPS via TCP; supports full-frame (pull) and change-only modes for bandwidth efficiency
+- **Value Slider** - Left-panel INC/DEC buttons and draggable 0–127 value slider mirroring the Kronos front-panel VALUE control; double-click to snap to center (64)
+- **Remote Control** - Virtual button panel (mode keys, number pad, data wheel, bank selects) with drag, scroll, and keyboard-shortcut support
+- **Mode Detection** - Automatic operating-mode tracking from live SysEx mode-change messages, with reference-image screen matching as a fallback
+- **MIDI / SysEx Integration** - Live MIDI-out monitoring with a SysEx/MIDI traffic window and on-screen keyboard; automatic mode-follow, program-change follow, and VALUE-slider mirroring from the hardware. Runs over the daemon's TCP MIDI bridge or a direct USB-MIDI link (selectable in Settings → MIDI/SysEx)
+- **Set List & Name Tools** - Dump and browse Kronos Set Lists, and sync program/combi names into a local cache for flash-free program-change display ("Sync All" collects both)
+- **Audio VU Meter** - WASAPI real-time level monitoring (L/R peak + RMS) with device selection
+<img width="1414" height="508" alt="2026-06-19 17_44_49-Kronos ValueSlider - 192 168 100 15" src="https://github.com/user-attachments/assets/fa7ad681-8056-489f-99e8-32f90af12e98" />
 
-- **Touch Calibration** — 3x3 - 5x5 warp mesh with bilinear interpolation for accurate touch-to-screen mapping
-<img width="1414" height="508" alt="2026-06-19 17_39_29-Kronos ScreenRemote — 192 168 100 15" src="https://github.com/user-attachments/assets/ebe0858e-67c6-4a45-a5fa-85590d2bbdba" />
+- **Touch Calibration** - 3x3 - 5x5 warp mesh with bilinear interpolation for accurate touch-to-screen mapping
+<img width="1414" height="508" alt="2026-06-19 17_39_29-Kronos ScreenRemote - 192 168 100 15" src="https://github.com/user-attachments/assets/ebe0858e-67c6-4a45-a5fa-85590d2bbdba" />
 
-- **FTP File Manager** — Browse, upload, and download files on the Kronos SD card with conflict resolution
-<img width="1414" height="508" alt="2026-06-19 17_40_35-File Manager — Kronos" src="https://github.com/user-attachments/assets/82fc2864-1e3e-4553-a1de-4708fd746a75" />
+- **FTP File Manager** - Browse, upload, and download files on the Kronos SD card with conflict resolution
+<img width="1414" height="508" alt="2026-06-19 17_40_35-File Manager - Kronos" src="https://github.com/user-attachments/assets/82fc2864-1e3e-4553-a1de-4708fd746a75" />
 
-- **Test Mode** — Enter the Kronos built-in hardware test mode for diagnostics (Tools menu)
-- **Portable Settings** — Preferences, key bindings, and macros persist as JSON; export or import your full configuration via **File → Export/Import Settings…**
-- **Zoom & Layout Presets** — Configurable window sizes (75–200%), fullscreen, always-on-top; data input (right) and value input (left) panels can be independently hidden in Full mode or expanded/collapsed via dedicated rails in Focused mode, with panel state remembered across sessions
+- **Test Mode** - Enter the Kronos built-in hardware test mode for diagnostics (Tools menu)
+- **Portable Settings** - Preferences, key bindings, and macros persist as JSON; export or import your full configuration via **File → Export/Import Settings...**
+- **Zoom & Layout Presets** - Configurable window sizes (75–200%), fullscreen, always-on-top; data input (right) and value input (left) panels can be independently hidden in Full mode or expanded/collapsed via dedicated rails in Focused mode, with panel state remembered across sessions
 <img width="904" height="508" alt="2026-06-19 17_45_52-_VariousViews" src="https://github.com/user-attachments/assets/92c41123-f285-46db-a83f-30e131370ec3" />
 
-- **Hardware Stats Monitoring** — Monitor hard drive space, CPU core usage, Fan speed, CPU temperatures, and more.
-<img width="1414" height="508" alt="2026-06-19 17_47_52-Kronos ScreenRemote Keyboard Info — 192 168 100 15" src="https://github.com/user-attachments/assets/13a83afc-056a-4189-87b5-ea05dd181d3a" />
+- **Hardware Stats Monitoring** - Monitor hard drive space, CPU core usage, Fan speed, CPU temperatures, and more.
+<img width="1414" height="508" alt="2026-06-19 17_47_52-Kronos ScreenRemote Keyboard Info - 192 168 100 15" src="https://github.com/user-attachments/assets/13a83afc-056a-4189-87b5-ea05dd181d3a" />
 
 ---
 
@@ -152,7 +152,7 @@ KronosScreenRemote/
 | Ctrl+K | Open command palette |
 | Ctrl+S | Save screenshot |
 
-Shortcuts are rebindable via **File → Settings… → Key Bindings**.
+Shortcuts are rebindable via **File → Settings... → Key Bindings**.
 
 ---
 

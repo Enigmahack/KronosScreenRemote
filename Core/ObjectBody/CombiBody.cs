@@ -1,11 +1,11 @@
 namespace KronosScreenRemote;
 
-// Raw-body accessors for a Combi object (obj 0x01) — decoded body only, no
+// Raw-body accessors for a Combi object (obj 0x01) - decoded body only, no
 // wire-format/8-to-7 knowledge. See ProgramBody for the shared-decoder rationale.
 static class CombiBody
 {
     // Category/Sub-Category: same bit layout as ProgramBody (bits 4-0 = Category,
-    // bits 7-5 = Sub-Category), 12 bytes before LibRefs.Timbre0Num — sits in the
+    // bits 7-5 = Sub-Category), 12 bytes before LibRefs.Timbre0Num - sits in the
     // Combi Common block immediately before the timbre array (CombiAndSongTimbreSet.txt).
     const int CategoryOfs = 4790;
 
@@ -23,7 +23,7 @@ static class CombiBody
     // this matters and why it's detected by shape rather than by a table of known content hashes.
     // Either signal is enough:
     //
-    //   • the NAME says so — the instrument's own "Init Combi", and this app's erase output
+    //   • the NAME says so - the instrument's own "Init Combi", and this app's erase output
     //     ("INIT COMBI", Core/LocalLibrary/EraseBody.cs);
     //   • every one of the 16 timbres still points at the zero default (bank 0, program 0). That
     //     is the defining property of an init Combi and the whole reason this check exists: those
@@ -40,7 +40,7 @@ static class CombiBody
                trimmed.Contains("COMBI", StringComparison.OrdinalIgnoreCase);
     }
 
-    // False for a body too short to hold all 16 timbres (a truncated dump) — IterCombiTimbreRefs
+    // False for a body too short to hold all 16 timbres (a truncated dump) - IterCombiTimbreRefs
     // stops early there, and "fewer than 16 defaults" must not read as "all defaults".
     static bool AllTimbresAtDefault(byte[] body)
     {

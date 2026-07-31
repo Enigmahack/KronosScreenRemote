@@ -6,25 +6,25 @@ using KronosScreenRemote.ViewModels;
 
 namespace KronosScreenRemote;
 
-// The Librarian UI (Views/LibrarianShellWindow.xaml) — the classic LibrarianWindow this
+// The Librarian UI (Views/LibrarianShellWindow.xaml) - the classic LibrarianWindow this
 // replaced (and its SetListWindow/SetListSlotEditDialog satellites) were deleted in the
 // Phase 7 cutover. Selection and context-menu wiring are plain code-behind (a per-item WPF
 // ContextMenu inside a HierarchicalDataTemplate is a well-known MVVM binding-scope friction
-// point — see LocalLibraryPaneViewModel's own comment) but every action itself is a call
+// point - see LocalLibraryPaneViewModel's own comment) but every action itself is a call
 // straight into the ViewModel; no hardware access or business logic lives in this file.
 //
 // The Local pane's interaction model is file-manager-style Cut/Copy/Paste + drag-drop +
 // multi-select, replacing the old two-step "Set as Source/Destination + Swap" flow (see
 // LocalLibraryPaneViewModel's Cut/Copy/PasteIntoSlot/PasteIntoBank). Selection itself
-// (which nodes are highlighted right now) lives here, not in the ViewModel — same binding-
-// scope reasoning as the ContextMenu — and, per PaneSelection below, a BANK-level node is now
+// (which nodes are highlighted right now) lives here, not in the ViewModel - same binding-
+// scope reasoning as the ContextMenu - and, per PaneSelection below, a BANK-level node is now
 // a selectable citizen too (not just a leaf), expanding to every item inside it wherever an
 // action needs concrete ObjLocs (SelectedLocs/PcgSelectedLocs).
 internal partial class LibrarianShellWindow : ThemedWindow
 {
     readonly LibrarianShellViewModel _vm;
 
-    // One PaneSelection per tree (see the PaneSelection class below) — replaces what used to
+    // One PaneSelection per tree (see the PaneSelection class below) - replaces what used to
     // be two near-identical duplicated selection blocks (Local, PCG) plus a third pane (Merge)
     // with no selection tracking at all, which is exactly how issues #1/#2 (highlight doesn't
     // clean up on deselect / doesn't match across panes) happened in the first place.
@@ -32,7 +32,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
     readonly PaneSelection _pcgSelection;
     readonly PaneSelection _mergeSelection;
 
-    // Per-pane mouse-gesture plumbing (click / right-click / mouse-up + drag-arm) — see
+    // Per-pane mouse-gesture plumbing (click / right-click / mouse-up + drag-arm) - see
     // PaneInteraction, which holds the one shared copy of that logic. Each wraps its matching
     // selection above; both are kept because the rest of this file reads the selections directly
     // (SelectedLocs, toolbar/context-menu enabled-state).
@@ -47,17 +47,17 @@ internal partial class LibrarianShellWindow : ThemedWindow
         DataContext = _vm;
 
         // Break the Owner link before closing so WPF doesn't minimize the parent when this
-        // window had focus (known WPF owner-activation bug) — without it, closing a maximized
+        // window had focus (known WPF owner-activation bug) - without it, closing a maximized
         // Librarian would sometimes send MainWindow to the system tray. Same one-line fix
         // FileManagerWindow.OnClosing already uses for the identical reason.
         // Disposing the ViewModel here releases the undo recorder's subscriptions to the
         // LocalLibraryCache, which outlives this window (see LibrarianShellViewModel.Dispose).
         Closing += (_, _) => { Owner = null; _vm.Dispose(); };
 
-        // Step 4 of the auto-heal placement pipeline — the ViewModel stays free of WPF types
+        // Step 4 of the auto-heal placement pipeline - the ViewModel stays free of WPF types
         // (same split as every other confirmation in this file), so it calls back into this
         // delegate only once ResolvePendingDependencies couldn't clear everything on its own.
-        // A dedicated dialog, not MessageBox.Show — a plain MessageBox grew unboundedly tall
+        // A dedicated dialog, not MessageBox.Show - a plain MessageBox grew unboundedly tall
         // with a large number of entries until its own buttons scrolled off-screen (see
         // UnresolvedDependenciesDialog's own comment).
         _vm.ConfirmContinueWithPendingDependencies = pending =>
@@ -85,7 +85,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
         _pcgSelection.Others = new[] { _localSelection, _mergeSelection };
         _mergeSelection.Others = new[] { _localSelection, _pcgSelection };
 
-        // Every RefreshTree() rebuilds Roots from scratch (brand new ObjectTreeNode instances) —
+        // Every RefreshTree() rebuilds Roots from scratch (brand new ObjectTreeNode instances) -
         // re-bind each pane's selection to the new nodes by identity right after, or a stale
         // selection would linger on orphaned objects nothing on screen still represents (the
         // exact bug behind "Delete doesn't fade, highlighting changes again on next select").
@@ -93,7 +93,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
         _vm.PcgPane.TreeRefreshed += () => _pcgSelection.ReconcileAfterRefresh(_vm.PcgPane.Roots);
         _vm.MergePane.TreeRefreshed += () => _mergeSelection.ReconcileAfterRefresh(_vm.MergePane.Roots);
 
-        // "Object Dependencies" panel — recompute from whichever pane currently holds the
+        // "Object Dependencies" panel - recompute from whichever pane currently holds the
         // selection every time any of the three changes (cross-pane exclusivity guarantees at
         // most one is ever non-empty by the time this runs).
         _localSelection.SelectionChanged += UpdateObjectDependencies;
@@ -123,8 +123,8 @@ internal partial class LibrarianShellWindow : ThemedWindow
 
     static int PcgKindObjType(ObjectTreeNode n) => n.Loc?.ObjType ?? n.BankRef!.Value.ObjType;
 
-    // Cut/Copy/Rename/Delete depend on "what's currently selected," which — like the
-    // selection set itself — lives here, not in the ViewModel, so their enabled state is
+    // Cut/Copy/Rename/Delete depend on "what's currently selected," which - like the
+    // selection set itself - lives here, not in the ViewModel, so their enabled state is
     // pushed imperatively rather than bound. BTN_LocalPaste is the one exception: it depends
     // only on ViewModel clipboard state, so it's a plain XAML binding in the .xaml file.
     void UpdateToolbarEnabled()
@@ -137,7 +137,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
         BTN_LocalDelete.Content = hasSelection && _localSelection.Items.All(n => n.IsPendingDelete) ? "Restore" : "Delete";
     }
 
-    // Confirmation lives here (not the ViewModel) since it's a WPF-specific concern — same
+    // Confirmation lives here (not the ViewModel) since it's a WPF-specific concern - same
     // split FileManagerWindow's own Delete confirmations use.
     void OnClearHistoryButton(object sender, RoutedEventArgs e)
     {
@@ -147,7 +147,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
         _vm.ClearHistory();
     }
 
-    // Confirmation lives here, same split as OnClearHistoryButton — this discards every
+    // Confirmation lives here, same split as OnClearHistoryButton - this discards every
     // pending local edit and pending deletion at once.
     void OnClearChangesButton(object sender, RoutedEventArgs e)
     {
@@ -159,12 +159,12 @@ internal partial class LibrarianShellWindow : ThemedWindow
     }
 
     // Local edits are already persisted as you make them (that's the whole "local edits never
-    // touch hardware until Sync/Commit" model) — there's nothing for Cancel to roll back beyond
+    // touch hardware until Sync/Commit" model) - there's nothing for Cancel to roll back beyond
     // what Clear Changes above already does explicitly, so this is just a close.
     void OnCancelButton(object sender, RoutedEventArgs e) => Close();
 
     // ApplicationCommands.Undo (Ctrl+Z, and the top row's Undo button via the same ViewModel
-    // command) — see the CommandBinding's own comment in the XAML for why the gesture is routed
+    // command) - see the CommandBinding's own comment in the XAML for why the gesture is routed
     // through the standard command rather than a raw KeyBinding. No confirmation: undo is the
     // recovery action, and a step only ever rolls back local state (never hardware).
     void OnUndoCommand(object sender, ExecutedRoutedEventArgs e) => _vm.UndoCommand.Execute(null);
@@ -173,15 +173,15 @@ internal partial class LibrarianShellWindow : ThemedWindow
 
     // ── Local pane: multi-select ─────────────────────────────────────────────────
     // Ctrl+Click toggles one; Shift+Click extends a contiguous range among the anchor's
-    // siblings (same bank, or same type-root if the anchor/target are BANK nodes) — cross-
+    // siblings (same bank, or same type-root if the anchor/target are BANK nodes) - cross-
     // bank/cross-type-root range-select is out of scope; plain click on a node already part
     // of a multi-selection keeps the group intact until mouse-up (so dragging one of several
     // selected items moves the whole group, matching Explorer), collapsing to just that node
     // on mouse-up only if no drag happened meanwhile. A BANK node (not just a leaf) is now a
-    // selectable citizen too — see PaneSelection — never mixed with a leaf selection.
+    // selectable citizen too - see PaneSelection - never mixed with a leaf selection.
 
     // Expands any selected BANK node to every leaf ObjLoc underneath it (a bank move = every
-    // item in the bank) — a plain leaf selection passes through unchanged.
+    // item in the bank) - a plain leaf selection passes through unchanged.
     List<ObjLoc> SelectedLocs() => _localSelection.Items.SelectMany(n => n.LeafLocs()).ToList();
 
     void ClearSelection()
@@ -191,7 +191,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
     }
 
     // Click / mouse-up / right-click all delegate to the shared PaneInteraction (which selects,
-    // arms a drag, and refreshes the toolbar) — see its own doc comment. Right-click selecting
+    // arms a drag, and refreshes the toolbar) - see its own doc comment. Right-click selecting
     // first (Explorer convention) is what makes Cut/Copy/Delete act on the actually-clicked node,
     // not a stale prior selection, by the time OnLocalContextMenuOpening runs.
     void OnLocalNodePreviewMouseDown(object sender, MouseButtonEventArgs e) => _local.OnPreviewMouseDown(sender, e);
@@ -210,13 +210,13 @@ internal partial class LibrarianShellWindow : ThemedWindow
     }
 
     // Program/Combi: Name + Category/Sub-Category. Set List: Name + a browsable slot list
-    // (Name/Color/Comments per slot) — see PropertiesDialog's own doc comment for why this
+    // (Name/Color/Comments per slot) - see PropertiesDialog's own doc comment for why this
     // absorbs the retired SetListWindow/SetListSlotEditDialog into one dialog.
     void OpenProperties(ObjLoc loc)
     {
         string currentName = _vm.LocalPane.ReadDisplayName(loc);
         var dump = _vm.LocalPane.GetObjectDump(loc);
-        if (dump == null) return;   // not found locally — nothing to show
+        if (dump == null) return;   // not found locally - nothing to show
 
         if (loc.ObjType == LibObj.SetList)
         {
@@ -244,7 +244,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
         var (category, subCategory) = loc.ObjType == LibObj.Program
             ? ProgramBody.ReadCategory(dump.Body)
             : CombiBody.ReadCategory(dump.Body);
-        // Category/Sub-Category are shown by NAME (requirement 4) — Programs and Combis have their
+        // Category/Sub-Category are shown by NAME (requirement 4) - Programs and Combis have their
         // own independent name tables, both read from the instrument's Global object and cached
         // per host; _vm.CategoryNames falls back to numeric labels when nothing's synced yet.
         var propDlg = PropertiesDialog.ForProgramOrCombi(
@@ -266,8 +266,8 @@ internal partial class LibrarianShellWindow : ThemedWindow
     }
 
     // Requirement 1: fills the Properties dialog's two dependency lists, and wires its "Scan PCG
-    // for missing…" button to the same recovery flow the context menu offers. Re-filled after a
-    // scan, since staging a recovered dependency doesn't itself resolve anything — but it does
+    // for missing..." button to the same recovery flow the context menu offers. Re-filled after a
+    // scan, since staging a recovered dependency doesn't itself resolve anything - but it does
     // change what the user is looking at, and a stale list would read as "the scan did nothing."
     void AttachDependencies(PropertiesDialog dlg, ObjLoc loc)
     {
@@ -284,7 +284,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
         Refresh();
     }
 
-    // Requirement 2: the UI-friendly manual dependency resolution — pick a .pcg, and anything in
+    // Requirement 2: the UI-friendly manual dependency resolution - pick a .pcg, and anything in
     // it that this object is missing is staged into the Merge Window for placing. The file picker
     // lives here (a WPF concern, same split as every other dialog in this file); the scan itself
     // is LibrarianShellViewModel.ScanPcgForDependencies.
@@ -326,7 +326,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
 
     // The Unresolved Dependencies dialog's right-click search: same file picker as the object-level
     // scan above, but for ONE reported address. Returns the status line for the dialog to show in
-    // place — it's already modal over a Sync/Commit, so stacking another dialog on it to report a
+    // place - it's already modal over a Sync/Commit, so stacking another dialog on it to report a
     // result would be worse than useless.
     string SearchPcgForMissingObject(ObjLoc missing)
     {
@@ -360,7 +360,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
 
     // ── Local pane: Cut / Copy / Paste / Rename / Delete ─────────────────────────
     // Shared by the context menu, the toolbar buttons, and keyboard shortcuts (Ctrl+X/C/V,
-    // F2, Delete) — one implementation per action, several ways to trigger it.
+    // F2, Delete) - one implementation per action, several ways to trigger it.
 
     void DoCut()
     {
@@ -388,7 +388,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
         }
         else if (target?.TypeRootObjType is int typeRoot)
         {
-            // Requirement 6: the "Programs"/"Combis" header names a type but no bank — fill the
+            // Requirement 6: the "Programs"/"Combis" header names a type but no bank - fill the
             // first bank with room instead of refusing (see LocalLibraryPaneViewModel.PasteIntoTypeRoot).
             var (ok, msg) = _vm.LocalPane.PasteIntoTypeRoot(typeRoot);
             _vm.LocalPane.StatusText = msg ?? (ok ? AppMessages.Librarian.Pasted : AppMessages.Librarian.PasteFailed);
@@ -399,13 +399,13 @@ internal partial class LibrarianShellWindow : ThemedWindow
         }
     }
 
-    // Local-only "mark for deletion, fade in place" (or, toggled again, "restore") — see
+    // Local-only "mark for deletion, fade in place" (or, toggled again, "restore") - see
     // LocalLibraryPaneViewModel.ToggleDelete/ToggleDeleteMany's own comment. Deliberately does
     // NOT clear the selection afterward (unlike the old Discard-based Delete): the same node
     // stays selected through the tree rebuild (PaneSelection.ReconcileAfterRefresh re-binds it
     // to the fresh, now-faded instance), so clicking Delete/Restore again immediately toggles
     // the same item back without re-selecting it first. Visually the row shows the pending-
-    // delete grey, not the blue selection color, while both are true — IsPendingDelete's
+    // delete grey, not the blue selection color, while both are true - IsPendingDelete's
     // DataTrigger is declared after IsSelected's in LocalNodeTemplate's Border style, so it
     // wins on conflict, same precedence IsDirty/IsConflicted already use over a selected row.
     void DoDelete()
@@ -413,7 +413,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
         var locs = SelectedLocs();
         if (locs.Count == 0) return;
 
-        // Issue 1: warn before deleting something other Combis/Set Lists depend on — only on the
+        // Issue 1: warn before deleting something other Combis/Set Lists depend on - only on the
         // DELETE direction (a Restore toggles the flag back and can't dangle anything), and only
         // when there actually are referrers. The direction matches DoDelete's own toggle
         // (ToggleDelete[Many]): Restore when EVERY selected node is already pending-delete.
@@ -453,7 +453,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
     }
 
     // The ContextMenu's own DataContext is rebound to the clicked node (see the XAML), which
-    // is enough for Click handlers — but a ContextMenu/Popup isn't part of the main visual
+    // is enough for Click handlers - but a ContextMenu/Popup isn't part of the main visual
     // tree, so a MenuItem inside it can't reach back up to the Window's DataContext via a
     // normal RelativeSource binding (the same friction LocalLibraryPaneViewModel's own doc
     // comment calls out). Setting Visibility/IsEnabled here, just before the menu opens, is
@@ -470,17 +470,17 @@ internal partial class LibrarianShellWindow : ThemedWindow
             switch (item)
             {
                 case MenuItem { Name: "MI_Paste" } mi: mi.IsEnabled = canPaste; break;
-                // Rename/Properties are single-object concepts — a bank has neither a name nor
+                // Rename/Properties are single-object concepts - a bank has neither a name nor
                 // properties of its own, so those stay leaf-only; Cut/Copy/Delete now expand a
                 // bank selection to every item inside it (SelectedLocs), so they show for both.
                 case MenuItem { Name: "MI_Rename" or "MI_Properties" } mi:
                     mi.Visibility = isLeaf ? Visibility.Visible : Visibility.Collapsed;
                     break;
                 // Requirement 2: shown on any object that CAN have dependencies (a Combi or Set
-                // List — a Program references nothing). Deliberately NOT gated on actually having
+                // List - a Program references nothing). Deliberately NOT gated on actually having
                 // a gap right now: answering that means walking the object's references
                 // transitively and reading each referenced body off the CAS store, which is a
-                // per-right-click disk cost on a possibly SMB-mounted DataDir — the exact stall
+                // per-right-click disk cost on a possibly SMB-mounted DataDir - the exact stall
                 // this codebase already fixed once for the tree and the referrer catalog. A scan
                 // launched on a healthy object simply reports "nothing missing" and does no work
                 // (see ScanPcgForDependencies).
@@ -502,9 +502,9 @@ internal partial class LibrarianShellWindow : ThemedWindow
         }
     }
 
-    // Context menu handlers — target is the right-clicked node (MenuItem's DataContext).
+    // Context menu handlers - target is the right-clicked node (MenuItem's DataContext).
     // Cut/Copy/Delete now also fire from a bank node (DoCut/DoCopy/DoDelete all go through
-    // SelectedLocs(), which expands a bank to every leaf inside it) — Rename stays leaf-only.
+    // SelectedLocs(), which expands a bank to every leaf inside it) - Rename stays leaf-only.
     void OnCutMenuItem(object sender, RoutedEventArgs e) { if (((MenuItem)sender).DataContext is ObjectTreeNode { Loc: { } } or ObjectTreeNode { BankRef: { } }) DoCut(); }
     void OnCopyMenuItem(object sender, RoutedEventArgs e) { if (((MenuItem)sender).DataContext is ObjectTreeNode { Loc: { } } or ObjectTreeNode { BankRef: { } }) DoCopy(); }
     void OnPasteMenuItem(object sender, RoutedEventArgs e) => PasteAt(((MenuItem)sender).DataContext as ObjectTreeNode);
@@ -512,7 +512,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
     void OnDeleteMenuItem(object sender, RoutedEventArgs e) { if (((MenuItem)sender).DataContext is ObjectTreeNode { Loc: { } } or ObjectTreeNode { BankRef: { } }) DoDelete(); }
 
     // Requirement 3: stage the selected local object(s) (a leaf, a multi-select, or a whole bank
-    // via SelectedLocs()'s LeafLocs expansion) into the Merge Window — the same effective action
+    // via SelectedLocs()'s LeafLocs expansion) into the Merge Window - the same effective action
     // as dragging them onto it (OnMergeDrop's LocalDragFormat branch).
     void OnMoveLocalToMergeMenuItem(object sender, RoutedEventArgs e)
     {
@@ -522,7 +522,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
             _vm.PullLocalIntoMerge(SelectedLocs());
     }
 
-    // Toolbar handlers — act on the current selection (Paste/Rename need exactly one leaf).
+    // Toolbar handlers - act on the current selection (Paste/Rename need exactly one leaf).
     void OnCutButton(object sender, RoutedEventArgs e) => DoCut();
     void OnCopyButton(object sender, RoutedEventArgs e) => DoCopy();
     void OnPasteButton(object sender, RoutedEventArgs e) => PasteAt(_localSelection.Items.Count == 1 ? _localSelection.Items.First() : null);
@@ -542,10 +542,10 @@ internal partial class LibrarianShellWindow : ThemedWindow
     // ── Drag-drop ─────────────────────────────────────────────────────────────────
     // Two independent drag sources land on the same TV_Local drop target, distinguished by
     // format string: PcgDragFormat (PCG pane, always a copy-in, unchanged from before) and
-    // LocalDragFormat (the Local pane dragging onto itself — new). A Local-sourced drop is
+    // LocalDragFormat (the Local pane dragging onto itself - new). A Local-sourced drop is
     // sugar over Cut/Copy + Paste: Ctrl-held-during-drop means Copy, otherwise Cut, exactly
     // reusing the same LocalLibraryPaneViewModel methods the menu/toolbar/keyboard paths do.
-    // MergeDragFormat: the Merge Window dragging OUT onto Local Library — a single item goes
+    // MergeDragFormat: the Merge Window dragging OUT onto Local Library - a single item goes
     // through exact-slot placement, a multi-item/group drag instead auto-fills sequentially
     // starting at the target bank's first free slot (see OnMergeToLocalDrop/
     // LibrarianShellViewModel.PlaceMergeGroupSequentially).
@@ -558,22 +558,22 @@ internal partial class LibrarianShellWindow : ThemedWindow
     // Generalized from a single hash to a list: one hash for a plain leaf drag (still goes
     // through the exact-slot PlaceFromMerge path below), several for a multi-select or a whole
     // bank-equivalent group drag (goes through LibrarianShellViewModel.
-    // PlaceMergeGroupSequentially instead — see OnMergeToLocalDrop).
+    // PlaceMergeGroupSequentially instead - see OnMergeToLocalDrop).
     sealed record MergeDragPayload(IReadOnlyList<string> ContentHashes);
 
 
-    // ── PCG pane: selection (mirrors the Local pane's own — see its class-doc comment for
+    // ── PCG pane: selection (mirrors the Local pane's own - see its class-doc comment for
     // why this lives in code-behind, not a binding) ─────────────────────────────────────────
     // PCG placement is always effectively a Copy (the source never changes), so unlike Local
-    // there's no Cut/vacate concern here — but LibrarianShellViewModel.BatchPlaceFromPcg/
+    // there's no Cut/vacate concern here - but LibrarianShellViewModel.BatchPlaceFromPcg/
     // PullIntoMerge still assume one object type per call (never mixing Program/Combi/Set
     // List), so PaneSelection's ExtraMixCheck (wired in the constructor) refuses to add a node
     // of a different type than what's already selected. A BANK node is a selectable citizen
-    // here too, same as Local — see PaneSelection.
+    // here too, same as Local - see PaneSelection.
 
     List<ObjLoc> PcgSelectedLocs() => _pcgSelection.Items.SelectMany(n => n.LeafLocs()).ToList();
 
-    // Delegated to the shared PaneInteraction (no toolbar hook — only the Local pane has one).
+    // Delegated to the shared PaneInteraction (no toolbar hook - only the Local pane has one).
     // Right-click selects first (Explorer convention) so "Move to Merge Window" acts on whatever
     // was actually right-clicked, not a stale prior selection, by OnPcgContextMenuOpening.
     void OnPcgPreviewMouseDown(object sender, MouseButtonEventArgs e) => _pcg.OnPreviewMouseDown(sender, e);
@@ -591,7 +591,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
     }
 
     // Works for a single item, a multi-select, or a whole bank (BankRef expands to every leaf
-    // underneath via SelectedLocs()'s own LeafLocs() — same primitive PcgSelectedLocs uses) —
+    // underneath via SelectedLocs()'s own LeafLocs() - same primitive PcgSelectedLocs uses) -
     // the exact per-loc loop OnMergeDrop already uses for a multi-item drag payload, just
     // triggered from the context menu instead of a drop.
     void OnMoveToMergeMenuItem(object sender, RoutedEventArgs e)
@@ -633,7 +633,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
     void OnLocalDragOver(object sender, DragEventArgs e)
     {
         // Must match each source's own DoDragDrop allowed-effects bitmask exactly (Merge's own
-        // drag start above only allows Move) — requesting an effect the source didn't allow
+        // drag start above only allows Move) - requesting an effect the source didn't allow
         // makes WPF show the "drop not allowed" cursor for the whole drag, even though
         // OnLocalDrop below is fully able to handle it.
         e.Effects = e.Data.GetDataPresent(MergeDragFormat) ? DragDropEffects.Move
@@ -668,7 +668,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
         }
         else if (target.Loc is { } slotLoc)
         {
-            // Multiple items dropped on one specific slot — no single address applies to all
+            // Multiple items dropped on one specific slot - no single address applies to all
             // of them, so auto-fill starting at that slot's bank instead (same rationale as
             // the Local pane's own multi-item Paste onto a specific slot).
             var (ok, msg) = _vm.BatchPlaceFromPcg(slotLoc.ObjType, payload.Locs, slotLoc.Bank);
@@ -682,7 +682,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
         }
         else if (target.TypeRootObjType is int typeRoot)
         {
-            // Requirement 6: dropped on the "Programs"/"Combis" header — resolve it to the first
+            // Requirement 6: dropped on the "Programs"/"Combis" header - resolve it to the first
             // bank with room (format-matched for Programs) and auto-fill there.
             if (_vm.FindBankForPcgDrop(typeRoot, payload.Locs) is not { } destBank)
             {
@@ -731,13 +731,13 @@ internal partial class LibrarianShellWindow : ThemedWindow
         AppLog.Debug($"[librarian] local internal drop result ({(copy ? "copy" : "cut/swap")}): {_vm.LocalPane.StatusText}");
     }
 
-    // Merge Window -> Local: exact-slot placement for a single item (manual, per-item — the
+    // Merge Window -> Local: exact-slot placement for a single item (manual, per-item - the
     // user picks the destination, since only they know whether a bank should stay empty or
-    // continue a partially-filled one — see the Merge Window GroupBox's own XAML comment); a
+    // continue a partially-filled one - see the Merge Window GroupBox's own XAML comment); a
     // multi-item drag (a Ctrl+click multi-select, or a whole bank-equivalent group) instead
-    // auto-fills sequentially starting at that bank's first free slot — dropping on a specific
+    // auto-fills sequentially starting at that bank's first free slot - dropping on a specific
     // slot or the bank/group node both just identify WHICH bank, same as the PCG pane's own
-    // multi-item drop (OnLocalDrop's BatchPlaceFromPcg branch) — see LibrarianShellViewModel.
+    // multi-item drop (OnLocalDrop's BatchPlaceFromPcg branch) - see LibrarianShellViewModel.
     // PlaceMergeGroupSequentially's own comment.
     void OnMergeToLocalDrop(DragEventArgs e)
     {
@@ -750,8 +750,8 @@ internal partial class LibrarianShellWindow : ThemedWindow
 
         if (payload.ContentHashes.Count == 1)
         {
-            // A specific slot is still an exact placement. Landing on a bank — or, requirement 6,
-            // on the "Programs"/"Combis"/"Set Lists" HEADER, which names no bank at all — used to
+            // A specific slot is still an exact placement. Landing on a bank - or, requirement 6,
+            // on the "Programs"/"Combis"/"Set Lists" HEADER, which names no bank at all - used to
             // be refused outright; both now resolve to the first free slot with room, matching what
             // the PCG pane's own drop already does for a bank.
             var destLoc = target?.Loc ?? ResolveFreeSlotTarget(target, payload.ContentHashes);
@@ -779,7 +779,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
         // user pointed at it, so honor it, same as the single-item exact-placement path above);
         // dropped on the bank/group node itself -> no specific slot was picked, fall back to
         // the bank's first free slot (PlaceMergeGroupSequentially's own default).
-        // Dropped on the type-root HEADER (requirement 6) names no bank at all — resolve it to the
+        // Dropped on the type-root HEADER (requirement 6) names no bank at all - resolve it to the
         // first bank with room, then continue exactly as a bank drop would.
         (int ObjType, int Bank, int? Slot)? destBank = target?.Loc is { } slotLoc ? (slotLoc.ObjType, slotLoc.Bank, slotLoc.Number)
             : target?.BankRef is { } bankRef ? (bankRef.ObjType, bankRef.Bank, (int?)null)
@@ -796,7 +796,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
         }
 
         // Whole Program bank crossing an EXi/HD-1 boundary (requirement 4): copying it requires
-        // reformatting the destination bank (func 0x7C), which ERASES it — confirm first.
+        // reformatting the destination bank (func 0x7C), which ERASES it - confirm first.
         if (_vm.BankTypeChangeNeeded(db.ObjType, db.Bank, payload.ContentHashes) is bool targetIsExi)
         {
             var descriptor = ObjectTypeRegistry.Get(db.ObjType);
@@ -818,8 +818,8 @@ internal partial class LibrarianShellWindow : ThemedWindow
     }
 
     // Where a SINGLE Merge Window item dropped on a non-slot node should land (requirement 6): the
-    // first free slot of the bank that was dropped on, or — for a type-root header, which names no
-    // bank — of the first bank with room (format-matched for Programs, see
+    // first free slot of the bank that was dropped on, or - for a type-root header, which names no
+    // bank - of the first bank with room (format-matched for Programs, see
     // LocalEditOps.FindBankWithFreeSlot). Null when the target isn't addressable at all, or
     // everything eligible is full; the caller distinguishes those two for its status message.
     ObjLoc? ResolveFreeSlotTarget(ObjectTreeNode? target, IReadOnlyList<string> contentHashes)
@@ -834,10 +834,10 @@ internal partial class LibrarianShellWindow : ThemedWindow
 
     // ── Merge Window: selection + drag source (onto Local) + drop target (from PCG) ──────
     // Full multi-select parity with Local/PCG now (Ctrl+click, Shift-range, and a BankRef
-    // "group" node — the type-root Set Lists/Combis/Programs headers, see
-    // MergePaneViewModel.RefreshTree — selectable the same way a Local/PCG bank is). Dragging
+    // "group" node - the type-root Set Lists/Combis/Programs headers, see
+    // MergePaneViewModel.RefreshTree - selectable the same way a Local/PCG bank is). Dragging
     // a single leaf still means "place exactly here"; dragging 2+ (a multi-select or a whole
-    // group) means "auto-fill sequentially from the target bank's first free slot" — see
+    // group) means "auto-fill sequentially from the target bank's first free slot" - see
     // OnMergeToLocalDrop.
 
     // Delegated to the shared PaneInteraction (no toolbar hook). Right-click selects first so
@@ -858,16 +858,16 @@ internal partial class LibrarianShellWindow : ThemedWindow
     }
 
     // Works for a single item, a multi-select, or a whole group (expands to every DIRECT child
-    // content hash via MergeContentHashes — same primitive the drag payload uses).
+    // content hash via MergeContentHashes - same primitive the drag payload uses).
     void OnRemoveFromMergeMenuItem(object sender, RoutedEventArgs e)
     {
         var hashes = _mergeSelection.Items.SelectMany(MergeContentHashes).Distinct().ToList();
         if (hashes.Count > 0) _vm.MergePane.Remove(hashes);
     }
 
-    // A group node (BankRef set — one of the type-root headers, or a pure sub-grouping like
+    // A group node (BankRef set - one of the type-root headers, or a pure sub-grouping like
     // Programs' HD-1/EXi split) recurses into its children to collect their content hashes.
-    // This stops the instant it reaches a node that already has its own MergeContentHash — a
+    // This stops the instant it reaches a node that already has its own MergeContentHash - a
     // top-level Combi/Set List entry has one despite also having Children (its own nested
     // dependency Programs), so those never get swept in here; only the dependency-free
     // grouping levels above it (type root, HD-1/EXi) get walked through. See
@@ -892,9 +892,9 @@ internal partial class LibrarianShellWindow : ThemedWindow
         DragDrop.DoDragDrop((DependencyObject)sender, data, DragDropEffects.Move);
     }
 
-    // Accepts drags from the PCG pane (copy-in) and, now, the Local pane (requirement 3 —
+    // Accepts drags from the PCG pane (copy-in) and, now, the Local pane (requirement 3 -
     // stage an already-placed object back in to rearrange/re-push it). Both are a pull-in, so
-    // both request Copy — the Local drag's own DoDragDrop allows Copy|Move, so Copy is fine.
+    // both request Copy - the Local drag's own DoDragDrop allows Copy|Move, so Copy is fine.
     void OnMergeDragOver(object sender, DragEventArgs e)
     {
         e.Effects = e.Data.GetDataPresent(PcgDragFormat) || e.Data.GetDataPresent(LocalDragFormat)
@@ -903,12 +903,12 @@ internal partial class LibrarianShellWindow : ThemedWindow
     }
 
     // PCG/Local -> Merge: every dropped item is pulled in fully automatically along with its own
-    // dependencies (see LibrarianShellViewModel.PullIntoMerge/PullLocalIntoMerge) — no destination
+    // dependencies (see LibrarianShellViewModel.PullIntoMerge/PullLocalIntoMerge) - no destination
     // to pick, since the Merge Window is bag-based (no addressing at all until placement into
     // Local Library).
     void OnMergeDrop(object sender, DragEventArgs e)
     {
-        // Both go through the list overloads so one drag — however many items it carried — is one
+        // Both go through the list overloads so one drag - however many items it carried - is one
         // undo step (see LibrarianShellViewModel.PullIntoMerge's list overload).
         if (e.Data.GetData(LocalDragFormat) is LocalDragPayload localPayload)
         {

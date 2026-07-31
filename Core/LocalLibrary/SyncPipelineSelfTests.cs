@@ -3,7 +3,7 @@ namespace KronosScreenRemote;
 using System.IO;
 
 // Off-hardware self-test for Phase 3: ChangesetBuilder/SyncPipeline (Push/Commit/Sync).
-// Async, against FakeMoveExecutor — same convention as Phase 1/2. Each case gets its own
+// Async, against FakeMoveExecutor - same convention as Phase 1/2. Each case gets its own
 // scratch subdirectory so they can't interfere with each other.
 static class SyncPipelineSelfTests
 {
@@ -43,7 +43,7 @@ static class SyncPipelineSelfTests
 
                 // Regression: pushing MULTIPLE objects in one Commit/Sync must append
                 // exactly ONE "PushCommit" op-log entry (covering both via multiple Targets),
-                // never one per object — same batching bug/fix as the Pull side above.
+                // never one per object - same batching bug/fix as the Pull side above.
                 var log = OpLog.ReadAll(root);
                 Check("a-one-pushcommit-entry", log.Count(e => e.OpKind == "PushCommit") == 1);
                 Check("a-pushcommit-covers-both-objects", log.First(e => e.OpKind == "PushCommit").Targets.Count == 2);
@@ -144,11 +144,11 @@ static class SyncPipelineSelfTests
         }
 
         // ── F: a stale/placeholder stored version (e.g. 0, from the old PCG-import bug)
-        //      is corrected to the real object version at the moment of the actual write —
+        //      is corrected to the real object version at the moment of the actual write -
         //      never trusted from whatever's stored locally. Regression test for the func-0x24
         //      Reply Code 3 ("short or otherwise mangled message") bug: PCG-sourced Programs
         //      used to carry version 0 instead of the documented 5, and Set List's own version
-        //      really is 0 so that bug never surfaced there — see LibObj.CurrentObjectVersion.
+        //      really is 0 so that bug never surfaced there - see LibObj.CurrentObjectVersion.
         {
             string root = ScratchRoot + "_f";
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
@@ -188,7 +188,7 @@ static class SyncPipelineSelfTests
 
                 // U-A is bit 7 (bit 0 = edit buffer, 1-6 = I-A..I-F, 7-13 = U-A..U-G).
                 var bits = new bool[21];
-                bits[7] = true;   // hardware says U-A is actually EXi — mismatches the HD-1-sized body above
+                bits[7] = true;   // hardware says U-A is actually EXi - mismatches the HD-1-sized body above
                 exec.ProgramBankTypesToReturn = new ProgramBankTypes(bits);
 
                 var result = await SyncPipeline.PushAsync(exec, cache, new SessionDependencyClipboard());
@@ -239,7 +239,7 @@ static class SyncPipelineSelfTests
 
                 var loc = new ObjLoc(LibObj.Program, 0x40, 0);
                 LocalEditOps.Rename(cache, loc, "NOQUERY", DateTime.UtcNow);
-                // exec.ProgramBankTypesToReturn left null (default) — simulates func 0x61 unavailable.
+                // exec.ProgramBankTypesToReturn left null (default) - simulates func 0x61 unavailable.
 
                 var result = await SyncPipeline.PushAsync(exec, cache, new SessionDependencyClipboard());
                 Check("e3-push-ok-when-unverifiable", result.Ok && result.Written == 1);
@@ -260,7 +260,7 @@ static class SyncPipelineSelfTests
                 slBody = SetListBody.WriteSlotName(slBody, 0, "SLOT ONE");   // populated -> not IsEmpty
                 exec.Seed(LibObj.SetList, 0, 5, 0, slBody);
                 // A blank donor at Set List 127 (all slots empty, name "Set List 127") so the erase
-                // path captures + reuses it as the blank template — replicating the exact scenario
+                // path captures + reuses it as the blank template - replicating the exact scenario
                 // where an erased slot could inherit the donor's "Set List 127" name.
                 var donor127 = SetListBody.WriteName(new byte[69416], SetListData.DefaultName(127));
                 exec.Seed(LibObj.SetList, 0, 127, 0, donor127);
@@ -284,7 +284,7 @@ static class SyncPipelineSelfTests
                 var hwSl = await exec.DumpObjectAsync(slLoc.ObjType, slLoc.Bank, slLoc.Number);
                 Check("g-setlist-erased-on-hardware", hwSl != null && (SetListBody.FromRawBody(5, hwSl.Body)?.IsEmpty ?? false));
                 // The erased Set List must carry THIS slot's own default name ("Set List 005"), not
-                // the shared blank template's donor name ("Set List 127") — both on the body written
+                // the shared blank template's donor name ("Set List 127") - both on the body written
                 // to hardware and in the local revert-to-blank. Regression guard for the bug where a
                 // deleted slot inherited "Set List 127" from the captured donor template.
                 Check("g-setlist-erased-name-is-slot-default",
@@ -293,7 +293,7 @@ static class SyncPipelineSelfTests
                 Check("g-program-erased-on-hardware", hwProg != null && ProgramBody.ReadName(hwProg.Body) == "INIT PROGRAM");
 
                 // The slots STAY in the local library, reverted to the init/blank object at their
-                // address (requirement 2 — a bank slot never vanishes), clean + no longer pending.
+                // address (requirement 2 - a bank slot never vanishes), clean + no longer pending.
                 Check("g-setlist-kept-locally", cache.Exists(slLoc.ObjType, slLoc.Bank, slLoc.Number));
                 Check("g-setlist-reverted-blank",
                     SetListBody.FromRawBody(5, cache.GetCurrentBody(slLoc.ObjType, slLoc.Bank, slLoc.Number)!)?.IsEmpty ?? false);
@@ -312,7 +312,7 @@ static class SyncPipelineSelfTests
         }
 
         // ── H: a local-only object (placed, never pushed) marked for deletion is dropped
-        //      locally with NO hardware write — nothing to erase on the instrument. ──
+        //      locally with NO hardware write - nothing to erase on the instrument. ──
         {
             string root = ScratchRoot + "_h";
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
@@ -384,7 +384,7 @@ static class SyncPipelineSelfTests
             finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
         }
 
-        // ── J: the same mismatched placement WITHOUT a staged type change still REFUSEs — an
+        // ── J: the same mismatched placement WITHOUT a staged type change still REFUSEs - an
         //      accidental EXi-into-HD-1 crossing must never silently erase a bank. ──
         {
             string root = ScratchRoot + "_j";
@@ -401,7 +401,7 @@ static class SyncPipelineSelfTests
                 var bits = new bool[21]; bits[7] = false;   // hardware: U-A is HD-1
                 exec.ProgramBankTypesToReturn = new ProgramBankTypes(bits);
 
-                // TWO stray EXi programs in the same bank — proves the REFUSE is deduped to one
+                // TWO stray EXi programs in the same bank - proves the REFUSE is deduped to one
                 // line PER BANK (issue 3b), not one per program.
                 foreach (int n in new[] { 0, 1 })
                 {
@@ -410,7 +410,7 @@ static class SyncPipelineSelfTests
                     LocalEditOps.PlaceObject(cache, new ObjLoc(LibObj.Program, destBank, n), LibObj.Program, 5, exiBody,
                         $"STRAY EXI {n}", divertDisplacedToClipboard: true, DateTime.UtcNow);
                 }
-                // No SetPendingBankTypeChange — this is an accidental crossing.
+                // No SetPendingBankTypeChange - this is an accidental crossing.
 
                 exec.CallLog.Clear();
                 var result = await SyncPipeline.CommitChangesAsync(exec, cache, new SessionDependencyClipboard());

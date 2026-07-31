@@ -29,7 +29,7 @@ public partial class MainWindow
 
         AppLog.Info($"[conn] connecting to {_host}:{_port} mode={(_pullMode ? "pull" : "change")} fps={_fps}");
         SetConnectionStatus(ConnState.Connecting);
-        UpdateTitle($"Connecting to {_host}…");
+        UpdateTitle($"Connecting to {_host}...");
         _screenSession.Start(
             new ScreenConnection(_host, _port, _pullMode, _fps,
                                  _settings.FtpUsername, _settings.FtpPassword),
@@ -54,7 +54,7 @@ public partial class MainWindow
             _frameH = info.Height;
             _basePal = info.Palette;
             RebuildLut();
-            AppLog.Info($"[conn] connected — {_frameW}×{_frameH} {(_pullMode ? "pull" : "change-driven")} cap={_fps}fps");
+            AppLog.Info($"[conn] connected - {_frameW}×{_frameH} {(_pullMode ? "pull" : "change-driven")} cap={_fps}fps");
             SetConnectionStatus(ConnState.Connected);
             UpdateTitle(info.Connection.Host);
             AddRecentHost(info.Connection.Host);
@@ -147,7 +147,7 @@ public partial class MainWindow
             if (_editCtx.Active) ExitProgramEditContext();
 
             // STATE is authoritative and exact (eva_mode.ko or, at worst, the daemon's own
-            // pixel fallback) — unlike the old client-side pixel/SysEx heuristics this
+            // pixel fallback) - unlike the old client-side pixel/SysEx heuristics this
             // replaced, there's no stale/false reading to hold off for. Apply it as soon as
             // it disagrees with what's currently shown, so a button press lights up as fast
             // as the daemon itself confirms the change (one poll interval, not an added grace).
@@ -172,14 +172,14 @@ public partial class MainWindow
                 _seqTransport.CurrentMode = mode;
             }
             _currentMode = mode;
-            _pendingMode = Mode.Unknown;  // detection is authoritative — clear pending
+            _pendingMode = Mode.Unknown;  // detection is authoritative - clear pending
             _detectedModeEver = true;
         }
 
         if (ButtonForMode(mode) is { } btn && !_editCtx.Active)
             btn.Activate();
 
-        // mode=Unknown (server doesn't know yet) — leave current state rather than blanking
+        // mode=Unknown (server doesn't know yet) - leave current state rather than blanking
         var modeName = mode.DisplayName();
         if (modeName.Length > 0)
         {
@@ -268,8 +268,8 @@ public partial class MainWindow
             _rawFrame = raw;
             ApplyLut();
 
-            // Top-left 140×55 changed — re-check help-overlay state (rows 27–55 of the ROI).
-            // Mode/edit-context no longer come from pixels at all — ScreenSession polls the
+            // Top-left 140×55 changed - re-check help-overlay state (rows 27–55 of the ROI).
+            // Mode/edit-context no longer come from pixels at all - ScreenSession polls the
             // daemon's STATE command directly. Guard on !_daemonBooting (the
             // daemon's own authoritative BOOT= field, also read via that same STATE poll):
             // dark help-banner reference pixels score as false positives against the
@@ -291,7 +291,7 @@ public partial class MainWindow
             }
         }
 
-        // Pending mode fallback — if detection never confirmed within the timeout,
+        // Pending mode fallback - if detection never confirmed within the timeout,
         // apply the user-selected mode so the button eventually lights up.
         if (_pendingMode != Mode.Unknown && DateTime.Now >= _pendingModeDeadline)
         {
@@ -311,7 +311,7 @@ public partial class MainWindow
     void RebuildLut()
     {
         // Brightness/contrast/gamma/saturation are baked into the 256-entry LUT here, so the
-        // per-pixel blit in ApplyLut stays a single lookup — the whole frame is tone-adjusted for
+        // per-pixel blit in ApplyLut stays a single lookup - the whole frame is tone-adjusted for
         // free.  Sharpen is the exception (it needs neighbouring pixels) and runs in ApplyLut.
         var curve  = ImageAdjust.BuildToneCurve(
             _settings.ImageBrightness, _settings.ImageContrast, _settings.ImageGamma);
@@ -324,7 +324,7 @@ public partial class MainWindow
         }
     }
 
-    // Scratch RGB buffer for the sharpen pass — LUT output goes here so the unsharp mask can read
+    // Scratch RGB buffer for the sharpen pass - LUT output goes here so the unsharp mask can read
     // undisturbed source pixels while writing the sharpened result into the back buffer.  Only
     // allocated when sharpen is enabled; reused across frames and resized on a resolution change.
     int[]? _sharpBuf;
@@ -400,7 +400,7 @@ public partial class MainWindow
     void RefreshFrameRect()
     {
         // Derive from FrameImage's actual rendered position so column 2 is
-        // automatically excluded — clicks there never fall inside _frameRect.
+        // automatically excluded - clicks there never fall inside _frameRect.
         var origin = FrameImage.TranslatePoint(new Point(0, 0), RootGrid);
         double imgW = FrameImage.ActualWidth, imgH = FrameImage.ActualHeight;
 

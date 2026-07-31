@@ -32,7 +32,7 @@ sealed class HelpDetector
     bool _loaded;
 
     const byte   ColorTolerance = 30;   // ±30 per channel (~12 % of 255)
-    const double HelpThreshold  = 0.97; // 97 % — help must be fully rendered, not partial
+    const double HelpThreshold  = 0.97; // 97 % - help must be fully rendered, not partial
 
     // lut[index] = (R<<16)|(G<<8)|B  (MainWindow._lut).
     public bool IsHelpActive(byte[] frame8bpp, int frameW, int[] lut)
@@ -88,7 +88,7 @@ sealed class HelpDetector
         for (int x = 0; x < w; x++)
         {
             int o = (y * w + x) * 4;
-            if (pixels[o + 3] == 0) continue;          // transparent — skip
+            if (pixels[o + 3] == 0) continue;          // transparent - skip
             list.Add(new PixelRef(x, y,
                 pixels[o + 2],   // R  (BGRA32: offset +2)
                 pixels[o + 1],   // G  (BGRA32: offset +1)

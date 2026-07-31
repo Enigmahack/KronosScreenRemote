@@ -81,7 +81,7 @@ static class OverlayRenderer
         double sy = Math.Clamp(npy - srcH / 2, 0, frameH - srcH);
 
         // Pick the placement (among 4 cursor offsets) whose clamped center is farthest
-        // from the cursor — keeps the loupe away from the area under examination.
+        // from the cursor - keeps the loupe away from the area under examination.
         double maxLx = Math.Max(4, winSize.Width  - outW - 4);
         double maxLy = Math.Max(4, winSize.Height - outH - 4);
         const double Pad = 20;
@@ -122,7 +122,7 @@ static class OverlayRenderer
             new Point(lx + outW - MeasureText($"{zoom:F1}×").Width - 4, ly + 3),
             Color.FromRgb(200, 200, 200), pixPerDip);
 
-        // Crosshair — tracks mouse tip correctly even at frame edges
+        // Crosshair - tracks mouse tip correctly even at frame edges
         // The frame is drawn at position lx + (px - sx)*zoom, so (npx,npy) maps to:
         double cx = lx + (npx - sx) * zoom;
         double cy = ly + (npy - sy) * zoom;
@@ -195,7 +195,7 @@ static class OverlayRenderer
             }
         }
 
-        // Bias dots — drawn at warped position so they move with mesh changes
+        // Bias dots - drawn at warped position so they move with mesh changes
         foreach (var dot in biasDots)
         {
             var sp = ToScr(mesh.Apply(dot.Nx, dot.Ny, kronW, kronH));

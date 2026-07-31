@@ -6,7 +6,7 @@ namespace KronosScreenRemote;
 // (ProgramBody/CombiBody.ReadCategory), so without these the Librarian could only ever show
 // "Category 5 / Sub-Category 2" where the instrument itself shows "Guitar / Acoustic".
 //
-// Every array is exactly CategoryCount / SubCategoryCount long and never contains null — a name
+// Every array is exactly CategoryCount / SubCategoryCount long and never contains null - a name
 // the source didn't provide comes back as the numeric fallback ("Category 05"), so every display
 // path can use these directly with no null/short-array handling of its own.
 sealed class CategoryNames
@@ -21,7 +21,7 @@ sealed class CategoryNames
 
     // The neutral, always-available answer: plain numeric labels, identical in shape to a real
     // decode. Used before anything has ever been synced, and whenever a Global dump isn't
-    // available at all (offline) — the display then reads exactly as it did before this feature,
+    // available at all (offline) - the display then reads exactly as it did before this feature,
     // which is the point: category NAMES are an enhancement, never a prerequisite.
     public static CategoryNames Numeric() => new()
     {
@@ -33,7 +33,7 @@ sealed class CategoryNames
 
     // The ONLY way to build one of these from untrusted arrays (a JSON cache file that could be
     // truncated, hand-edited, or written by an older/newer build). Null unless all four are exactly
-    // the right shape with no null entries — the caller then falls back to Numeric(). Without this
+    // the right shape with no null entries - the caller then falls back to Numeric(). Without this
     // the class's "every array is exactly CategoryCount long" promise is just a comment, and a
     // short ProgramSub would throw on Properties-dialog open rather than degrade.
     public static CategoryNames? TryCreate(string[]? program, string[][]? programSub, string[]? combi, string[][]? combiSub) =>
@@ -69,7 +69,7 @@ sealed class CategoryNames
     static bool InRange(int value, int count) => value >= 0 && value < count;
 }
 
-// Decodes the Global object (obj 0x03, bank 0, index 0 — "for all other types bank must be 0",
+// Decodes the Global object (obj 0x03, bank 0, index 0 - "for all other types bank must be 0",
 // KRONOS_MIDI_SysEx.txt *2). Only the category-name block is decoded; the rest of Global (~24 KB
 // of tuning, MIDI, controller and scale settings) is out of scope and deliberately untouched.
 //
@@ -85,7 +85,7 @@ static class GlobalBody
     const int CombiSubCategoryOfs   = 17232;   // 18 x 8 x 24
     const int NameLength = 24;
 
-    // The last byte this decoder touches — anything shorter isn't a Global body we can read.
+    // The last byte this decoder touches - anything shorter isn't a Global body we can read.
     public const int MinimumBodyLength =
         CombiSubCategoryOfs + CategoryNames.CategoryCount * CategoryNames.SubCategoryCount * NameLength;
 
@@ -115,7 +115,7 @@ static class GlobalBody
                 .ToArray())
             .ToArray();
 
-    // A blank/whitespace field means "this category was never named" — fall back to the numeric
+    // A blank/whitespace field means "this category was never named" - fall back to the numeric
     // label rather than showing an empty row, so every entry in the dropdown is selectable and
     // tells the user which number it is.
     static string ReadName(byte[] body, int offset, string fallback)

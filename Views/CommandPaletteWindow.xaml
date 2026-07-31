@@ -60,7 +60,7 @@
                     Padding="10 6">
                 <Grid>
                     <!-- Watermark: shown only when search box is empty -->
-                    <TextBlock Text="Search commands…"
+                    <TextBlock Text="Search commands..."
                                Foreground="#FF555555"
                                FontSize="13"
                                IsHitTestVisible="False"

@@ -7,7 +7,7 @@ namespace KronosScreenRemote;
 //
 // Each call opens its own short-lived TCP connection to (host, port), sends one
 // command, reads the reply, and disposes the socket. There is NO shared mutable
-// state — every method is a pure function of its arguments — so this is genuinely
+// state - every method is a pure function of its arguments - so this is genuinely
 // static, unlike the persistent-connection CtrlClient (which owns a socket + send
 // loop + the "reset on endpoint change" invariant and is therefore an instance).
 //
@@ -18,7 +18,7 @@ static class CtrlQuery
     public const int CtrlPort = 7374;
 
     /// <summary>
-    /// Single-line request/response. Accumulates until a full line arrives — a reply
+    /// Single-line request/response. Accumulates until a full line arrives - a reply
     /// isn't guaranteed to land in one TCP segment / ReceiveAsync call. Null on timeout,
     /// connect failure, or an empty reply.
     /// </summary>

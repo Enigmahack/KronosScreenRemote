@@ -1,10 +1,10 @@
 namespace KronosScreenRemote;
 
 // Byte-level MIDI I/O abstraction to the Kronos. Two backends implement it:
-//   • TcpMidiTransport — through the screenremote daemon: SYSEX / MIDI_SEND ctrl
+//   • TcpMidiTransport - through the screenremote daemon: SYSEX / MIDI_SEND ctrl
 //     commands for round-trip + fire-and-forget, and the port-9875 MIDI-out
 //     firehose for the live inbound stream.
-//   • UsbMidiTransport — direct USB-MIDI to the Kronos (NAudio/winmm), no daemon.
+//   • UsbMidiTransport - direct USB-MIDI to the Kronos (NAudio/winmm), no daemon.
 //
 // SysExService and SysExDumpCollector are written entirely against this interface,
 // so every SysEx feature (mode/perf follow, Sync Names, Set List dump, note/CC
@@ -28,7 +28,7 @@ interface IKronosMidiTransport : IDisposable
     // hex we sent.
     event Action<SysExTrafficEntry>? Traffic;
 
-    // Complete F0…F7 SysEx messages received on the live stream — the bulk-dump
+    // Complete F0...F7 SysEx messages received on the live stream - the bulk-dump
     // collector gathers multi-message bank dumps and large objects off this.
     event Action<byte[]>? SysExMessageReceived;
 
@@ -46,7 +46,7 @@ interface IKronosMidiTransport : IDisposable
     bool CanStream { get; }
 
     // Enable/disable the live inbound stream. TCP: connect/disconnect the 9875
-    // monitor (a bandwidth optimisation). USB: no-op — the single device
+    // monitor (a bandwidth optimisation). USB: no-op - the single device
     // connection inherently carries the stream, and round-trip replies arrive on
     // it too, so it can never be turned off independently.
     void SetStreamEnabled(bool enabled);
@@ -67,11 +67,11 @@ interface IKronosMidiTransport : IDisposable
     // concatenated messages (SysEx blocks and/or short channel messages).
     Task<bool> SendAsync(byte[] message);
 
-    // Send ONE large SysEx message (a full-object 0x73 write — Combi ~8.9 KB, Set
+    // Send ONE large SysEx message (a full-object 0x73 write - Combi ~8.9 KB, Set
     // List ~79 KB) reliably, regardless of backend size limits. USB sends it as a
     // single long message; TCP splits it into ctrl-line-sized MIDI_SEND writes the
     // daemon injects contiguously into /proc/.midi_in, so the Kronos reassembles the
-    // single F0…F7 from the byte stream. `sysex` MUST be exactly one complete
-    // message (F0…F7) — do not pass concatenated messages here.
+    // single F0...F7 from the byte stream. `sysex` MUST be exactly one complete
+    // message (F0...F7) - do not pass concatenated messages here.
     Task<bool> SendLargeSysExAsync(byte[] sysex);
 }

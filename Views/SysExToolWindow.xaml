@@ -67,7 +67,7 @@
                 <TextBlock x:Name="TXT_Stream" DockPanel.Dock="Right"
                            Foreground="#FF88AADD" FontSize="11" FontFamily="Consolas"
                            VerticalAlignment="Center" Margin="16 0 0 0"
-                           Text="Stream: —"
+                           Text="Stream: -"
                            ToolTip="Which MIDI link this monitor's traffic is flowing over."/>
                 <TextBlock x:Name="TXT_SysExCount" DockPanel.Dock="Left"
                            Foreground="#FF555555" FontSize="11"

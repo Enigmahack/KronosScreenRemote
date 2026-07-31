@@ -4,7 +4,7 @@ using System.IO;
 using System.Text;
 using KronosScreenRemote.ViewModels;
 
-// Off-hardware self-test for "the last attempted PCG load always wins" — the pane must never
+// Off-hardware self-test for "the last attempted PCG load always wins" - the pane must never
 // keep showing a previous file's tree once a new load has been attempted, whether that new
 // attempt succeeds (replaces it) or fails (clears it). Drives PcgPaneViewModel.Load directly
 // via LoadBytesForTesting, sidestepping the file-dialog/FTP-picker paths real callers need.
@@ -27,10 +27,10 @@ static class PcgPaneLoadSelfTests
         Check("second-load-replaces-content", pane.Get(new ObjLoc(LibObj.Program, 0x00, 0))?.Name == "SECOND PROG");
         Check("second-load-one-program-root", pane.Roots.Count(r => r.Label == "Programs") == 1);
 
-        // Set Lists have no bank concept (unlike Programs/Combis) — the "Set Lists" type root
+        // Set Lists have no bank concept (unlike Programs/Combis) - the "Set Lists" type root
         // must carry its own BankRef and nest Set List objects directly underneath, NOT through
         // a redundant inner "Set Lists" bank node repeating the same label a second time (a
-        // real regression this once had — see PcgPaneViewModel.BuildSetListSubtree).
+        // real regression this once had - see PcgPaneViewModel.BuildSetListSubtree).
         var setListsRoot = pane.Roots.FirstOrDefault(r => r.Label == "Set Lists");
         Check("setlists-root-present", setListsRoot != null);
         Check("setlists-root-is-selectable-bank-equivalent", setListsRoot?.BankRef != null);
@@ -38,7 +38,7 @@ static class PcgPaneLoadSelfTests
         Check("setlists-leaf-nests-directly-under-root", setListsRoot?.Children.Any(c => c.Loc != null) == true);
 
         // A THIRD load that fails (not a real .pcg) must clear the second file's tree, not
-        // leave it displayed — a failed load is never "the previous file is still current."
+        // leave it displayed - a failed load is never "the previous file is still current."
         pane.LoadBytesForTesting(new byte[] { 1, 2, 3, 4 }, "not-a-pcg.pcg");
         Check("failed-load-clears-name", pane.LoadedFileName == null);
         Check("failed-load-clears-content", pane.Get(new ObjLoc(LibObj.Program, 0x00, 0)) == null);
@@ -55,7 +55,7 @@ static class PcgPaneLoadSelfTests
         Check("kronos-pick-loads-name", kpane.LoadedFileName == "remote.pcg");
         Check("kronos-pick-loads-content", kpane.Get(new ObjLoc(LibObj.Program, 0x00, 0))?.Name == "KRONOS PROG");
 
-        // A cancelled/failed pick sets the status and leaves the previously loaded file intact —
+        // A cancelled/failed pick sets the status and leaves the previously loaded file intact -
         // "the previously loaded file (if any) is unchanged," never a silent wipe.
         kpane.LoadFromKronosAsync(new FakeRemotePcgSource(
             RemotePcgPick.Failed("Load from Kronos cancelled."))).GetAwaiter().GetResult();
@@ -63,7 +63,7 @@ static class PcgPaneLoadSelfTests
         Check("kronos-cancel-keeps-previous-file", kpane.LoadedFileName == "remote.pcg");
         Check("kronos-cancel-keeps-previous-content", kpane.Get(new ObjLoc(LibObj.Program, 0x00, 0))?.Name == "KRONOS PROG");
 
-        // A pick that returns bytes which aren't a real .pcg clears the tree — same "last
+        // A pick that returns bytes which aren't a real .pcg clears the tree - same "last
         // attempted load wins" rule the local path already honors.
         kpane.LoadFromKronosAsync(new FakeRemotePcgSource(
             RemotePcgPick.Ok(new byte[] { 1, 2, 3, 4 }, "bad.pcg"))).GetAwaiter().GetResult();
@@ -74,7 +74,7 @@ static class PcgPaneLoadSelfTests
     }
 
     // In-memory IRemotePcgSource for the from-Kronos self-test: hands back a pre-canned pick
-    // with no FTP connection or Window — the whole point of the seam.
+    // with no FTP connection or Window - the whole point of the seam.
     sealed class FakeRemotePcgSource : IRemotePcgSource
     {
         readonly RemotePcgPick _result;

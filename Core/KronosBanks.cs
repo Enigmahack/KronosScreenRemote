@@ -1,19 +1,19 @@
 namespace KronosScreenRemote;
 
 // Decodes a MIDI Program Change + Bank Select into a Kronos performance identity,
-// with zero SysEx — so following program changes off the live stream causes no
-// "Transmitting MIDI Data…" flash (unlike a func 0x33 query).
+// with zero SysEx - so following program changes off the live stream causes no
+// "Transmitting MIDI Data..." flash (unlike a func 0x33 query).
 //
 // Source: KRONOS MIDI Implementation (8 Aug 2024), "*2 Bank Map".
 //   Bank Select MSB = CC0 (mm), LSB = CC32 (bb), Program Change = pp.
 //   KORG bank map:  mm = 00 for INT/USER.   GM(2) bank map: mm = 3F (same layout).
 //   GM/g banks:     mm = 79 (GM, g(1)-g(9)), mm = 78 (g(d)).
-//   Program : bb 00-06 → INT-A..G (bb 06/"I-G" unused — Program has no real I-G;
+//   Program : bb 00-06 → INT-A..G (bb 06/"I-G" unused - Program has no real I-G;
 //             see PcgObjectExtractor's own hardware-confirmed finding), bb 08-15 → USER-A..GG.
 //   Combi   : bb 00-06 → INT-A..G,  bb 08-0E → USER-A..G.
 //   Confirmed against real hardware CC/PC traffic (2026-07-22): I-F, GM, g(d), U-A, U-G,
 //   U-AA (Program) and I-G, U-A (Combi) all decode correctly via ProgramObjBank/CombiObjBank
-//   below as currently written — unlike Func33ToObjBank's reference encoding, this bb-based
+//   below as currently written - unlike Func33ToObjBank's reference encoding, this bb-based
 //   scheme separates INT/GM/g/USER by MSB rather than a single cascading linear index, so
 //   the unused Program bb=06 slot doesn't shift anything after it.
 //
@@ -75,14 +75,14 @@ static class KronosBanks
     // stored bank (internal linear "func 0x33" encoding, 0-30) to the object-dump bank
     // used in 0x72/0x73/0x76 headers.
     // Program has only SIX internal linear banks in this func-33/reference encoding
-    // (I-A..I-F — there is no I-G), NOT seven. Confirmed against a real .pcg file's own
+    // (I-A..I-F - there is no I-G), NOT seven. Confirmed against a real .pcg file's own
     // Combi timbre reference bytes (raw byte 28 decodes to U-EE under this table, matching
     // the file; the previous 7-internal-bank table decoded the same byte to U-DD, one bank
-    // off, for every bank from GM onward). This mirrors — and was previously missed for —
+    // off, for every bank from GM onward). This mirrors - and was previously missed for -
     // the exact asymmetry PcgObjectExtractor.DecodeProgramObjBank already found and fixed for
     // the .pcg file's own bank-CONTAINER encoding (a different field, but the same root
     // miscount: Program was modeled with Combi's 7-int-bank shape instead of its own 6).
-    // Combi itself genuinely has seven internal banks (I-A..I-G) — untouched, unaffected.
+    // Combi itself genuinely has seven internal banks (I-A..I-G) - untouched, unaffected.
     public static int Func33ToObjBank(int type, int idx) => type switch
     {
         1 => idx switch                                  // program: SIX internal banks
@@ -107,7 +107,7 @@ static class KronosBanks
     // set-list slot after a move. Validated against real hardware data (99.3% of 500+
     // real set-list references resolve, incl. USER banks). Returns -1 for a bank with no
     // internal-linear representation (never happens for a real stored reference).
-    // Exact inverse of Func33ToObjBank above — must stay in lockstep with it (see that
+    // Exact inverse of Func33ToObjBank above - must stay in lockstep with it (see that
     // method's own comment for the SIX-vs-seven-internal-bank fix this reflects).
     public static int ObjBankToFunc33(int type, int objBank) => type switch
     {
@@ -132,11 +132,11 @@ static class KronosBanks
     //
     // The func-0x77 whole-bank name ENUM (obj 0x13/0x12) is firmware-limited to the
     // PRESET banks (INT, GM/g); it returns Reply code 4 for every USER-writable bank
-    // — confirmed on hardware. The sweep handles that split by bank kind: preset banks
+    // - confirmed on hardware. The sweep handles that split by bank kind: preset banks
     // use the fast 0x77 enum; writable banks (objBank >= 0x40) fall back to a paced
     // per-object func-0x72 fetch (SysExDumpCollector.CollectPerObjectNamesAsync),
     // which DOES work for user banks (128/128 on HW). So every bank here is now
-    // self-serve — no front-panel Global→Dump needed. A reject does NOT poison later
+    // self-serve - no front-panel Global→Dump needed. A reject does NOT poison later
     // requests, so order is free; preset banks are listed first so useful names appear
     // immediately while the (slower) per-object user-bank pulls follow.
     public static IEnumerable<(int Type, int ObjBank)> AllNameBanks()
@@ -191,7 +191,7 @@ static class KronosBanks
 
     // Bit position of a program bank's HD-1/EXi type flag within func-0x61's Program
     // Bank Types bitmap (bit 0 = edit buffer, 1-6 = I-A..I-F, 7-13 = U-A..U-G,
-    // 14-20 = U-AA..U-GG — KRONOS_MIDI_SysEx.txt func [61]). Null for banks the
+    // 14-20 = U-AA..U-GG - KRONOS_MIDI_SysEx.txt func [61]). Null for banks the
     // bitmap doesn't cover (I-G, and the read-only GM/g banks, which have no
     // HD-1/EXi type at all).
     public static int? ProgramBankTypeBitIndex(int objBank) => objBank switch

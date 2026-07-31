@@ -35,7 +35,7 @@ public partial class MainWindow
         _layoutPreset = _settings.LayoutPreset;
         ApplyLayoutPreset(_layoutPreset, saveSettings: false);
 
-        // The XAML no longer hard-codes FrameImage's scaling filter — apply the saved one now.
+        // The XAML no longer hard-codes FrameImage's scaling filter - apply the saved one now.
         ApplyScalingMode();
 
         Topmost = _settings.AlwaysOnTop;
@@ -77,7 +77,7 @@ public partial class MainWindow
         bool usbPath = _settings.MidiTransport == MidiTransportMode.Usb || _midiCoord.UsingUsb;
         if (usbPath)
         {
-            AppLog.Info("[conn] USB MIDI active — skipping daemon auto-connect (screen available via Connect)");
+            AppLog.Info("[conn] USB MIDI active - skipping daemon auto-connect (screen available via Connect)");
             SetConnectionStatus(ConnState.Disconnected);   // render the USB-aware status line
         }
         else
@@ -214,7 +214,7 @@ public partial class MainWindow
             e.Handled = true; return;
         }
 
-        // ── Macros (user-defined first, then built-ins) — requires modifier key ─
+        // ── Macros (user-defined first, then built-ins) - requires modifier key ─
         if (!e.IsRepeat && _kbdCapture && _kbdSendEnabled && !_cal.Mode
             && Keyboard.Modifiers != ModifierKeys.None)
         {
@@ -273,7 +273,7 @@ public partial class MainWindow
                 AppLog.Debug($"[kbd] {e.Key} → linux {lkc.Value}");
                 // Eva text fields: unshifted letter → uppercase, Left-Shift+letter → lowercase.
                 // (Eva only recognises KEY_LEFTSHIFT/42 as a case modifier; KEY_RIGHTSHIFT/54 is
-                //  ignored by Eva, so Right Shift naturally gives uppercase — useful distinction.)
+                //  ignored by Eva, so Right Shift naturally gives uppercase - useful distinction.)
                 // CapsLock: inject Left Shift so letters are lowercase without holding Shift.
                 if (e.Key is >= Key.A and <= Key.Z
                     && Keyboard.GetKeyStates(Key.CapsLock).HasFlag(KeyStates.Toggled)
@@ -344,7 +344,7 @@ public partial class MainWindow
         foreach (var modeId in ModeCommandIds)
             if (IsAction(modeId, e)) { RunCommand(modeId); return; }
 
-        // Bank select (unassigned by default; rebindable in Settings) — same "Bank …" registry Ids.
+        // Bank select (unassigned by default; rebindable in Settings) - same "Bank ..." registry Ids.
         foreach (char b in new[] { 'A', 'B', 'C', 'D', 'E', 'F', 'G' })
         {
             if (IsAction($"Bank I-{b}",    e)) { RunCommand($"Bank I-{b}");    return; }
@@ -352,7 +352,7 @@ public partial class MainWindow
             if (IsAction($"Bank U-{b}{b}", e)) { RunCommand($"Bank U-{b}{b}"); return; }
         }
 
-        // Sequencer transport (unassigned by default; rebindable in Settings) — gated the
+        // Sequencer transport (unassigned by default; rebindable in Settings) - gated the
         // same way as the footer buttons' IsEnabled, so a shortcut can't do anything the
         // greyed-out button itself couldn't. Falls through (not "handled") when the current
         // mode doesn't support it, same as any other unmatched key. The gate stays HERE; the
@@ -368,7 +368,7 @@ public partial class MainWindow
         }
         if (_seqTransport.IsSaveEnabled && IsAction("Seq Save", e)) { RunCommand("Seq Save"); return; }
 
-        // Tap tempo (global — not seq-mode gated). Ignore auto-repeat so a HELD key can't
+        // Tap tempo (global - not seq-mode gated). Ignore auto-repeat so a HELD key can't
         // spam phantom taps; real tap tempo needs discrete presses. Connection-gated to
         // match the footer button (front-panel injection needs the daemon ctrl channel).
         if (IsConnected && !e.IsRepeat && IsAction("Tap Tempo", e)) { RunCommand("Tap Tempo"); return; }
@@ -415,7 +415,7 @@ public partial class MainWindow
         if (_kbdCapture && _kbdSendEnabled)
         {
             // Releasing Shift while a key-repeat is active would leave the repeat running
-            // without Shift on the Kronos — e.g. '>' (Shift+OemPeriod) degrades to '.'
+            // without Shift on the Kronos - e.g. '>' (Shift+OemPeriod) degrades to '.'
             // each tick once Shift is released.  Stop immediately to keep states in sync.
             if (e.Key is Key.LeftShift or Key.RightShift && _repeatCode != 0)
                 StopRepeat();
@@ -429,7 +429,7 @@ public partial class MainWindow
                 return;
 
             if (_instantKeys.Remove(e.Key)) { e.Handled = true; return; }
-            // Release the exact code recorded at key-down — NOT a re-resolution by the current
+            // Release the exact code recorded at key-down - NOT a re-resolution by the current
             // Shift state, which diverges if Shift was toggled while the key was held.
             if (_activeRawKeys.Remove(e.Key, out var sentRaw))
             {
@@ -505,7 +505,7 @@ public partial class MainWindow
                 OverlayLayer.InvalidateVisual();
                 return;
             }
-            // no active node drag — fall through to touch move logic
+            // no active node drag - fall through to touch move logic
         }
 
         OverlayLayer.InvalidateVisual();
@@ -598,7 +598,7 @@ public partial class MainWindow
                     _cal.DraggingNode = node;
                     return;
                 }
-                // no nearby node — fall through to TOUCH_DOWN below
+                // no nearby node - fall through to TOUCH_DOWN below
             }
         }
 
@@ -734,8 +734,8 @@ public partial class MainWindow
 
     void OnFrameLostMouseCapture(object s, MouseEventArgs e)
     {
-        // Fires when capture is released explicitly (no-op — state already cleared)
-        // or implicitly (e.g., alt+tab, window deactivation) — clean up any stuck drag.
+        // Fires when capture is released explicitly (no-op - state already cleared)
+        // or implicitly (e.g., alt+tab, window deactivation) - clean up any stuck drag.
         CancelDrag();
     }
 

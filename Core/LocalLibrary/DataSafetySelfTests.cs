@@ -9,13 +9,13 @@ using System.IO;
 //
 //   A. The pre-write BACKUP. ApplyMoveAsync backs up the pre-image of every object it is about
 //      to overwrite BEFORE touching hardware (restore = replay that .syx). No other test opens
-//      that backup file — so nothing catches it silently backing up the NEW body, an empty file,
+//      that backup file - so nothing catches it silently backing up the NEW body, an empty file,
 //      or backing up AFTER the write. Those are the failure modes that turn "overwrote the wrong
 //      thing" from recoverable into permanent.
 //
 //   B. The ABORT-BEFORE-STORE guards. If a bank changed under us since we armed the plan (a
 //      front-panel edit landing in the arm->apply window) or a write is rejected, ApplyMoveAsync
-//      must bail out BEFORE any Store — leaving hardware exactly as it was, never half-committed.
+//      must bail out BEFORE any Store - leaving hardware exactly as it was, never half-committed.
 //
 //   C. Crash DURABILITY. A bare local edit calls cache.Save() NOWHERE (only Pull/Push persist
 //      index.json); its only durable record is the append-immediate op-log + CAS blob. index.json
@@ -89,7 +89,7 @@ static class DataSafetySelfTests
         //        emits the pre-image backup end-to-end, not just the ApplyMoveAsync unit in
         //        isolation. Identified by content, not filename: SyncPipeline stamps backups at
         //        one-second resolution, so several pushes in the same run/second reuse one
-        //        "{stamp}_changeset.syx" (FileMode.Create overwrites) — a filename diff is
+        //        "{stamp}_changeset.syx" (FileMode.Create overwrites) - a filename diff is
         //        unreliable. A unique seeded name pins down OUR backup regardless. ──
         {
             string root = ScratchRoot + "_a2_lib";
@@ -117,7 +117,7 @@ static class DataSafetySelfTests
         }
 
         // ── B1: staleness gate. A bank changing between Arm and Apply (concurrent front-panel
-        //        edit) must abort BEFORE any Store — hardware untouched — yet the backup is still
+        //        edit) must abort BEFORE any Store - hardware untouched - yet the backup is still
         //        written first, so the user can recover even from the aborted attempt. ──
         {
             string root = ScratchRoot + "_b1_lib";
@@ -136,7 +136,7 @@ static class DataSafetySelfTests
                 var (plan, _) = await ChangesetBuilder.BuildAsync(cache, exec, new SessionDependencyClipboard());
                 await Librarian.ArmPlanAsync(plan, exec);
 
-                // Front-panel edit lands in the SAME bank (different slot) AFTER we armed — bank
+                // Front-panel edit lands in the SAME bank (different slot) AFTER we armed - bank
                 // 0x00's digest now differs from the baseline the arm captured.
                 exec.Seed(LibObj.Program, 0x00, 7, 1, Prog("PANEL-EDIT"));
 
@@ -149,13 +149,13 @@ static class DataSafetySelfTests
 
                 var hw = await exec.DumpObjectAsync(loc.ObjType, loc.Bank, loc.Number);
                 Check("b1-hardware-preserved", hw != null && ProgramBody.ReadName(hw.Body) == "ORIG-STALE");
-                // Safety-first: backup is step 1, before the gate — so it exists even on abort.
+                // Safety-first: backup is step 1, before the gate - so it exists even on abort.
                 Check("b1-backup-still-written", SyxFiles(backupDir).Length == 1);
             }
             finally { Reset(root); Reset(backupDir); }
         }
 
-        // ── B2: a rejected write (func-0x73 Reply != 0) must abort before any Store — no bank is
+        // ── B2: a rejected write (func-0x73 Reply != 0) must abort before any Store - no bank is
         //        half-committed, hardware stays at the original. ──
         {
             string root = ScratchRoot + "_b2_lib";
@@ -189,7 +189,7 @@ static class DataSafetySelfTests
         }
 
         // ── C1: op-log fold is the recovery primitive. It must be last-writer-wins per slot and
-        //        must reflect a Discard (revert-to-baseline) — i.e. it reproduces exactly the
+        //        must reflect a Discard (revert-to-baseline) - i.e. it reproduces exactly the
         //        cache's live current state, which is what makes index.json throw-away-able. ──
         {
             string root = ScratchRoot + "_c1_lib";
@@ -220,7 +220,7 @@ static class DataSafetySelfTests
                 var foldedBody2 = folded2.TryGetValue(key, out var h2) ? LocalObjectStore.TryGet(root, h2) : null;
                 Check("c1-fold-reflects-discard", foldedBody2 != null && ProgramBody.ReadName(foldedBody2) == "BASE-FOLD");
 
-                // A committed deletion (RemoveObject) tombstones the slot — the fold, replaying
+                // A committed deletion (RemoveObject) tombstones the slot - the fold, replaying
                 // the whole log, must DROP it, not resurrect it from its last real hash
                 // (requirement 2). Without the DeletedTombstone, recovery would bring it back.
                 cache.RemoveObject(loc.ObjType, loc.Bank, loc.Number, utc);
@@ -232,7 +232,7 @@ static class DataSafetySelfTests
 
         // ── C2: crash durability. Pull (which Save()s index.json), then a bare edit (which does
         //        NOT). Simulate a crash before the next Save: the on-disk index.json is stale, yet
-        //        the edit — body and all — is fully recoverable from the durable op-log + CAS store.
+        //        the edit - body and all - is fully recoverable from the durable op-log + CAS store.
         //        This is index.json's "recoverable from oplog.jsonl alone" contract, exercised. ──
         {
             string root = ScratchRoot + "_c2_lib";
@@ -251,7 +251,7 @@ static class DataSafetySelfTests
                 var liveEdit = cache.GetCurrentBody(loc.ObjType, loc.Bank, loc.Number);
                 Check("c2-precondition-dirty", cache.IsDirty(loc.ObjType, loc.Bank, loc.Number));
 
-                // The on-disk index still predates the edit (edits don't Save) — a fresh open that
+                // The on-disk index still predates the edit (edits don't Save) - a fresh open that
                 // trusted index.json alone would show the stale baseline. This is precisely why the
                 // op-log has to be the durable source of truth.
                 var reopenedFromDiskIndex = new LocalLibraryCache(root).GetCurrentBody(loc.ObjType, loc.Bank, loc.Number);
@@ -259,7 +259,7 @@ static class DataSafetySelfTests
                     reopenedFromDiskIndex != null && ProgramBody.ReadName(reopenedFromDiskIndex) == "BASE-RECOV");
 
                 // Recover from the op-log: the edit's current hash is there, and its body blob
-                // physically persisted to the CAS store — byte-identical to the live in-memory edit.
+                // physically persisted to the CAS store - byte-identical to the live in-memory edit.
                 var recovered = LocalLibraryIndex.RebuildCurrentFromOpLog(OpLog.ReadAll(root));
                 Check("c2-oplog-carries-edit", recovered.ContainsKey(key));
                 var recoveredBody = recovered.TryGetValue(key, out var rh) ? LocalObjectStore.TryGet(root, rh) : null;
@@ -274,13 +274,13 @@ static class DataSafetySelfTests
 
     static void Reset(string dir) { if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true); }
 
-    // Missing-dir-safe: a skipped/failed backup leaves the dir absent — that must read as
+    // Missing-dir-safe: a skipped/failed backup leaves the dir absent - that must read as
     // "zero backups" (a clean red), never a DirectoryNotFoundException that aborts the suite.
     static string[] SyxFiles(string dir) => Directory.Exists(dir) ? Directory.GetFiles(dir, "*.syx") : Array.Empty<string>();
 
     // Does any .syx in the shared librarian-backup dir decode to a Program named `name`? Used to
     // find OUR backup by its unique pre-image, tolerant of non-Program backup files (ReadName on
-    // a Combi/SetList/short body yields a non-match or throws — both mean "not ours").
+    // a Combi/SetList/short body yields a non-match or throws - both mean "not ours").
     static bool BackupWithPreImageExists(string name)
     {
         foreach (var f in Directory.GetFiles(Storage.BackupDir(), "*.syx"))

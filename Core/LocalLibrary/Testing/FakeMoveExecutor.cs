@@ -7,28 +7,28 @@ using System.Security.Cryptography;
 // Unlike Tools/UiThemeSmokeTest.cs's FakeSysExService (construction-only stubs, every
 // hardware call a no-op), this one actually mutates state: WriteObjectAsync/StoreBankAsync
 // land in an in-memory bank store, DumpObjectAsync reads it back, and BankDigestAsync
-// computes a real SHA-1 over a bank's 128 slots — so a self-test can mutate "hardware"
+// computes a real SHA-1 over a bank's 128 slots - so a self-test can mutate "hardware"
 // mid-pipeline and observe the pipeline react (conflict detection, staleness gates), not
 // just replay canned responses.
 //
-// Implements only ILibrarianService — the instrument read+write slice the librarian pipelines
-// actually drive — NOT the whole ISysExService. The perf-follow / MIDI-backend / raw-send
+// Implements only ILibrarianService - the instrument read+write slice the librarian pipelines
+// actually drive - NOT the whole ISysExService. The perf-follow / MIDI-backend / raw-send
 // roles it used to stub (~13 no-op members) are gone: nothing here exercises them.
 sealed class FakeMoveExecutor : ILibrarianService
 {
     // (Obj, Bank, Number) -> stored object. Missing = never written (DumpObjectAsync -> null).
     readonly Dictionary<(int Obj, int Bank, int Number), (byte Version, byte[] Body)> _objects = new();
 
-    // Records which hardware-facing primitive fired, in order — lets a self-test assert
+    // Records which hardware-facing primitive fired, in order - lets a self-test assert
     // real call ordering (e.g. "Sync pulls before it pushes") instead of just end-state.
     public List<string> CallLog { get; } = new();
 
     // When true, DumpBankBulkAsync simulates a rejected/unsupported func-0x77 request
-    // (returns empty, like a real USER-bank reject would look from the caller's side) —
+    // (returns empty, like a real USER-bank reject would look from the caller's side) -
     // lets a self-test exercise LibraryPullPipeline's per-object fallback path.
     public bool SimulateBulkDumpUnsupported { get; set; }
 
-    // Non-zero makes WriteObjectAsync return that Reply code WITHOUT storing the body —
+    // Non-zero makes WriteObjectAsync return that Reply code WITHOUT storing the body -
     // mirrors a real func-0x73 hardware reject (nothing lands on the instrument). Lets a
     // self-test exercise ApplyMoveAsync's write-reject abort (aborts before any Store).
     public int WriteRejectCode { get; set; }
@@ -71,8 +71,8 @@ sealed class FakeMoveExecutor : ILibrarianService
         // Simulated hardware reject: return the Reply code and leave "hardware" untouched
         // (a rejected write stores nothing), so ApplyMoveAsync must abort before any Store.
         if (WriteRejectCode != 0) return Task.FromResult(WriteRejectCode);
-        // Mirrors SysExService.WriteObjectAsync's real stamping — see LibObj.
-        // CurrentObjectVersion's comment — so a self-test can verify a stale/placeholder
+        // Mirrors SysExService.WriteObjectAsync's real stamping - see LibObj.
+        // CurrentObjectVersion's comment - so a self-test can verify a stale/placeholder
         // stored version never actually reaches "hardware".
         byte version = LibObj.CurrentObjectVersion(op.Obj) ?? op.Version;
         _objects[(op.Obj, op.Bank, op.Index)] = (version, (byte[])op.Body.Clone());
@@ -86,7 +86,7 @@ sealed class FakeMoveExecutor : ILibrarianService
     }
 
     // Records each program bank's requested HD-1/EXi type and, mirroring the real func 0x7C
-    // ("reformats and erases specified bank"), clears every stored Program in that bank — so a
+    // ("reformats and erases specified bank"), clears every stored Program in that bank - so a
     // self-test can assert both that the type change fired and that the whole-bank rewrite that
     // follows lands on a freshly-erased bank.
     public Dictionary<int, bool> BankTypeChanges { get; } = new();
@@ -110,7 +110,7 @@ sealed class FakeMoveExecutor : ILibrarianService
 
     public Task SendRawAsync(byte[] data) => Task.CompletedTask;
 
-    // ── Remaining IBankDumpService members unused by Pull/Push self-tests — trivial stubs ──
+    // ── Remaining IBankDumpService members unused by Pull/Push self-tests - trivial stubs ──
     public bool CanDump => true;
     public Task<SetListData?> DumpSetListAsync(int number) => Task.FromResult<SetListData?>(null);
     public Task<SetListSyncResult> DumpAllSetListsAsync(IProgress<(int Done, int Total, int Found)>? progress, CancellationToken ct) =>
@@ -120,7 +120,7 @@ sealed class FakeMoveExecutor : ILibrarianService
 
     // Settable by a self-test before constructing the ViewModel under test, to exercise
     // LibrarianShellViewModel.WarmProgramBankTypesAsync/BankTypeOf against a known, fake
-    // "real hardware" answer — defaults to null (unreachable/unqueried), same as before.
+    // "real hardware" answer - defaults to null (unreachable/unqueried), same as before.
     public ProgramBankTypes? ProgramBankTypesToReturn { get; set; }
     public Task<ProgramBankTypes?> RequestProgramBankTypesAsync() => Task.FromResult(ProgramBankTypesToReturn);
 }

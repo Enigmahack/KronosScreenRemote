@@ -5,7 +5,7 @@ using System.Windows.Input;
 namespace KronosScreenRemote;
 
 // Id is the stable command key every surface (buttons, menu, context menu, keybinds, palette)
-// looks the command up by — for rebindable actions it IS the action-name string that
+// looks the command up by - for rebindable actions it IS the action-name string that
 // AppSettings.GetKeyName / IsAction already key off (e.g. "Mode Setlist"); palette-only
 // entries get a unique synthetic Id. Label/KeyHint are the palette's display fields only.
 public record CommandEntry(string Id, string Label, string KeyHint, Action Execute);

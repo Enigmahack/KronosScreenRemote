@@ -48,7 +48,7 @@ partial class SysExToolWindow : ThemedWindow
 
     // Live traffic is enqueued from background threads (the MIDI consumer thread and
     // TX callers) and drained onto the UI thread in batches by _flushTimer. This is
-    // what keeps a burst — a Set List sync streams many large objects — from flooding
+    // what keeps a burst - a Set List sync streams many large objects - from flooding
     // the dispatcher with one InvokeAsync + collection mutation + scroll per message,
     // which stalled every window (they all share the one UI thread). The display row,
     // including its hex decode, is built on the enqueuing thread so even that work
@@ -132,7 +132,7 @@ partial class SysExToolWindow : ThemedWindow
     // pushed by MainWindow as the active transport changes. UI thread only.
     public void SetActiveStream(string? label)
     {
-        TXT_Stream.Text = $"Stream: {(string.IsNullOrWhiteSpace(label) ? "—" : label)}";
+        TXT_Stream.Text = $"Stream: {(string.IsNullOrWhiteSpace(label) ? "-" : label)}";
     }
 
     void ClearMidiLitKeys()
@@ -341,7 +341,7 @@ partial class SysExToolWindow : ThemedWindow
     // ── Traffic routing ──────────────────────────────────────────────────────
 
     // Called on a background thread (the MIDI consumer thread, or a TX caller).
-    // Build the display row here — off the UI thread — and hand only the finished
+    // Build the display row here - off the UI thread - and hand only the finished
     // object to the batch queue; the flush timer surfaces it. No per-message
     // Dispatcher call, so a memory-speed burst can't swamp the UI thread.
     void OnTraffic(SysExTrafficEntry entry)
@@ -477,7 +477,7 @@ class SysExMessageItem
         // Decode the human-readable description HERE, on the enqueuing background
         // thread, rather than eagerly on the MIDI read/consumer thread for every
         // firehose message. Live-stream entries arrive with an empty Hex and only
-        // RawBytes set; producing the hex for every one — with this window closed —
+        // RawBytes set; producing the hex for every one - with this window closed -
         // was the GC source while navigating. The embedded hex is capped (96 bytes)
         // so a bulk object (a Set List is ~79 KB) can neither build a ~½ MB string
         // nor hand the UI a 200k-char wrapping TextBlock to lay out. Full bytes stay
@@ -491,7 +491,7 @@ class SysExMessageItem
         TypeColor = TypeToBrush(type);
     }
 
-    // Full raw hex — built only when the row is actually copied, not per message,
+    // Full raw hex - built only when the row is actually copied, not per message,
     // and never shown in the (capped) live log where it would be unreadable and slow.
     public string RawHex => _raw != null
         ? string.Join(' ', _raw.Select(x => x.ToString("X2")))

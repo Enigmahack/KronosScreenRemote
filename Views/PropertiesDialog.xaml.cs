@@ -8,15 +8,15 @@ namespace KronosScreenRemote;
 // Double-click properties editor for a Program/Combi/Set List (item 3 of the rebuild:
 // "edit its properties that we have control over"). Two shapes, chosen by which factory
 // method constructed the dialog:
-//   ForProgramOrCombi — Name + Category/Sub-Category (numeric only; no name table exists
+//   ForProgramOrCombi - Name + Category/Sub-Category (numeric only; no name table exists
 //     anywhere in the documented format for these values).
-//   ForSetList — the Set List's own Name, plus its slot list; selecting a slot exposes
+//   ForSetList - the Set List's own Name, plus its slot list; selecting a slot exposes
 //     that slot's Name/Color/Comments for editing. This absorbs Views/SetListWindow's
 //     functionality (Phase 6 of the rebuild) into one dialog instead of a separate window
 //     plus a second per-slot edit dialog (the retired SetListSlotEditDialog).
 internal partial class PropertiesDialog : ThemedWindow
 {
-    // 16-slot color palette (Kronos Set List slot colors) — sourced from SetListColors
+    // 16-slot color palette (Kronos Set List slot colors) - sourced from SetListColors
     static readonly Brush[] SlotColors = BuildPalette();
 
     static Brush[] BuildPalette()
@@ -56,8 +56,8 @@ internal partial class PropertiesDialog : ThemedWindow
 
     // objType + names (requirement 4): the two category fields are plain numbers in the body, but
     // the instrument shows the user-editable NAMES its Global object holds for them ("Guitar /
-    // Acoustic", not "5 / 2"). `names` is never null — CategoryNames.Numeric() supplies the old
-    // numeric labels when nothing has been synced yet or the Kronos is unreachable — so there's no
+    // Acoustic", not "5 / 2"). `names` is never null - CategoryNames.Numeric() supplies the old
+    // numeric labels when nothing has been synced yet or the Kronos is unreachable - so there's no
     // "unsynced" branch anywhere below. Programs and Combis have INDEPENDENT category names, hence
     // objType; sub-category names belong to a specific category, so the sub list is rebuilt
     // whenever the category selection changes.
@@ -105,8 +105,8 @@ internal partial class PropertiesDialog : ThemedWindow
         dlg.CMB_SlotColor.ItemsSource = null;
         for (int i = 0; i < SlotColors.Length; i++)
         {
-            // Swatch + its Kronos color name (Default, Charcoal, Brick…) so the dropdown —
-            // and the collapsed selected item — read exactly like the palette on the device,
+            // Swatch + its Kronos color name (Default, Charcoal, Brick...) so the dropdown -
+            // and the collapsed selected item - read exactly like the palette on the device,
             // instead of an unlabeled colored bar. Names come from SetListColors, same source
             // as SlotColors, so swatch and label can't drift.
             var row = new StackPanel { Orientation = Orientation.Horizontal };
@@ -151,13 +151,13 @@ internal partial class PropertiesDialog : ThemedWindow
         TXT_SlotComments.IsEnabled = enabled;
     }
 
-    // ── Dependencies (requirement 1) + "Scan PCG for missing…" (requirement 2) ──────────────
+    // ── Dependencies (requirement 1) + "Scan PCG for missing..." (requirement 2) ──────────────
     // Both lists are plain pre-formatted strings supplied by the caller: deciding what "requires"
     // and "used by" MEAN (transitive walks, ROM/INIT labelling, the referrer catalog) is
-    // ViewModel work — this dialog only displays it, same split as everything else here.
+    // ViewModel work - this dialog only displays it, same split as everything else here.
 
-    // Raised when "Scan PCG for missing…" is clicked. The owner runs the file picker and the scan
-    // (a WPF + ViewModel concern), then calls SetDependencies again with the refreshed lists —
+    // Raised when "Scan PCG for missing..." is clicked. The owner runs the file picker and the scan
+    // (a WPF + ViewModel concern), then calls SetDependencies again with the refreshed lists -
     // recovered dependencies are staged in the Merge Window, so what's still missing changes.
     public Action? ScanForDependenciesRequested { get; set; }
 

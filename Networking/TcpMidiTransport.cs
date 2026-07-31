@@ -16,9 +16,9 @@ sealed class TcpMidiTransport : IKronosMidiTransport
     readonly KronosSysEx _sysEx;
     // Guards the _monitor check-then-act. Start/Stop/SetStreamEnabled can be driven from
     // different threads (coordinator vs. an ApplyMidiSettings on the UI thread), so an
-    // unguarded "if (_monitor != null) return; … _monitor = m" let two callers each create and
+    // unguarded "if (_monitor != null) return; ... _monitor = m" let two callers each create and
     // start a monitor, orphaning one live socket + read loop. Snapshot reads elsewhere
-    // (CanStream, SendLargeSysExAsync) stay lock-free — a reference read is atomic.
+    // (CanStream, SendLargeSysExAsync) stay lock-free - a reference read is atomic.
     readonly object _monitorLock = new();
     MidiStreamMonitor? _monitor;
     bool _streamEnabled = true;
@@ -61,7 +61,7 @@ sealed class TcpMidiTransport : IKronosMidiTransport
 
     void EnsureMonitor()
     {
-        // Whole check-then-act under the lock — including m.Start() — so a concurrent
+        // Whole check-then-act under the lock - including m.Start() - so a concurrent
         // DisposeMonitor can't null/dispose the instance between assignment and start.
         lock (_monitorLock)
         {
@@ -85,7 +85,7 @@ sealed class TcpMidiTransport : IKronosMidiTransport
         }
         if (m == null) return;
         // Unsubscribe + dispose outside the lock (Dispose cancels the read loop): a concurrent
-        // EnsureMonitor may create a fresh, independent monitor meanwhile — harmless.
+        // EnsureMonitor may create a fresh, independent monitor meanwhile - harmless.
         m.Traffic              -= OnChildTraffic;
         m.SysExMessageReceived -= OnMonitorSysEx;
         m.SysExActivity        -= OnMonitorActivity;
@@ -114,7 +114,7 @@ sealed class TcpMidiTransport : IKronosMidiTransport
     public async Task<bool> SendLargeSysExAsync(byte[] sysex)
     {
         // PREFERRED: inject over the 9875 stream socket. It's the daemon's raw
-        // bidirectional MIDI pipe — inbound bytes are recv()'d and write()'n straight
+        // bidirectional MIDI pipe - inbound bytes are recv()'d and write()'n straight
         // to /proc/.midi_in with NO per-line cap (midi_tcp.c), the same fast path
         // Python uses. One socket write carries the whole object; TCP handles the
         // size and the daemon reassembles the byte stream to the Kronos.
@@ -125,7 +125,7 @@ sealed class TcpMidiTransport : IKronosMidiTransport
         // FALLBACK only (monitor/stream not available): the ctrl-port MIDI_SEND path,
         // whose mb[4096] decode buffer + CTRL_LINE_MAX cap force splitting a big object
         // across several sends the daemon injects contiguously.
-        AppLog.Warn("[midi-tcp] 9875 injector unavailable — falling back to chunked MIDI_SEND");
+        AppLog.Warn("[midi-tcp] 9875 injector unavailable - falling back to chunked MIDI_SEND");
         return await SendViaChunkedMidiSendAsync(sysex).ConfigureAwait(false);
     }
 
@@ -133,7 +133,7 @@ sealed class TcpMidiTransport : IKronosMidiTransport
     // so the daemon's CTRL_LINE_MAX (8320) and its mb[4096] decode buffer both bound a
     // single send; 2048 stays well under either with headroom for the "MIDI_SEND "
     // prefix. Splitting mid-SysEx is safe: the daemon write()s each chunk's raw bytes
-    // to /proc/.midi_in in order, so the Kronos sees one contiguous F0…F7.
+    // to /proc/.midi_in in order, so the Kronos sees one contiguous F0...F7.
     const int MaxMidiSendBytes = 2048;
 
     async Task<bool> SendViaChunkedMidiSendAsync(byte[] sysex)

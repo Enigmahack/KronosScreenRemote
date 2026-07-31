@@ -2,10 +2,10 @@ namespace KronosScreenRemote;
 
 using System.Text;
 
-// Raw-body decode/mutate for a Set List object (obj 0x0D) — decoded body only, no
+// Raw-body decode/mutate for a Set List object (obj 0x0D) - decoded body only, no
 // wire-format/8-to-7 knowledge. FromRawBody holds the field-walk logic that used to
 // live inline in SetListData.FromObjectDump; that method now just validates the
-// wire header, runs KronosSysEx.Decode8to7, and delegates here — so a .pcg-sourced
+// wire header, runs KronosSysEx.Decode8to7, and delegates here - so a .pcg-sourced
 // raw body (byte-identical layout, confirmed against Documentation/PCG Structure
 // Kronos.txt) reuses the exact same decoder as a live dump, never a second copy.
 static class SetListBody
@@ -25,7 +25,7 @@ static class SetListBody
         for (int n = 0; n < SetListData.SlotCount; n++)
         {
             int b = SlotBase + n * SlotSize;
-            if (b + 30 > bin.Length) break;   // truncated dump — keep what decoded
+            if (b + 30 > bin.Length) break;   // truncated dump - keep what decoded
 
             string slotName = Ascii(bin, b, NameLen);
             int packed  = bin[b + 24];
@@ -58,7 +58,7 @@ static class SetListBody
         return body;
     }
 
-    // Color shares its byte with Type (bits 1-0) and font-LSB (bits 7-6) — mask,
+    // Color shares its byte with Type (bits 1-0) and font-LSB (bits 7-6) - mask,
     // don't overwrite, same discipline as LibRefs.SetSetListSlotRef.
     public static byte[] WriteSlotColor(byte[] bin, int slot, int color)
     {

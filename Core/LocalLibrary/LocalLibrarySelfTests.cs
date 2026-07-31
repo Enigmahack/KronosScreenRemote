@@ -133,7 +133,7 @@ static class LocalLibrarySelfTests
 
             // Regression: a pull touching multiple objects must append exactly ONE
             // "PullBaseline" op-log entry (covering all of them via multiple Targets), never
-            // one entry per object — that was a real bug (thousands of individual
+            // one entry per object - that was a real bug (thousands of individual
             // File.AppendAllText calls against the same oplog.jsonl during a full sync,
             // catastrophically slow over an SMB-mounted DataDir).
             var oplogAfterPull = OpLog.ReadAll(root);
@@ -142,7 +142,7 @@ static class LocalLibrarySelfTests
             Check("pull-oplog-entry-covers-all-objects",
                 oplogAfterPull.First(e => e.OpKind == "PullBaseline").Targets.Count == 3);
 
-            // DisplayName is cached at pull time (never re-derived from a body read later —
+            // DisplayName is cached at pull time (never re-derived from a body read later -
             // see LocalIndexEntry's doc comment for why that matters) and Exists() answers
             // "is anything here" from the index alone.
             Check("pull-caches-display-name", cache.GetDisplayName(LibObj.Program, 0x00, 0) == "SEEDED PROG");
@@ -150,7 +150,7 @@ static class LocalLibrarySelfTests
             Check("exists-false-for-empty-slot", !cache.Exists(LibObj.Program, 0x00, 99));
             Check("display-name-blank-for-empty-slot", cache.GetDisplayName(LibObj.Program, 0x00, 99) == "");
 
-            // Local edit to Program (0x00,0) — dirty, but hardware for that bank hasn't
+            // Local edit to Program (0x00,0) - dirty, but hardware for that bank hasn't
             // changed yet, so an intervening lazy pull must leave it alone.
             var editedBody = ProgramBody.WriteName(new byte[3706], "EDITED PROG"); editedBody[100] = 0x41;   // marker outside the 24-byte name field
             cache.RecordEdit(LibObj.Program, 0x00, 0, 1, editedBody, "Rename", "Renamed test", DateTime.UtcNow);
@@ -159,7 +159,7 @@ static class LocalLibrarySelfTests
 
             // Regression: a dirty leaf sitting inside a COLLAPSED bank had no way to signal that
             // (the red dot lives on ObjectTreeNode.IsDirty, only ever set by MakeLeafNode) until
-            // the bank was expanded — ObjectTreeScaffold.BuildTyped now bubbles IsDirty up to the
+            // the bank was expanded - ObjectTreeScaffold.BuildTyped now bubbles IsDirty up to the
             // bank node AND the type-root node from their own children.
             var localVm = new ViewModels.LocalLibraryPaneViewModel(cache);
             var programsRoot = localVm.Roots.First(n => n.Label == "Programs");
@@ -175,7 +175,7 @@ static class LocalLibrarySelfTests
             Check("unrelated-pull-fetches-nothing", result2.BanksChecked == 0);
 
             // Regression: a FORCE FULL pull re-sweeps every bank regardless of digest, so
-            // it must NOT treat "bank unchanged" as "safe to overwrite" — a dirty object
+            // it must NOT treat "bank unchanged" as "safe to overwrite" - a dirty object
             // survives even when its bank IS re-swept (unlike the lazy pull above, which
             // never even looks at this bank because nothing flagged it as changed).
             var resultFull = await LibraryPullPipeline.PullAsync(exec, cache, full: true);
@@ -183,7 +183,7 @@ static class LocalLibrarySelfTests
                 cache.IsDirty(LibObj.Program, 0x00, 0) && !cache.IsConflicted(LibObj.Program, 0x00, 0) &&
                 cache.GetCurrentBody(LibObj.Program, 0x00, 0) is { } stillEdited && stillEdited.SequenceEqual(editedBody));
 
-            // Mutate "hardware" in the SAME bank, a DIFFERENT slot — the bank digest
+            // Mutate "hardware" in the SAME bank, a DIFFERENT slot - the bank digest
             // changes, so a lazy pull must re-sweep the bank: flag (0x00,0) Conflicted
             // (preserving its edit), while still refreshing (0x00,1), which isn't dirty.
             var hwEdited = new byte[3706]; hwEdited[1] = 0x42;
@@ -217,7 +217,7 @@ static class LocalLibrarySelfTests
                 Check("bulk-ok-populates-slot0", cache.GetCurrentBody(LibObj.Program, 0x00, 0) != null);
                 Check("bulk-ok-populates-slot5", cache.GetCurrentBody(LibObj.Program, 0x00, 5) != null);
                 Check("bulk-ok-calls-bulkdump", exec.CallLog.Any(c => c.StartsWith($"BulkDump:{LibObj.Program}:{0x00}")));
-                // Other (unrelated, unseeded) banks still legitimately fall back per-slot —
+                // Other (unrelated, unseeded) banks still legitimately fall back per-slot -
                 // their bulk result is ambiguously empty too. Only THIS bank, which bulk
                 // demonstrably covered (2 real objects came back), must see zero individual
                 // Dump calls for any of its own slots.

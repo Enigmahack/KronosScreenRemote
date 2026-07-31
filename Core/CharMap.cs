@@ -3,7 +3,7 @@ using System.Collections.Generic;
 namespace KronosScreenRemote;
 
 // Maps printable ASCII (+ Tab/Enter/Backspace) to Kronos KEY command sequences.
-// Derived from KeyMap.cs remaps — captures which linux keycode + shift state produces each char.
+// Derived from KeyMap.cs remaps - captures which linux keycode + shift state produces each char.
 //
 // Eva (Kronos UI) text-field case behavior (confirmed via inject_test 2026-06-09):
 //   unshifted letter key → UPPERCASE in Eva text field
@@ -33,12 +33,12 @@ static class CharMap
         { '\n', new(28,  false) },  // Enter      KEY_ENTER
         { ' ',  new(57,  false) },  // Space      KEY_SPACE
         { '!',  new(2,   true)  },  // Shift+1
-        // '"' — Shift+26 triggers Kronos character picker; no direct Eva key confirmed
-        { '#',  new(43,  false) },  // KEY_BACKSLASH — confirmed via inject_test
+        // '"' - Shift+26 triggers Kronos character picker; no direct Eva key confirmed
+        { '#',  new(43,  false) },  // KEY_BACKSLASH - confirmed via inject_test
         { '$',  new(5,   true)  },  // Shift+4
         { '%',  new(6,   true)  },  // Shift+5
-        { '&',  new(8,   true)  },  // Shift+7 — confirmed Eva UI
-        // '\'' — Shift+43 gives ' on console but NOT in Eva; no direct Eva key confirmed
+        { '&',  new(8,   true)  },  // Shift+7 - confirmed Eva UI
+        // '\'' - Shift+43 gives ' on console but NOT in Eva; no direct Eva key confirmed
         { '(',  new(10,  true)  },  // Shift+9
         { ')',  new(11,  true)  },  // Shift+0
         { '*',  new(55,  false) },  // shifted override: KEY_KPASTERISK, no shift
@@ -57,7 +57,7 @@ static class CharMap
         { '=',  new(13,  false) },  // OemPlus → KEY_EQUAL
         { '>',  new(52,  true)  },  // Shift+OemPeriod
         { '?',  new(13,  true)  },  // shifted override: KEY_EQUAL + Shift
-        { '@',  new(3,   true)  },  // Shift+2 — confirmed Eva UI
+        { '@',  new(3,   true)  },  // Shift+2 - confirmed Eva UI
         // Uppercase letters: unshifted key → uppercase in Eva (inverted case convention)
         { 'A',  new(30,  false) }, { 'B',  new(48, false) }, { 'C',  new(46, false) },
         { 'D',  new(32,  false) }, { 'E',  new(18, false) }, { 'F',  new(33, false) },
@@ -73,7 +73,7 @@ static class CharMap
         { ']',  new(39,  false) },  // Oem6 → KEY_SEMICOLON
         { '^',  new(7,   true)  },  // Shift+6
         { '_',  new(74,  true)  },  // Shift+OemMinus → KEY_KPMINUS + Shift
-        // '`' (41 unshifted) not accepted by Kronos text fields — omitted
+        // '`' (41 unshifted) not accepted by Kronos text fields - omitted
         // Lowercase letters: Shift + key → lowercase in Eva (inverted case convention)
         { 'a',  new(30,  true)  }, { 'b',  new(48, true)  }, { 'c',  new(46, true)  },
         { 'd',  new(32,  true)  }, { 'e',  new(18, true)  }, { 'f',  new(33, true)  },
@@ -87,6 +87,6 @@ static class CharMap
         { '{',  new(40,  true)  },  // Shift+OemOpenBrackets → KEY_APOSTROPHE + Shift
         { '|',  new(53,  true)  },  // Shift+Oem5 → KEY_SLASH + Shift
         { '}',  new(39,  true)  },  // Shift+Oem6 → KEY_SEMICOLON + Shift
-        // '~' — Shift+41 opens Eva's argument editor; omitted to prevent UI hijack
+        // '~' - Shift+41 opens Eva's argument editor; omitted to prevent UI hijack
     };
 }

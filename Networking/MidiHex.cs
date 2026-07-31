@@ -7,11 +7,11 @@ using System.Text;
 // backends agree byte-for-byte.
 static class MidiHex
 {
-    // "F0 42 30 68 12 F7" (space-separated, upper-case) — the wire format the
+    // "F0 42 30 68 12 F7" (space-separated, upper-case) - the wire format the
     // daemon's SYSEX / MIDI_SEND commands expect and the SysEx tool log shows.
     //
-    // maxBytes caps how many bytes are rendered, appending a " … (+N bytes)" tail when the
-    // input is longer — a bulk SysEx object (a Set List is ~79 KB) would otherwise build a
+    // maxBytes caps how many bytes are rendered, appending a " ... (+N bytes)" tail when the
+    // input is longer - a bulk SysEx object (a Set List is ~79 KB) would otherwise build a
     // ~200k-char string, expensive to allocate and to lay out in a wrapping TextBlock. The
     // default renders everything, so wire-format callers (which must emit no ellipsis) are
     // unaffected.
@@ -24,11 +24,11 @@ static class MidiHex
             if (i > 0) sb.Append(' ');
             sb.Append(bytes[i].ToString("X2"));
         }
-        if (n < bytes.Length) sb.Append($" … (+{bytes.Length - n} bytes)");
+        if (n < bytes.Length) sb.Append($" ... (+{bytes.Length - n} bytes)");
         return sb.ToString();
     }
 
-    // Parse a hex string ("F0 42 …" or "F04230…") to bytes; null on malformed input.
+    // Parse a hex string ("F0 42 ..." or "F04230...") to bytes; null on malformed input.
     public static byte[]? ToBytes(string hex)
     {
         var clean = hex.Replace(" ", "");
@@ -60,9 +60,9 @@ static class MidiHex
 
     // Split a buffer that may hold several concatenated MIDI messages (the dump
     // collector batches many SysEx requests into one send) into individual
-    // messages. SysEx runs F0…F7; channel/common messages are status + N data
+    // messages. SysEx runs F0...F7; channel/common messages are status + N data
     // bytes; single-byte system real-time/reset pass through. Running status is
-    // NOT assumed — every message we emit carries an explicit status byte.
+    // NOT assumed - every message we emit carries an explicit status byte.
     //
     // Malformed fragments are DROPPED, never forwarded: an unterminated SysEx tail
     // (no F7), a channel/common message truncated by the buffer end, an orphan F7
@@ -77,32 +77,32 @@ static class MidiHex
         {
             byte b = stream[i];
 
-            if (b == 0xF0)                          // SysEx — must terminate with F7
+            if (b == 0xF0)                          // SysEx - must terminate with F7
             {
                 int end = Array.IndexOf(stream, (byte)0xF7, i + 1);
-                if (end < 0) break;                 // unterminated tail — drop
+                if (end < 0) break;                 // unterminated tail - drop
                 msgs.Add(stream[i..(end + 1)]);
                 i = end + 1;
             }
-            else if (b >= 0xF8)                     // system real-time / reset — single byte
+            else if (b >= 0xF8)                     // system real-time / reset - single byte
             {
                 msgs.Add([b]);
                 i++;
             }
-            else if (b == 0xF7)                     // orphan End-of-Exclusive — skip
+            else if (b == 0xF7)                     // orphan End-of-Exclusive - skip
             {
                 i++;
             }
             else if ((b & 0x80) != 0)               // channel / system-common status
             {
                 int need = DataBytesFor(b);
-                if (i + 1 + need > n) break;         // truncated tail — drop
+                if (i + 1 + need > n) break;         // truncated tail - drop
                 msgs.Add(stream[i..(i + 1 + need)]);
                 i += 1 + need;
             }
             else
             {
-                i++;                                // orphan data byte with no status — skip
+                i++;                                // orphan data byte with no status - skip
             }
         }
         return msgs;

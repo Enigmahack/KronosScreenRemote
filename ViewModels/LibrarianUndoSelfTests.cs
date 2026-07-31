@@ -5,12 +5,12 @@ using System.Text;
 
 // Off-hardware coverage for the Librarian's linear undo (Core/LocalLibrary/LibrarianUndo.cs),
 // which exists for a specific reported problem: dragging a whole bank out of the Merge Window by
-// accident emptied the staging area AND wrote the destination bank, with no way back — the user
+// accident emptied the staging area AND wrote the destination bank, with no way back - the user
 // had to re-pull and re-stage everything by hand.
 //
 // The load-bearing property these cases pin down is that ONE gesture is ONE step and rolls back
 // BOTH sides of it (staged merge entries and every local slot the action wrote, including an
-// occupant it overwrote), never just one of the two — a half-applied undo is worse than none.
+// occupant it overwrote), never just one of the two - a half-applied undo is worse than none.
 // Wired into App.xaml.cs's --librarian-selftest.
 static class LibrarianUndoSelfTests
 {
@@ -36,12 +36,12 @@ static class LibrarianUndoSelfTests
                 exec.Seed(LibObj.Combi, srcBank, n, 1, bodies[n]);
             }
             // An occupant in the destination bank the sequential fill must skip (and undo must
-            // leave alone) — the fill starts at the first FREE slot, so this stays at slot 0.
+            // leave alone) - the fill starts at the first FREE slot, so this stays at slot 0.
             exec.Seed(LibObj.Combi, destBank, 0, 1, MakeCombi("OCCUPANT", real: true));
 
             var cache = new LocalLibraryCache(root);
             await LibraryPullPipeline.PullAsync(exec, cache, full: true);
-            // A UNIQUE host, never "" — the ctor's bank-type warm-up persists to a host-keyed
+            // A UNIQUE host, never "" - the ctor's bank-type warm-up persists to a host-keyed
             // global cache, and sharing the empty host pollutes every other VM-based self-test.
             var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), "selftest-undo-host");
 
@@ -82,7 +82,7 @@ static class LibrarianUndoSelfTests
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
 
-        // ── Case B: exact-slot placement OVER an occupant — undo must bring the occupant back,
+        // ── Case B: exact-slot placement OVER an occupant - undo must bring the occupant back,
         //    not merely empty the slot (the occupant's own body, not just its presence). ────────
         string overwriteRoot = Path.Combine(Path.GetTempPath(), "kronos_selftest_undo_overwrite");
         if (Directory.Exists(overwriteRoot)) Directory.Delete(overwriteRoot, recursive: true);
@@ -111,14 +111,14 @@ static class LibrarianUndoSelfTests
             var restored = cache.GetCurrentBody(LibObj.Combi, destBank, 5);
             Check("B-occupant-body-restored", restored != null && LocalObjectStore.ComputeHash(restored) == occupantHash);
             Check("B-occupant-name-restored", cache.GetDisplayName(LibObj.Combi, destBank, 5) == "OCCUPANT");
-            // The occupant was clean (just pulled) before the placement dirtied its slot — undo
+            // The occupant was clean (just pulled) before the placement dirtied its slot - undo
             // restores the whole index entry, so it must be clean again, not left flagged dirty.
             Check("B-occupant-clean-again", !cache.IsDirty(LibObj.Combi, destBank, 5));
             Check("B-item-restaged", vm.MergePane.TryGet(incomingHash) != null);
         }
         finally { if (Directory.Exists(overwriteRoot)) Directory.Delete(overwriteRoot, recursive: true); }
 
-        // ── Case C: whole Program bank copy WITH an HD-1/EXi type change — the most destructive
+        // ── Case C: whole Program bank copy WITH an HD-1/EXi type change - the most destructive
         //    placement (it drops every local Program in the destination first) plus a pending
         //    bank-type intent that isn't a slot write and so is captured explicitly. ────────────
         string tcRoot = Path.Combine(Path.GetTempPath(), "kronos_selftest_undo_typechange");
@@ -172,7 +172,7 @@ static class LibrarianUndoSelfTests
         finally { if (Directory.Exists(tcRoot)) Directory.Delete(tcRoot, recursive: true); }
 
         // ── Case D: a Local-pane edit (rename) is one step too, and undo restores the prior body
-        //    AND the prior dirty state — undo isn't Merge-Window-only. ─────────────────────────
+        //    AND the prior dirty state - undo isn't Merge-Window-only. ─────────────────────────
         string localRoot = Path.Combine(Path.GetTempPath(), "kronos_selftest_undo_local");
         if (Directory.Exists(localRoot)) Directory.Delete(localRoot, recursive: true);
         try
@@ -202,7 +202,7 @@ static class LibrarianUndoSelfTests
     // real: give one timbre a non-default reference so the Combi reads as genuine content rather
     // than an INIT placeholder. A body that is merely named still has all 16 timbres pointing at
     // the zero default, which IS the defining shape of an init Combi (CombiBody.AllTimbresAtDefault)
-    // — and init slots now count as free space for auto-fill, so an occupant meant to be SKIPPED
+    // - and init slots now count as free space for auto-fill, so an occupant meant to be SKIPPED
     // has to be real. See InitObjects.
     static byte[] MakeCombi(string name, bool real = false)
     {

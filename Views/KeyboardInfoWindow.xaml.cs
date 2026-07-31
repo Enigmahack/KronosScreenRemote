@@ -24,7 +24,7 @@ public partial class KeyboardInfoWindow : ThemedWindow
     long _prevMidiRt = 0;
     bool _prevRtoSet = false;
 
-    // Canvas shapes — created once, points updated each poll
+    // Canvas shapes - created once, points updated each poll
     readonly Line     _gl25    = new();
     readonly Line     _gl50    = new();
     readonly Line     _gl75    = new();
@@ -96,7 +96,7 @@ public partial class KeyboardInfoWindow : ThemedWindow
 
     async Task PollAndUpdateAsync()
     {
-        // Never open a socket to the daemon while the parent window isn't connected —
+        // Never open a socket to the daemon while the parent window isn't connected -
         // the on-Kronos daemon is fragile and must not be probed during boot/offline.
         // The timer keeps ticking so the panel auto-resumes once the parent reconnects.
         if (_polling || string.IsNullOrEmpty(_host) || _isParentConnected?.Invoke() == false)
@@ -118,7 +118,7 @@ public partial class KeyboardInfoWindow : ThemedWindow
         }
         catch (Exception ex)
         {
-            // Async-void timer tick — an escaped exception here would crash the app.
+            // Async-void timer tick - an escaped exception here would crash the app.
             AppLog.Debug($"[kbdinfo] poll error: {ex.Message}");
             SetStatus(false);
         }
@@ -142,7 +142,7 @@ public partial class KeyboardInfoWindow : ThemedWindow
         _cpuHistNext = (_cpuHistNext + 1) % HistLen;
         if (!_histFull && _cpuHistNext == 0) _histFull = true;
 
-        TXT_CpuTotal.Text = info.CpuPct >= 0 ? $"{info.CpuPct}%" : "—";
+        TXT_CpuTotal.Text = info.CpuPct >= 0 ? $"{info.CpuPct}%" : "-";
         RedrawGraph();
 
         SetBar(OverallBarGrid, TXT_Overall, info.CpuPct);
@@ -166,10 +166,10 @@ public partial class KeyboardInfoWindow : ThemedWindow
         TXT_Uptime.Text = FormatUptime(info.Uptime);
         TXT_Mode.Text   = info.Mode >= 0 && info.Mode < ModeNames.Length
             ? ModeNames[info.Mode] : "?";
-        TXT_Load.Text   = string.IsNullOrWhiteSpace(info.Load) ? "—" : info.Load;
+        TXT_Load.Text   = string.IsNullOrWhiteSpace(info.Load) ? "-" : info.Load;
 
-        // Audio — OA.ko USB audio bridge; show engine active/idle based on counter delta
-        string audio = info.AudioSr > 0 ? $"{info.AudioSr / 1000} kHz · {info.AudioOutCh} ch" : "—";
+        // Audio - OA.ko USB audio bridge; show engine active/idle based on counter delta
+        string audio = info.AudioSr > 0 ? $"{info.AudioSr / 1000} kHz · {info.AudioOutCh} ch" : "-";
         if (info.AudioSr > 0)
         {
             bool active = _prevRtoSet
@@ -189,7 +189,7 @@ public partial class KeyboardInfoWindow : ThemedWindow
             TXT_DiskLabel.Text = $"{info.DiskFreeMb / 1024} GB free / {info.DiskTotalMb / 1024} GB";
         }
 
-        // /korg/rw2 disk (second internal SSD — section collapses when absent)
+        // /korg/rw2 disk (second internal SSD - section collapses when absent)
         if (info.DiskTotalRw2Mb > 0)
         {
             int usedPct = (int)((info.DiskTotalRw2Mb - info.DiskFreeRw2Mb) * 100L / info.DiskTotalRw2Mb);
@@ -208,11 +208,11 @@ public partial class KeyboardInfoWindow : ThemedWindow
         ApplyUsbSection(USB1Section, TXT_Usb1MntLabel, TXT_Usb1Space, Usb1BarGrid,
             info.UsbCount > 1, info.Usb1Mnt, info.Usb1FreeMb, info.Usb1TotalMb);
 
-        // Temperatures — per-sensor color coding (thresholds: 80°C=amber, 90°C=red)
+        // Temperatures - per-sensor color coding (thresholds: 80°C=amber, 90°C=red)
         ApplyTemp(TXT_Temp1, info.Temp1);
         ApplyTemp(TXT_Temp2, info.Temp2);
         ApplyTemp(TXT_Temp3, info.Temp3);
-        TXT_Fan.Text = info.Fan1Rpm.HasValue ? $"{info.Fan1Rpm.Value} RPM" : "—";
+        TXT_Fan.Text = info.Fan1Rpm.HasValue ? $"{info.Fan1Rpm.Value} RPM" : "-";
     }
 
     static void ApplyTemp(TextBlock txt, int degC)
@@ -262,7 +262,7 @@ public partial class KeyboardInfoWindow : ThemedWindow
         }
         _cpuLine.Points = linePts;
 
-        // Filled area — close the polygon along the bottom edge
+        // Filled area - close the polygon along the bottom edge
         var areaPts = new PointCollection();
         foreach (var p in linePts) areaPts.Add(p);
         areaPts.Add(new System.Windows.Point(linePts[linePts.Count - 1].X, h));
@@ -274,7 +274,7 @@ public partial class KeyboardInfoWindow : ThemedWindow
 
     static void SetBar(Grid grid, TextBlock? txt, int pct)
     {
-        if (txt != null) txt.Text = pct < 0 ? "—" : $"{pct}%";
+        if (txt != null) txt.Text = pct < 0 ? "-" : $"{pct}%";
         int v = pct < 0 ? 0 : Math.Clamp(pct, 0, 100);
         grid.ColumnDefinitions[0].Width = new GridLength(v,       GridUnitType.Star);
         grid.ColumnDefinitions[1].Width = new GridLength(100 - v, GridUnitType.Star);

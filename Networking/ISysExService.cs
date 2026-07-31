@@ -6,13 +6,13 @@ namespace KronosScreenRemote;
 // thing; ISysExService is nothing but the composition of the roles below, so consumers can
 // (and increasingly do) depend on just the slice they use:
 //
-//   • IPerformanceFollow  — live program/combi follow view-state (PerfStatusBar binding).
-//   • IMidiBackendControl — start/stop/configure the MIDI backend.
-//   • IRawMidiSend        — fire raw MIDI + observe the traffic stream (SysExToolWindow).
-//   • ILibrarianService   — the instrument-facing read+write surface the Librarian pipelines
+//   • IPerformanceFollow  - live program/combi follow view-state (PerfStatusBar binding).
+//   • IMidiBackendControl - start/stop/configure the MIDI backend.
+//   • IRawMidiSend        - fire raw MIDI + observe the traffic stream (SysExToolWindow).
+//   • ILibrarianService   - the instrument-facing read+write surface the Librarian pipelines
 //                            drive (IMoveExecutor write side + IBankDumpService read side).
 //
-// Migrating a call site to the narrowest role it needs shrinks its fakes to that slice —
+// Migrating a call site to the narrowest role it needs shrinks its fakes to that slice -
 // e.g. FakeMoveExecutor implements ILibrarianService, not the whole service.
 
 // Live performance-follow surface: what the footer's PerfStatusBar shows and the value-slider
@@ -53,12 +53,12 @@ interface IMidiBackendControl
     void Reset();
 
     // Apply MIDI/SysEx settings. Safe to call before or after Start().
-    // midiMonitorEnabled — when false, the MIDI stream monitor is stopped.
-    // proactivePoll      — when true, polls on a fixed interval; otherwise only on-change triggers.
+    // midiMonitorEnabled - when false, the MIDI stream monitor is stopped.
+    // proactivePoll      - when true, polls on a fixed interval; otherwise only on-change triggers.
     void ApplyMidiSettings(bool midiMonitorEnabled, bool proactivePoll, int pollIntervalSec, bool pollOnChanges);
 }
 
-// Fire raw MIDI and observe the traffic stream — the exact slice SysExToolWindow needs.
+// Fire raw MIDI and observe the traffic stream - the exact slice SysExToolWindow needs.
 interface IRawMidiSend
 {
     // Send raw MIDI bytes via MIDI_SEND on the control port.
@@ -96,31 +96,31 @@ interface IBankDumpService
     Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index);
 
     // Attempts every object of `obj` in `bank` via ONE func-0x77 Dump Bank Request
-    // instead of `count` individual func-0x72 round-trips — much faster when it works.
+    // instead of `count` individual func-0x72 round-trips - much faster when it works.
     // HW-UNVERIFIED for full objects and for USER banks: the only existing func-0x77
     // caller (SyncNamesAsync) is Name-object-only and confirmed REJECTED for USER banks
     // there, and nothing in this codebase has tried 0x77 against 0x00/0x01/0x0D before.
     // Returns whatever the bulk reply actually contained (0 to `count`, keyed by index)
-    // — callers MUST treat a missing index as "needs an individual DumpObjectAsync
+    // - callers MUST treat a missing index as "needs an individual DumpObjectAsync
     // fallback," never as "confirmed empty": a rejected/unsupported bulk request looks
     // identical to a fully-empty bank at this layer (zero results either way).
     Task<Dictionary<int, ObjectDump>> DumpBankBulkAsync(int obj, int bank, int count);
 
     // Best-effort current performance as an ObjLoc (for the live 0x43 dual-write).
-    // Null if unknown. (The remaining Librarian primitives — object write, Store,
-    // digest, backup, raw send — come from the IMoveExecutor half of ILibrarianService.)
+    // Null if unknown. (The remaining Librarian primitives - object write, Store,
+    // digest, backup, raw send - come from the IMoveExecutor half of ILibrarianService.)
     ObjLoc? CurrentPerformanceLoc();
 
-    // Bulk HD-1/EXi type query for every program bank (func 0x60/0x61) — a single
+    // Bulk HD-1/EXi type query for every program bank (func 0x60/0x61) - a single
     // cheap, non-destructive request, unlike the deprecated per-bank 0x7D/0x7E query.
     // Null if unavailable/no reply.
     Task<ProgramBankTypes?> RequestProgramBankTypesAsync();
 }
 
 // Everything the Librarian's read+write pipeline touches on the instrument: the write/apply
-// side (IMoveExecutor — write, store, digest, backup, raw) plus the read/query side
+// side (IMoveExecutor - write, store, digest, backup, raw) plus the read/query side
 // (IBankDumpService). ChangesetBuilder / LibraryPullPipeline / SyncPipeline / the Librarian
-// ViewModel + Window, and their FakeMoveExecutor, all depend on exactly this — not on the
+// ViewModel + Window, and their FakeMoveExecutor, all depend on exactly this - not on the
 // full ISysExService.
 interface ILibrarianService : IMoveExecutor, IBankDumpService
 {

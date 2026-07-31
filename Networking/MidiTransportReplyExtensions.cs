@@ -4,11 +4,11 @@ namespace KronosScreenRemote;
 // Kronos's ASYNCHRONOUS SysEx replies. A write (MIDI_SEND) is fire-and-forget on the wire; the
 // func-0x24 Reply / bank digest / bank-types answer arrives later on the transport's live
 // SysExMessageReceived stream. Every caller that awaits one used to hand-roll the same
-// TaskCompletionSource + Task.WhenAny(timeout) + event-unsubscribe dance — it appeared four
+// TaskCompletionSource + Task.WhenAny(timeout) + event-unsubscribe dance - it appeared four
 // times (SysExDumpCollector's two Send-and-await paths, SysExService's digest and bank-types
 // queries), each its own subtly-different copy. This centralizes the scaffold; a caller supplies
 // only what actually differs (how to send, how to recognize its reply via a nullable `match`)
-// and keeps its own serialization gate — the helper is deliberately ignorant of that.
+// and keeps its own serialization gate - the helper is deliberately ignorant of that.
 //
 // Split into struct/class overloads on purpose. A single `where T : notnull` method returning
 // `Task<T?>` looks right but is a TRAP: for an unconstrained/notnull T the `?` is annotation-only

@@ -5,7 +5,7 @@ namespace KronosScreenRemote.ViewModels;
 // Bindable tree node shared by both Librarian panes (Views/LibrarianShellWindow.xaml's
 // TV_Local and TV_Pcg), using CommunityToolkit.Mvvm (requirement 4) for the observable
 // properties. Git-style dirty/conflicted coloring is driven by IsDirty/IsConflicted via a
-// content-level Border DataTrigger in the View, NOT TreeViewItem.Background — the stock
+// content-level Border DataTrigger in the View, NOT TreeViewItem.Background - the stock
 // TreeViewItem ControlTemplate's own IsSelected trigger paints its header border directly
 // and wins over any TemplateBinding-sourced Background for whichever node WPF considers
 // natively selected, so a Style-level trigger on TreeViewItem.Background is a no-op for
@@ -15,21 +15,21 @@ partial class ObjectTreeNode : ObservableObject
     public string Label { get; }
     public ObjLoc? Loc { get; }   // set for a LEAF node (an actual object)
 
-    // Set for a BANK-level (or, for Set Lists — which have no real bank concept — the type
+    // Set for a BANK-level (or, for Set Lists - which have no real bank concept - the type
     // root) grouping node, so a drag-drop landing here (not on a specific leaf) knows which
     // (type, bank) to auto-fill into. Null for a leaf node or an unaddressable grouping.
     public (int ObjType, int Bank)? BankRef { get; }
 
-    // Set for a Merge Window leaf node instead of Loc — identifies a MergeEntry by content
+    // Set for a Merge Window leaf node instead of Loc - identifies a MergeEntry by content
     // hash, since staged objects have no real bank/slot address yet (MergeCache is
     // deliberately bag-based; see its own class doc). Never set alongside Loc.
     public string? MergeContentHash { get; }
 
-    // Set for the "Programs"/"Combis" TYPE-ROOT node — the one grouping level that has no bank of
+    // Set for the "Programs"/"Combis" TYPE-ROOT node - the one grouping level that has no bank of
     // its own, so BankRef can't carry it (the Set Lists root DOES have a bank concept and keeps
     // using BankRef instead). Exists so a drop landing on the header still knows which object type
     // was targeted, and can be resolved to a concrete bank + free slot rather than refused with
-    // "drop onto a specific bank or slot" — see LocalEditOps.FindBankWithFreeSlot.
+    // "drop onto a specific bank or slot" - see LocalEditOps.FindBankWithFreeSlot.
     public int? TypeRootObjType { get; }
 
     [ObservableProperty] bool isDirty;
@@ -38,18 +38,18 @@ partial class ObjectTreeNode : ObservableObject
     [ObservableProperty] bool isSelected;
 
     // Local-only "marked for removal, pending Commit" flag (see LocalLibraryCache.
-    // SetPendingDelete) — a LEAF-only signal, distinct from IsDirty/IsConflicted, that drives
+    // SetPendingDelete) - a LEAF-only signal, distinct from IsDirty/IsConflicted, that drives
     // the fade look instead of the row disappearing outright.
     [ObservableProperty] bool isPendingDelete;
 
-    // Local Library's dependency-completeness dot — a SEPARATE signal from IsDirty/
+    // Local Library's dependency-completeness dot - a SEPARATE signal from IsDirty/
     // IsConflicted above (not a replacement for either), only ever set for a dirty Combi/Set
     // List: null = no dot shown; true = green (every reference resolves locally, still
     // pending Sync/Commit); false = red (at least one reference is still missing).
     [ObservableProperty] bool? dependencyStatus;
 
     // For the Merge Window's folder tree (ViewModels/MergePaneViewModel.cs): a Program/Combi
-    // used by more than one referrer gets a "shared" marker — a distinct signal from
+    // used by more than one referrer gets a "shared" marker - a distinct signal from
     // DependencyStatus above (that one's Local-Library-only). Null everywhere else.
     [ObservableProperty] string? sharedTooltip;
 
@@ -65,7 +65,7 @@ partial class ObjectTreeNode : ObservableObject
         TypeRootObjType = typeRootObjType;
     }
 
-    // Every Loc among this node's own descendants (this node included) — the "expand a bank
+    // Every Loc among this node's own descendants (this node included) - the "expand a bank
     // selection to its leaves" primitive a bank/root selection needs once it feeds the same
     // Cut/Copy/Delete/drag/Move-to-Merge-Window pipelines a leaf selection already does (Local
     // and PCG panes only; Program/Combi banks and Set Lists are exactly one level deep, but this
@@ -78,7 +78,7 @@ partial class ObjectTreeNode : ObservableObject
                 yield return descendantLoc;
     }
 
-    // A stable identity for expansion-state tracking across a RefreshTree() rebuild — every
+    // A stable identity for expansion-state tracking across a RefreshTree() rebuild - every
     // node has SOME distinguishing key: a leaf's Loc, a bank/group's BankRef, a Merge leaf's
     // MergeContentHash, or (for a type-root like "Programs"/"Combis", which has none of the
     // above) its own Label, which is unique among siblings at that level.
@@ -93,7 +93,7 @@ partial class ObjectTreeNode : ObservableObject
         }
     }
 
-    // Captured BEFORE a RefreshTree() rebuild — a fresh rebuild otherwise collapses everything
+    // Captured BEFORE a RefreshTree() rebuild - a fresh rebuild otherwise collapses everything
     // back to IsExpanded's default (false), since every RefreshTree() call replaces every
     // ObjectTreeNode with a brand new instance (same reason selection needs PaneSelection.
     // ReconcileAfterRefresh in LibrarianShellWindow.xaml.cs).
@@ -110,7 +110,7 @@ partial class ObjectTreeNode : ObservableObject
     }
 
     // Re-applies expansion state to the NEW tree built right after CollectExpandedKeys ran on
-    // the old one — matched by identity, never by object reference (which RefreshTree just
+    // the old one - matched by identity, never by object reference (which RefreshTree just
     // discarded).
     public static void RestoreExpandedKeys(IEnumerable<ObjectTreeNode> roots, HashSet<object> keys)
     {

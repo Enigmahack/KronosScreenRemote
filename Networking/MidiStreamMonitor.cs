@@ -16,7 +16,7 @@ sealed class MidiStreamMonitor : IDisposable
     readonly string _host;
 
     // Guards the _cts swap. The RUN LOOP owns disposal of its own CTS (in RunLoopAsync's
-    // finally), never Start/Stop — disposing here while the loop still holds the token let a
+    // finally), never Start/Stop - disposing here while the loop still holds the token let a
     // just-ended loop hit `Task.Delay(retryMs, ct)` on a disposed source and throw an
     // ObjectDisposedException the loop doesn't catch (unobserved task exception). Start/Stop
     // only Cancel + repoint the field under this lock; the loop nulls the field (if it still
@@ -26,7 +26,7 @@ sealed class MidiStreamMonitor : IDisposable
 
     // The 9875 bridge is BIDIRECTIONAL: whatever a client writes, the daemon
     // recv()s and write()s straight to /proc/.midi_in (midi_tcp.c) with no per-line
-    // cap — so a full-object (0x73) write goes over this same socket as one
+    // cap - so a full-object (0x73) write goes over this same socket as one
     // continuous stream (the path Python uses), no ctrl-port MIDI_SEND chunking. The
     // read loop and this write use opposite directions of the one NetworkStream,
     // which is safe to use concurrently; _writeGate serialises writers only.
@@ -57,7 +57,7 @@ sealed class MidiStreamMonitor : IDisposable
 
     public event Action<SysExTrafficEntry>? Traffic;
 
-    // Raw complete SysEx messages (F0…F7) as they arrive on the stream. Used by
+    // Raw complete SysEx messages (F0...F7) as they arrive on the stream. Used by
     // the dump-collector to gather multi-message bank dumps and large objects
     // that the daemon's single-message SYSEX capture can't return.
     public event Action<byte[]>? SysExMessageReceived;
@@ -65,7 +65,7 @@ sealed class MidiStreamMonitor : IDisposable
     // Pulses on SysEx start and periodically during accumulation. Lets the dump-
     // collector tell "the Kronos is slowly transmitting a large object" from "no
     // response / stalled", since SysExMessageReceived only fires once a full
-    // F0…F7 completes.
+    // F0...F7 completes.
     public event Action? SysExActivity;
 
     public MidiStreamMonitor(string host) => _host = host;
@@ -86,7 +86,7 @@ sealed class MidiStreamMonitor : IDisposable
         lock (_lifecycleLock)
         {
             _cts?.Cancel();
-            _cts = null;             // never Dispose here — the running loop owns that (see field note)
+            _cts = null;             // never Dispose here - the running loop owns that (see field note)
         }
     }
 
@@ -127,7 +127,7 @@ sealed class MidiStreamMonitor : IDisposable
         finally
         {
             // This loop owns this cts. Clear the field only if it still points at us (a newer
-            // Start may have already repointed it at its own cts), then dispose — safe now
+            // Start may have already repointed it at its own cts), then dispose - safe now
             // because Start/Stop never dispose, so no other path can race this disposal.
             lock (_lifecycleLock)
                 if (ReferenceEquals(_cts, cts)) _cts = null;
@@ -145,8 +145,8 @@ sealed class MidiStreamMonitor : IDisposable
         // the old DIN rate). The read loop MUST return to draining the socket the
         // instant a message completes: the daemon's per-client send is MSG_DONTWAIT
         // best-effort, so if this thread stalls (building a hex string, marshalling
-        // to the UI) its socket buffer fills and the daemon drops a chunk — often an
-        // F7 — and the dump never reassembles. So the read thread does only cheap,
+        // to the UI) its socket buffer fills and the daemon drops a chunk - often an
+        // F7 - and the dump never reassembles. So the read thread does only cheap,
         // lossless work inline (parse + feed the dump collector) and hands each
         // finished message to a consumer task for the heavy part (hex decode, UI
         // traffic, ParseIncoming). DropOldest means an extreme event flood degrades
@@ -160,7 +160,7 @@ sealed class MidiStreamMonitor : IDisposable
 
         void OnMessage(byte[] msg)
         {
-            // Inline on the read thread — cheap and lossless. The bulk-dump collector
+            // Inline on the read thread - cheap and lossless. The bulk-dump collector
             // must see every completed SysEx promptly regardless of UI/log backlog.
             if (msg.Length > 0 && msg[0] == 0xF0)
                 SysExMessageReceived?.Invoke(msg);
@@ -210,7 +210,7 @@ sealed class MidiStreamMonitor : IDisposable
     {
         // Defer the human-readable decode to the display layer (SysExMessageItem):
         // building it here allocated a hex string for every firehose message even
-        // when nothing is viewing the traffic log — a bank dump alone is a ~½ MB
+        // when nothing is viewing the traffic log - a bank dump alone is a ~½ MB
         // transient string. RawBytes carries everything the decode and the parser
         // need; the description is produced on demand only when actually shown.
         var entry = new SysExTrafficEntry(DateTime.Now, false, "", IsMidi: true, RawBytes: msg);
@@ -229,7 +229,7 @@ sealed class MidiStreamMonitor : IDisposable
     // (e.g. a perf-id reply) interleaved into the 0x73 stream and killed reassembly.
     void OnSysExAborted(int bytes, byte interrupt) =>
         AppLog.Debug($"[midi-mon] SysEx ABORTED after {bytes} B by status 0x{interrupt:X2} " +
-                     "(reassembly discarded — an interleaved message broke the stream)");
+                     "(reassembly discarded - an interleaved message broke the stream)");
 
     // ── MIDI message decoder ─────────────────────────────────────────────────
 
@@ -242,7 +242,7 @@ sealed class MidiStreamMonitor : IDisposable
 
     // maxHexBytes caps how many bytes are rendered into the embedded hex preview.
     // A bulk SysEx object (a Set List is ~79 KB) would otherwise build a ~200k-char
-    // string here — expensive to allocate and catastrophic to lay out in a wrapping
+    // string here - expensive to allocate and catastrophic to lay out in a wrapping
     // TextBlock. The [{len}B] size tag already conveys the magnitude; the traffic log
     // passes a small cap while callers that want the full hex leave it unbounded.
     internal static string DecodeMidi(byte[] msg, int maxHexBytes = int.MaxValue)
@@ -353,7 +353,7 @@ sealed class MidiStreamParser
         // Real-time messages: single byte, can appear anywhere in the stream
         if (b >= 0xF8)
         {
-            if (b == 0xF8) TempoProbe.Pulse("stream");   // PROBE (throwaway) — clock tick, then suppress
+            if (b == 0xF8) TempoProbe.Pulse("stream");   // PROBE (throwaway) - clock tick, then suppress
             if (b is 0xFA or 0xFB or 0xFC or 0xFF)
                 MessageReceived?.Invoke([b]);
             // Suppress: 0xF8 (clock), 0xF9 (undefined), 0xFD (undefined), 0xFE (active sensing)
@@ -371,7 +371,7 @@ sealed class MidiStreamParser
             }
             else if ((b & 0x80) != 0)
             {
-                // Status byte interrupts SysEx (broken message) — reset and process new status
+                // Status byte interrupts SysEx (broken message) - reset and process new status
                 SysExAborted?.Invoke(_sysex.Count, b);
                 _sysex.Clear();
                 _state = State.Idle;
@@ -400,7 +400,7 @@ sealed class MidiStreamParser
             return;
         }
 
-        // Data byte — requires active status
+        // Data byte - requires active status
         if (_state == State.Idle) return;
 
         _dataBuf[_dataCount++] = b;

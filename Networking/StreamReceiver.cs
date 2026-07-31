@@ -52,7 +52,7 @@ sealed class StreamReceiver : IStreamReceiver
     //
     // CancellationToken alone is not reliable for socket operations on Windows: WFP callouts
     // (Defender, antivirus, VPN drivers) can intercept I/O and keep it pending even after the
-    // token fires.  Calling _sock.Close() is the only guaranteed way to unblock a pending op —
+    // token fires.  Calling _sock.Close() is the only guaranteed way to unblock a pending op -
     // it causes the OS to abort the I/O and complete the task with a SocketException immediately.
     public async Task ConnectAsync(CancellationToken ct = default)
     {
@@ -60,7 +60,7 @@ sealed class StreamReceiver : IStreamReceiver
         _sock.NoDelay = true;
         // Advertise a large receive window from the first SYN so the server can
         // push a full 480 KB frame without stalling for ACKs.  Must be set before
-        // ConnectAsync — the value is included in the TCP SYN/SYN-ACK handshake.
+        // ConnectAsync - the value is included in the TCP SYN/SYN-ACK handshake.
         _sock.ReceiveBufferSize = 512 * 1024;
         // TCP keepalive: detect Kronos power-off (hard reset, no FIN) within ~25 s.
         // Without this the OS won't probe a silent dead connection for up to 2 hours,
@@ -77,10 +77,10 @@ sealed class StreamReceiver : IStreamReceiver
             BitConverter.GetBytes(2_000u).CopyTo(ka, 8);  // interval between probes (ms)
             _sock.IOControl(IOControlCode.KeepAliveValues, ka, null);
         }
-        catch { /* SIO_KEEPALIVE_VALS unavailable — SO_KEEPALIVE still active (OS default timing) */ }
+        catch { /* SIO_KEEPALIVE_VALS unavailable - SO_KEEPALIVE still active (OS default timing) */ }
 
         var handshake = DoHandshakeAsync(ct);
-        var watchdog  = Task.Delay(10_000);          // plain delay — no CancellationToken
+        var watchdog  = Task.Delay(10_000);          // plain delay - no CancellationToken
 
         if (await Task.WhenAny(handshake, watchdog) != handshake)
         {
@@ -88,7 +88,7 @@ sealed class StreamReceiver : IStreamReceiver
             // Close the socket to signal abort to any pending OS-level I/O.
             try { _sock.Close(); } catch { }
 
-            // Do NOT await handshake — Windows WFP callouts (Defender, AV, VPN drivers) can
+            // Do NOT await handshake - Windows WFP callouts (Defender, AV, VPN drivers) can
             // keep socket I/O pending even after Close(), so await would block indefinitely.
             // ContinueWith observes the eventual exception to prevent UnobservedTaskException.
             _ = handshake.ContinueWith(t => { _ = t.Exception; }, TaskContinuationOptions.None);
@@ -104,9 +104,9 @@ sealed class StreamReceiver : IStreamReceiver
 
     async Task DoHandshakeAsync(CancellationToken ct)
     {
-        Console.WriteLine($"[stream] connecting to {_host}:{_port}…");
+        Console.WriteLine($"[stream] connecting to {_host}:{_port}...");
         await _sock!.ConnectAsync(_host, _port, ct);
-        Console.WriteLine("[stream] TCP connected — sending handshake…");
+        Console.WriteLine("[stream] TCP connected - sending handshake...");
 
         var uBytes = Encoding.ASCII.GetBytes(_user);
         var pBytes = Encoding.ASCII.GetBytes(_pass);
@@ -115,7 +115,7 @@ sealed class StreamReceiver : IStreamReceiver
         byte[] hello = [.. Magic, 0x02, _mode, _fps, (byte)uBytes.Length, (byte)pBytes.Length,
                         .. uBytes, .. pBytes];
         await _sock.SendAsync(hello.AsMemory(), ct);
-        Console.WriteLine("[stream] awaiting server handshake response…");
+        Console.WriteLine("[stream] awaiting server handshake response...");
 
         // Read 5-byte status header first; full payload only follows on success.
         var hdrRsp = await RecvAllAsync(_sock, 5, ct);
@@ -126,7 +126,7 @@ sealed class StreamReceiver : IStreamReceiver
         if (status == 0x01)
             throw new UnauthorizedAccessException("FTP authentication rejected by Kronos daemon.");
         if (status == 0x02)
-            throw new IOException("Kronos could not look up credentials — user not found or account locked.");
+            throw new IOException("Kronos could not look up credentials - user not found or account locked.");
         if (status != 0x00)
             throw new InvalidDataException($"Handshake rejected by daemon (status 0x{status:X2})");
 
@@ -142,7 +142,7 @@ sealed class StreamReceiver : IStreamReceiver
             pal[i] = new PaletteEntry(payload[4 + i * 3], payload[4 + i * 3 + 1], payload[4 + i * 3 + 2]);
         Palette = pal;
 
-        Console.WriteLine($"[stream] handshake OK — {Width}×{Height}");
+        Console.WriteLine($"[stream] handshake OK - {Width}×{Height}");
 
         // Pre-allocate the persistent master frame + the published snapshot buffer.  _masterFrame
         // accumulates all updates; _latest is a stable snapshot the render thread copies out under
@@ -180,7 +180,7 @@ sealed class StreamReceiver : IStreamReceiver
                     if (firstFrame)
                         _sock!.Send([(byte)0xFF]);
                     firstFrame = false;
-                    if (!Poll(5000)) continue; // idle gap is normal — Kronos screen unchanged
+                    if (!Poll(5000)) continue; // idle gap is normal - Kronos screen unchanged
                     // Dead-connection detection is handled entirely by TCP keepalive (set in
                     // ConnectAsync).  When keepalive fails, the socket enters error state,
                     // Poll returns true (error = readable), and RecvAllInto breaks the loop.
@@ -197,7 +197,7 @@ sealed class StreamReceiver : IStreamReceiver
                 }
                 else if (len > 4 && len < frameSize)
                 {
-                    // Dirty rect with PackBits RLE — decode into _masterFrame, then publish snapshot.
+                    // Dirty rect with PackBits RLE - decode into _masterFrame, then publish snapshot.
                     var subHdr = new byte[4];
                     if (!RecvAllInto(_sock!, subHdr, 0, 4)) break;
                     int firstRow = subHdr[0] | (subHdr[1] << 8);
@@ -217,7 +217,7 @@ sealed class StreamReceiver : IStreamReceiver
                     // buffer here would cause an out-of-bounds read when MainWindow.ApplyLut reads
                     // frameSize bytes from it, so treat any other length as a fatal protocol error.
                     Console.Error.WriteLine(
-                        $"[stream] invalid packet length {len} (frame={frameSize}) — dropping connection");
+                        $"[stream] invalid packet length {len} (frame={frameSize}) - dropping connection");
                     break;
                 }
 
@@ -300,7 +300,7 @@ sealed class StreamReceiver : IStreamReceiver
                 byte b = src[si++];
                 for (int k = 0; k < count; k++) dst[dstOffset + di++] = b;
             }
-            // n == -128 (0x80): NOP — skip
+            // n == -128 (0x80): NOP - skip
         }
         return di;
     }

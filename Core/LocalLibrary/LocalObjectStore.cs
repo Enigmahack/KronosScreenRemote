@@ -19,7 +19,7 @@ static class LocalObjectStore
     static string PathFor(string root, string hash) =>
         Path.Combine(root, "blobs", hash[..2], hash + ".bin");
 
-    // Idempotent — writing the same content twice is a no-op the second time.
+    // Idempotent - writing the same content twice is a no-op the second time.
     public static string Put(string root, byte[] body)
     {
         string hash = ComputeHash(body);
@@ -35,7 +35,7 @@ static class LocalObjectStore
     public static byte[]? TryGet(string root, string hash)
     {
         // LocalLibraryIndex.NoBaselineSentinel ("") means "no real hardware baseline exists
-        // yet" (a brand-new local-only object) — not a real SHA-1 hash, so PathFor's hash[..2]
+        // yet" (a brand-new local-only object) - not a real SHA-1 hash, so PathFor's hash[..2]
         // would throw on it. ChangesetBuilder's own Step 4 comment already documents the
         // expected behavior here: "null = ... nothing to back up."
         if (string.IsNullOrEmpty(hash)) return null;

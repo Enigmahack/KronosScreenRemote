@@ -34,7 +34,7 @@ Check **Save password** to skip the dialog on future connections. The same crede
 ### 3. Connecting
 
 The connection goes through a handshake:
-- "TCP connected - sending handshake…"
+- "TCP connected - sending handshake..."
 - "Handshake OK - 800×600"
 
 If credentials are wrong, an "Authentication Failed" message appears. If the connection times out after 10 seconds, a message lists likely causes: firewall blocking port 7373, daemon not running, or cable unplugged.
@@ -159,7 +159,7 @@ When the VGA mirror is active and the Kronos screen has been static for the scre
 
 | Action | Description |
 |---|---|
-| **Save Screenshot…** (`Ctrl+S`) | Shows a save dialog to choose filename and location |
+| **Save Screenshot...** (`Ctrl+S`) | Shows a save dialog to choose filename and location |
 | **Quick Save Screenshot** | Saves instantly to the Screenshot Directory (or desktop if unset) |
 | **Copy Frame to Clipboard** | Copies the current frame to the system clipboard |
 | **Open Screenshots Folder** | Opens the screenshot output directory in Explorer |
@@ -287,7 +287,7 @@ Open Settings → Raw Key Map.
 
 ## Settings
 
-Open via **Settings → Settings…**.
+Open via **Settings → Settings...**.
 
 ### Connection
 
@@ -387,14 +387,14 @@ The status bar at the bottom of the window shows:
 | Element | Description |
 |---|---|
 | Coloured dot + text | Connection state: green = connected, amber = connecting, gray = disconnected |
-| ⌨ keyboard icon | Keyboard capture state — right-click to enable/disable keyboard send |
+| ⌨ keyboard icon | Keyboard capture state - right-click to enable/disable keyboard send |
 | FPS | Measured incoming frame rate while connected |
 | Latency | Round-trip network latency to the Kronos |
 | Notification bubble | Click to open the log file; turns red on errors |
 | Keyboard Info | Opens a pane displaying CPU, memory, temperature, and storage stats |
 | VU meter | Audio level of a local Windows device (e.g. your DAW output). Click ▾ to pick the device; choice is saved |
 | Change / Pull | Active streaming mode for the current connection |
-| Mode | Current Kronos operating mode — right-click to change mode |
+| Mode | Current Kronos operating mode - right-click to change mode |
 
 ---
 

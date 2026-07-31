@@ -1,12 +1,12 @@
 namespace KronosScreenRemote;
 
 // Facade over the local full-body cache: LocalObjectStore (CAS blobs) + LocalLibraryIndex
-// (current/baseline hash pointers, loaded once and mutated in memory — same convention
+// (current/baseline hash pointers, loaded once and mutated in memory - same convention
 // LibraryRepository.ScanAsync already uses for RefIndex: mutate incrementally, persist
 // once via Save() at the end of a batch of changes) + OpLog (permanent history, persisted
 // immediately on every mutating call since it's append-only and cheap).
 //
-// Root: {Storage.DataDir}/local_library/ — deliberately NOT host-keyed, unlike every other
+// Root: {Storage.DataDir}/local_library/ - deliberately NOT host-keyed, unlike every other
 // Storage.cs cache (the Kronos's IP can change; the objects don't).
 sealed class LocalLibraryCache
 {
@@ -15,27 +15,27 @@ sealed class LocalLibraryCache
 
     // Guards _index.Entries writes (below) and _catalog/_catalogBuildTask/_pendingCatalogPatches
     // against BuildCatalogInBackground's snapshot phase, which reads _index.Entries from a
-    // thread-pool thread while the UI thread may be mutating it — see BuildCatalogAsync's own
+    // thread-pool thread while the UI thread may be mutating it - see BuildCatalogAsync's own
     // comment. Plain reads (GetCurrentBody, Exists, etc.) stay lock-free: a Dictionary supports
     // any number of concurrent readers, it's only a read/write or write/write pair racing that
     // corrupts it, so only writers (and this one background reader) need to coordinate.
     readonly object _lock = new();
 
-    // Lazily built, then kept in sync in-place by PatchCatalog below — NOT rebuilt from disk
+    // Lazily built, then kept in sync in-place by PatchCatalog below - NOT rebuilt from disk
     // on every BuildCatalog() call. See BuildCatalogAsync()'s comment for why this matters.
     LibraryCatalog? _catalog;
     Task<LibraryCatalog>? _catalogBuildTask;
 
     // Edits that land while a background build is mid-flight (its disk-read loop already
     // holds a snapshot of _index.Entries taken before the edit happened, so it won't see it)
-    // — replayed onto the freshly-built catalog once that loop finishes. See PatchCatalog.
+    // - replayed onto the freshly-built catalog once that loop finishes. See PatchCatalog.
     readonly List<(int ObjType, int Bank, int Number, byte Version, byte[] Body)> _pendingCatalogPatches = new();
 
     // Raised immediately BEFORE one slot's index entry is written or removed, carrying that
     // slot's PRIOR entry (null = it didn't exist). The Librarian's linear undo
     // (Core/LocalLibrary/LibrarianUndo.cs) is the only subscriber: observing this is what lets
-    // one capture scope record every slot an action touched — however deep inside LocalEditOps/
-    // BatchLibrarian the write happens — without every edit path having to opt in by hand.
+    // one capture scope record every slot an action touched - however deep inside LocalEditOps/
+    // BatchLibrarian the write happens - without every edit path having to opt in by hand.
     // Raised from the four LOCAL-EDIT mutators only (RecordEdits, Discard, RemoveObject,
     // SetPendingDelete): a Pull/Push baseline advance isn't a local edit and isn't undoable.
     public event Action<int, int, int, LocalIndexEntry?>? SlotMutating;
@@ -73,50 +73,50 @@ sealed class LocalLibraryCache
     public bool IsConflicted(int objType, int bank, int number) =>
         _index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e) && e.Conflicted;
 
-    // Cached at write time (see LocalIndexEntry's own doc comment) — index-only, no blob
+    // Cached at write time (see LocalIndexEntry's own doc comment) - index-only, no blob
     // read, safe to call once per node on every tree refresh. Defaults to true (no red dot)
     // for an object that somehow isn't tracked at all.
     public bool HasResolvedDependencies(int objType, int bank, int number) =>
         !_index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e) || e.HasResolvedDependencies;
 
-    // Which wire format a Program's body is in (EXi vs HD-1) — cached at write time (see
+    // Which wire format a Program's body is in (EXi vs HD-1) - cached at write time (see
     // LocalIndexEntry's own doc comment), index-only, no blob read. Meaningless for Combi/
     // Set List; defaults to true there (never displayed).
     public bool IsExi(int objType, int bank, int number) =>
         !_index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e) || e.IsExi;
 
-    // Existence check with NO disk I/O (dictionary lookup only) — use this instead of
+    // Existence check with NO disk I/O (dictionary lookup only) - use this instead of
     // `GetCurrentBody(...) != null` for a plain "is anything here" test over many slots
     // (e.g. building a tree), since GetCurrentBody reads the full blob from the CAS store.
     public bool Exists(int objType, int bank, int number) =>
         _index.Entries.ContainsKey(LocalLibraryIndex.Key(objType, bank, number));
 
-    // Is this slot's occupant merely an INIT/blank placeholder? Index-only, no blob read — the
+    // Is this slot's occupant merely an INIT/blank placeholder? Index-only, no blob read - the
     // cached flag when we have one, else the name-only fallback for entries written before that
     // field existed (see LocalIndexEntry's own comment on why null is not "false").
     public bool IsInitSlot(int objType, int bank, int number) =>
         _index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e)
         && (e.IsInit ?? InitObjects.IsInitName(objType, e.DisplayName));
 
-    // "Is there real content here?" — the test the free-slot search wants, as opposed to Exists,
+    // "Is there real content here?" - the test the free-slot search wants, as opposed to Exists,
     // which only asks whether the slot is INDEXED. On a Kronos those differ for most of a library:
     // the protocol has no empty slot and no delete (see EraseBody), so a synced library indexes all
-    // 128 slots of every bank and Exists is true everywhere — which is why "every Combi bank is
+    // 128 slots of every bank and Exists is true everywhere - which is why "every Combi bank is
     // full" was reported against a library whose USER banks are almost entirely init placeholders.
     //
     // NOT a drop-in replacement for Exists. Deliberately still Exists-based:
-    //   • LocalEditOps.LocalProgramBankFormat — an init HD-1 Program still proves its bank is
+    //   • LocalEditOps.LocalProgramBankFormat - an init HD-1 Program still proves its bank is
     //     HD-1, and reading it as "empty" would put the bank's type back to unknown, re-opening
     //     the wrong-format-bank hole FindBankWithFreeSlot exists to close;
-    //   • tree building and HasAnyObjects/IsLibraryEmpty — init objects are real rows the user
+    //   • tree building and HasAnyObjects/IsLibraryEmpty - init objects are real rows the user
     //     can select, rename and overwrite, and an all-init library is synced, not empty.
     public bool HasContent(int objType, int bank, int number) =>
         Exists(objType, bank, number) && !IsInitSlot(objType, bank, number);
 
     // One-time upgrade of entries written before IsInit existed, for the ONE object type whose
     // emptiness a cached display name can't answer: a Set List's is the aggregate of its 128 slots
-    // (SetListData.IsEmpty), and an untouched one is named "Set List 042", not "Init …". Without
-    // this, a library synced by an earlier build reports its Set List root as full forever — the
+    // (SetListData.IsEmpty), and an untouched one is named "Set List 042", not "Init ...". Without
+    // this, a library synced by an earlier build reports its Set List root as full forever - the
     // IsInit==null entries fall back to IsInitName, which is false for Set Lists by construction.
     //
     // Programs need no equivalent pass (ProgramBody.IsInit IS the name check, so the fallback is
@@ -149,25 +149,25 @@ sealed class LocalLibraryCache
         return changed;
     }
 
-    // "Does the library hold anything at all?" — index-only, no disk I/O. Drives the pane's
+    // "Does the library hold anything at all?" - index-only, no disk I/O. Drives the pane's
     // empty-state hint (LocalLibraryPaneViewModel.ShowEmptyHint): a fresh install, or the exe
     // run from a folder with no library beside it, starts with zero entries.
     public bool HasAnyObjects => _index.Entries.Count > 0;
 
-    // The cached name, decoded once at write time — NEVER touches the CAS blob store. Use
+    // The cached name, decoded once at write time - NEVER touches the CAS blob store. Use
     // this for any display purpose (tree labels, dialog pre-fill); reserve GetCurrentBody
     // for callers that actually need the full body (an edit/move/push operation).
     public string GetDisplayName(int objType, int bank, int number) =>
         _index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e) ? e.DisplayName : "";
 
     // Searches the WHOLE library for an object matching `contentHash`, regardless of where it
-    // lives — the primitive the placement pipeline needs to repoint a reference at whatever
+    // lives - the primitive the placement pipeline needs to repoint a reference at whatever
     // address its dependency actually occupies, instead of only ever checking the one literal
     // address the reference's raw bytes happen to encode. Index-only (CurrentHash is cached at
-    // write time — see LocalIndexEntry's own comment), so this is a cheap in-memory scan, no
-    // blob reads. Excludes PendingDelete entries — never repoint a fresh reference at something
+    // write time - see LocalIndexEntry's own comment), so this is a cheap in-memory scan, no
+    // blob reads. Excludes PendingDelete entries - never repoint a fresh reference at something
     // about to be removed. FirstOrDefault if more than one identical-content copy exists
-    // anywhere (which one doesn't matter — they're byte-identical).
+    // anywhere (which one doesn't matter - they're byte-identical).
     public ObjLoc? FindByContentHash(int objType, string contentHash)
     {
         foreach (var kv in _index.Entries)
@@ -225,7 +225,7 @@ sealed class LocalLibraryCache
         return new ObjLoc(int.Parse(parts[0]), int.Parse(parts[1]), int.Parse(parts[2]));
     }
 
-    // Decodes just the name field from a raw body — cheap, in-memory, no disk I/O. Called
+    // Decodes just the name field from a raw body - cheap, in-memory, no disk I/O. Called
     // exactly once per write (the body is already in hand at that moment), never re-derived
     // later, which is what makes GetDisplayName above free of blob reads.
     static string ExtractDisplayName(int objType, byte[] body) => objType switch
@@ -237,17 +237,17 @@ sealed class LocalLibraryCache
     };
 
     // Same "compute once, using the body already in hand" discipline as ExtractDisplayName
-    // above — checks THIS cache's current state (Exists, index-only), which by the time a
+    // above - checks THIS cache's current state (Exists, index-only), which by the time a
     // given write in a batch runs already reflects every earlier write in the same batch.
     bool ComputeHasResolvedDependencies(int objType, byte[] body) => DependencyScanner.HasAllDependencies(this, objType, body);
 
     // Wire body length alone distinguishes the two Program formats (verified against ~1000
-    // real hardware-pulled bodies — see PcgObjectExtractor's class comment); irrelevant for
+    // real hardware-pulled bodies - see PcgObjectExtractor's class comment); irrelevant for
     // Combi/Set List, which have no such split.
     static bool ComputeIsExi(int objType, byte[] body) =>
         objType != LibObj.Program || body.Length == ProgramFormatConverter.WireSizeExi;
 
-    // Whether this object is merely an INIT/blank placeholder (see InitObjects) — cached at write
+    // Whether this object is merely an INIT/blank placeholder (see InitObjects) - cached at write
     // time exactly like IsExi above, because the free-slot search scans whole banks and a blob read
     // per slot would make every drop pay for 128 of them.
     static bool ComputeIsInit(int objType, byte[] body) => InitObjects.IsInit(objType, body);
@@ -258,11 +258,11 @@ sealed class LocalLibraryCache
     // ONE Pull, and appends exactly ONE "PullBaseline" op-log entry covering all of them.
     //
     // Deliberately batched, not one call per object: a full pull can mean thousands of
-    // objects, and OpLog.Append does a full file-open/write/close each time it's called —
+    // objects, and OpLog.Append does a full file-open/write/close each time it's called -
     // calling it once per object (this method's earlier shape) meant thousands of separate
     // appends to the SAME file, redundantly reopening it every time. Over an SMB-mounted
     // DataDir (this app's typical dev/test setup), that turned a routine Sync Library into
-    // a multi-minute stall — a real, reported regression, not a hypothetical one. The
+    // a multi-minute stall - a real, reported regression, not a hypothetical one. The
     // per-object CAS blob write (LocalObjectStore.Put) still happens once per NEW/changed
     // object, which is inherent to a content-addressed store and already cheap for anything
     // unchanged since a prior pull (Put no-ops if the blob already exists).
@@ -290,11 +290,11 @@ sealed class LocalLibraryCache
             $"Pulled {targets.Count} object(s)", null, null));
     }
 
-    // A successful push advances baseline forward too, symmetric with RecordPullBaselines —
+    // A successful push advances baseline forward too, symmetric with RecordPullBaselines -
     // "local now agrees with hardware," just via push instead of pull. Appends exactly ONE
-    // PERMANENT "PushCommit" op-log entry (carrying SyncBatchId/SyncedAtUtc — the audit
+    // PERMANENT "PushCommit" op-log entry (carrying SyncBatchId/SyncedAtUtc - the audit
     // marker requirement 10 asks for, persisting indefinitely) covering every object this
-    // push wrote — same batching rationale as RecordPullBaselines: one file-append per
+    // push wrote - same batching rationale as RecordPullBaselines: one file-append per
     // object in a large commit would hit the identical SMB-share stall.
     public void RecordPushSuccesses(
         IEnumerable<(int ObjType, int Bank, int Number, byte Version, byte[] Body)> pushed,
@@ -322,7 +322,7 @@ sealed class LocalLibraryCache
     }
 
     // A Pull found this object locally dirty AND its bank changed on hardware since
-    // baseline — flag it, touch nothing else. The edit and the old baseline are both left
+    // baseline - flag it, touch nothing else. The edit and the old baseline are both left
     // exactly as they were until the user resolves the conflict.
     public void MarkConflicted(int objType, int bank, int number)
     {
@@ -335,7 +335,7 @@ sealed class LocalLibraryCache
     }
 
     // Records a local edit touching potentially MULTIPLE objects as one logical action
-    // (a Move touches src+dst+every referrer; BatchPlace touches every placement) — one
+    // (a Move touches src+dst+every referrer; BatchPlace touches every placement) - one
     // OpLogEntry with multiple Targets, not N separate entries, so the history reads as
     // one line per user action ("Moved Program U-B12 -> U-C01"), not a flood of per-object
     // rows. Baseline is untouched for every target; only Push/Pull ever move it.
@@ -353,7 +353,7 @@ sealed class LocalLibraryCache
                 _index.Entries.TryGetValue(key, out var existing);
                 SlotMutating?.Invoke(w.ObjType, w.Bank, w.Number, existing);
                 // No prior entry = a brand-new local-only object (Phase 6: PCG-sourced or a
-                // fresh clipboard placement) — it doesn't exist on hardware yet, so it must be
+                // fresh clipboard placement) - it doesn't exist on hardware yet, so it must be
                 // dirty until pushed. NoBaselineSentinel ("", never a real 40-char SHA-1 hex
                 // hash) guarantees CurrentHash != BaselineHash regardless of body content.
                 string baseline = existing?.BaselineHash ?? LocalLibraryIndex.NoBaselineSentinel;
@@ -374,7 +374,7 @@ sealed class LocalLibraryCache
                             string opKind, string description, DateTime utcNow) =>
         RecordEdits(new[] { (objType, bank, number, version, newBody) }, opKind, description, utcNow);
 
-    // Reverts CurrentHash to BaselineHash and clears any Conflicted flag — the only local
+    // Reverts CurrentHash to BaselineHash and clears any Conflicted flag - the only local
     // undo v1 supports (per-object revert-to-baseline, no linear undo stack). Itself an
     // op-log entry (OpKind "Discard"), so a revert is auditable history, not an erasure.
     // Returns false if there was nothing pending to discard.
@@ -387,7 +387,7 @@ sealed class LocalLibraryCache
             if (!_index.Entries.TryGetValue(key, out e!) || e.CurrentHash == e.BaselineHash) return false;
         }
         SlotMutating?.Invoke(objType, bank, number, e);
-        // A single blob read here is fine — Discard is a one-object, user-initiated action,
+        // A single blob read here is fine - Discard is a one-object, user-initiated action,
         // not a per-slot bulk operation (unlike the tree-building path this whole cache of
         // DisplayName exists to avoid).
         var baselineBody = LocalObjectStore.TryGet(Root, e.BaselineHash);
@@ -411,7 +411,7 @@ sealed class LocalLibraryCache
         return true;
     }
 
-    // Removes an object's index entry entirely — the final step of a committed deletion
+    // Removes an object's index entry entirely - the final step of a committed deletion
     // (requirement 2): once the slot has been erased/INIT'd + Stored on hardware (or, for a
     // local-only object never on hardware, simply abandoned), there's nothing left to track
     // locally, so the row disappears from the tree instead of lingering faded. Also drops it
@@ -435,21 +435,21 @@ sealed class LocalLibraryCache
             }
         }
         // Tombstone the target (not e.CurrentHash) so the op-log fold REMOVES the slot on
-        // recovery instead of resurrecting it — see LocalLibraryIndex.DeletedTombstone.
+        // recovery instead of resurrecting it - see LocalLibraryIndex.DeletedTombstone.
         OpLog.Append(Root, new OpLogEntry(Guid.NewGuid(), utcNow, "Delete",
             new[] { new OpLogTarget(objType, bank, number, LocalLibraryIndex.DeletedTombstone) },
             $"Deleted {new ObjLoc(objType, bank, number).Label()}", null, null));
         return true;
     }
 
-    // Puts a set of slots back exactly as LibrarianUndo captured them before an action ran — the
+    // Puts a set of slots back exactly as LibrarianUndo captured them before an action ran - the
     // rollback half of the Librarian's Ctrl+Z (Core/LocalLibrary/LibrarianUndo.cs). A snapshot
     // whose Entry is null means the slot didn't exist then, so it's removed again.
     //
     // Restores the captured LocalIndexEntry record wholesale (it's immutable, so BaselineHash/
     // PendingDelete/Conflicted/Version/DisplayName all come back exactly), keeps the memoized
     // referrer catalog correct in BOTH directions (re-add a restored Combi/Set List, drop one
-    // that's going away again), and appends exactly ONE op-log entry for the whole rollback —
+    // that's going away again), and appends exactly ONE op-log entry for the whole rollback -
     // a DeletedTombstone target for each slot that goes back to nonexistent, so index.json stays
     // a valid fold of oplog.jsonl and the rollback is auditable history rather than an erasure,
     // same convention Discard/Delete already follow. The catalog's body re-read is confined to
@@ -492,12 +492,12 @@ sealed class LocalLibraryCache
     }
 
     // Re-derives the cached dependency-completeness bit (HasResolvedDependencies) for slots whose
-    // bodies the caller ALREADY holds — no blob reads here at all.
+    // bodies the caller ALREADY holds - no blob reads here at all.
     //
     // That bit is computed once, at write time, and never revisited; it drives the Local tree's
-    // red/green dependency dot. So when the RULES change — as they did when references into the
+    // red/green dependency dot. So when the RULES change - as they did when references into the
     // read-only ROM Program banks stopped counting as dependencies (see
-    // ObjectReferenceWalker.IsAlwaysAvailable) — every object already in the library keeps
+    // ObjectReferenceWalker.IsAlwaysAvailable) - every object already in the library keeps
     // displaying a verdict reached under the old rules. Everything computed fresh (the push's
     // referential gate, the dependency panels) corrects itself immediately; only this cached bit
     // needs sweeping, or a Combi referencing GM keeps its red dot forever and the fix looks like
@@ -523,13 +523,13 @@ sealed class LocalLibraryCache
         return changed;
     }
 
-    // Cached at write time, same discipline as HasResolvedDependencies/IsExi above — index-only,
+    // Cached at write time, same discipline as HasResolvedDependencies/IsExi above - index-only,
     // no blob read, safe to call once per node on every tree refresh.
     public bool IsPendingDelete(int objType, int bank, int number) =>
         _index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e) && e.PendingDelete;
 
     // Local-only "marked for removal" flag (see LocalIndexEntry's own comment on why a fresh
-    // Pull clears it with no extra code here). Does NOT touch CurrentHash/BaselineHash — it's
+    // Pull clears it with no extra code here). Does NOT touch CurrentHash/BaselineHash - it's
     // orthogonal to whatever edit state the object is in; LocalEditOps.SetPendingDelete is what
     // pairs this with Discard for the UI's "Delete" action. Itself an op-log entry, same
     // auditable-history convention as Discard. Returns false if the flag is already at `value`.
@@ -551,26 +551,26 @@ sealed class LocalLibraryCache
     }
 
     // Populates Core/LibrarianModel.cs's (UNMODIFIED) LibraryCatalog from this cache's
-    // CURRENT bodies — the reuse point that lets Phase 2's LocalEditOps call
+    // CURRENT bodies - the reuse point that lets Phase 2's LocalEditOps call
     // Librarian.PlanMove/BatchLibrarian.PlanBatchMove exactly as they are today, just fed
     // local state instead of a fresh hardware dump. Only Combi/SetList populate the
-    // catalog (Programs are never referrers — same scope LibraryCatalog has always had).
+    // catalog (Programs are never referrers - same scope LibraryCatalog has always had).
     //
     // Memoized, not rebuilt from disk every call. Move/BatchPlace (so every PCG drag-drop
     // and every Local-pane move) used to call this fresh each time, which read the FULL
     // body of every Combi + Set List in the library from the CAS blob store just to run the
-    // orphan-gate referrer check for ONE destination slot — over an SMB-mounted DataDir
+    // orphan-gate referrer check for ONE destination slot - over an SMB-mounted DataDir
     // (this app's typical dev/test setup) that's ~1000-1900 network round-trips per drop,
     // a real ~15s stall on every single placement. PatchCatalog below keeps this in sync
     // in-place from bodies already in hand at write time, so only the FIRST build after this
     // cache is constructed pays the full-disk-read cost; every edit after that is O(1).
     //
-    // That first build runs on a thread-pool thread (Task.Run below), not the caller's —
+    // That first build runs on a thread-pool thread (Task.Run below), not the caller's -
     // opening the Librarian window used to pay this cost synchronously on the UI thread
     // (a real 10-20s freeze on a large library) just to have it ready before the first
     // drag-drop. Callers that can await do so via this method, kicked off as soon as the
     // window opens; LocalEditOps' Move/BatchPlace can't (they're synchronous), so they go
-    // through the blocking BuildCatalog() wrapper below instead — a no-op if the background
+    // through the blocking BuildCatalog() wrapper below instead - a no-op if the background
     // build already finished, otherwise a wait for whatever's left of it, which is still
     // strictly better than redoing the full disk read on every call site.
     public Task<LibraryCatalog> BuildCatalogAsync()
@@ -587,7 +587,7 @@ sealed class LocalLibraryCache
     LibraryCatalog BuildCatalogInBackground()
     {
         // Snapshot under the lock (fast, in-memory only) so this can't race a concurrent
-        // _index.Entries write from RecordEdits/RecordPullBaselines/etc. on the UI thread —
+        // _index.Entries write from RecordEdits/RecordPullBaselines/etc. on the UI thread -
         // a `foreach` over a Dictionary racing a write on another thread throws "Collection
         // was modified." The slow part (reading each blob's full body off the CAS store)
         // then runs unlocked against the snapshot, which is plain immutable data by this
@@ -613,7 +613,7 @@ sealed class LocalLibraryCache
         }
 
         // Replay any edits that landed while the loop above was still reading blobs (its
-        // snapshot predates them, so it never saw them) before publishing _catalog — see
+        // snapshot predates them, so it never saw them) before publishing _catalog - see
         // PatchCatalog's own comment.
         lock (_lock)
         {
@@ -629,7 +629,7 @@ sealed class LocalLibraryCache
     }
 
     // Keeps a not-yet-requested-this-session catalog cheap (still null, so still skipped)
-    // and an already-built one accurate — called from every mutation path below whenever a
+    // and an already-built one accurate - called from every mutation path below whenever a
     // Combi/SetList body changes, using the body already in hand (zero extra disk I/O).
     // AddCombi/AddSetlist already no-op for the wrong ObjType; the guard here just skips the
     // ObjectDump allocation for Program writes, which can never be referrers.
@@ -646,7 +646,7 @@ sealed class LocalLibraryCache
             else if (_catalogBuildTask != null)
             {
                 // The background build's disk-read loop is still running off a snapshot
-                // taken before this edit — queue it so BuildCatalogInBackground can replay it
+                // taken before this edit - queue it so BuildCatalogInBackground can replay it
                 // onto the finished catalog instead of silently losing it.
                 _pendingCatalogPatches.Add((objType, bank, number, version, body));
             }

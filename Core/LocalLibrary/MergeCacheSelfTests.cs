@@ -4,7 +4,7 @@ using System.IO;
 using System.Text;
 
 // Off-hardware self-test for the Librarian's Merge Window (Core/LocalLibrary/MergeCache.cs +
-// MergeCachePersistence.cs) — fully headless, no UI or hardware involved, matching every other
+// MergeCachePersistence.cs) - fully headless, no UI or hardware involved, matching every other
 // pure/sync self-test in this file's neighborhood. Exercises: transitive auto-pull across a
 // Combi->Program and Set List->Combi->Program chain, batch-scoped byte-identical dedup and its
 // "shared by multiple referrers" bookkeeping, gap tracking + later reconciliation from a second
@@ -102,7 +102,7 @@ static class MergeCacheSelfTests
                 progMissingEntry.ReferencedBy.Contains(combiZEntry.ContentHash));
 
             // ── Placement: many-to-one referrer patch ───────────────────────────────────
-            // Program A is shared by Combi X and Combi Y — placing it ONCE must cause BOTH
+            // Program A is shared by Combi X and Combi Y - placing it ONCE must cause BOTH
             // referrers' patched bodies to point at that SAME destination.
             var progADest = new ObjLoc(LibObj.Program, 0x41, 7);
             cache.RecordPlacement(progAEntry!.ContentHash, progADest);
@@ -118,7 +118,7 @@ static class MergeCacheSelfTests
             Check("patch-combiY-nothing-unresolved", combiYUnresolved.Count == 0);
 
             // Combi Z's dependency (Program Missing) was never placed and no local-library
-            // lookup was supplied — its patched body must be untouched, still pointing at the
+            // lookup was supplied - its patched body must be untouched, still pointing at the
             // ORIGINAL PCG address, and reported back as unresolved so the caller can track it
             // for a later retry (LibrarianShellViewModel.TrackMergeDependencies).
             var (combiZUnpatched, combiZUnresolved) = cache.ResolveReferencesForPlacement(combiZEntry!);
@@ -127,7 +127,7 @@ static class MergeCacheSelfTests
             Check("patch-combiZ-reported-unresolved", combiZUnresolved.Count == 1 &&
                 combiZUnresolved[0].TargetLoc.Equals(progMissingLoc) && combiZUnresolved[0].ResolvedContentHash == progMissingEntry!.ContentHash);
 
-            // ── ResolveReferencesForPlacement's localLookup — a Local Library search, not
+            // ── ResolveReferencesForPlacement's localLookup - a Local Library search, not
             // just _placedAddresses. Simulated here with a plain dictionary standing in for
             // LocalLibraryCache.FindByContentHash, since this file tests MergeCache in
             // isolation from the rest of Core/LocalLibrary.
@@ -143,7 +143,7 @@ static class MergeCacheSelfTests
             Check("localLookup-repoints-to-found-location", bankZ2 == fbLocalFound && numZ2 == 12);
             Check("localLookup-resolves-nothing-left-unresolved", combiZViaLocalLookupUnresolved.Count == 0);
 
-            // _placedAddresses still takes priority over localLookup when both could answer —
+            // _placedAddresses still takes priority over localLookup when both could answer -
             // Combi X's dependency (Program A) was explicitly placed above; a localLookup that
             // would (wrongly) send it somewhere else must be ignored.
             var conflictingLookup = new Dictionary<(int, string), ObjLoc> { [(LibObj.Program, progAEntry!.ContentHash)] = new ObjLoc(LibObj.Program, 0x44, 3) };
@@ -152,7 +152,7 @@ static class MergeCacheSelfTests
             var (bankX2, numX2) = LibRefs.CombiTimbreRef(combiXViaBoth, 0);
             Check("placedAddresses-takes-priority-over-localLookup", bankX2 == fbDest && numX2 == progADest.Number);
 
-            // ── Requirement 3: PullFromLocal — the same transitive/dedup/gap pull, sourced
+            // ── Requirement 3: PullFromLocal - the same transitive/dedup/gap pull, sourced
             // from Local Library instead of a PCG. Seed a tiny local cache (a Combi referencing
             // a Program) via RecordPullBaselines and pull the Combi in; both must stage, the
             // referrer bookkeeping must be wired, and the origin must be labeled Local Library. ─
@@ -184,7 +184,7 @@ static class MergeCacheSelfTests
                 localCombiEntry.Origins.Any(o => o.PcgFileName == MergeCache.LocalSourceLabel));
 
             // A dependency absent locally is tracked as a gap, same contract as the PCG path.
-            // Point EVERY timbre at a Program not present locally — timbres left at their (0,0)
+            // Point EVERY timbre at a Program not present locally - timbres left at their (0,0)
             // default would otherwise resolve to the local Program seeded above and get pulled
             // too, masking the gap under test.
             var orphanCombiBody = new byte[7810];
@@ -243,7 +243,7 @@ static class MergeCacheSelfTests
         return fails;
     }
 
-    // Builds a synthetic .pcg buffer with Program A, Combi X/Y/Z, and a one-slot Set List —
+    // Builds a synthetic .pcg buffer with Program A, Combi X/Y/Z, and a one-slot Set List -
     // same byte-level construction technique as CrossPanePlacementSelfTests.BuildSyntheticPcg.
     static byte[] BuildSyntheticPcg(int fbProg0, int fbCombi0, int fbProgMissing)
     {
@@ -293,7 +293,7 @@ static class MergeCacheSelfTests
         return ms.ToArray();
     }
 
-    // A second, minimal synthetic PCG carrying just one Program — used to test gap
+    // A second, minimal synthetic PCG carrying just one Program - used to test gap
     // reconciliation (a dependency missing from the first PCG, found in a later one).
     static byte[] BuildSyntheticPcgWithProgram(int fbBank, string name, int number)
     {

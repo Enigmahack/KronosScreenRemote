@@ -2,7 +2,7 @@ using System.Windows.Input;
 
 namespace KronosScreenRemote.ViewModels;
 
-// Off-hardware self-test for PaneSelection — the librarian's historically most bug-prone logic
+// Off-hardware self-test for PaneSelection - the librarian's historically most bug-prone logic
 // (click / Ctrl+click / Shift-range multi-select, cross-pane exclusivity, and survive-a-tree-
 // rebuild reconciliation), which used to live untested in the LibrarianShellWindow code-behind.
 // PaneSelection only depends on WPF for the ModifierKeys enum passed into it, so the whole
@@ -150,7 +150,7 @@ static class PaneSelectionSelfTests
     static PaneSelection Make(List<ObjectTreeNode> roots, Action<string>? reportStatus = null) =>
         new(n => PaneSelection.FindParent(roots, n), reportStatus ?? (_ => { }));
 
-    // A minimal two-bank Program tree — Bank A holds three leaves (for Shift-range), Bank B one
+    // A minimal two-bank Program tree - Bank A holds three leaves (for Shift-range), Bank B one
     // (for the cross-parent case). Each call yields FRESH ObjectTreeNode instances with the same
     // stable Loc identities, so a second BuildTree() stands in for a RefreshTree() rebuild.
     static TreeFixture BuildTree()

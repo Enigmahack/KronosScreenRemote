@@ -8,11 +8,11 @@ using KronosScreenRemote.ViewModels;
 // for: a Combi placed via the Merge Window whose dependency isn't local YET gets tracked
 // (LibrarianShellViewModel.TrackMergeDependencies); placing that dependency LATER, at a
 // DIFFERENT address than originally expected, must NOT immediately fix the already-placed
-// Combi (step 3 resolves LAZILY, only at the next Sync/Commit — see
+// Combi (step 3 resolves LAZILY, only at the next Sync/Commit - see
 // LibrarianShellViewModel.ResolvePendingDependencies); and once Commit runs, the Combi must
 // come back repatched via a REAL edit (re-dirtied, in History, present in the push changeset)
-// — never a silent byte mutation. This is the one test that actually guards the RecordEdit
-// requirement (see LocalEditOps.RepatchReference's own comment). Also covers step 4 — the
+// - never a silent byte mutation. This is the one test that actually guards the RecordEdit
+// requirement (see LocalEditOps.RepatchReference's own comment). Also covers step 4 - the
 // ConfirmContinueWithPendingDependencies gate for whatever's STILL unresolved.
 static class DependencyResolutionSelfTests
 {
@@ -27,11 +27,11 @@ static class DependencyResolutionSelfTests
         {
             var exec = new FakeMoveExecutor();
             var cache = new LocalLibraryCache(root);
-            await LibraryPullPipeline.PullAsync(exec, cache, full: true);   // nothing seeded — empty local library
+            await LibraryPullPipeline.PullAsync(exec, cache, full: true);   // nothing seeded - empty local library
 
             // A UNIQUE host key, never the empty one: LibrarianShellViewModel's constructor seeds
             // its Program bank types from the REAL, global, host-keyed cache file next to the exe,
-            // so sharing a key with another self-test means loading whatever that test persisted —
+            // so sharing a key with another self-test means loading whatever that test persisted -
             // an all-HD-1 answer here would REFUSE every EXi placement below. See
             // CrossPanePlacementSelfTests' own comment for the full history.
             var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), "selftest-depresolution-host");
@@ -46,9 +46,9 @@ static class DependencyResolutionSelfTests
             var combiZLoc = new ObjLoc(LibObj.Combi, 0x00, 1);
 
             // ── Lazy repatch across Sync/Commit ─────────────────────────────────────────
-            // Pull Combi X into the Merge Window — fully transitive, so Program A (its own
+            // Pull Combi X into the Merge Window - fully transitive, so Program A (its own
             // dependency) comes along too. Computed directly from the fixture's own bytes
-            // (MergePaneViewModel exposes no "find by name" — this is the same content the
+            // (MergePaneViewModel exposes no "find by name" - this is the same content the
             // pull will hash internally).
             vm.PullIntoMerge(combiXLoc);
             string progAHash = LocalObjectStore.ComputeHash(progABody);
@@ -57,7 +57,7 @@ static class DependencyResolutionSelfTests
             Check("combiX-staged-in-merge", vm.MergePane.TryGet(combiXHash) != null);
 
             // Place Combi X FIRST, while Program A is still only staged (not placed anywhere)
-            // — its reference can't resolve yet, so it must be tracked, not silently left
+            // - its reference can't resolve yet, so it must be tracked, not silently left
             // pointing at the raw (empty) PCG address.
             var combiDestLoc = new ObjLoc(LibObj.Combi, 0x40, 0);
             var (combiOk, combiErr) = vm.PlaceFromMerge(combiXHash, combiDestLoc);
@@ -68,14 +68,14 @@ static class DependencyResolutionSelfTests
                 combiBodyRightAfterPlacement != null && LibRefs.CombiTimbreRef(combiBodyRightAfterPlacement, 0) == (0, 0));
             Check("combiX-tracked-pending", vm.SessionClipboardRows.Count > 0);
 
-            // Now place Program A — deliberately at a DIFFERENT address than its own natural
+            // Now place Program A - deliberately at a DIFFERENT address than its own natural
             // PCG address (which stays empty), proving the eventual fix-up can't just be
             // "re-check the same address the reference already encodes."
             var progADestLoc = new ObjLoc(LibObj.Program, 0x41, 9);
             var (progOk, progErr) = vm.PlaceFromMerge(progAHash, progADestLoc);
             Check("place-progA-ok", progOk && progErr == null);
 
-            // LAZY, not eager — Combi X's already-placed body must be UNCHANGED right after
+            // LAZY, not eager - Combi X's already-placed body must be UNCHANGED right after
             // Program A lands; nothing repatches it until the next Sync/Commit.
             var combiBodyStillUnresolved = cache.GetCurrentBody(combiDestLoc.ObjType, combiDestLoc.Bank, combiDestLoc.Number);
             Check("combiX-not-repatched-before-commit", combiBodyStillUnresolved != null &&
@@ -93,7 +93,7 @@ static class DependencyResolutionSelfTests
 
             // ── Step 4: whatever's STILL unresolved after the repatch pass consults
             // ConfirmContinueWithPendingDependencies, and respects its answer either way.
-            // Combi Z references a Program not present in this PCG at ALL — a true,
+            // Combi Z references a Program not present in this PCG at ALL - a true,
             // unrepairable gap (ExpectedContentHash stays null; ResolvePendingDependencies
             // can never search for it).
             var combiZDestLoc = new ObjLoc(LibObj.Combi, 0x40, 1);

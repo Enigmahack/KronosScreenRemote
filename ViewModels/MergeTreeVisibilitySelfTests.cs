@@ -4,11 +4,11 @@ using System.IO;
 using System.Text;
 
 // Off-hardware self-test for a real bug: MergePaneViewModel.RefreshTree only showed a
-// Combi/Program at its own top-level section when IsTopLevelPull was true — a Set List's own
+// Combi/Program at its own top-level section when IsTopLevelPull was true - a Set List's own
 // dependencies were only ever reachable by nesting under the Set List's own tree node. Once
 // the Set List got placed (removed from the cache), its still-staged dependency Combi/Program
 // had nothing left to nest under and simply vanished from the tree entirely, even though it
-// was still fully staged and placeable — the user had no way to even find it, let alone place
+// was still fully staged and placeable - the user had no way to even find it, let alone place
 // it. Fixed by letting an entry "graduate" to flat top-level display the moment nothing
 // still-staged references it anymore (MergePaneViewModel.RefreshTree's HasCurrentReferrer).
 static class MergeTreeVisibilitySelfTests
@@ -36,7 +36,7 @@ static class MergeTreeVisibilitySelfTests
         Check("progA-staged", merge.TryGet(progAHash) != null);
 
         // Before removal: Combi X and Program A are non-top-level dependencies with a CURRENT
-        // referrer (the still-staged Set List) — reachable only nested under it, not flatly.
+        // referrer (the still-staged Set List) - reachable only nested under it, not flatly.
         Check("combis-root-absent-before-removal", !merge.Roots.Any(r => r.Label == "Combis"));
         Check("programs-root-absent-before-removal", !merge.Roots.Any(r => r.Label == "Programs"));
         var setListNode = merge.Roots.FirstOrDefault(r => r.Label == "Set Lists")?.Children
@@ -44,25 +44,25 @@ static class MergeTreeVisibilitySelfTests
         Check("combiX-nested-under-setlist", setListNode?.Children.Any(n => n.MergeContentHash == combiXHash) == true);
 
         // Placing (or explicitly removing) the Set List must NOT make Combi X/Program A
-        // disappear from the tree — they're still fully staged and still need to be placed.
+        // disappear from the tree - they're still fully staged and still need to be placed.
         merge.Remove(new[] { setListHash });
         Check("setlist-gone", merge.TryGet(setListHash) == null);
         Check("combiX-still-staged-after-setlist-removed", merge.TryGet(combiXHash) != null);
 
         // Top-level Combis/Programs are now grouped by SOURCE bank (requirement 4), so a
-        // graduated entry sits one level deeper — under its bank group, not directly under the
+        // graduated entry sits one level deeper - under its bank group, not directly under the
         // type root. SelectMany through the bank groups to find it.
         var combisRoot = merge.Roots.FirstOrDefault(r => r.Label == "Combis");
         Check("combiX-graduates-to-flat-display", combisRoot?.Children.SelectMany(b => b.Children).Any(n => n.MergeContentHash == combiXHash) == true);
 
-        // Program A is still nested under Combi X (Combi X is still its current referrer) —
+        // Program A is still nested under Combi X (Combi X is still its current referrer) -
         // not ALSO duplicated flatly under "Programs".
         var combiXNode = combisRoot?.Children.SelectMany(b => b.Children).FirstOrDefault(n => n.MergeContentHash == combiXHash);
         Check("progA-still-nested-under-combiX", combiXNode?.Children.Any(n => n.MergeContentHash == progAHash) == true);
         Check("programs-root-still-absent", !merge.Roots.Any(r => r.Label == "Programs"));
 
         // Once Combi X ALSO gets removed (simulating it being placed), Program A must in turn
-        // graduate to flat display under "Programs" — the same rule, one level deeper.
+        // graduate to flat display under "Programs" - the same rule, one level deeper.
         merge.Remove(new[] { combiXHash });
         var programsRoot = merge.Roots.FirstOrDefault(r => r.Label == "Programs");
         bool progAFlat = programsRoot?.Children.SelectMany(bankGroup => bankGroup.Children)

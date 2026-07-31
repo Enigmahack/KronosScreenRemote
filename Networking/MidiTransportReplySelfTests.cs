@@ -1,10 +1,10 @@
 namespace KronosScreenRemote;
 
-// Off-hardware self-test for MidiTransportReplyExtensions.AwaitReplyAsync — the shared reply-
+// Off-hardware self-test for MidiTransportReplyExtensions.AwaitReplyAsync - the shared reply-
 // await scaffold behind SysExDumpCollector / SysExService. These four methods had NO behavioral
 // coverage (nothing constructs an IKronosMidiTransport under --librarian-selftest), which let a
 // real regression slip in unseen: a `where T : notnull` version returned Task<int> for the int
-// callers, so a TIMEOUT yielded reply-code 0 (= success) instead of null — a never-answered
+// callers, so a TIMEOUT yielded reply-code 0 (= success) instead of null - a never-answered
 // Store Bank would have reported success. This locks the timeout/failure semantics down for the
 // value-type (int, ProgramBankTypes) AND reference-type (byte[]) instantiations. Wired into
 // App.xaml.cs's --librarian-selftest.
@@ -19,10 +19,10 @@ static class MidiTransportReplySelfTests
 
         // Every await uses ConfigureAwait(false): unlike the other self-tests (whose in-memory
         // fakes return already-completed Tasks and so never actually suspend), these genuinely
-        // go async on Task.Delay, and App.xaml.cs blocks the UI thread on .GetResult() — so a
+        // go async on Task.Delay, and App.xaml.cs blocks the UI thread on .GetResult() - so a
         // captured UI SynchronizationContext would deadlock the continuation.
 
-        // The core regression: a timeout must return null for EVERY T — value or reference — not
+        // The core regression: a timeout must return null for EVERY T - value or reference - not
         // default(T) (0 for int, a zeroed struct). `send` succeeds but no reply is ever raised.
         int? intTimeout = await t.AwaitReplyAsync<int>(() => Task.FromResult(true), _ => (int?)null, 1).ConfigureAwait(false);
         Check("int-timeout-is-null", intTimeout == null);
@@ -33,7 +33,7 @@ static class MidiTransportReplySelfTests
         byte[]? refTimeout = await t.AwaitReplyAsync<byte[]>(() => Task.FromResult(true), _ => null, 1).ConfigureAwait(false);
         Check("ref-timeout-is-null", refTimeout == null);
 
-        // A send failure also returns null — even if `match` would have matched something.
+        // A send failure also returns null - even if `match` would have matched something.
         int? sendFailure = await t.AwaitReplyAsync<int>(() => Task.FromResult(false), _ => (int?)0, 1).ConfigureAwait(false);
         Check("int-send-failure-is-null", sendFailure == null);
 

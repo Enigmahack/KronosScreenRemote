@@ -2,19 +2,19 @@ using System.Windows.Input;
 
 namespace KronosScreenRemote.ViewModels;
 
-// Selection tracking for one pane's tree (Local, PCG, or Merge) — click/Ctrl+click/Shift-range
+// Selection tracking for one pane's tree (Local, PCG, or Merge) - click/Ctrl+click/Shift-range
 // mechanics identical across all three, generalized to treat a BankRef node (a bank, or Merge
-// Window's own type-grouping "bank-equivalent" — see MergePaneViewModel.RefreshTree) the same
+// Window's own type-grouping "bank-equivalent" - see MergePaneViewModel.RefreshTree) the same
 // way a leaf node (Loc, or Merge's MergeContentHash) is treated. Kept as one shared class
 // instead of three near-identical copies, which is exactly how the bug this replaces started:
 // Merge Window used to have no selection tracking at all (nothing ever set IsSelected), while
-// Local/PCG's own hand-duplicated copies quietly drifted — neither survived a RefreshTree()
+// Local/PCG's own hand-duplicated copies quietly drifted - neither survived a RefreshTree()
 // rebuild (which throws away every ObjectTreeNode and builds fresh ones), leaving a stale
 // selection pointing at orphaned objects nothing on screen still represents.
 //
 // Lives in ViewModels/ (not the LibrarianShellWindow code-behind it's driven from) precisely
-// because it's WPF-decoupled — its only System.Windows dependency is the ModifierKeys enum
-// passed in by the caller — so PaneSelectionSelfTests can exercise the whole click/range/
+// because it's WPF-decoupled - its only System.Windows dependency is the ModifierKeys enum
+// passed in by the caller - so PaneSelectionSelfTests can exercise the whole click/range/
 // reconcile state machine off-hardware, closing what was the largest untested-logic gap in the
 // new librarian stack.
 sealed class PaneSelection
@@ -30,12 +30,12 @@ sealed class PaneSelection
     // candidate) -> a refusal message, or null to allow.
     public Func<ObjectTreeNode, ObjectTreeNode, string?>? ExtraMixCheck;
 
-    // The other two panes' selections — clearing THIS pane's selection also clears these
+    // The other two panes' selections - clearing THIS pane's selection also clears these
     // (cross-pane exclusivity: only one pane's selection is ever active at a time). Set once,
     // right after all three are constructed (see LibrarianShellWindow's own constructor).
     public PaneSelection[] Others = Array.Empty<PaneSelection>();
 
-    // Fired at the end of every public entry point that can change Items — the "Object
+    // Fired at the end of every public entry point that can change Items - the "Object
     // Dependencies" panel subscribes on all three panes' instances (see LibrarianShellWindow's
     // own constructor) to recompute from whichever pane currently holds the selection.
     public event Action? SelectionChanged;
@@ -70,7 +70,7 @@ sealed class PaneSelection
         Anchor = node;
     }
 
-    // Plain click / Ctrl+click / Shift-range — the click-down gesture. `modifiers` is passed in
+    // Plain click / Ctrl+click / Shift-range - the click-down gesture. `modifiers` is passed in
     // (rather than read from Keyboard.Modifiers directly) so this class stays independent of
     // WPF's global input state.
     public void HandleClick(ObjectTreeNode node, ModifierKeys modifiers)
@@ -93,7 +93,7 @@ sealed class PaneSelection
         }
         else if (Items.Contains(node) && Items.Count > 1)
         {
-            // Leave the multi-selection intact for now — dragging one of several selected
+            // Leave the multi-selection intact for now - dragging one of several selected
             // items should move/copy the whole group; HandleMouseUpWithoutDrag collapses to
             // just this node if no drag actually happened.
         }
@@ -105,7 +105,7 @@ sealed class PaneSelection
     }
 
     // Mouse-up without an intervening drag: a plain click-and-release on a node already part of
-    // a multi-selection collapses to just that node (matches Explorer — mouse-down alone keeps
+    // a multi-selection collapses to just that node (matches Explorer - mouse-down alone keeps
     // the group armed in case you drag it; releasing without dragging narrows to just this one).
     public void HandleMouseUpWithoutDrag(ObjectTreeNode node, ModifierKeys modifiers)
     {
@@ -148,7 +148,7 @@ sealed class PaneSelection
     }
 
     // Re-binds this selection to the tree's NEW node instances after a RefreshTree() rebuild,
-    // matched by stable identity (Loc/BankRef/MergeContentHash — never the old object
+    // matched by stable identity (Loc/BankRef/MergeContentHash - never the old object
     // reference, which RefreshTree just discarded). This is what actually fixes selection
     // surviving an edit: without it, a deleted-then-reselected row (or any post-edit click)
     // would silently act on stale, orphaned node objects nothing on screen still represents.
@@ -186,7 +186,7 @@ sealed class PaneSelection
         SelectionChanged?.Invoke();
     }
 
-    // The tree is at most a few thousand leaves — a linear walk per Shift-click is fine and
+    // The tree is at most a few thousand leaves - a linear walk per Shift-click is fine and
     // avoids needing a back-reference on ObjectTreeNode just for this.
     public static ObjectTreeNode? FindParent(IEnumerable<ObjectTreeNode> roots, ObjectTreeNode node)
     {

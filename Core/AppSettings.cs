@@ -26,7 +26,7 @@ public class AppSettings
 
     public bool DebugLogging { get; set; } = false;
 
-    // Librarian: Merge Window staging cache — see MergeCacheBehavior's own doc comment.
+    // Librarian: Merge Window staging cache - see MergeCacheBehavior's own doc comment.
     public MergeCacheBehavior MergeBehavior { get; set; } = MergeCacheBehavior.TemporaryMemory;
 
     // MIDI / SysEx
@@ -50,7 +50,7 @@ public class AppSettings
     // cached. Viable now that USB carries a name object in ~ms; off by default.
     public bool PullNamesOnChange     { get; set; } = false;
 
-    // Window geometry — -1 means "not yet saved; use defaults"
+    // Window geometry - -1 means "not yet saved; use defaults"
     public double WindowLeft     { get; set; } = -1;
     public double WindowTop      { get; set; } = -1;
     public double WindowWidth    { get; set; } = -1;
@@ -61,7 +61,7 @@ public class AppSettings
     public double ZoomDefaultLevel { get; set; } = 2.5;
     public double ZoomWindowSize   { get; set; } = 1.0;
 
-    // Image quality / adjustments — applied to the streamed frame before display.
+    // Image quality / adjustments - applied to the streamed frame before display.
     // ScalingMode selects WPF's upscale filter; the rest fold into the palette LUT (brightness/
     // contrast/gamma/saturation) or a per-frame unsharp-mask pass (sharpen).  See ImageAdjust.
     public ScalingQuality ImageScalingMode { get; set; } = ScalingQuality.HighQuality;
@@ -126,7 +126,7 @@ public class AppSettings
         ("Bank U-EE", "Bank: U-EE",  Key.None),
         ("Bank U-FF", "Bank: U-FF",  Key.None),
         ("Bank U-GG", "Bank: U-GG",  Key.None),
-        // Sequencer transport (unassigned by default) — mirrors the footer transport
+        // Sequencer transport (unassigned by default) - mirrors the footer transport
         // row; "Seq Save" fires the same shared REC/WRITE press as "Seq Record" does.
         ("Seq Locate",  "Seq: Locate",       Key.None),
         ("Seq Rewind",  "Seq: Rewind",       Key.None),
@@ -135,7 +135,7 @@ public class AppSettings
         ("Seq Record",  "Seq: Record",       Key.None),
         ("Seq Start",   "Seq: Start/Stop",   Key.None),
         ("Seq Save",    "Write / Save",      Key.None),
-        // Tap tempo (unassigned by default) — the bound key taps once per press; hold
+        // Tap tempo (unassigned by default) - the bound key taps once per press; hold
         // is ignored (auto-repeat is filtered) so a held key can't spam phantom taps.
         ("Tap Tempo",   "Tap Tempo",         Key.None),
     ];
@@ -151,7 +151,7 @@ public class AppSettings
     public string GetKeyName(string action) => GetKeybind(action).ToDisplayString();
 
     // Deep copy of every setting.  Reflection over all read/write properties means a newly
-    // added setting is copied automatically — no more silently-dropped pass-through fields
+    // added setting is copied automatically - no more silently-dropped pass-through fields
     // (FocusedDataExpanded/FocusedValueExpanded were lost this way before Settings used Clone()).
     // Mutable collections are copied by value so edits to the clone never mutate the original.
     public AppSettings Clone()

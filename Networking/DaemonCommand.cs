@@ -5,7 +5,7 @@ namespace KronosScreenRemote;
 // here, so the wire protocol is defined in exactly one place instead of being spelled
 // out as ad-hoc string literals at ~110 call sites.
 //
-// Builders return the command WITHOUT a trailing newline — CtrlClient.Send / CtrlQuery
+// Builders return the command WITHOUT a trailing newline - CtrlClient.Send / CtrlQuery
 // append "\n" themselves. (CTRL_PERSIST is the one command CtrlClient writes to the
 // socket directly, and it adds the newline there.)
 static class DaemonCommand
@@ -18,15 +18,15 @@ static class DaemonCommand
     // Mode keys reuse the existing Mode → daemon-token map (Mode.ButtonName()).
     public static string Button(Mode mode) => $"BUTTON {mode.ButtonName()}";
 
-    // Numeric keypad digit (0–9): "BUTTON NUM0" … "BUTTON NUM9".
+    // Numeric keypad digit (0–9): "BUTTON NUM0" ... "BUTTON NUM9".
     public static string NumberButton(int digit) => $"BUTTON NUM{digit}";
 
-    // Bank-select key: "BUTTON BANK_IA" (Internal A) … "BUTTON BANK_UG" (User G).
+    // Bank-select key: "BUTTON BANK_IA" (Internal A) ... "BUTTON BANK_UG" (User G).
     public static string BankButton(BankGroup group, char letter) => $"BUTTON {BankToken(group, letter)}";
 
-    // ── Chords: "CHORD <token> <token> …" — buttons pressed simultaneously ───────
+    // ── Chords: "CHORD <token> <token> ..." - buttons pressed simultaneously ───────
 
-    // The doubled User banks (U-AA … U-GG) are selected by chording the User and
+    // The doubled User banks (U-AA ... U-GG) are selected by chording the User and
     // Internal keys of the same letter.
     public static string DoubleUserBank(char letter) =>
         $"CHORD {BankToken(BankGroup.User, letter)} {BankToken(BankGroup.Internal, letter)}";
@@ -41,7 +41,7 @@ static class DaemonCommand
 
     // ── Raw keyboard: "KEY <linuxKeyCode> <1|0>" (1 = press, 0 = release) ────────
 
-    // Linux KEY_LEFTSHIFT. Eva only treats Left-Shift (42) as a case modifier — see KeyMap
+    // Linux KEY_LEFTSHIFT. Eva only treats Left-Shift (42) as a case modifier - see KeyMap
     // (Key.LeftShift → 42). Kept as a named constant because it is injected around other keys.
     public const int ShiftKeyCode = 42;
 

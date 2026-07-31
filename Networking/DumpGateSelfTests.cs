@@ -1,6 +1,6 @@
 namespace KronosScreenRemote;
 
-// Deterministic, off-hardware self-test for DumpGate — the one part of the transport-lifecycle
+// Deterministic, off-hardware self-test for DumpGate - the one part of the transport-lifecycle
 // race fix that's testable without a live stream (the CTS/monitor races are timing-bound and
 // are verified against real hardware). Locks in the two behaviors that were racy before:
 // same-generation overlap keeps the loop paused until the last dump ends, and an orphaned
@@ -42,7 +42,7 @@ static class DumpGateSelfTests
             Check("newgen-clears-orphan", !g.Active);
             int newEpoch = g.Begin();     // a fresh dump on the new transport
             Check("newgen-dump-active", g.Active);
-            g.End(oldEpoch);              // orphan finishes late — must be a no-op
+            g.End(oldEpoch);              // orphan finishes late - must be a no-op
             Check("orphan-end-is-noop", g.Active);
             g.End(newEpoch);
             Check("newgen-dump-resumes", !g.Active);

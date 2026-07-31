@@ -8,9 +8,9 @@ using System.Windows.Threading;
 // connection, so USB works standalone (no screen), and honours Auto-prefer-USB.
 //
 // Decision (per MidiTransportMode):
-//   Auto — a Kronos USB device if present, else the TCP daemon (when connected).
-//   Usb  — the Kronos USB device if present, else nothing.
-//   Tcp  — the TCP daemon when the screen is connected, else nothing.
+//   Auto - a Kronos USB device if present, else the TCP daemon (when connected).
+//   Usb  - the Kronos USB device if present, else nothing.
+//   Tcp  - the TCP daemon when the screen is connected, else nothing.
 //
 // All mutation funnels through Reevaluate() under a lock, so the hot-plug timer
 // (UI thread) and the connect task (background thread) can't race on the current
@@ -43,14 +43,14 @@ sealed class MidiTransportCoordinator : IDisposable
     public string? ActiveDescription { get; private set; }
 
     // The concrete link now carrying MIDI (for the footer badge + SysEx monitor).
-    // ActiveLink is the short kind; ActiveLinkLabel is "USB — KRONOS" / "DIN — <dev>"
-    // / "TCP — host:port" / "—". Written under _gate in Reevaluate; read on the UI
+    // ActiveLink is the short kind; ActiveLinkLabel is "USB - KRONOS" / "DIN - <dev>"
+    // / "TCP - host:port" / "-". Written under _gate in Reevaluate; read on the UI
     // thread (enum/reference reads are atomic).
     public MidiLinkKind ActiveLink      { get; private set; } = MidiLinkKind.None;
-    public string       ActiveLinkLabel { get; private set; } = "—";
+    public string       ActiveLinkLabel { get; private set; } = "-";
 
     // True when the active MIDI transport is direct USB. Lets the UI skip the daemon
-    // auto-connect (screen + FTP) on launch — USB carries the MIDI features with no
+    // auto-connect (screen + FTP) on launch - USB carries the MIDI features with no
     // network/auth, so the screen becomes opt-in via an explicit Connect.
     public bool UsingUsb { get { lock (_gate) return _current?.Kind == "usb"; } }
 
@@ -110,7 +110,7 @@ sealed class MidiTransportCoordinator : IDisposable
 
             if (found != _usbDevice)
             {
-                // Presence changed (plugged in or removed) — the normal hot-plug path.
+                // Presence changed (plugged in or removed) - the normal hot-plug path.
                 AppLog.Info($"[midi-coord] USB Kronos {(found != null ? $"detected: '{found}'" : "removed")}");
                 _usbDevice     = found;
                 _usbOpenFailed = null;   // a re-plug (presence change) gets a fresh open attempt
@@ -128,7 +128,7 @@ sealed class MidiTransportCoordinator : IDisposable
                 _usbRetryTick = 0;
                 if (KronosMidiDevices.CanOpen(_usbMatch))
                 {
-                    AppLog.Info($"[midi-coord] USB '{found}' openable again — upgrading from fallback");
+                    AppLog.Info($"[midi-coord] USB '{found}' openable again - upgrading from fallback");
                     _usbOpenFailed = null;
                     changed = Reevaluate(out _);
                 }
@@ -138,7 +138,7 @@ sealed class MidiTransportCoordinator : IDisposable
     }
 
     // USB is a candidate only if a device is present AND it didn't just fail to open
-    // (busy — e.g. held by a DAW). A failed device is excluded until it's re-plugged
+    // (busy - e.g. held by a DAW). A failed device is excluded until it's re-plugged
     // or the settings change, so Auto falls through to TCP instead of dying silently.
     bool UsbUsable => _usbDevice != null && _usbDevice != _usbOpenFailed;
 
@@ -163,7 +163,7 @@ sealed class MidiTransportCoordinator : IDisposable
             _sysEx.Reset();
             _current = null;
             ActiveDescription = null;
-            SetLink(MidiLinkKind.None, "—");
+            SetLink(MidiLinkKind.None, "-");
             AppLog.Info("[midi-coord] no MIDI transport active");
             return true;
         }
@@ -180,15 +180,15 @@ sealed class MidiTransportCoordinator : IDisposable
                 // Native Kronos USB (name has "KRONOS") = USB (fast); any other
                 // MIDI device = a 5-pin DIN interface bridging the Kronos = DIN (slow).
                 var kind = ClassifyUsb(_usbDevice);
-                SetLink(kind, $"{LinkWord(kind)} — {_usbDevice ?? _usbMatch}");
+                SetLink(kind, $"{LinkWord(kind)} - {_usbDevice ?? _usbMatch}");
                 AppLog.Info($"[midi-coord] MIDI transport → {usb.Description} (link={kind})");
                 return true;
             }
 
-            // winmm input is exclusive — the port is present but busy (DAW/other app).
+            // winmm input is exclusive - the port is present but busy (DAW/other app).
             // Mark it unusable and fall back to TCP if a screen is connected, else
             // leave nothing running (a re-plug clears the mark and retries).
-            AppLog.Warn($"[midi-coord] USB '{_usbMatch}' present but did not open (port busy?) — falling back");
+            AppLog.Warn($"[midi-coord] USB '{_usbMatch}' present but did not open (port busy?) - falling back");
             _usbOpenFailed = _usbDevice;
             if (_screenConnected)
             {
@@ -197,7 +197,7 @@ sealed class MidiTransportCoordinator : IDisposable
                 _current = ("tcp", $"{_host}:{_ctrlPort}");
                 ActiveDescription = tcp.Description;
                 description = tcp.Description;
-                SetLink(MidiLinkKind.Tcp, $"TCP — {_host}:{_ctrlPort}");
+                SetLink(MidiLinkKind.Tcp, $"TCP - {_host}:{_ctrlPort}");
                 AppLog.Info($"[midi-coord] fell back to {tcp.Description} (USB busy)");
             }
             else
@@ -205,7 +205,7 @@ sealed class MidiTransportCoordinator : IDisposable
                 _sysEx.Reset();                   // dispose the dead USB; nothing else available
                 _current = null;
                 ActiveDescription = null;
-                SetLink(MidiLinkKind.None, "—");
+                SetLink(MidiLinkKind.None, "-");
                 AppLog.Info("[midi-coord] no MIDI transport (USB busy, no TCP screen)");
             }
             return true;
@@ -216,7 +216,7 @@ sealed class MidiTransportCoordinator : IDisposable
         _current = desired;
         ActiveDescription = t.Description;
         description = t.Description;
-        SetLink(MidiLinkKind.Tcp, $"TCP — {_host}:{_ctrlPort}");
+        SetLink(MidiLinkKind.Tcp, $"TCP - {_host}:{_ctrlPort}");
         AppLog.Info($"[midi-coord] MIDI transport → {t.Description}");
         return true;
     }
@@ -234,6 +234,6 @@ sealed class MidiTransportCoordinator : IDisposable
         MidiLinkKind.Tcp => "TCP",
         MidiLinkKind.Usb => "USB",
         MidiLinkKind.Din => "DIN",
-        _                => "—",
+        _                => "-",
     };
 }

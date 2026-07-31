@@ -24,7 +24,7 @@ public partial class HelpWindow : ThemedWindow
 
     static FlowDocument BuildDocument(AppSettings s)
     {
-        string K(string action, string fallback = "—")
+        string K(string action, string fallback = "-")
         {
             var n = s.GetKeyName(action);
             return string.IsNullOrEmpty(n) ? fallback : n;
@@ -140,13 +140,13 @@ public partial class HelpWindow : ThemedWindow
 
         // ── Getting Started ───────────────────────────────────────────────────
         Add(SectionHead("Getting Started"));
-        Add(Body("1.  Open Settings (Settings menu → Settings…) and enter your Kronos IP address."));
-        Add(Body("2.  Use Connection → Connect, or simply launch the app — it attempts to connect automatically."));
+        Add(Body("1.  Open Settings (Settings menu → Settings...) and enter your Kronos IP address."));
+        Add(Body("2.  Use Connection → Connect, or simply launch the app - it attempts to connect automatically."));
         Add(Body("3.  If no credentials are saved, a login dialog appears. Enter the FTP username and password\n" +
                  "    for the Kronos. Check  \"Save password\"  to skip the prompt on future connections.\n" +
                  "    The same credentials are used for both the screen stream and the File Manager."));
         Add(Body("4.  Once connected, the screen panel shows the live Kronos display and the status bar\n" +
-                 "    reads  \"Connected — <ip>\"  with a green indicator."));
+                 "    reads  \"Connected - <ip>\"  with a green indicator."));
         Add(Body("5.  If the Kronos IP changes or the connection drops, use Connection → Connect to reconnect.\n" +
                  "    The app does not auto-reconnect after a network interruption."));
 
@@ -180,7 +180,7 @@ public partial class HelpWindow : ThemedWindow
         Row(cs, "Mode buttons",   "Setlist / Combi / Program / Sequence / Sampling / Global / Disk.\n" +
                                   "The lit (highlighted) button shows the current Kronos operating mode.\n" +
                                   "Click any mode button to switch the Kronos to that mode.");
-        Row(cs, "Help / Compare", "Toggle buttons — each click presses the corresponding hardware button.");
+        Row(cs, "Help / Compare", "Toggle buttons - each click presses the corresponding hardware button.");
         Row(cs, "Number pad",     "Buttons 0–9, dash (–), and dot (.) send numeric entry to the Kronos.");
         Row(cs, "Exit / Enter",   "Send the EXIT or ENTER hardware buttons.");
         Row(cs, "Data wheel",     "Drag up or down to scroll. Mouse scroll wheel also works everywhere.");
@@ -189,31 +189,31 @@ public partial class HelpWindow : ThemedWindow
         // ── Sequencer Transport & Save ────────────────────────────────────────
         Add(SectionHead("Sequencer Transport & Save  (status bar)"));
         Add(Body("The status bar's footer includes a small transport row that sends the Kronos front-panel " +
-                 "SEQUENCER buttons, plus a separate Save button just to its left. Both are greyed out — not " +
-                 "hidden — when the current Kronos mode doesn't support them, so the row stays in a fixed " +
+                 "SEQUENCER buttons, plus a separate Save button just to its left. Both are greyed out - not " +
+                 "hidden - when the current Kronos mode doesn't support them, so the row stays in a fixed " +
                  "position instead of the status bar reflowing every time the mode changes."));
         var sq = ShortcutTable(230);
-        Row(sq, "Locate / Rewind / Fast-Forward / Pause", "Momentary — send the matching SEQUENCER key.\n" +
+        Row(sq, "Locate / Rewind / Fast-Forward / Pause", "Momentary - send the matching SEQUENCER key.\n" +
                                                             "Active only in Sequence mode.");
-        Row(sq, "Record",                                 "Toggle — stays depressed with a pale red background\n" +
+        Row(sq, "Record",                                 "Toggle - stays depressed with a pale red background\n" +
                                                             "while armed. Active only in Sequence mode. Stopping\n" +
                                                             "playback clears it automatically (there's no recording-\n" +
                                                             "while-stopped state), and so does any mode change,\n" +
                                                             "as a guard against a stale/desynced toggle.");
-        Row(sq, "Start / Stop",                           "Toggle — the icon swaps between ▶ and ■.\n" +
+        Row(sq, "Start / Stop",                           "Toggle - the icon swaps between ▶ and ■.\n" +
                                                             "Active only in Sequence mode.");
-        Row(sq, "Save  (disk icon)",                       "One-shot — sends the same Record/Write key press as\n" +
+        Row(sq, "Save  (disk icon)",                       "One-shot - sends the same Record/Write key press as\n" +
                                                             "Record, but never toggles. Active in Setlist, Combi,\n" +
                                                             "Program, and Global modes  (the modes where that\n" +
                                                             "key means “Write” rather than “Record”).");
         Add(sq);
-        Add(Note("On the real Kronos, REC/WRITE is one physical key — this app splits its two roles onto\n" +
+        Add(Note("On the real Kronos, REC/WRITE is one physical key - this app splits its two roles onto\n" +
                  "two buttons so both stay visible regardless of the current mode."));
 
         // ── Keyboard Shortcuts ────────────────────────────────────────────────
         Add(SectionHead("Keyboard Shortcuts"));
         Add(Body("These shortcuts work when the app window is focused and keyboard capture is not active.\n" +
-                 "All shortcuts (except Ctrl combos) can be rebound in Settings → Settings… → Keybindings."));
+                 "All shortcuts (except Ctrl combos) can be rebound in Settings → Settings... → Keybindings."));
         var ks = ShortcutTable(200);
         Row(ks, K("Help",          "F1"),     "Open this help window.");
         Row(ks, K("Mode Setlist",  "F2"),     "Switch Kronos to Setlist mode.");
@@ -223,20 +223,20 @@ public partial class HelpWindow : ThemedWindow
         Row(ks, K("Mode Sampling", "F6"),     "Switch Kronos to Sampling mode.");
         Row(ks, K("Mode Global",   "F7"),     "Switch Kronos to Global mode.");
         Row(ks, K("Mode Disk",     "F8"),     "Switch Kronos to Disk mode.");
-        Row(ks, K("Seq Locate",    "—"),      "Sequencer: Locate  (Sequence mode only).");
-        Row(ks, K("Seq Rewind",    "—"),      "Sequencer: Rewind  (Sequence mode only).");
-        Row(ks, K("Seq Forward",   "—"),      "Sequencer: Fast-Forward  (Sequence mode only).");
-        Row(ks, K("Seq Pause",     "—"),      "Sequencer: Pause  (Sequence mode only).");
-        Row(ks, K("Seq Record",    "—"),      "Sequencer: Record  (Sequence mode only).");
-        Row(ks, K("Seq Start",     "—"),      "Sequencer: Start / Stop  (Sequence mode only).");
-        Row(ks, K("Seq Save",      "—"),      "Write / Save current edit  (Setlist/Combi/Program/Global).");
+        Row(ks, K("Seq Locate",    "-"),      "Sequencer: Locate  (Sequence mode only).");
+        Row(ks, K("Seq Rewind",    "-"),      "Sequencer: Rewind  (Sequence mode only).");
+        Row(ks, K("Seq Forward",   "-"),      "Sequencer: Fast-Forward  (Sequence mode only).");
+        Row(ks, K("Seq Pause",     "-"),      "Sequencer: Pause  (Sequence mode only).");
+        Row(ks, K("Seq Record",    "-"),      "Sequencer: Record  (Sequence mode only).");
+        Row(ks, K("Seq Start",     "-"),      "Sequencer: Start / Stop  (Sequence mode only).");
+        Row(ks, K("Seq Save",      "-"),      "Write / Save current edit  (Setlist/Combi/Program/Global).");
         Row(ks, K("AspectLock",    "A"),      "Toggle aspect-ratio lock on the screen panel.");
         Row(ks, K("Calibrate",     "C"),      "Toggle touch calibration mode.");
         Row(ks, K("Fullscreen",    "F"),      "Toggle fullscreen.");
         Row(ks, K("Mirror",        "M"),      "Toggle VGA output mirroring on the Kronos.");
         Row(ks, K("Zoom Window",   "Z"),      "Toggle zoom tool over the screen panel.");
-        Row(ks, K("HideDataInput",  "—"),     "Hide / show the data input panel  (Full layout only).");
-        Row(ks, K("HideValueInput", "—"),     "Hide / show the value input panel  (Full layout only).");
+        Row(ks, K("HideDataInput",  "-"),     "Hide / show the data input panel  (Full layout only).");
+        Row(ks, K("HideValueInput", "-"),     "Hide / show the value input panel  (Full layout only).");
         Row(ks, K("Quit",          "Q"),      "Quit the application.");
         Row(ks, "+  /  −",                    "Zoom in / zoom out  (enables zoom automatically if off).");
         Row(ks, "Esc",                        "Send EXIT to Kronos  (also dismisses overlays and exits fullscreen).");
@@ -261,11 +261,11 @@ public partial class HelpWindow : ThemedWindow
         Add(kb);
         Add(Body("The ⌨ indicator in the status bar shows capture state:"));
         var ki = ShortcutTable(200);
-        Row(ki, "⌨  (blue)",        "Capture active — keystrokes are forwarded to the Kronos.",  CHead);
-        Row(ki, "⌨/ (gray slash)",  "Capture inactive — click the screen panel to enable.",       CDim);
+        Row(ki, "⌨  (blue)",        "Capture active - keystrokes are forwarded to the Kronos.",  CHead);
+        Row(ki, "⌨/ (gray slash)",  "Capture inactive - click the screen panel to enable.",       CDim);
         Row(ki, "⌨/ (red slash)",   "Keyboard send disabled  (Tools → Disable Keyboard Send).",   CRed);
         Add(ki);
-        Add(Note("Click outside the screen panel — on the control surface, wheel, or menu bar — to release keyboard capture."));
+        Add(Note("Click outside the screen panel - on the control surface, wheel, or menu bar - to release keyboard capture."));
 
         // ── Layout Presets ────────────────────────────────────────────────────
         Add(SectionHead("Layout Presets  (View → Layout Preset)"));
@@ -326,24 +326,24 @@ public partial class HelpWindow : ThemedWindow
         // ── Test Mode ─────────────────────────────────────────────────────────
         Add(SectionHead("Test Mode  (Tools → Enter Kronos Test Mode)"));
         Add(Body("Sends the Kronos into its built-in hardware test mode. A confirmation dialog warns\n" +
-                 "before proceeding — all unsaved changes on the Kronos will be lost, and the Kronos\n" +
+                 "before proceeding - all unsaved changes on the Kronos will be lost, and the Kronos\n" +
                  "must be restarted after testing is complete."));
         Add(Note("Only use this if you understand the risk. This feature is intended for diagnostics\n" +
                  "and hardware verification."));
 
         // ── VGA Mirror ────────────────────────────────────────────────────────
-        Add(SectionHead($"VGA Mirror  ({K("Mirror", "M")}  or  Settings → Settings…)"));
+        Add(SectionHead($"VGA Mirror  ({K("Mirror", "M")}  or  Settings → Settings...)"));
         Add(Body("Toggles VGA output mirroring on the Kronos. When enabled, the Kronos display is duplicated " +
                  "to the VGA output port. The setting is pushed to the Kronos daemon on every connection."));
 
         // ── Bank Select ───────────────────────────────────────────────────────
         Add(SectionHead("Bank Select  (Bank Select menu  or  rebindable shortcuts)"));
         Add(Body("Sends a bank-select button press to the Kronos. The Bank Select menu is organized into " +
-                 "three sub-menus — Internal, User, and User (AA–GG) — rather than one long flat list. " +
+                 "three sub-menus - Internal, User, and User (AA–GG) - rather than one long flat list. " +
                  "Internal and User list single letters A through G and correspond to the internal and user " +
-                 "bank rows; User (AA–GG) lists the doubled-letter pairs (AA, BB, …) and sends a chord of " +
+                 "bank rows; User (AA–GG) lists the doubled-letter pairs (AA, BB, ...) and sends a chord of " +
                  "both the U and I buttons simultaneously, selecting the combined user/internal bank slot."));
-        Add(Note("Bank select shortcuts are unassigned by default. Bind them in Settings → Settings… → Keybindings."));
+        Add(Note("Bank select shortcuts are unassigned by default. Bind them in Settings → Settings... → Keybindings."));
 
         // ── File Manager ──────────────────────────────────────────────────────
         Add(SectionHead("File Manager  (Connection → File Manager)"));
@@ -365,7 +365,7 @@ public partial class HelpWindow : ThemedWindow
                  "with an option to apply the choice to all remaining conflicts."));
 
         // ── Settings ─────────────────────────────────────────────────────────
-        Add(SectionHead("Settings  (Settings → Settings…)"));
+        Add(SectionHead("Settings  (Settings → Settings...)"));
         var st = ShortcutTable(200);
         Row(st, "Kronos Host",             "IP address of the Kronos.");
         Row(st, "Stream Port",             "TCP port for the screen stream  (default: 7373).");
@@ -387,14 +387,14 @@ public partial class HelpWindow : ThemedWindow
         // ── Command Palette ───────────────────────────────────────────────────
         Add(SectionHead("Command Palette  (Ctrl+K)"));
         Add(Body("A fuzzy-search launcher for all app commands. Start typing to filter; press Enter or click " +
-                 "an entry to run it. Useful for infrequently used actions — bank select, layout changes, " +
-                 "mirror toggle — without navigating menus."));
+                 "an entry to run it. Useful for infrequently used actions - bank select, layout changes, " +
+                 "mirror toggle - without navigating menus."));
 
         // ── Screenshot ────────────────────────────────────────────────────────
         Add(SectionHead("Screenshot  (Tools menu  or  Ctrl+S)"));
         Add(Body("Saves the current Kronos screen frame as a PNG file. Requires an active connection."));
         var sc = ShortcutTable(240);
-        Row(sc, "Save Screenshot…  (Ctrl+S)",  "Shows a save dialog to choose filename and location.");
+        Row(sc, "Save Screenshot...  (Ctrl+S)",  "Shows a save dialog to choose filename and location.");
         Row(sc, "Quick Save Screenshot",        "Saves instantly to the Screenshot Directory (or desktop if unset).");
         Row(sc, "Copy Frame to Clipboard",      "Copies the current frame to the system clipboard.");
         Add(sc);
@@ -411,9 +411,9 @@ public partial class HelpWindow : ThemedWindow
         Row(sb, "Keyboard Info",        "Opens a keyboard info pane, displaying various stats related to CPU, Memory, Temperature, and Storage.");
         Row(sb, "VU meter",             "Shows the level of a local Windows audio device (e.g. your DAW output).\n" +
                                         "Click the ▲ button to pick the device to monitor. Choice is saved in settings.");
-        Row(sb, "Sequencer transport + Save", "SEQUENCER buttons and Record/Write — see “Sequencer Transport\n" +
+        Row(sb, "Sequencer transport + Save", "SEQUENCER buttons and Record/Write - see “Sequencer Transport\n" +
                                                "& Save” above.");
-        Row(sb, "Mode: …",              "Current Kronos operating mode. Detected from the screen image when\n" +
+        Row(sb, "Mode: ...",              "Current Kronos operating mode. Detected from the screen image when\n" +
                                          "reference images are available; otherwise polled from the daemon every 1 s.");
         Add(sb);
 

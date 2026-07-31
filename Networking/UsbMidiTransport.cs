@@ -4,18 +4,18 @@ using NAudio.Midi;
 using System.Threading.Channels;
 
 // MIDI transport over a directly-connected Kronos USB-MIDI device (NAudio/winmm).
-// No daemon required — this is the standalone path that lets every SysEx feature
+// No daemon required - this is the standalone path that lets every SysEx feature
 // work with the Kronos plugged in over USB and no network/video connection.
 //
 // Inbound design: winmm delivers short messages (MIM_DATA) and SysEx chunks
 // (MIM_LONGDATA) on its callback thread. Both are funnelled, in arrival order,
-// into the SAME MidiStreamParser the TCP monitor uses — so SysEx that spans
-// multiple driver buffers (a ~79 KB Set List dump) is reassembled to one F0…F7
+// into the SAME MidiStreamParser the TCP monitor uses - so SysEx that spans
+// multiple driver buffers (a ~79 KB Set List dump) is reassembled to one F0...F7
 // message and the ~512 B activity pulses fire identically to the TCP backend.
 // NAudio 2.2.1 re-adds each SysEx buffer after MIM_LONGDATA (verified against the
 // shipped DLL), so long dumps aren't capped at the buffer count.
 //
-// Prerequisite on the Kronos: "Enable Exclusive" (SysEx Rx) plus MIDI transmit —
+// Prerequisite on the Kronos: "Enable Exclusive" (SysEx Rx) plus MIDI transmit -
 // the same requirement as the TCP backend. If the Kronos doesn't route unsolicited
 // messages to USB, request/reply still works but some follow-features degrade to
 // poll-only; ProbeAsync surfaces that (no reply → not capable).
@@ -28,7 +28,7 @@ sealed class UsbMidiTransport : IKronosMidiTransport
 
     // Small spacing between messages of a batched send (the dump collector
     // concatenates up to ~32 requests). Back-to-back SysEx can overrun the Kronos
-    // MIDI-in; this paces them. Tune against hardware — USB is faster than the
+    // MIDI-in; this paces them. Tune against hardware - USB is faster than the
     // daemon path these constants were originally set for.
     const int SendSpacingMs = 3;
 
@@ -52,7 +52,7 @@ sealed class UsbMidiTransport : IKronosMidiTransport
     Channel<byte[]>? _handoff;
 
     // In-flight round-trip correlation (one query at a time via _queryGate). Read on
-    // the winmm callback thread, written on the caller thread — all access under
+    // the winmm callback thread, written on the caller thread - all access under
     // _replyLock so the callback never sees a torn/stale (reply, func) pair.
     TaskCompletionSource<byte[]?>? _pendingReply;
     byte? _pendingFunc;
@@ -85,7 +85,7 @@ sealed class UsbMidiTransport : IKronosMidiTransport
         int outIdx = KronosMidiDevices.FindOutputIndex(_match);
         if (inIdx < 0 || outIdx < 0)
         {
-            AppLog.Warn($"[usb-midi] Kronos '{_match}' not found (in={inIdx} out={outIdx}) — not opening");
+            AppLog.Warn($"[usb-midi] Kronos '{_match}' not found (in={inIdx} out={outIdx}) - not opening");
             return;
         }
 
@@ -176,7 +176,7 @@ sealed class UsbMidiTransport : IKronosMidiTransport
         // The Kronos streams MIDI clock (F8) continuously over USB, plus active
         // sensing (FE) / undefined (F9,FD); the parser suppresses all of these, so
         // drop them here to avoid an allocation + lock on every clock tick.
-        if (status == 0xF8) { TempoProbe.Pulse("usb"); return; }   // PROBE (throwaway) — clock tick, then drop
+        if (status == 0xF8) { TempoProbe.Pulse("usb"); return; }   // PROBE (throwaway) - clock tick, then drop
         if (status is 0xF9 or 0xFD or 0xFE) return;
         int need = MidiHex.DataBytesFor(status);
         Span<byte> msg = stackalloc byte[1 + need];
@@ -205,7 +205,7 @@ sealed class UsbMidiTransport : IKronosMidiTransport
 
     void OnParsedMessage(byte[] msg)
     {
-        // Inline, prompt, cheap — this runs on the winmm callback thread while the
+        // Inline, prompt, cheap - this runs on the winmm callback thread while the
         // parser lock is held, so it must not build strings or marshal to the UI.
         // The dump collector and round-trip correlation both need every SysEx the
         // instant it completes.
@@ -218,7 +218,7 @@ sealed class UsbMidiTransport : IKronosMidiTransport
             // pending state on the first accepted reply means a late/duplicate reply
             // is dropped rather than completing a subsequent same-func query. (A
             // reply that outlives its query's timeout can still, in principle, match
-            // the next same-func query — but the app's two round-trips use distinct
+            // the next same-func query - but the app's two round-trips use distinct
             // funcs, 0x42 probe vs 0x33 perf-id, so that residual can't cross them.)
             if (IsKorgSysEx(msg))
             {
@@ -249,7 +249,7 @@ sealed class UsbMidiTransport : IKronosMidiTransport
         {
             await foreach (var msg in reader.ReadAllAsync().ConfigureAwait(false))
             {
-                // Defer the human-readable decode to the display layer — see
+                // Defer the human-readable decode to the display layer - see
                 // MidiStreamMonitor.Surface. RawBytes carries the message; the
                 // description is built on demand only when the traffic log shows it.
                 var entry = new SysExTrafficEntry(DateTime.Now, false, "", IsMidi: true, RawBytes: msg);
@@ -274,18 +274,18 @@ sealed class UsbMidiTransport : IKronosMidiTransport
         var resp = await QueryAsync(req, 0x42, timeoutMs).ConfigureAwait(false);
         if (resp == null)
         {
-            AppLog.Info("[usb-midi] probe: no Mode Data reply — SysEx disabled on Kronos or not routed to USB");
+            AppLog.Info("[usb-midi] probe: no Mode Data reply - SysEx disabled on Kronos or not routed to USB");
             return false;
         }
         var md = KronosSysEx.ParseModeData(resp);
         if (md != null)
         {
             LastModeData = md;
-            AppLog.Info($"[usb-midi] available — mode={md.Value.Mode} ({md.Value.ModeName})");
+            AppLog.Info($"[usb-midi] available - mode={md.Value.Mode} ({md.Value.ModeName})");
         }
         else
         {
-            AppLog.Info("[usb-midi] available — reply received but not Mode Data");
+            AppLog.Info("[usb-midi] available - reply received but not Mode Data");
         }
         return true;
     }
@@ -311,7 +311,7 @@ sealed class UsbMidiTransport : IKronosMidiTransport
         }
         finally
         {
-            // Only clear if still ours — a completed reply already cleared it.
+            // Only clear if still ours - a completed reply already cleared it.
             lock (_replyLock)
                 if (ReferenceEquals(_pendingReply, tcs)) { _pendingReply = null; _pendingFunc = null; }
             _queryGate.Release();
@@ -364,9 +364,9 @@ sealed class UsbMidiTransport : IKronosMidiTransport
         }
     }
 
-    // USB has no per-message size cap — winmm's long-message send (SendBuffer)
+    // USB has no per-message size cap - winmm's long-message send (SendBuffer)
     // transmits the whole SysEx in one call, and SplitMessages keeps a complete
-    // F0…F7 as a single message. So a large object write is just SendAsync.
+    // F0...F7 as a single message. So a large object write is just SendAsync.
     public Task<bool> SendLargeSysExAsync(byte[] sysex) => SendAsync(sysex);
 
     static string SafeName(Func<string> get, string fallback)

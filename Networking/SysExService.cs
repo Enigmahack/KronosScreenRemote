@@ -28,7 +28,7 @@ sealed class SysExService : ISysExService
     IKronosMidiTransport? _transport;
     SysExDumpCollector? _dump;
     // Pauses the func-33 perf-poll loop while a bulk dump/write streams (so the poll can't steal
-    // one of its replies). Epoch-guarded refcount — see DumpGate for why a plain bool was racy
+    // one of its replies). Epoch-guarded refcount - see DumpGate for why a plain bool was racy
     // both across overlapping dumps and across a transport switch. Begin/End pair in each dump's
     // finally; NewGeneration() on every transport (re)start / reset.
     readonly DumpGate _dumpGate = new();
@@ -47,19 +47,19 @@ sealed class SysExService : ISysExService
     public int ValueSliderCc { get; set; } = 18;
 
     // When true, entering a program/combi whose name isn't cached triggers a single
-    // func-0x72 name fetch (debounced). Off by default — over the daemon/DIN path a
-    // per-change dump was slow and popped the Kronos "Transmitting MIDI Data…" flash;
+    // func-0x72 name fetch (debounced). Off by default - over the daemon/DIN path a
+    // per-change dump was slow and popped the Kronos "Transmitting MIDI Data..." flash;
     // over USB a single name object is a ~ms round-trip, so it's now viable.
     public bool PullNamesOnChange { get; set; }
 
     // ── Program-change stream decode ────────────────────────────────────────────
-    // Identity (bank + number) comes from PC + Bank Select on the live stream —
-    // zero SysEx, so no "Transmitting MIDI Data…" flash per change. Names come
+    // Identity (bank + number) comes from PC + Bank Select on the live stream -
+    // zero SysEx, so no "Transmitting MIDI Data..." flash per change. Names come
     // from a per-bank bulk dump (one flash per bank, then cached).
     int  _stateMode;             // 1..7 (probe + func 0x4E); 2=Combi, 3=Program
     int  _bankMsb, _bankLsb;     // last Bank Select MSB (CC0) / LSB (CC32)
     bool _haveBankContext;       // a Bank Select has been seen this session
-    BankId? _lastBankId;         // last decoded id — lets a bare PC reuse the bank
+    BankId? _lastBankId;         // last decoded id - lets a bare PC reuse the bank
     readonly Dictionary<(int Type, int ObjBank, int Number), string> _streamNames = new();
     readonly HashSet<(int Type, int Bank)> _dumpedBanks = new();  // name-dumps already collected (persisted)
     CancellationTokenSource? _persistDebounceCts;   // batches name-cache disk writes
@@ -100,14 +100,14 @@ sealed class SysExService : ISysExService
         _cts?.Dispose();
         // New transport generation: a sweep orphaned by this switch must not pause the new perf
         // loop, and its later End() is now a no-op (see DumpGate). NOTE (deferred, issue 8): this
-        // does not await an in-flight WriteObject/StoreBank — teardown below can still dispose the
+        // does not await an in-flight WriteObject/StoreBank - teardown below can still dispose the
         // old transport mid-inject. Reads fail gracefully into a timeout; a torn write can leave a
         // partial object on the Kronos. Closing that needs async-aware teardown, which couples with
-        // MidiTransportCoordinator's synchronous _gate — left for a dedicated pass.
+        // MidiTransportCoordinator's synchronous _gate - left for a dedicated pass.
         _dumpGate.NewGeneration();
 
         // Cancel debounced work from the outgoing connection and flush its captured
-        // names under the OLD cache key first — otherwise a still-pending PersistNames
+        // names under the OLD cache key first - otherwise a still-pending PersistNames
         // (2 s debounce) could fire after _cacheKey is repointed and write the previous
         // Kronos's names under the new one's key (cross-instrument contamination).
         try { _refreshDebounceCts?.Cancel(); _refreshDebounceCts?.Dispose(); } catch { }
@@ -155,7 +155,7 @@ sealed class SysExService : ISysExService
         _dump = new SysExDumpCollector(_transport);   // dumps gate on CanDump (stream active)
         _transport.Start();
 
-        AppLog.Info($"[sysex] transport started — {_transport.Description}");
+        AppLog.Info($"[sysex] transport started - {_transport.Description}");
 
         _cts = new CancellationTokenSource();
         var ct = _cts.Token;
@@ -213,7 +213,7 @@ sealed class SysExService : ISysExService
         //   F0 42 3g 68 38 obj bank <23-byte digest> F7
         if (KronosSysEx.HasKorgHeaderAt(raw, 0, 0x38) && raw.Length >= 7)
         {
-            int digObj  = raw[5];   // 0x00 = Program, 0x01 = Combi, …
+            int digObj  = raw[5];   // 0x00 = Program, 0x01 = Combi, ...
             int digBank = raw[6];   // object bank number
 
             if (digObj is 0x00 or 0x01)
@@ -228,7 +228,7 @@ sealed class SysExService : ISysExService
                 lock (_dumpedBanks) wasDumped = _dumpedBanks.Remove((t, digBank));
                 if (wasDumped) Storage.SaveDumpedBanks(_cacheKey, SnapshotDumped());
                 PersistNames();
-                AppLog.Debug($"[sysex] bank digest 0x38 obj={digObj:X2} bank={digBank:X2} — bank invalidated");
+                AppLog.Debug($"[sysex] bank digest 0x38 obj={digObj:X2} bank={digBank:X2} - bank invalidated");
             }
 
             _ = DeferredRefreshAsync();
@@ -236,7 +236,7 @@ sealed class SysExService : ISysExService
         }
 
         // Object Dump (SysEx func 0x73): passively capture program/combi names
-        // from ANY dump — a front-panel Global dump or our own Sync Names sweep.
+        // from ANY dump - a front-panel Global dump or our own Sync Names sweep.
         // The Name is offset 0 (24 bytes) of every object, full or name-only.
         //   F0 42 3g 68 73 obj bank idH idL version <data> F7
         if (KronosSysEx.HasKorgHeaderAt(raw, 0, 0x73) && raw.Length >= 11)
@@ -271,9 +271,9 @@ sealed class SysExService : ISysExService
             return;
         }
 
-        // Mode Change (SysEx func 0x4E): F0 42 3g 68 4E 0m F7 — passive live-stream
+        // Mode Change (SysEx func 0x4E): F0 42 3g 68 4E 0m F7 - passive live-stream
         // signal. The UI no longer treats this as a mode source (the daemon's STATE
-        // command is authoritative there — see ScreenSession's STATE polling),
+        // command is authoritative there - see ScreenSession's STATE polling),
         // but it's still the freshest available seed for _stateMode, which
         // Program-Change stream decode below needs to resolve the right bank.
         if (KronosSysEx.HasKorgHeaderAt(raw, 0, 0x4E) && raw.Length >= 7)
@@ -298,7 +298,7 @@ sealed class SysExService : ISysExService
             int cc  = raw[1] & 0x7F;
             int val = raw[2] & 0x7F;
 
-            // Bank Select (MSB/LSB) always takes priority — a misconfigured
+            // Bank Select (MSB/LSB) always takes priority - a misconfigured
             // ValueSliderCc must never shadow program-change follow. Record it for
             // the next Program Change's stream decode (no SysEx query here).
             if (cc == 0)  { _bankMsb = val; _haveBankContext = true; return; }
@@ -321,7 +321,7 @@ sealed class SysExService : ISysExService
 
             BankId? id = _haveBankContext ? KronosBanks.Decode(_stateMode, _bankMsb, _bankLsb, pc) : null;
 
-            // Bare PC (no Bank Select this change) — reuse the last decoded bank
+            // Bare PC (no Bank Select this change) - reuse the last decoded bank
             // with the new program number, as long as we're still in its mode.
             if (id == null && _lastBankId is { } last &&
                 (_stateMode == 2 || _stateMode == 3) &&
@@ -432,22 +432,22 @@ sealed class SysExService : ISysExService
     // passive capture (ParseIncoming func 0x73) fill the cache. Robust to whether
     // the Kronos answers with name-only or full objects.
     //
-    // SERIALIZE — one bank in flight at a time. Firing all ~45 requests back-to-back
+    // SERIALIZE - one bank in flight at a time. Firing all ~45 requests back-to-back
     // on a timer overruns the Kronos MIDI-in and it silently drops most. CollectAsync
     // paces us per bank; ParseIncoming captures names off the same stream (keyed by
     // the bank byte), so a front-panel dump also populates names.
     //
     // TWO DUMP PATHS, one per bank kind (see KronosBanks / the loop below):
-    //   • PRESET banks (INT, GM)  — func-0x77 whole-bank name ENUM. One request,
+    //   • PRESET banks (INT, GM)  - func-0x77 whole-bank name ENUM. One request,
     //     ~20 ms for 128 names. This enum is firmware-limited to preset banks.
-    //   • WRITABLE banks (USER)   — the func-0x77 enum REJECTS them (Reply code 4),
+    //   • WRITABLE banks (USER)   - the func-0x77 enum REJECTS them (Reply code 4),
     //     so pull each slot with a paced func-0x72 fetch (SysExDumpCollector
     //     .CollectPerObjectNamesAsync). Confirmed on HW at 128/128 for user banks.
     // There is NO per-object session throttle: the old "~13 banks/session then it
-    // rejects everything" reading was a misdiagnosis — presets dumped and USER banks
+    // rejects everything" reading was a misdiagnosis - presets dumped and USER banks
     // rejected the *enum*, not a session cap. So a SINGLE Sync now pulls every bank.
     // The persisted `_dumpedBanks` ledger still usefully skips banks already done
-    // across runs; a bank that doesn't complete is left un-dumped (retryable) — never
+    // across runs; a bank that doesn't complete is left un-dumped (retryable) - never
     // guessed "absent" and marked done, which once corrupted the ledger.
     public async Task<int> SyncNamesAsync(IProgress<(int Done, int Total, int Names)>? progress, CancellationToken ct)
     {
@@ -461,7 +461,7 @@ sealed class SysExService : ISysExService
 
         if (todo.Count == 0)
         {
-            AppLog.Info($"[sync] all {total} banks already dumped — nothing to do");
+            AppLog.Info($"[sync] all {total} banks already dumped - nothing to do");
             return CurrentNameCount();
         }
 
@@ -481,7 +481,7 @@ sealed class SysExService : ISysExService
                 if (objBank < 0x40)
                 {
                     // PRESET bank (INT, GM): the firmware's func-0x77 whole-bank name
-                    // ENUM works and streams all 128 names in ~20 ms — one request.
+                    // ENUM works and streams all 128 names in ~20 ms - one request.
                     // Blocks until its replies go idle, the Kronos rejects (func 0x24 →
                     // fast exit), or it stays silent.
                     var req  = SysExDumpCollector.DumpBankRequest(nameObj, objBank);
@@ -495,7 +495,7 @@ sealed class SysExService : ISysExService
                 else
                 {
                     // WRITABLE bank (USER): the firmware REJECTS the func-0x77 name enum
-                    // (preset-only), so pull each slot with a paced func-0x72 fetch —
+                    // (preset-only), so pull each slot with a paced func-0x72 fetch -
                     // works for every bank (128/128 on HW), no throttle. ParseIncoming
                     // caches the names; mark done only when the pull converges (complete).
                     var perObj = new Progress<int>(_ =>
@@ -517,7 +517,7 @@ sealed class SysExService : ISysExService
                     gotThisRun++;
                 }
                 // A bank that didn't complete is left un-dumped (retryable next session)
-                // — never guess "absent" and mark it done; that once corrupted the ledger
+                // - never guess "absent" and mark it done; that once corrupted the ledger
                 // by skipping real USER banks forever.
 
                 int nowDone; lock (_dumpedBanks) nowDone = _dumpedBanks.Count;
@@ -530,11 +530,11 @@ sealed class SysExService : ISysExService
             lock (_dumpedBanks) left = all.Where(b => !_dumpedBanks.Contains((b.Type, b.ObjBank))).ToList();
             bool onlyGmLeft = left.All(b => b.Type == 1 && b.ObjBank >= 0x10 && b.ObjBank <= 0x1A);
             if (left.Count == 0 || onlyGmLeft)
-                AppLog.Info($"[sync] complete — {total - left.Count}/{total} banks dumped" +
-                            (left.Count > 0 ? $" ({left.Count} GM-variation bank(s) not present — normal)" : ""));
+                AppLog.Info($"[sync] complete - {total - left.Count}/{total} banks dumped" +
+                            (left.Count > 0 ? $" ({left.Count} GM-variation bank(s) not present - normal)" : ""));
             else
                 AppLog.Info($"[sync] round done: +{gotThisRun} new; {left.Count}/{total} banks still incomplete " +
-                            "(retryable next Sync — a partial/rejected bank is never marked done).");
+                            "(retryable next Sync - a partial/rejected bank is never marked done).");
         }
         finally
         {
@@ -632,7 +632,7 @@ sealed class SysExService : ISysExService
                     if (data.IsEmpty) empty.Add(n);       // responded blank → caller drops stale entry
                     else              found[n] = data;     // has content → caller caches
                 }
-                // data == null: no response — leave the caller's cache untouched.
+                // data == null: no response - leave the caller's cache untouched.
 
                 progress?.Report((n + 1, total, found.Count));
             }
@@ -649,7 +649,7 @@ sealed class SysExService : ISysExService
     }
 
     // Core one-set-list collection, shared by the single dump and the sweep. Does NOT
-    // touch the DumpGate — the caller owns that so the sweep can hold it across all 128.
+    // touch the DumpGate - the caller owns that so the sweep can hold it across all 128.
     // A Set List is a single ~79 KB object; the Kronos can take several seconds to
     // serialize it before the first byte streams, so the "no activity at all" window
     // gets generous headroom (the 4 s default would give up before transmission even
@@ -682,7 +682,7 @@ sealed class SysExService : ISysExService
 
         // Wake the perf loop. It resolves identity + a cached name (cheap, no
         // freeze); only an uncached name triggers a dump, and that dump is what
-        // defers to a quiet moment — see PerfMetadataLoop.
+        // defers to a quiet moment - see PerfMetadataLoop.
         try { _perfPollDelayCts?.Cancel(); } catch { }
     }
 
@@ -744,7 +744,7 @@ sealed class SysExService : ISysExService
                     if (info != null)
                     {
                         // Seed the stream-decode bank context from the identity, and
-                        // resolve the name from the shared cache (no func 0x75 — names
+                        // resolve the name from the shared cache (no func 0x75 - names
                         // come only from a Sync Names / captured dump). Format through
                         // BankId so mode-change and program-change displays match
                         // exactly (incl. GM/g 1-based numbering).
@@ -831,7 +831,7 @@ sealed class SysExService : ISysExService
         try
         {
             var req  = SysExDumpCollector.ObjectDumpRequest(obj, bank, index);
-            // Set Lists (~79 KB) and Global (~24 KB) are the big, slow-to-serialize objects —
+            // Set Lists (~79 KB) and Global (~24 KB) are the big, slow-to-serialize objects -
             // give their "no activity" window headroom rather than timing out on a reply that
             // was on its way.
             var msgs = await dump.CollectAsync(req, (byte)obj, expectedCount: 1,
@@ -851,7 +851,7 @@ sealed class SysExService : ISysExService
         try
         {
             var req = SysExDumpCollector.DumpBankRequest(obj, bank);
-            // Generously sized for the largest case this can be asked to cover — a
+            // Generously sized for the largest case this can be asked to cover - a
             // Set List bulk-bank request is up to 128 x ~79 KB (~10 MB total); a full
             // Combi bank is ~1.1 MB. Far larger than the Name-enum's tuning (SysExService's
             // SyncNamesAsync path), which only ever moves ~128 short names. A rejected or
@@ -877,7 +877,7 @@ sealed class SysExService : ISysExService
         try
         {
             // Stamp the CURRENT, correct object-version byte at the moment of the actual
-            // hardware write — never trust whatever's stored on op.Version. This is the one
+            // hardware write - never trust whatever's stored on op.Version. This is the one
             // choke point every push goes through, so it retroactively heals any object
             // already sitting in Local Library or the Merge Window with a stale/placeholder
             // version (e.g. every PCG-imported Program used to carry 0 instead of 5) without

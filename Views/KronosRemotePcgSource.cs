@@ -4,7 +4,7 @@ using KronosScreenRemote.ViewModels;
 
 namespace KronosScreenRemote;
 
-// Production IRemotePcgSource: the real "Load PCG… From Kronos" flow — FTP login prompt, then
+// Production IRemotePcgSource: the real "Load PCG... From Kronos" flow - FTP login prompt, then
 // browse/download over one connection. It owns BOTH untestable halves (KronosFtpSession.
 // EnsureLoginAsync and RemoteFilePickerDialog) so a self-test can replace the whole pick with
 // an in-memory fake, symmetric with the ISysExService seam behind the pull pipeline.
@@ -33,7 +33,7 @@ sealed class KronosRemotePcgSource : IRemotePcgSource
             return RemotePcgPick.Failed(AppMessages.Librarian.Pcg.FtpLoginFailedOrCancelled);
 
         // The picker downloads the selected file itself, over the one connection it opened to
-        // browse — no second connection here. Opening a second one right after the first closes
+        // browse - no second connection here. Opening a second one right after the first closes
         // risked hanging: the Kronos's FTP server appears to hold a session open until its own
         // timeout unless sent a clean QUIT (see RemoteFilePickerDialog's own comment), so a
         // second connect could be left waiting for a session slot.

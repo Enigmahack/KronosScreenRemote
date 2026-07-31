@@ -14,12 +14,12 @@ using System.Text.Json.Serialization;
 //     +29   keyboard track(bits3-0) fontMSB(bit4) transpose-LSB(bits7-5)
 //     +30   comments (512 ASCII)
 //
-// NOTE: the Set List slot Type field is 0=COMBI, 1=PROGRAM, 2=song — the SAME
+// NOTE: the Set List slot Type field is 0=COMBI, 1=PROGRAM, 2=song - the SAME
 // convention as func 0x33 (KronosSysEx.ResolveBankLabel), NOT the "prog/combi/song"
 // order the SetList.txt doc lists. Hardware-confirmed against a Set List dump +
 // func-33 log: slot type-field 0 → func-33 COMBI (e.g. I-G:007 ACCORDION), slot
 // type-field 1 → func-33 PROGRAM (e.g. I-B:043 "3 Way Stereo Grand"). Each type
-// uses its OWN bank numbering (combi: I-A…I-G,U-A…U-G; program: I-A…I-F,GM/g,U-A…).
+// uses its OWN bank numbering (combi: I-A...I-G,U-A...U-G; program: I-A...I-F,GM/g,U-A...).
 readonly record struct SetListSlot(
     int Number, string Name, int Type, int Bank, int Index,
     int Color, int HoldTime, int Volume, string Comments)
@@ -28,7 +28,7 @@ readonly record struct SetListSlot(
     public string TypeLabel => Type switch { 0 => "Combi", 1 => "Prog", 2 => "Song", _ => "?" };
 
     // Type IS the ResolveBankLabel convention (0=combi, 1=program), so resolve
-    // directly — no cross-mapping. Combis carry I-G at bank 6; programs have none.
+    // directly - no cross-mapping. Combis carry I-G at bank 6; programs have none.
     [JsonIgnore]
     public string PerformanceLabel =>
         Type == 2 ? $"Song {Index:D3}"
@@ -50,7 +50,7 @@ sealed record SetListData(int Number, string Name, IReadOnlyList<SetListSlot> Sl
     // Returns null if the message isn't a Set List dump or is too short.
     // Field-level decode lives in Core/ObjectBody/SetListBody.cs (FromRawBody), so a
     // .pcg-sourced raw body (byte-identical layout, no 8-to-7 step needed) reuses the
-    // exact same decoder instead of a second copy — this method only handles the
+    // exact same decoder instead of a second copy - this method only handles the
     // wire-message-specific parts (header validation, 8-to-7 decode).
     public static SetListData? FromObjectDump(byte[] msg)
     {
@@ -67,18 +67,18 @@ sealed record SetListData(int Number, string Name, IReadOnlyList<SetListSlot> Sl
         return SetListBody.FromRawBody(number, bin);
     }
 
-    // A set list with no filled slots has nothing the viewer can show — treat it as
+    // A set list with no filled slots has nothing the viewer can show - treat it as
     // empty regardless of its (possibly default) name, so a full-sweep "Sync All"
     // doesn't cache 100+ blank objects. Keyed on slots alone on purpose: whether an
     // untouched set list carries a blank name or a default label is unverified.
     [JsonIgnore]
     public bool IsEmpty => Slots.Count == 0 || Slots.All(s => s.IsEmpty);
 
-    // The Kronos's factory-default name for set-list slot N — verified against a full hardware
+    // The Kronos's factory-default name for set-list slot N - verified against a full hardware
     // dump, where every untouched slot comes back as "Set List 000".."Set List 127" (zero-padded
     // to three digits). Used to name a slot reverted-to-blank on a committed delete (requirement 2:
     // "revert to the init configuration but with the name of the slot it occupies"), so an erased
-    // Set List reads as its own slot instead of inheriting the shared blank template's name — that
+    // Set List reads as its own slot instead of inheriting the shared blank template's name - that
     // template is captured ONCE from Set List 127, so reusing it verbatim would stamp "Set List 127"
     // onto every erased slot (the exact corruption this method prevents).
     public static string DefaultName(int number) => $"Set List {number:D3}";
@@ -86,9 +86,9 @@ sealed record SetListData(int Number, string Name, IReadOnlyList<SetListSlot> Sl
 
 // Result of a full Set List sweep (ISysExService.DumpAllSetListsAsync / "Sync All").
 // Three-way per set list so the caller can update its cache accurately:
-//   Found          — set lists that returned content → store these.
-//   ConfirmedEmpty — set lists that dumped blank → drop any now-stale cache entry.
-//   (neither)      — set lists that never responded (glitch / transmit off) → the
+//   Found          - set lists that returned content → store these.
+//   ConfirmedEmpty - set lists that dumped blank → drop any now-stale cache entry.
+//   (neither)      - set lists that never responded (glitch / transmit off) → the
 //                    caller leaves the cache untouched, so a transient miss can't
 //                    delete good cached data.
 sealed record SetListSyncResult(

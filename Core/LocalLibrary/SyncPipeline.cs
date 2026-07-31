@@ -1,9 +1,9 @@
 namespace KronosScreenRemote;
 
 // The user-facing Sync/Commit pipeline (requirement 10): "Commit Changes" and "Sync
-// Library" share this one push mechanism — Sync Library = pull, then push, in one click;
+// Library" share this one push mechanism - Sync Library = pull, then push, in one click;
 // Commit Changes = push alone. Every successful push appends a PERMANENT audit-log entry
-// (LocalLibraryCache.RecordPushSuccess) — it does not clear after sync, matching
+// (LocalLibraryCache.RecordPushSuccess) - it does not clear after sync, matching
 // requirement 10's "persists as a permanent audit log."
 static class SyncPipeline
 {
@@ -22,7 +22,7 @@ static class SyncPipeline
         if (plan.Writes.Count == 0)
         {
             // Only local-only deletions (never on hardware, so no erase write) can reach here
-            // with work to do — apply them, no instrument round-trip needed.
+            // with work to do - apply them, no instrument round-trip needed.
             var delUtc = DateTime.UtcNow;
             foreach (var loc in plan.Deletes) cache.RemoveObject(loc.ObjType, loc.Bank, loc.Number, delUtc);
             cache.Save();
@@ -52,22 +52,22 @@ static class SyncPipeline
             pushed.Add((loc.ObjType, loc.Bank, loc.Number, version.Value, body));
         }
         // Committed deletions of hardware objects: the slot was blanked on the instrument, so the
-        // LOCAL slot advances to that same blank body — it stays in the tree as the init object at
+        // LOCAL slot advances to that same blank body - it stays in the tree as the init object at
         // its address (requirement 2), clean and with its pending-delete flag cleared (which
         // RecordPushSuccesses does by rebuilding the entry). NOT removed.
         foreach (var (loc, version, blank) in plan.Erasures)
             pushed.Add((loc.ObjType, loc.Bank, loc.Number, version, blank));
         cache.RecordPushSuccesses(pushed, utcNow, syncBatchId);
 
-        // Local-only deletions (never on hardware): undo the placement — the slot is genuinely
+        // Local-only deletions (never on hardware): undo the placement - the slot is genuinely
         // empty on the instrument, so the local entry is removed rather than shown as a blank.
         foreach (var loc in plan.Deletes) cache.RemoveObject(loc.ObjType, loc.Bank, loc.Number, utcNow);
 
-        // Committed whole-bank type changes are now realized on hardware — clear the intent so a
+        // Committed whole-bank type changes are now realized on hardware - clear the intent so a
         // later, unrelated push to the same bank doesn't re-issue the (erasing) func 0x7C.
         foreach (var (bank, _) in plan.BankTypeChanges) cache.ClearPendingBankTypeChange(bank);
 
-        // Refresh the bank-digest baseline for everything we just wrote — otherwise the
+        // Refresh the bank-digest baseline for everything we just wrote - otherwise the
         // NEXT pull would see "hardware changed" (true, WE changed it) and waste a
         // re-sweep confirming what we already know matches.
         foreach (var (objType, bank) in plan.Stores)
@@ -88,7 +88,7 @@ static class SyncPipeline
         ILibrarianService sysEx, LocalLibraryCache cache, SessionDependencyClipboard sessionClip, Action<string>? progress = null) =>
         PushAsync(sysEx, cache, sessionClip, progress);
 
-    // Pull first, then push — so the push's conflict pre-scan sees the freshest possible
+    // Pull first, then push - so the push's conflict pre-scan sees the freshest possible
     // bank digests, minimizing spurious conflicts (a deliberate ordering choice: push-then-
     // pull would push against a possibly-stale baseline and then immediately re-pull over
     // data it just wrote).

@@ -23,13 +23,13 @@ static class RawKeyMap
     static string FilePath => Path.Combine(Storage.DataDir, "raw_key_mappings.json");
 
     // File I/O + lock are owned by the shared helper; RawKeyMap keeps its OWN JsonNode
-    // (de)serializers (Serialize/Deserialize below) so the on-disk shape — a snake_cased,
-    // WriteIndented JSON array with the Key as a string — and its per-row skip-bad-entry
+    // (de)serializers (Serialize/Deserialize below) so the on-disk shape - a snake_cased,
+    // WriteIndented JSON array with the Key as a string - and its per-row skip-bad-entry
     // resilience stay byte-for-byte identical to the old hand-rolled version. Previously
     // this file did its I/O completely unlocked; folding it in fixes that for free.
     //
     // MUST be declared before Entries: static field initializers run in textual order, and
-    // `Entries = Load()` reads through this field at type load — declared after, it'd NRE.
+    // `Entries = Load()` reads through this field at type load - declared after, it'd NRE.
     static readonly JsonFileCache<List<RawMapping>> _file =
         new(() => FilePath, "raw-key-map", Serialize, Deserialize);
 
@@ -43,7 +43,7 @@ static class RawKeyMap
 
     public static void Upsert(RawMapping m) { UpsertInto(Entries, m); Save(); }
 
-    // Pure upsert, no disk and no ObservableCollection required — so RawKeyMapSelfTests can
+    // Pure upsert, no disk and no ObservableCollection required - so RawKeyMapSelfTests can
     // exercise it directly. Replaces any existing mapping for the same (HostKey, HostShift)
     // in place, then appends, matching the old FirstOrDefault-remove-then-Add behavior.
     internal static void UpsertInto(IList<RawMapping> list, RawMapping m)
@@ -98,7 +98,7 @@ static class RawKeyMap
     }
 
     // Skips a bad row (unparseable Key, non-positive raw_code) and keeps the rest, rather
-    // than failing the whole file — the resilience a typed STJ deserialize would have lost.
+    // than failing the whole file - the resilience a typed STJ deserialize would have lost.
     internal static List<RawMapping> Deserialize(string json)
     {
         var list = new List<RawMapping>();

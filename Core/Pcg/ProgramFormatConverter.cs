@@ -5,7 +5,7 @@ namespace KronosScreenRemote;
 // PcgObjectExtractor's class comment for the empirical evidence: EXi programs are
 // byte-identical in both formats (4960 bytes); HD-1 programs' wire dump (3706 bytes) is an
 // exact truncation of the .pcg slot's first 3706 bytes. Combi and Set List need no
-// conversion at all (their .pcg and wire sizes already match) — this class is Program-only.
+// conversion at all (their .pcg and wire sizes already match) - this class is Program-only.
 static class ProgramFormatConverter
 {
     public const int PcgSlotSize = 4960;
@@ -13,7 +13,7 @@ static class ProgramFormatConverter
     public const int WireSizeHd1 = 3706;
 
     // isExi identifies which chunk tag (MBK1/PBK1) the .pcg bank this record came from used
-    // — see PcgObjectEntry.IsExi.
+    // - see PcgObjectEntry.IsExi.
     public static byte[] PcgToWire(byte[] pcgBody, bool isExi)
     {
         if (pcgBody.Length != PcgSlotSize)
@@ -26,7 +26,7 @@ static class ProgramFormatConverter
 
     // Programs need the PcgToWire conversion above; Combi and Set List records already match
     // the wire format exactly (see class comment). Returns null (rather than throwing) for a
-    // malformed .pcg Program slot — every caller treats "can't place this" as a skip, not a
+    // malformed .pcg Program slot - every caller treats "can't place this" as a skip, not a
     // crash. Shared by every PCG->local pull path (direct PlaceFromPcg/BatchPlaceFromPcg, and
     // MergeCache's own PCG->Merge pull) so the conversion and its malformed-input handling
     // live in exactly one place.

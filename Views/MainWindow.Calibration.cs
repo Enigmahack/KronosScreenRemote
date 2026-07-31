@@ -72,7 +72,7 @@ public partial class MainWindow
         return (nx, ny);
     }
 
-    // Unclamped version for node dragging — allows offsets beyond the frame boundary
+    // Unclamped version for node dragging - allows offsets beyond the frame boundary
     (int nx, int ny) ScreenToKronosNode(Point screen) =>
         ((int)((screen.X - _frameRect.X) / _frameRect.Width  * _frameW),
          (int)((screen.Y - _frameRect.Y) / _frameRect.Height * _frameH));

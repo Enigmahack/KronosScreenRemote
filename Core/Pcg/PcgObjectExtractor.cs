@@ -3,12 +3,12 @@ namespace KronosScreenRemote;
 using System.Text;
 
 // One Program/Combi/Set List record recovered from a .pcg file. IsExi is only meaningful
-// for Program (which bank tag — MBK1 vs PBK1 — it was extracted from); ignored for Combi/
+// for Program (which bank tag - MBK1 vs PBK1 - it was extracted from); ignored for Combi/
 // Set List, which have no such split. See ProgramFormatConverter for why this matters.
 sealed record PcgObjectEntry(ObjLoc Loc, byte[] Body, string Name, bool IsExi = false);
 
 // A candidate bank chunk (one of the four known tags, found literally in the file) whose
-// header didn't validate, or whose bankId didn't resolve to a real bank — see Extract's
+// header didn't validate, or whose bankId didn't resolve to a real bank - see Extract's
 // `rejected` out-param.
 sealed record PcgRejectedBank(string Tag, long Offset, int Count, int ItemSize, int BankIdRaw, string Reason);
 
@@ -17,13 +17,13 @@ sealed record PcgRejectedBank(string Tag, long Offset, int Count, int ItemSize, 
 // Container format per Documentation/PCG Structure Kronos.txt (a third-party
 // REVERSE-ENGINEERING DOC, not third-party code). "KORG" file header, then a chunk-tag(4
 // ASCII)+length(4 BE) container nested at multiple levels. The doc documents two shallow
-// directory passes before the real payload, and — for Set Lists specifically — TWO
+// directory passes before the real payload, and - for Set Lists specifically - TWO
 // different encodings (an earlier SLS1/SLD1/SDB1 section and a later STL1/SBK1 section)
 // whose relationship the doc's own author leaves unresolved.
 //
 // Rather than model that ambiguous outer structure exactly, this parser scans the file for
-// the four sub-chunk tags that carry real object data with a self-describing header —
-// MBK1/PBK1 (Program banks), CBK1 (Combi banks), SBK1 (Set List bank, the STL1 encoding) —
+// the four sub-chunk tags that carry real object data with a self-describing header -
+// MBK1/PBK1 (Program banks), CBK1 (Combi banks), SBK1 (Set List bank, the STL1 encoding) -
 // and validates each candidate via its own declared count/item-size fields before trusting
 // it, rather than trusting tag or position alone. A stray 4-byte sequence matching a tag
 // inside unrelated binary parameter data fails validation and is just skipped.
@@ -38,31 +38,31 @@ sealed record PcgRejectedBank(string Tag, long Offset, int Count, int ItemSize, 
 // name field at each record's offset 0 all checked out against real, readable factory
 // program/combi/set-list names at the decoded locations.
 //
-// The `bankId` field (+0x14) is NOT a plain linear bank index — Korg's own on-disk encoding
+// The `bankId` field (+0x14) is NOT a plain linear bank index - Korg's own on-disk encoding
 // only assigns literal 0..4 to Program banks I-A..I-E; I-F gets a dedicated flag value
 // (0x8000) instead of continuing the sequence; everything from there on (all 14 user banks)
 // resumes as 0x20000+N.
 //
 // CRITICAL ASYMMETRY, confirmed against real files: Program has only 6 int banks (I-A..I-F)
-// — there is NO Program "I-G". Combi genuinely has 7 int banks (I-A..I-G). This is NOT the
+// - there is NO Program "I-G". Combi genuinely has 7 int banks (I-A..I-G). This is NOT the
 // same thing as this codebase's KronosBanks/ObjectTypeRegistry model, which gives Program 7
-// "editable banks" (0x00-0x06) for the LIVE SysEx side — that's a separate concept (whatever
+// "editable banks" (0x00-0x06) for the LIVE SysEx side - that's a separate concept (whatever
 // ObjBank 0x06 addresses over MIDI, if anything) and does not correspond to a real bankId
 // slot in the .pcg file's own numbering. An earlier version of this decoder routed Program
 // through that 7-int-bank EditableBanks() list, which silently shifted every user bank's
-// index down by one and dropped the LAST bank (U-GG) out of the valid range entirely —
+// index down by one and dropped the LAST bank (U-GG) out of the valid range entirely -
 // caught by loading a real user file with confirmed U-GG content: bankId 0x2000D was present
 // in the file the whole time, just mis-decoded as U-FF. Confirmed via the reference PCG
 // Tools codebase's own Kronos model (KronosProgramBanks.CreateBanks() in
 // Z:\PCG Tools_enigmahack\PCG-Tools\KorgKronosTools\Model\KronosSpecific\Synth\
 // KronosProgramBanks.cs), which defines exactly 6 int Program banks before user banks begin
-// — and by the doc's own DIV1 bank-presence bitmap, which lists only I-A..I-F for Programs
+// - and by the doc's own DIV1 bank-presence bitmap, which lists only I-A..I-F for Programs
 // (vs I-A..I-G for Combis). Program is decoded directly to an ObjBank value (DecodeProgramObjBank,
 // below) with no EditableBanks() indirection; Combi (7 int banks, matching its own
 // EditableBanks() list) is unaffected and still decodes via that indirection.
 //
 // PROGRAM FORMAT: every .pcg Program record is a fixed 4960-byte slot, whether the bank's
-// tag is MBK1 (EXi) or PBK1 (HD-1) — but that's the ON-DISK size, not necessarily the wire
+// tag is MBK1 (EXi) or PBK1 (HD-1) - but that's the ON-DISK size, not necessarily the wire
 // SysEx Object Dump size for that program. Verified against ~1000 real hardware-pulled
 // Program bodies (this app's own local_library cache) cross-referenced by name against a
 // real factory PRELOAD.PCG: EXi programs dump over wire at the full 4960 bytes, byte-
@@ -71,13 +71,13 @@ sealed record PcgRejectedBank(string Tag, long Offset, int Count, int ItemSize, 
 // .pcg slot's first 3706 bytes (620/632 real same-named pairs matched exactly; the
 // remainder differed by ordinary patch-content edits, not a byte-offset pattern). See
 // ProgramFormatConverter for the actual PCG->wire conversion, and IsExi below for how each
-// record's bank type is captured (from which tag — MBK1 or PBK1 — governed its bank).
+// record's bank type is captured (from which tag - MBK1 or PBK1 - governed its bank).
 static class PcgObjectExtractor
 {
     const int HeaderSize = 24;
 
     // See the class-level comment: Korg's on-disk bank-id encoding for Program banks, decoded
-    // directly to an ObjBank value (0x00-0x05 int, 0x40-0x4D user) — there is no Program
+    // directly to an ObjBank value (0x00-0x05 int, 0x40-0x4D user) - there is no Program
     // "I-G", so no EditableBanks() indirection here. Literal 0..4 for I-A..I-E; 0x8000 is a
     // dedicated flag for I-F; 0x20000+N (N=0..13) maps directly to U-A..U-GG.
     static int DecodeProgramObjBank(int bankIdRaw)
@@ -105,7 +105,7 @@ static class PcgObjectExtractor
 
     // The `rejected` list is a diagnostic: every position where one of the four tags
     // literally matched but its header didn't validate (or its bankId didn't resolve to a
-    // real bank) — most of these are coincidental 4-byte matches inside unrelated binary
+    // real bank) - most of these are coincidental 4-byte matches inside unrelated binary
     // parameter data, but a bank silently missing from the extracted tree (e.g. a real
     // Program bank whose bankId encoding turns out to need another special case we haven't
     // seen yet) will show up here too, which a synthetic self-test never can. Surfaced by
@@ -161,7 +161,7 @@ static class PcgObjectExtractor
         int objBank;
         if (objType == LibObj.SetList)
         {
-            objBank = 0;   // Set Lists have no per-object-type bank — same convention as the live path
+            objBank = 0;   // Set Lists have no per-object-type bank - same convention as the live path
         }
         else if (objType == LibObj.Program)
         {
@@ -170,10 +170,10 @@ static class PcgObjectExtractor
             {
                 rejected = new PcgRejectedBank(tag, offset, count, itemSize, bankIdRaw,
                     $"bankId 0x{bankIdRaw:X} didn't decode to a valid Program bank");
-                return false;   // bankIdRaw doesn't resolve — not a real bank header
+                return false;   // bankIdRaw doesn't resolve - not a real bank header
             }
         }
-        else   // Combi — genuinely has 7 int banks, matching its own EditableBanks() list
+        else   // Combi - genuinely has 7 int banks, matching its own EditableBanks() list
         {
             int bankIndex = DecodeCombiBankIndex(bankIdRaw);
             var editableBanks = ObjectTypeRegistry.Get(objType).EditableBanks().ToList();
@@ -181,7 +181,7 @@ static class PcgObjectExtractor
             {
                 rejected = new PcgRejectedBank(tag, offset, count, itemSize, bankIdRaw,
                     $"bankId 0x{bankIdRaw:X} decoded to index {bankIndex}, outside 0..{editableBanks.Count - 1}");
-                return false;   // bankIdRaw doesn't resolve — not a real bank header
+                return false;   // bankIdRaw doesn't resolve - not a real bank header
             }
             objBank = editableBanks[bankIndex];
         }

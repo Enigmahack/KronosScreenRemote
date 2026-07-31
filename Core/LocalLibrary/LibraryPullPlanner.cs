@@ -1,10 +1,10 @@
 namespace KronosScreenRemote;
 
-// Generalized sibling of the classic, now-retired LibraryRepository.PlanScan — covers ALL
+// Generalized sibling of the classic, now-retired LibraryRepository.PlanScan - covers ALL
 // registry object types' banks uniformly (including Programs, which that scan never
 // fetched, since Programs were never referrers there; this cache needs every object's
 // body, not just referrers). Read-only GM/g program banks are excluded
-// (ObjectTypeRegistry's EditableBanks already scopes to the 21 writable program banks) —
+// (ObjectTypeRegistry's EditableBanks already scopes to the 21 writable program banks) -
 // GM/g factory-content browsing is explicitly future scope, not v1.
 static class LibraryPullPlanner
 {
@@ -14,7 +14,7 @@ static class LibraryPullPlanner
     public static IEnumerable<BankRef> AllBanks() =>
         ObjectTypeRegistry.All.SelectMany(d => d.EditableBanks().Select(b => new BankRef(d.ObjType, b)));
 
-    // PURE. A bank with no persisted digest baseline (never pulled) is always "changed" —
+    // PURE. A bank with no persisted digest baseline (never pulled) is always "changed" -
     // same "unknown = needs work" convention Storage's dumped-bank ledger and
     // LibraryRepository.PlanScan both already use.
     public static PullPlan PlanPull(

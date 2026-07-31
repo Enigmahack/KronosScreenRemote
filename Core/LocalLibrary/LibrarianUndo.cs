@@ -4,19 +4,19 @@ namespace KronosScreenRemote;
 // didn't exist at all (a placement into a previously-empty slot), which undo restores by
 // removing the index entry again. LocalIndexEntry is an immutable record, so holding the
 // reference captures Version/BaselineHash/CurrentHash/DisplayName/Conflicted/PendingDelete
-// exactly as they were — never reconstruct it field-by-field on restore.
+// exactly as they were - never reconstruct it field-by-field on restore.
 sealed record LocalSlotSnapshot(int ObjType, int Bank, int Number, LocalIndexEntry? Entry);
 
 // One undoable user action, as the state it needs to be rolled back TO (not as a reverse
 // operation). Snapshot-of-what-was-touched, not full-library: a placement into a bank captures
-// only that bank's affected slots, so a step costs a handful of small index records plus — only
-// when the Merge Window actually changed — one merge staging snapshot.
+// only that bank's affected slots, so a step costs a handful of small index records plus - only
+// when the Merge Window actually changed - one merge staging snapshot.
 sealed class LibrarianUndoStep
 {
     public required string Description { get; init; }
     public required List<LocalSlotSnapshot> LocalSlots { get; init; }
 
-    // Captured lazily, ONLY if the action actually mutated the merge cache (MergeCache.Mutating) —
+    // Captured lazily, ONLY if the action actually mutated the merge cache (MergeCache.Mutating) -
     // a rename must not pay for copying every staged body. Null = the Merge Window wasn't touched.
     public MergeCacheSnapshot? Merge { get; init; }
 
@@ -29,18 +29,18 @@ sealed class LibrarianUndoStep
     public (int Bank, bool? Prior)? PendingBankTypeChange { get; init; }
 
     // A step that captured nothing means the action mutated nothing (e.g. a placement REFUSEd by
-    // the orphan gate before writing) — never pushed onto the stack, so Ctrl+Z can't consume a
+    // the orphan gate before writing) - never pushed onto the stack, so Ctrl+Z can't consume a
     // no-op step and look broken.
     public bool CapturedNothing => LocalSlots.Count == 0 && Merge == null && PendingBankTypeChange == null;
 }
 
-// Linear undo for the Librarian's LOCAL (pre-Commit) state — the answer to "I dragged a whole
+// Linear undo for the Librarian's LOCAL (pre-Commit) state - the answer to "I dragged a whole
 // bank out of the Merge Window by accident and had to start over."
 //
 // Capture is observational, not per-call-site: LocalLibraryCache raises SlotMutating before every
 // index write/removal and MergeCache raises Mutating before every staging change, so an action
-// only has to open a scope (Begin) and EVERY local edit it performs — however deep inside
-// LocalEditOps/BatchLibrarian it happens — lands in the step automatically. First-prior-per-slot
+// only has to open a scope (Begin) and EVERY local edit it performs - however deep inside
+// LocalEditOps/BatchLibrarian it happens - lands in the step automatically. First-prior-per-slot
 // wins, because one user action legitimately touches the same slot twice (ToggleDelete does
 // Discard then SetPendingDelete).
 //
@@ -50,12 +50,12 @@ sealed class LibrarianUndoStep
 // discarded as a failure.
 //
 // Deliberately NOT undone: the persisted displaced-occupant clipboard (Core/BatchMoveModel.cs).
-// Undo restores the occupant to its slot, which makes the clipboard copy redundant — but that
+// Undo restores the occupant to its slot, which makes the clipboard copy redundant - but that
 // clipboard IS the safety net, and undo removing entries from it (by count, or by rewinding the
 // whole file) could delete a copy some later action put there. Undo never deletes a safety copy.
 //
 // Also NOT undoable: anything already pushed to hardware. Sync/Commit clears the stack (see
-// LibrarianShellViewModel) — a local rollback across a hardware write isn't representable here.
+// LibrarianShellViewModel) - a local rollback across a hardware write isn't representable here.
 // Clear History is likewise excluded: it deletes oplog.jsonl outright.
 sealed class LibrarianUndoRecorder : IDisposable
 {
@@ -123,18 +123,18 @@ sealed class LibrarianUndoRecorder : IDisposable
     }
 
     // Called by PlaceMergeBankWithTypeChange immediately before it stages a whole-bank HD-1/EXi
-    // reformat — event-driven capture can't see this one (it's index metadata, not a slot write).
+    // reformat - event-driven capture can't see this one (it's index metadata, not a slot write).
     public void CapturePendingBankTypeChange(int bank)
     {
         if (_restoring) return;
         _active?.CaptureBankType(bank, _cache.PendingBankTypeChange(bank));
     }
 
-    // Rolls the most recent step back and returns its description (null if the stack was empty —
+    // Rolls the most recent step back and returns its description (null if the stack was empty -
     // nothing is mutated in that case). Restores, in order: local slots (one op-log entry, so the
     // rollback is auditable history and index.json stays a valid fold of the log), the pending
     // bank-type-change intent, the Merge Window's staged contents, and the pending-dependency
-    // list. Capture is suppressed throughout — an undo is never itself an undoable step.
+    // list. Capture is suppressed throughout - an undo is never itself an undoable step.
     public string? Undo()
     {
         if (_steps.Count == 0) return null;
@@ -198,7 +198,7 @@ sealed class LibrarianUndoRecorder : IDisposable
         readonly LibrarianUndoRecorder _owner;
         readonly string _description;
         readonly List<SessionDependencyEntry> _sessionDeps;
-        // Keyed so the FIRST prior state per slot wins — a single user action can write the same
+        // Keyed so the FIRST prior state per slot wins - a single user action can write the same
         // slot more than once (ToggleDelete: Discard then SetPendingDelete).
         readonly Dictionary<string, LocalSlotSnapshot> _slots = new();
         MergeCacheSnapshot? _merge;
@@ -239,7 +239,7 @@ sealed class LibrarianUndoRecorder : IDisposable
         }
     }
 
-    // Handed out for a nested Begin — the outer scope owns the step, so this does nothing.
+    // Handed out for a nested Begin - the outer scope owns the step, so this does nothing.
     sealed class NoOpScope : IDisposable
     {
         public static readonly NoOpScope Instance = new();

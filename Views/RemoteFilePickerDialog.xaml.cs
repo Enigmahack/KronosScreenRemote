@@ -7,12 +7,12 @@ namespace KronosScreenRemote;
 
 // Minimal single-purpose remote file picker over FTP, for "Load PCG... From Kronos"
 // (Phase 6 of the Librarian rebuild). Deliberately much smaller than FileManagerWindow
-// (dual-pane, transfers, rename/delete/drag-drop) — this only needs to browse, pick, and
+// (dual-pane, transfers, rename/delete/drag-drop) - this only needs to browse, pick, and
 // download ONE file matching an extension, not manage the whole SD card.
 //
 // Downloads the selected file itself (over the SAME connection used to browse) before
 // closing, rather than handing back a path for the caller to open a SECOND connection to
-// fetch — the Kronos's FTP server appears to hold a session open until its own timeout if
+// fetch - the Kronos's FTP server appears to hold a session open until its own timeout if
 // not sent a clean QUIT (see FileManagerWindow.xaml.cs's OnClosing comment), so a caller
 // opening a second connection immediately after this one closes risked hanging waiting for
 // a session slot. One connection, opened once and cleanly closed once, avoids that entirely.
@@ -28,7 +28,7 @@ internal partial class RemoteFilePickerDialog : ThemedWindow
     string _dir = "/";
 
     // Set once the user picks a file AND the download over this dialog's own connection
-    // succeeds — only then does the dialog close (DialogResult = true).
+    // succeeds - only then does the dialog close (DialogResult = true).
     public string? DownloadedTempPath { get; private set; }
 
     public RemoteFilePickerDialog(string host, int port, string user, string pass, string extensionFilter)
@@ -42,7 +42,7 @@ internal partial class RemoteFilePickerDialog : ThemedWindow
     }
 
     // Disconnect (clean QUIT, so the Kronos's FTP server doesn't hold the session open
-    // until its own timeout) then Dispose, both on a background thread, fire-and-forget —
+    // until its own timeout) then Dispose, both on a background thread, fire-and-forget -
     // never block the UI thread here. This is the exact bug that used to lock up the whole
     // application: FluentFTP's synchronous Dispose() can block waiting on an async cleanup
     // continuation that itself needs the UI thread/dispatcher, and calling it directly from

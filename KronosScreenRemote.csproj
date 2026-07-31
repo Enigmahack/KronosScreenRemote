@@ -14,9 +14,9 @@
 		<SignAssembly>False</SignAssembly>
 		<PackageIcon>AppIcon.png</PackageIcon>
 		<AssemblyTitle>Kronos ScreenRemote</AssemblyTitle>
-		<Version>2.0.2</Version>
-		<AssemblyVersion>2.0.2</AssemblyVersion>
-		<FileVersion>2.0.2</FileVersion>
+		<Version>2.0.3</Version>
+		<AssemblyVersion>2.0.3</AssemblyVersion>
+		<FileVersion>2.0.3</FileVersion>
 		<Product>Kronos ScreenRemote</Product>
 		<Description>Remote viewer and control interface for Korg Kronos</Description>
 		<ApplicationIcon>Resources\Icons\AppIcon.ico</ApplicationIcon>
@@ -28,7 +28,7 @@
     -->
 	</PropertyGroup>
 
-	<!-- Suppress WinForms/Drawing implicit usings — we use fully-qualified names for NotifyIcon. -->
+	<!-- Suppress WinForms/Drawing implicit usings - we use fully-qualified names for NotifyIcon. -->
 	<ItemGroup>
 		<Using Remove="System.Windows.Forms" />
 		<Using Remove="System.Drawing" />
@@ -58,7 +58,7 @@
 			<_BuildId>$([System.DateTime]::Now.ToString('yyyyMMdd'))-$(Version)</_BuildId>
 		</PropertyGroup>
 		<ItemGroup>
-			<_BiLines Include="// auto-generated — do not edit" />
+			<_BiLines Include="// auto-generated - do not edit" />
 			<_BiLines Include="namespace KronosScreenRemote%3B" />
 			<_BiLines Include="static class BuildInfo" />
 			<_BiLines Include="{" />

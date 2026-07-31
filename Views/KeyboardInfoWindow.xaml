@@ -180,7 +180,7 @@
                     </Grid.ColumnDefinitions>
                     <TextBlock Grid.Column="0" Text="Kernel Memory"
                                FontSize="11" FontWeight="SemiBold" Foreground="#FF888888"
-                               ToolTip="Kernel-reported RAM. 'Available' counts free pages plus reclaimable cache — a better measure of memory pressure than raw free."/>
+                               ToolTip="Kernel-reported RAM. 'Available' counts free pages plus reclaimable cache - a better measure of memory pressure than raw free."/>
                     <TextBlock Grid.Column="1" x:Name="TXT_MemLabel"
                                FontSize="11" FontFamily="Consolas" Foreground="#FF9B78CC"
                                HorizontalAlignment="Right"/>
@@ -218,7 +218,7 @@
                     </Grid>
                 </Border>
 
-                <!-- ── Storage (/korg/rw2) — hidden until daemon reports it ── -->
+                <!-- ── Storage (/korg/rw2) - hidden until daemon reports it ── -->
                 <StackPanel x:Name="RW2Section" Visibility="Collapsed">
                     <Grid Margin="0,0,0,3">
                         <Grid.ColumnDefinitions>
@@ -243,7 +243,7 @@
                     </Border>
                 </StackPanel>
 
-                <!-- ── USB drives — up to 2 slots, hidden until a drive is mounted ── -->
+                <!-- ── USB drives - up to 2 slots, hidden until a drive is mounted ── -->
                 <StackPanel x:Name="USB0Section" Visibility="Collapsed">
                     <Grid Margin="0,0,0,3">
                         <Grid.ColumnDefinitions>
@@ -321,7 +321,7 @@
                                FontSize="11" FontFamily="Consolas" Foreground="#FFD0D0D0"
                                ToolTip="Currently active operating mode."/>
 
-                    <!-- Row 1: Temp | Fan — per-sensor TextBlocks for color-coding -->
+                    <!-- Row 1: Temp | Fan - per-sensor TextBlocks for color-coding -->
                     <TextBlock Grid.Row="1" Grid.Column="0" Text="Temp"
                                FontSize="11" Foreground="#FF666666" Margin="0,4,0,0"
                                ToolTip="CPU / motherboard temperature sensors. Turns amber above 80°C and red above 90°C."/>
@@ -333,7 +333,7 @@
                     </StackPanel>
                     <TextBlock Grid.Row="1" Grid.Column="2" Text="Fan"
                                FontSize="11" Foreground="#FF666666" Margin="0,4,0,0"
-                               ToolTip="Main system fan speed in RPM. '—' means not reported by this model."/>
+                               ToolTip="Main system fan speed in RPM. '-' means not reported by this model."/>
                     <TextBlock Grid.Row="1" Grid.Column="3" x:Name="TXT_Fan"
                                FontSize="11" FontFamily="Consolas" Foreground="#FFD0D0D0"
                                Margin="0,4,0,0"

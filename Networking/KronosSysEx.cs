@@ -4,7 +4,7 @@ using System.Text;
 
 readonly record struct SysExTrafficEntry(DateTime Timestamp, bool IsSend, string Hex, bool IsMidi = false, byte[]? RawBytes = null);
 
-// Korg SysEx Mode Data (func 0x42) — mode numbering from KRONOS_MIDI_SysEx.txt *5.
+// Korg SysEx Mode Data (func 0x42) - mode numbering from KRONOS_MIDI_SysEx.txt *5.
 readonly record struct SysExModeData(int Mode, int Option, int Setup1, int Setup2)
 {
     public string ModeName => Mode switch
@@ -86,14 +86,14 @@ readonly record struct ProgramBankTypes(bool[] IsExi);
 // Probe lifecycle:
 //   1. MIDI_STATUS pre-check (fast, no stream freeze)
 //   2. Mode Request (func 0x12) with 8 s timeout
-//   3. Result cached per host — not re-run on reconnect to same host
+//   3. Result cached per host - not re-run on reconnect to same host
 sealed class KronosSysEx
 {
     readonly string _host;
     readonly int _ctrlPort;
     readonly SemaphoreSlim _gate = new(1, 1);
 
-    // Probe state — cached per host across reconnects
+    // Probe state - cached per host across reconnects
     bool? _capable;
     string? _probedHost;
     int _probing;   // Interlocked guard for concurrent probe coalescing
@@ -138,8 +138,8 @@ sealed class KronosSysEx
     // Safe to call from any thread; concurrent calls coalesce.
     //
     // Steps:
-    //   1. MIDI_STATUS — confirm MIDI_CAPTURE=1 (fast, no stream freeze)
-    //   2. SYSEX Mode Request — if SysEx is disabled, daemon blocks ~5 s
+    //   1. MIDI_STATUS - confirm MIDI_CAPTURE=1 (fast, no stream freeze)
+    //   2. SYSEX Mode Request - if SysEx is disabled, daemon blocks ~5 s
     //      then returns ERR TIMEOUT.  8 s client timeout covers this.
     //   3. Parse Mode Data response and cache it.
     public async Task<bool> ProbeAsync(int timeoutMs = 8000)
@@ -160,7 +160,7 @@ sealed class KronosSysEx
 
             if (!await CheckMidiCaptureAsync().ConfigureAwait(false))
             {
-                AppLog.Info("[sysex] MIDI capture unavailable — SysEx disabled");
+                AppLog.Info("[sysex] MIDI capture unavailable - SysEx disabled");
                 _capable = false;
                 _probedHost = _host;
                 return false;
@@ -171,7 +171,7 @@ sealed class KronosSysEx
 
             if (resp == null)
             {
-                AppLog.Info("[sysex] probe failed — SysEx disabled or timeout");
+                AppLog.Info("[sysex] probe failed - SysEx disabled or timeout");
                 _capable = false;
                 _probedHost = _host;
                 return false;
@@ -179,9 +179,9 @@ sealed class KronosSysEx
 
             _lastModeData = ParseModeData(resp);
             if (_lastModeData != null)
-                AppLog.Info($"[sysex] available — mode={_lastModeData.Value.Mode} ({_lastModeData.Value.ModeName})");
+                AppLog.Info($"[sysex] available - mode={_lastModeData.Value.Mode} ({_lastModeData.Value.ModeName})");
             else
-                AppLog.Info("[sysex] available — response received but not Mode Data");
+                AppLog.Info("[sysex] available - response received but not Mode Data");
 
             _capable = true;
             _probedHost = _host;
@@ -239,7 +239,7 @@ sealed class KronosSysEx
     // Returns the STATE-equivalent mode (1-7), or 0 on failure.
     // Populates LastPerformance when in a performance-bearing mode.
     //
-    // Mode is always from Mode Data (func 0x42) — never from Performance Id
+    // Mode is always from Mode Data (func 0x42) - never from Performance Id
     // type, because Setlist mode returns the underlying combi/program type.
     public async Task<int> QueryModeAndPerformanceAsync(int timeoutMs = 3000)
     {
@@ -319,9 +319,9 @@ sealed class KronosSysEx
 
     // ── Response parsers (static) ────────────────────────────────────────────
 
-    // True if a Korg SysEx frame header — F0 42 3g 68 — begins at index i (4 header bytes,
+    // True if a Korg SysEx frame header - F0 42 3g 68 - begins at index i (4 header bytes,
     // any function byte). Published so every SysEx producer/consumer shares ONE definition of
-    // the header instead of re-spelling F0/42/3g/68 inline in a dozen places — the divergence
+    // the header instead of re-spelling F0/42/3g/68 inline in a dozen places - the divergence
     // this centralizes is exactly the failure mode that bred the bank-table bug. Length-guarded
     // so it's self-safe; a scanning caller still bounds its own loop and keeps whatever extra
     // Length>=N guard the bytes it reads past i+3 require (this checks only i..i+3).
@@ -438,7 +438,7 @@ sealed class KronosSysEx
     }
 
     // Parse a Reply (func 0x24) message: F0 42 3g 68 24 cc F7. Returns the Reply
-    // Code (0 = success, non-zero = failure — see KRONOS_MIDI_SysEx.txt *6), or
+    // Code (0 = success, non-zero = failure - see KRONOS_MIDI_SysEx.txt *6), or
     // null if the message isn't a Reply.
     public static int? ParseReply(byte[] msg)
     {
@@ -449,7 +449,7 @@ sealed class KronosSysEx
     }
 
     // Build an Object Dump (func 0x73) WRITE message for a small, directly
-    // addressed sub-object — e.g. Set List Slot Name (0x11, bank=set list,
+    // addressed sub-object - e.g. Set List Slot Name (0x11, bank=set list,
     // index=slot) or Set List Slot Comments (0x10, same addressing). Not safe
     // for large objects: the daemon's MIDI_SEND caps at a 4096-byte payload
     // (screenremote.c CTRL_LINE_MAX), which a full ~79 KB Set List object (0x0D)
@@ -468,7 +468,7 @@ sealed class KronosSysEx
         return KorgMessage(0x73, payload);
     }
 
-    // Assemble a Korg SysEx message — F0 42 30 68 <func> <payload…> F7 — the single place the
+    // Assemble a Korg SysEx message - F0 42 30 68 <func> <payload...> F7 - the single place the
     // 4-byte Korg preamble is written for outbound messages (every Build* here funnels through
     // it, so a framing change is a one-line edit). Channel byte 0x30 = global channel 1, the
     // channel every request this client sends targets.
@@ -489,7 +489,7 @@ sealed class KronosSysEx
 
     // Build a Change Program Bank Type (func 0x7C): sets the given program bank to HD-1
     // (type 0) or EXi (type 1). If the new type differs from the current one, the instrument
-    // REFORMATS AND ERASES that bank before replying with a func 0x24 Reply — so this is only
+    // REFORMATS AND ERASES that bank before replying with a func 0x24 Reply - so this is only
     // ever sent as the first step of copying a WHOLE bank across (requirement 4).
     //   F0 42 3g 68 7C bank type F7
     public static byte[] BuildChangeProgramBankType(int bank, bool isExi) =>
@@ -516,7 +516,7 @@ sealed class KronosSysEx
 
     // Build a Parameter Change (func 0x43, integer): edits the CURRENT edit buffer
     // only (audible now, never persisted). typ/soc/sub/pid/idx are DECIMAL ids sent
-    // verbatim (e.g. a set-list slot is pid=18, typ=37 — NOT 0x12/0x25). value is
+    // verbatim (e.g. a set-list slot is pid=18, typ=37 - NOT 0x12/0x25). value is
     // 21-bit two's-complement across three 7-bit bytes.
     //   F0 42 3g 68 43 typ soc sub pid idx vH vM vL F7
     public static byte[] BuildParamChange(int typ, int soc, int sub, int pid, int idx, int value)
@@ -565,7 +565,7 @@ sealed class KronosSysEx
 
     // Parse a func-0x61 Program Bank Types reply: F0 42 3g 68 61 numBits data[] F7.
     // data[] is 7-bit-packed (bit 0 of data[0] = overall bit 0, ... bit 6 of data[0]
-    // = overall bit 6, bit 0 of data[1] = overall bit 7, etc.) — 1 = EXi, 0 = HD-1.
+    // = overall bit 6, bit 0 of data[1] = overall bit 7, etc.) - 1 = EXi, 0 = HD-1.
     public static ProgramBankTypes? ParseProgramBankTypes(byte[] msg)
     {
         for (int i = 0; i + 6 < msg.Length; i++)
@@ -587,7 +587,7 @@ sealed class KronosSysEx
         return null;
     }
 
-    // Parse an Object Dump (func 0x73) for a name-only object (0x12/0x13/…) into
+    // Parse an Object Dump (func 0x73) for a name-only object (0x12/0x13/...) into
     // (index, name). Layout: F0 42 3g 68 73 obj bank idH idL version <name 8→7> F7.
     // Returns (-1, "") on a non-matching message.
     public static (int Index, string Name) ParseNameObjectDump(byte[] msg)
@@ -629,7 +629,7 @@ sealed class KronosSysEx
         return dst;
     }
 
-    // Encode: inverse of Decode8to7. Every 7 binary bytes produce 8 SysEx bytes —
+    // Encode: inverse of Decode8to7. Every 7 binary bytes produce 8 SysEx bytes -
     // an MSB byte (bit N = bit 7 of the Nth following byte) followed by up to 7
     // bytes each holding the low 7 bits of one binary byte. Matches
     // KRONOS_MIDI_SysEx.txt *3 exactly (sysExSize = binarySize + (binarySize+6)/7).
@@ -661,8 +661,8 @@ sealed class KronosSysEx
     // type: 0=Combi, 1=Program, 2=Song. Public so the Set List decoder can
     // resolve slot performance banks with the same mapping.
     //
-    // Delegates to KronosBanks.Func33ToObjBank + ProgramLabel/CombiLabel — the
-    // hardware-validated linear↔objbank mapping the move engine itself uses — so a
+    // Delegates to KronosBanks.Func33ToObjBank + ProgramLabel/CombiLabel - the
+    // hardware-validated linear↔objbank mapping the move engine itself uses - so a
     // func-33 bank index can never LABEL one bank while the Librarian's reference
     // math TARGETS another. This file previously carried its own label tables with
     // seven internal program banks; Program has no real I-G (see KronosBanks'

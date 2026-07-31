@@ -7,7 +7,7 @@ namespace KronosScreenRemote;
 // One pane's mouse-gesture plumbing, so the three librarian panes (Local, PCG, Merge) share a
 // single copy of the click / right-click / mouse-up mechanics instead of three near-identical
 // handler triples in the code-behind. The selection state machine itself already lives in
-// PaneSelection (ViewModels); this is the thin WPF glue around it — arming a drag on mouse-down,
+// PaneSelection (ViewModels); this is the thin WPF glue around it - arming a drag on mouse-down,
 // the pane's own "is this node selectable" rule, and an optional post-gesture hook (the Local
 // pane refreshes its toolbar's enabled-state after every selection change; PCG/Merge have no
 // toolbar).
@@ -45,7 +45,7 @@ sealed class PaneInteraction
     }
 
     // Mouse-up with no intervening drag: collapse a multi-selection to just the clicked node
-    // (PaneSelection decides). No selectability guard — matches the original, and a non-
+    // (PaneSelection decides). No selectability guard - matches the original, and a non-
     // selectable node simply isn't in the selection, so the collapse is a no-op for it.
     public void OnMouseUp(object sender, MouseButtonEventArgs e)
     {

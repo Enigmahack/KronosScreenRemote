@@ -4,17 +4,17 @@ using System.Windows.Controls;
 namespace KronosScreenRemote;
 
 // Step 4 of the auto-heal placement pipeline's own gate (LibrarianShellViewModel.
-// ConfirmContinueWithPendingDependencies) — replaces a plain MessageBox.Show, which grew
+// ConfirmContinueWithPendingDependencies) - replaces a plain MessageBox.Show, which grew
 // unboundedly tall with a large number of unresolved dependencies (e.g. a big Set List
 // missing many Combis/Programs) until its own Yes/No buttons scrolled off-screen and couldn't
 // be clicked at all. The list here is capped (XAML's Border MaxHeight) and scrolls instead,
 // with Continue/Cancel always pinned below it.
 //
-// This used to be a dead end: a bare address per row ("I-C:008 — needed by 1 object" — Program or
+// This used to be a dead end: a bare address per row ("I-C:008 - needed by 1 object" - Program or
 // Combi? in the PCG or in Local Library?) and exactly two ways out, neither of which fixed
 // anything. Now every row names the TYPE and the objects that need it, and right-clicking one
-// searches a .pcg for that specific object — the same recovery the Librarian's own "Scan PCG for
-// dependencies…" offers, reachable from the moment the problem is actually reported.
+// searches a .pcg for that specific object - the same recovery the Librarian's own "Scan PCG for
+// dependencies..." offers, reachable from the moment the problem is actually reported.
 internal partial class UnresolvedDependenciesDialog : ThemedWindow
 {
     // Set by the owner (LibrarianShellWindow): runs the file picker + scan for ONE missing object,
@@ -29,7 +29,7 @@ internal partial class UnresolvedDependenciesDialog : ThemedWindow
     }
 
     // Same missing dependency needed by several different objects collapses to ONE row here
-    // instead of one row per referrer/site — SessionDependencyClipboard tracks those
+    // instead of one row per referrer/site - SessionDependencyClipboard tracks those
     // separately (it needs the per-site granularity to repatch each referrer individually; see
     // LibrarianShellViewModel.ResolvePendingDependencies), but repeating "I-A:000" a dozen
     // times in a row in THIS list would just be noise, not information. The referrers are shown
@@ -37,7 +37,7 @@ internal partial class UnresolvedDependenciesDialog : ThemedWindow
     // push everything else out of view.
     //
     // `nameOf` resolves a display name for an address when something is known about it (the loaded
-    // PCG, or Local Library) — optional, since neither is guaranteed to be available.
+    // PCG, or Local Library) - optional, since neither is guaranteed to be available.
     public static UnresolvedDependenciesDialog For(
         IReadOnlyList<SessionDependencyEntry> pending, Func<ObjLoc, string>? nameOf = null)
     {
@@ -69,7 +69,7 @@ internal partial class UnresolvedDependenciesDialog : ThemedWindow
         return new UnresolvedDependenciesDialog(AppMessages.UnresolvedDependencies.Heading(pending.Count), rows);
     }
 
-    // Every row — heading line or indented referrer detail — carries the missing address it belongs
+    // Every row - heading line or indented referrer detail - carries the missing address it belongs
     // to, so right-clicking anywhere in a group acts on that group's object.
     sealed class Row
     {
@@ -91,7 +91,7 @@ internal partial class UnresolvedDependenciesDialog : ThemedWindow
         TXT_Status.Text = ScanForDependencyRequested(row.Missing);
     }
 
-    // The whole list as text — for anyone who wants to work through the gaps outside this dialog
+    // The whole list as text - for anyone who wants to work through the gaps outside this dialog
     // (a spreadsheet, a note, a message to someone else) rather than one right-click at a time.
     void OnCopyAll(object sender, RoutedEventArgs e)
     {
@@ -103,7 +103,7 @@ internal partial class UnresolvedDependenciesDialog : ThemedWindow
         }
         catch (Exception ex)
         {
-            // The Windows clipboard can be locked by another process — a failed copy must not take
+            // The Windows clipboard can be locked by another process - a failed copy must not take
             // down the dialog the user still has to answer.
             AppLog.Warn($"[librarian] clipboard copy failed: {ex.Message}");
             TXT_Status.Text = AppMessages.UnresolvedDependencies.ScanFailed(ex.Message);

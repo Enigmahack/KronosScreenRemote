@@ -51,7 +51,7 @@ public partial class App : Application
             UiThemeSmokeTest.Run();
         }
 
-        // Headless diagnostic: `--dump-pcg-refs <path-to.pcg> [name filter]` — see
+        // Headless diagnostic: `--dump-pcg-refs <path-to.pcg> [name filter]` - see
         // Tools/PcgRefDump.cs for why this exists (settling a suspected Program-bank
         // off-by-one in Combi timbre reference decoding using a real file's own bytes).
         int dumpRefsIdx = Array.IndexOf(e.Args, "--dump-pcg-refs");

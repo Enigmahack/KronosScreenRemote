@@ -13,7 +13,7 @@
     <!-- Ctrl+Z: bound as ApplicationCommands.Undo rather than a raw KeyBinding on purpose. WPF
          already ships Ctrl+Z as that command's input gesture, and a focused TextBox (a Rename/
          Properties dialog field) handles the command itself before it can bubble up to this
-         window — so typing undo inside a text field still means "undo my typing", not "roll back
+         window - so typing undo inside a text field still means "undo my typing", not "roll back
          the last library edit". CanExecute keeps the gesture and the toolbar button in step with
          the undo stack's actual depth (LibrarianShellViewModel.CanUndo). -->
     <Window.CommandBindings>
@@ -31,7 +31,7 @@
         <local:EmptyStringToNullConverter x:Key="EmptyToNull"/>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
 
-        <!-- Shared by all three trees (Local, PCG, Merge) — dirty/conflicted/pending-delete are
+        <!-- Shared by all three trees (Local, PCG, Merge) - dirty/conflicted/pending-delete are
              always false for PCG/Merge nodes (never set there), so those triggers simply never
              fire on those sides; sharing one template keeps all three panes visually identical.
              Native single-item TreeViewItem.IsSelected is neutralized everywhere since
@@ -45,17 +45,17 @@
                 <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="Transparent"/>
             </Style.Resources>
         </Style>
-        <!-- Shared by all three trees — the one place selection highlighting is defined, so
+        <!-- Shared by all three trees - the one place selection highlighting is defined, so
              panes can't silently drift apart the way they did before (PCG used to have no
-             ContextMenu at all; Merge used to have no selection tracking at all — nothing there
-             ever set IsSelected, which is why its rows never got this highlight — see
+             ContextMenu at all; Merge used to have no selection tracking at all - nothing there
+             ever set IsSelected, which is why its rows never got this highlight - see
              LibrarianShellWindow.xaml.cs's PaneSelection). Foreground flips to a dark color for
              contrast against SelectionHighlightBrush's lighter fill; TextElement.Foreground
              (not a Border property) cascades down to each template's nested TextBlock as long
              as that TextBlock never sets its own local Foreground, which none of the three
              templates do. -->
         <Style x:Key="TreeNodeSelectionStyle" TargetType="Border">
-            <!-- Explicit baseline, not left to inherit from the Window — WPF doesn't reliably
+            <!-- Explicit baseline, not left to inherit from the Window - WPF doesn't reliably
                  fall back to the inherited value once a Style TRIGGER stops supplying one for
                  an inherited property like TextElement.Foreground (the exact reason IsDirty/
                  IsConflicted below already explicitly reset it instead of trusting a revert).
@@ -71,10 +71,10 @@
             </Style.Triggers>
         </Style>
         <!-- Local pane: file-manager-style Cut/Copy/Paste/Rename/Delete + drag-drop (both a
-             source and a target — see LibrarianShellWindow.xaml.cs). One ContextMenu shared
+             source and a target - see LibrarianShellWindow.xaml.cs). One ContextMenu shared
              by leaf AND bank-level nodes (a HierarchicalDataTemplate applies at every level);
-             Cut/Copy/Delete now also work on a bank-level node — they expand to every leaf
-             inside it (LibrarianShellWindow.xaml.cs's SelectedLocs/PaneSelection) — while
+             Cut/Copy/Delete now also work on a bank-level node - they expand to every leaf
+             inside it (LibrarianShellWindow.xaml.cs's SelectedLocs/PaneSelection) - while
              Rename/Properties stay leaf-only (a bank has no single name/properties of its own),
              collapsing on a bank node instead of sitting there as dead clicks. Paste continues
              to work on a bank node too (auto-fill, unchanged). OnLocalContextMenuOpening
@@ -87,24 +87,24 @@
                     <Style TargetType="Border" BasedOn="{StaticResource TreeNodeSelectionStyle}">
                         <Style.Triggers>
                             <!-- IsDirty deliberately does NOT set Background/Foreground here (it
-                                 used to, via StagedHighlightBrush — a dark RED fill): that fought
+                                 used to, via StagedHighlightBrush - a dark RED fill): that fought
                                  with the base style's own IsSelected trigger, since a derived
                                  style's trigger wins over its base's for the same property, so a
                                  selected+dirty row showed the red dirty fill with no visible way
                                  to tell it was ALSO selected. IsDirty now drives a small red dot
-                                 instead (below, in the StackPanel) — a Foreground-only marker that
+                                 instead (below, in the StackPanel) - a Foreground-only marker that
                                  can't clash with Background, so selection stays visible on a dirty
                                  row exactly as it does on a clean one. -->
                             <!-- Explicitly resets Foreground back to normal (not just Background)
-                                 so a selected+conflicted row — Background here wins over the base
-                                 style's per WPF's derived-style-wins-on-conflict rule — doesn't
+                                 so a selected+conflicted row - Background here wins over the base
+                                 style's per WPF's derived-style-wins-on-conflict rule - doesn't
                                  end up with TreeNodeSelectionStyle's dark selected-text color
                                  stranded against a dark orange fill. -->
                             <DataTrigger Binding="{Binding IsConflicted}" Value="True">
                                 <Setter Property="Background" Value="{StaticResource ConflictHighlightBrush}"/>
                                 <Setter Property="TextElement.Foreground" Value="{StaticResource TextBrush}"/>
                             </DataTrigger>
-                            <!-- Ordered after IsConflicted deliberately — pending-delete should
+                            <!-- Ordered after IsConflicted deliberately - pending-delete should
                                  visually dominate conflicted (it supersedes dirty/conflicted too:
                                  hitting Delete on a dirty item reverts the edit first, see
                                  LocalLibraryPaneViewModel.ToggleDelete). Same explicit-Foreground-
@@ -132,26 +132,26 @@
                                 <Separator x:Name="SEP_MergeMove"/>
                                 <MenuItem x:Name="MI_MoveToMerge" Header="Move to Merge Window" Click="OnMoveLocalToMergeMenuItem"
                                           ToolTip="Stage this (and its dependencies) in the Merge Window to rearrange and push it somewhere else."/>
-                                <!-- Requirement 2: manual dependency recovery — shown only on an
+                                <!-- Requirement 2: manual dependency recovery - shown only on an
                                      object that actually HAS unmet dependencies (see
                                      OnLocalContextMenuOpening), so it never advertises itself as
                                      something to try on a healthy object. -->
-                                <MenuItem x:Name="MI_ScanDeps" Header="Scan PCG for dependencies…" Click="OnScanDependenciesMenuItem"
+                                <MenuItem x:Name="MI_ScanDeps" Header="Scan PCG for dependencies..." Click="OnScanDependenciesMenuItem"
                                           ToolTip="Pick a .pcg file and stage whatever it holds of this object's missing dependencies into the Merge Window."/>
                                 <Separator x:Name="SEP_1"/>
-                                <MenuItem x:Name="MI_Rename" Header="Rename…" InputGestureText="F2" Click="OnRenameMenuItem"/>
-                                <MenuItem x:Name="MI_Properties" Header="Properties…" Click="OnOpenProperties"/>
+                                <MenuItem x:Name="MI_Rename" Header="Rename..." InputGestureText="F2" Click="OnRenameMenuItem"/>
+                                <MenuItem x:Name="MI_Properties" Header="Properties..." Click="OnOpenProperties"/>
                                 <Separator x:Name="SEP_2"/>
                                 <MenuItem x:Name="MI_Delete" Header="Delete" InputGestureText="Del" Click="OnDeleteMenuItem"
-                                          ToolTip="Removes this from your local library only — hardware is unaffected until Sync/Commit; Pull restores it."/>
+                                          ToolTip="Removes this from your local library only - hardware is unaffected until Sync/Commit; Pull restores it."/>
                             </ContextMenu>
                         </TextBlock.ContextMenu>
                     </TextBlock>
-                    <!-- Local-edit dot — replaces the old whole-row red Background for IsDirty
+                    <!-- Local-edit dot - replaces the old whole-row red Background for IsDirty
                          (see the Border.Style trigger comment above for why): a locally-changed
                          object not yet pushed to hardware (a potential merge/change once Sync/
-                         Commit runs) gets a small red dot here instead, so it stays visible —
-                         and the row's OWN selection highlight stays visible too — whether or not
+                         Commit runs) gets a small red dot here instead, so it stays visible -
+                         and the row's OWN selection highlight stays visible too - whether or not
                          this row happens to be selected right now. -->
                     <TextBlock Text="●" FontSize="9" Margin="5 0 0 0" VerticalAlignment="Center">
                         <TextBlock.Style>
@@ -161,13 +161,13 @@
                                     <DataTrigger Binding="{Binding IsDirty}" Value="True">
                                         <Setter Property="Visibility" Value="Visible"/>
                                         <Setter Property="Foreground" Value="{StaticResource DangerTextBrush}"/>
-                                        <Setter Property="ToolTip" Value="Locally changed — pending Sync/Commit."/>
+                                        <Setter Property="ToolTip" Value="Locally changed - pending Sync/Commit."/>
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </TextBlock.Style>
                     </TextBlock>
-                    <!-- Dependency-completeness dot — a signal distinct from IsDirty's dot above
+                    <!-- Dependency-completeness dot - a signal distinct from IsDirty's dot above
                          (per the feature's design conversation: "let's have distinct visuals
                          instead" of folding it into the same indicator). Green = every reference
                          resolves locally, still pending Sync/Commit; red = at least one
@@ -180,12 +180,12 @@
                                     <DataTrigger Binding="{Binding DependencyStatus}" Value="True">
                                         <Setter Property="Visibility" Value="Visible"/>
                                         <Setter Property="Foreground" Value="{StaticResource CommittedHighlightBrush}"/>
-                                        <Setter Property="ToolTip" Value="All dependencies resolved locally — still pending Sync/Commit."/>
+                                        <Setter Property="ToolTip" Value="All dependencies resolved locally - still pending Sync/Commit."/>
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding DependencyStatus}" Value="False">
                                         <Setter Property="Visibility" Value="Visible"/>
                                         <Setter Property="Foreground" Value="{StaticResource DangerTextBrush}"/>
-                                        <Setter Property="ToolTip" Value="Missing one or more dependencies — place them locally before Commit."/>
+                                        <Setter Property="ToolTip" Value="Missing one or more dependencies - place them locally before Commit."/>
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
@@ -194,13 +194,13 @@
                 </StackPanel>
             </Border>
         </HierarchicalDataTemplate>
-        <!-- PCG pane: drag SOURCE only — no drop target anywhere on this tree, enforcing
+        <!-- PCG pane: drag SOURCE only - no drop target anywhere on this tree, enforcing
              "strictly read-only" (requirement 11) at the UI layer, not just by convention. A
              ContextMenu is still fine here (it never edits the loaded .pcg file, only reads
-             from it) — one item, "Move to Merge Window", the same effective action as dragging
+             from it) - one item, "Move to Merge Window", the same effective action as dragging
              onto the Merge Window (LibrarianShellViewModel.PullIntoMerge). Selection (single/
              Ctrl/Shift, same-bank range, and now a whole bank as a selectable unit) mirrors the
-             Local pane's own — see OnPcgPreviewMouseDown/OnPcgNodeMouseUp in the code-behind —
+             Local pane's own - see OnPcgPreviewMouseDown/OnPcgNodeMouseUp in the code-behind -
              so the highlight and click behavior are identical between the two trees; only the
              ContextMenu and drop-target wiring differ. -->
         <HierarchicalDataTemplate x:Key="PcgNodeTemplate" DataType="{x:Type vm:ObjectTreeNode}" ItemsSource="{Binding Children}">
@@ -220,19 +220,19 @@
             </Border>
         </HierarchicalDataTemplate>
         <!-- Merge Window: drag SOURCE onto the Local pane AND a drop TARGET for the PCG pane
-             (OnMergeDrop). Full multi-select (Ctrl/Shift, plus a type-root "group" node — Set
-             Lists/Combis/Programs — selectable as a bank-equivalent, see
+             (OnMergeDrop). Full multi-select (Ctrl/Shift, plus a type-root "group" node - Set
+             Lists/Combis/Programs - selectable as a bank-equivalent, see
              MergePaneViewModel.RefreshTree), matching Local/PCG. Dragging a single item still
-             means "place exactly here" (manual, per-item — see this window's Merge Window
+             means "place exactly here" (manual, per-item - see this window's Merge Window
              GroupBox comment); dragging 2+ (a multi-select, or a whole group) means "auto-fill
              sequentially starting at the target bank's first free slot" instead
-             (LibrarianShellViewModel.PlaceMergeGroupSequentially) — see OnMergeToLocalDrop.
+             (LibrarianShellViewModel.PlaceMergeGroupSequentially) - see OnMergeToLocalDrop.
              ContextMenu: one item,
-             "Remove" — abandons just the right-clicked selection (single, multi, or a whole
+             "Remove" - abandons just the right-clicked selection (single, multi, or a whole
              group) without placing it, distinct from "Clear Merge" (toolbar button), which
              abandons everything and asks for confirmation first. Folder-style:
              HierarchicalDataTemplate nests a Set List's Combi children, and each Combi's own
-             Program children, straight from MergePaneViewModel's tree — no different from how
+             Program children, straight from MergePaneViewModel's tree - no different from how
              Local/PCG nest bank -> slot. -->
         <HierarchicalDataTemplate x:Key="MergeNodeTemplate" DataType="{x:Type vm:ObjectTreeNode}" ItemsSource="{Binding Children}">
             <Border Padding="2 0" HorizontalAlignment="Stretch" Style="{StaticResource TreeNodeSelectionStyle}">
@@ -249,7 +249,7 @@
                             </ContextMenu>
                         </TextBlock.ContextMenu>
                     </TextBlock>
-                    <!-- Shared-dependency marker — a Program/Combi referenced by more than one
+                    <!-- Shared-dependency marker - a Program/Combi referenced by more than one
                          Combi/Set List in this Merge Window (see MergeEntry.ReferencedBy). -->
                     <TextBlock Text="●" FontSize="9" Margin="5 0 0 0" VerticalAlignment="Center" Foreground="#FFD4C020"
                                Visibility="{Binding SharedTooltip, Converter={StaticResource NullToCollapsed}}"
@@ -270,7 +270,7 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Sync row (requirement 10: one shared push pipeline, two entry points — Sync Library
+        <!-- Sync row (requirement 10: one shared push pipeline, two entry points - Sync Library
              pulls then pushes; Commit Changes, moved to the bottom-right OK/Cancel row below,
              pushes alone). -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0 0 0 8">
@@ -284,7 +284,7 @@
                  accidental whole-bank drag out of the Merge Window is a single press. Greys out
                  when there's nothing to undo, and its tooltip names the exact step that's next
                  (UndoLabel) rather than a generic hint. Nothing already pushed to hardware is
-                 ever offered here — a successful Sync/Commit empties the stack. -->
+                 ever offered here - a successful Sync/Commit empties the stack. -->
             <Button x:Name="BTN_Undo" Content="Undo" Padding="10 2" Margin="16 0 0 0"
                     Command="{Binding UndoCommand}" ToolTip="{Binding UndoLabel}"/>
             <TextBlock VerticalAlignment="Center" Margin="16 0 0 0"
@@ -309,14 +309,14 @@
                 <ColumnDefinition Width="1*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Local pane — the editable copy. File-manager-style Cut/Copy/Paste (toolbar +
+            <!-- Local pane - the editable copy. File-manager-style Cut/Copy/Paste (toolbar +
                  context menu + Ctrl+X/C/V, F2, Del) and drag-drop, both onto itself (move/
                  copy within the local library) and as a drop target for the PCG pane. Drop
                  target: a specific slot = exact placement; a bank/root = auto-fill at the
                  next free slot. -->
             <GroupBox Grid.Column="0" Header="Local Library">
                 <!-- Row order (buttons / status / tree) deliberately matches Loaded PCG File's
-                     own Grid below — status text used to sit BELOW the tree here, which both
+                     own Grid below - status text used to sit BELOW the tree here, which both
                      left a blank strip under a short tree when StatusText was empty and made
                      this tree start higher than PCG's, since PCG's status line sits above its
                      tree. Same 2 Auto rows above the tree in both now, so the trees line up. -->
@@ -336,14 +336,14 @@
                         <Button x:Name="BTN_LocalPaste" Content="Paste" Padding="10 2" Margin="0 0 4 0"
                                 Click="OnPasteButton" IsEnabled="{Binding LocalPane.HasClipboard}"
                                 ToolTip="Paste onto the selected slot (Ctrl+V)"/>
-                        <Button x:Name="BTN_LocalRename" Content="Rename…" Padding="10 2" Margin="0 0 4 0"
+                        <Button x:Name="BTN_LocalRename" Content="Rename..." Padding="10 2" Margin="0 0 4 0"
                                 Click="OnRenameButton" ToolTip="Rename the selected item (F2)"/>
                         <Button x:Name="BTN_LocalDelete" Content="Delete" Padding="10 2" Margin="0 0 4 0"
                                 Click="OnDeleteButton"
-                                ToolTip="Removes from your local library only — hardware is unaffected until Sync/Commit; Pull restores it. (Del)"/>
+                                ToolTip="Removes from your local library only - hardware is unaffected until Sync/Commit; Pull restores it. (Del)"/>
                         <Button x:Name="BTN_LocalClearChanges" Content="Clear Changes" Padding="10 2"
                                 Click="OnClearChangesButton"
-                                ToolTip="Reverts every pending local edit back to baseline and un-marks every pending deletion — a fresh Pull would show the same thing. Does not touch hardware."/>
+                                ToolTip="Reverts every pending local edit back to baseline and un-marks every pending deletion - a fresh Pull would show the same thing. Does not touch hardware."/>
                     </StackPanel>
 
                     <TextBlock Grid.Row="1" Margin="0 0 0 6" FontSize="11" Foreground="{StaticResource AccentBrush}"
@@ -369,7 +369,7 @@
                                Foreground="{StaticResource AccentBrush}"/>
 
                     <!-- Empty-state hint shown in the tree's place (TV_Local is hidden via
-                         ShowTree) when the local library holds nothing yet — a fresh install, or
+                         ShowTree) when the local library holds nothing yet - a fresh install, or
                          the exe run from a folder with no library beside it (DataDir is the exe's
                          own directory). No bare type-root headers appear until the first Sync
                          populates the library (see LocalPane.ShowEmptyHint / ShowTree). -->
@@ -381,10 +381,10 @@
                 </Grid>
             </GroupBox>
 
-            <!-- Merge Window — a staging area between "loaded PCG file(s)" and Local Library
+            <!-- Merge Window - a staging area between "loaded PCG file(s)" and Local Library
                  (ViewModels/MergePaneViewModel.cs + Core/LocalLibrary/MergeCache.cs). Drop
                  target for the PCG pane (pulls an object plus every dependency it references,
-                 fully automatically); drag SOURCE onto the Local pane (placement is manual —
+                 fully automatically); drag SOURCE onto the Local pane (placement is manual -
                  the user picks every destination, including a dependency's own, since only
                  they know whether a bank should stay empty or continue a partial one). -->
             <GroupBox Grid.Column="2" Header="Merge Window">
@@ -403,12 +403,12 @@
                              otherwise REFUSEs placing onto a slot still referenced by another
                              local Combi/Set List. Read at the moment of placement by
                              LibrarianShellViewModel's PlaceFromMerge/PlaceMergeGroupSequentially/
-                             PlaceMergeBankWithTypeChange (see MergePaneViewModel.ForceOverwrite) —
+                             PlaceMergeBankWithTypeChange (see MergePaneViewModel.ForceOverwrite) -
                              leave it unchecked unless a placement was just REFUSED for exactly
                              this reason. -->
                         <CheckBox Content="Force Overwrite" VerticalAlignment="Center" Margin="12 0 0 0"
                                   IsChecked="{Binding MergePane.ForceOverwrite}"
-                                  ToolTip="Placing onto a slot still referenced by another Combi/Set List normally refuses, to avoid silently breaking that reference. Check this to overwrite it anyway — the referrer(s) will then resolve to the NEW object instead of the old one. The old occupant is still diverted to the session clipboard, never lost outright."/>
+                                  ToolTip="Placing onto a slot still referenced by another Combi/Set List normally refuses, to avoid silently breaking that reference. Check this to overwrite it anyway - the referrer(s) will then resolve to the NEW object instead of the old one. The old occupant is still diverted to the session clipboard, never lost outright."/>
                     </StackPanel>
 
                     <TextBlock Grid.Row="1" Margin="0 0 0 6" FontSize="11" Foreground="{StaticResource AccentBrush}"
@@ -423,7 +423,7 @@
                 </Grid>
             </GroupBox>
 
-            <!-- Loaded PCG file — strictly read-only (requirement 11): drag OUT into the
+            <!-- Loaded PCG file - strictly read-only (requirement 11): drag OUT into the
                  local pane (or, now, the Merge Window), never a drop target, never edited/
                  saved back. -->
             <GroupBox Grid.Column="4" Header="Loaded PCG File">
@@ -455,7 +455,7 @@
             </GroupBox>
         </Grid>
 
-        <!-- History (left) and Object Dependencies (right) — equal-width columns in a
+        <!-- History (left) and Object Dependencies (right) - equal-width columns in a
              fixed-height row so the two boxes are always the same size, side by side, instead
              of History stretching to fill the same tall row as the Local/PCG trees above. -->
         <Grid Grid.Row="3" Height="180" Margin="0 8 0 0">
@@ -465,11 +465,11 @@
                 <ColumnDefinition Width="1*"/>
             </Grid.ColumnDefinitions>
 
-            <!-- Permanent history log (requirement 6/10) — every local edit and every
+            <!-- Permanent history log (requirement 6/10) - every local edit and every
                  Sync/Commit, synced entries marked distinctly and never cleared (short of an
                  explicit Clear History). A ListBox, not a ListView: the theme's ListViewItem
                  style renders its content through a GridViewRowPresenter (every OTHER ListView
-                 in this app — FileManagerWindow, SettingsWindow — pairs that with an actual
+                 in this app - FileManagerWindow, SettingsWindow - pairs that with an actual
                  ListView.View/GridView), which has no columns to lay out here since this is a
                  plain ItemTemplate feed, so rows rendered as empty/invisible instead of the
                  DataTemplate below. ListBoxItem has no such assumption. -->
@@ -482,7 +482,7 @@
 
                     <Button Grid.Row="0" Content="Clear History" Padding="10 2" Margin="0 0 0 6"
                             HorizontalAlignment="Left" Click="OnClearHistoryButton"
-                            ToolTip="Permanently deletes the local audit log — does not affect your local library, pending edits, or hardware."/>
+                            ToolTip="Permanently deletes the local audit log - does not affect your local library, pending edits, or hardware."/>
 
                     <ListBox Grid.Row="1" ItemsSource="{Binding History}" FontFamily="Consolas" FontSize="11"
                              Background="{StaticResource PanelBackgroundBrush}" Foreground="{StaticResource TextBrush}"
@@ -493,7 +493,7 @@
                                     <TextBlock Text="{Binding Description}" TextWrapping="Wrap"/>
                                     <StackPanel Orientation="Horizontal">
                                         <TextBlock Text="{Binding Timestamp}" Foreground="{StaticResource MutedTextBrush}" FontSize="10"/>
-                                        <TextBlock Text=" — synced" Foreground="{StaticResource CommittedHighlightBrush}" FontSize="10"
+                                        <TextBlock Text=" - synced" Foreground="{StaticResource CommittedHighlightBrush}" FontSize="10"
                                                    Visibility="{Binding IsSynced, Converter={StaticResource BoolToVis}}"/>
                                     </StackPanel>
                                 </StackPanel>
@@ -503,8 +503,8 @@
                 </Grid>
             </GroupBox>
 
-            <!-- Live view of whatever's currently selected in ANY pane (Local/PCG/Merge — only
-                 one is ever active at a time) — every Program/Combi a selected Combi or Set
+            <!-- Live view of whatever's currently selected in ANY pane (Local/PCG/Merge - only
+                 one is ever active at a time) - every Program/Combi a selected Combi or Set
                  List transitively references, resolved against that pane's own data. A
                  selected Program contributes nothing of its own (Programs never reference
                  anything); a mixed Program+Combi selection only ever shows the Combis' own
@@ -515,7 +515,7 @@
                       ToolTip="Every Program/Combi the currently selected Combi(s) or Set List(s) reference, including nested dependencies.">
                 <!-- Margin="6" matches every other pane's own inner margin/Grid so all
                      containers in this window frame their content the same distance from the
-                     GroupBox border. No fixed ListBox Height here (unlike before) — it now
+                     GroupBox border. No fixed ListBox Height here (unlike before) - it now
                      stretches to fill this row's fixed Height, same as History's ListBox does
                      after its button row, so the two boxes end up the same overall height. -->
                 <ListBox Margin="6" ItemsSource="{Binding ObjectDependencyRows}" FontFamily="Consolas" FontSize="11"
@@ -525,22 +525,22 @@
             </GroupBox>
         </Grid>
 
-        <!-- Bottom-right OK/Cancel-style row — Commit Changes moved here (from the old top Sync
+        <!-- Bottom-right OK/Cancel-style row - Commit Changes moved here (from the old top Sync
              row) to match the muscle-memory position of a dialog's primary action; Cancel just
-             closes the window (local edits are already persisted as you go — nothing to "undo"
+             closes the window (local edits are already persisted as you go - nothing to "undo"
              on close beyond what Clear Changes above already covers explicitly). -->
         <DockPanel Grid.Row="4" Margin="0 8 0 0">
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="16 0 0 0">
                 <Button x:Name="BTN_Cancel" Content="Cancel" Width="90" Margin="0 0 8 0"
                         Click="OnCancelButton"
-                        ToolTip="Close the Librarian. Local edits are already saved as you make them — this doesn't undo anything (use Clear Changes for that)."/>
+                        ToolTip="Close the Librarian. Local edits are already saved as you make them - this doesn't undo anything (use Clear Changes for that)."/>
                 <Button x:Name="BTN_Commit" Content="Commit Changes" Width="130"
                         Style="{StaticResource DangerButtonStyle}"
                         Command="{Binding CommitChangesCommand}"
                         ToolTip="Validate and push every pending local change now, without pulling first."/>
             </StackPanel>
             <TextBlock x:Name="TXT_Hint" FontSize="11" Foreground="#FF777777" VerticalAlignment="Center"
-                       Text="Local edits never touch hardware until Sync Library or Commit Changes. Select an item or a whole bank, then Cut/Copy/Paste (toolbar, right-click, or Ctrl+X/C/V) or drag it — Copy fills an empty slot or a whole bank; Cut only swaps onto another occupied slot. F2 to rename, Del to mark for deletion (fades in place — Del again to restore). Drag from the PCG pane to copy in, or right-click it to move into the Merge Window; double-click for properties."/>
+                       Text="Local edits never touch hardware until Sync Library or Commit Changes. Select an item or a whole bank, then Cut/Copy/Paste (toolbar, right-click, or Ctrl+X/C/V) or drag it - Copy fills an empty slot or a whole bank; Cut only swaps onto another occupied slot. F2 to rename, Del to mark for deletion (fades in place - Del again to restore). Drag from the PCG pane to copy in, or right-click it to move into the Merge Window; double-click for properties."/>
         </DockPanel>
     </Grid>
 </local:ThemedWindow>

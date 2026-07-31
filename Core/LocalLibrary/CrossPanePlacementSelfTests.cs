@@ -6,7 +6,7 @@ using KronosScreenRemote.ViewModels;
 
 // Off-hardware self-test for Phase 6's cross-pane placement (PCG -> local), the logic
 // living in LibrarianShellViewModel.PlaceFromPcg/BatchPlaceFromPcg. Constructs the
-// ViewModel directly against FakeMoveExecutor and a synthetic in-memory PCG buffer —
+// ViewModel directly against FakeMoveExecutor and a synthetic in-memory PCG buffer -
 // PcgPaneViewModel.LoadForTesting sidesteps the file-dialog/FTP-picker paths, which need a
 // real Window.
 static class CrossPanePlacementSelfTests
@@ -20,19 +20,19 @@ static class CrossPanePlacementSelfTests
         if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
 
         // Storage.SaveProgramBankTypes persists to a REAL, GLOBAL, host-keyed file next to the
-        // running exe — not scratch state under `root` like everything else here. The
+        // running exe - not scratch state under `root` like everything else here. The
         // bank-type test below writes fake data under this ViewModel's own host key, which every
         // OTHER self-test file that also constructs a ViewModel with the SAME key would otherwise
-        // load right back out via Storage.LoadProgramBankTypes at construction — exactly the
+        // load right back out via Storage.LoadProgramBankTypes at construction - exactly the
         // cross-test pollution that broke DependencyResolutionSelfTests the first time this was
         // written. Two independent defences, because one wasn't enough:
-        //   • a UNIQUE host key (below), so nothing else can ever read what this test wrote — the
+        //   • a UNIQUE host key (below), so nothing else can ever read what this test wrote - the
         //     empty host "" this used to share with DependencyResolutionSelfTests is the same
         //     mistake the type-change tests already fixed by naming their own hosts;
         //   • snapshot + verbatim restore of the file, so nothing is left behind at all.
         // The restore alone was insufficient: it only puts back what was there when THIS test
         // started, so a stale "" entry written by an earlier build (before the unique-host fix)
-        // survived every subsequent run and kept refusing every EXi placement — the failure was
+        // survived every subsequent run and kept refusing every EXi placement - the failure was
         // reproducible on a completely clean checkout, since it lived in the exe's data dir.
         const string bankTypesHost = "selftest-crosspane-host";
         string bankTypesCachePath = Path.Combine(Storage.DataDir, "program_bank_types_cache.json");
@@ -41,7 +41,7 @@ static class CrossPanePlacementSelfTests
         {
             var exec = new FakeMoveExecutor();
             var cache = new LocalLibraryCache(root);
-            await LibraryPullPipeline.PullAsync(exec, cache, full: true);   // nothing seeded — empty local library
+            await LibraryPullPipeline.PullAsync(exec, cache, full: true);   // nothing seeded - empty local library
 
             var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), bankTypesHost);
 
@@ -56,17 +56,17 @@ static class CrossPanePlacementSelfTests
             var pcgHd1ProgLoc = new ObjLoc(LibObj.Program, 0x40, 0);   // PBK1 bank -> HD-1
             var pcgCombiLoc = new ObjLoc(LibObj.Combi, 0x00, 0);
 
-            // ── Auto-heal for a DIRECT PCG -> Local placement (no Merge Window involved) —
+            // ── Auto-heal for a DIRECT PCG -> Local placement (no Merge Window involved) -
             // this path used to leave every reference exactly as the PCG encoded it. See
             // DependencyScanner.RepointPcgReferences / LibrarianShellViewModel.
             // StageAndTrackPcgDependencies. Runs FIRST, before Local Library has anything in
             // it, so "the dependency exists elsewhere" / "the dependency exists nowhere" are
-            // unambiguous — every OTHER test below places these same two Programs at several
+            // unambiguous - every OTHER test below places these same two Programs at several
             // more addresses, which would otherwise make FindByContentHash's result ambiguous.
             var combiDepExiLoc = new ObjLoc(LibObj.Combi, 0x00, 1);   // references the EXi Program's own PCG address
             var combiDepHd1Loc = new ObjLoc(LibObj.Combi, 0x00, 2);   // references the HD-1 Program's own PCG address
 
-            // Step 1 — repoint: the EXi Program's content exists locally, but at a DIFFERENT
+            // Step 1 - repoint: the EXi Program's content exists locally, but at a DIFFERENT
             // address than the PCG's own (0x00:000 is left empty). Placing a Combi that
             // references the PCG address must repoint the reference to where the content
             // ACTUALLY lives, not leave it pointing at the empty original address.
@@ -81,7 +81,7 @@ static class CrossPanePlacementSelfTests
             Check("repoint-points-at-found-location", repointedBody != null &&
                 LibRefs.CombiTimbreRef(repointedBody, 0) == (fbElsewhere, exiElsewhere.Number));
 
-            // Step 2 — auto-stage: the HD-1 Program isn't local ANYWHERE yet — placing a Combi
+            // Step 2 - auto-stage: the HD-1 Program isn't local ANYWHERE yet - placing a Combi
             // that references it must pull it into the Merge Window automatically (instead of
             // leaving a silently wrong/missing reference) and track it for a later retry.
             var hd1PcgEntry = vm.PcgPane.Get(pcgHd1ProgLoc);
@@ -98,7 +98,7 @@ static class CrossPanePlacementSelfTests
                 vm.MergePane.TryGet(hd1ExpectedHash)?.DisplayName == programHd1Name);
             Check("autostage-tracked-as-pending", vm.SessionClipboardRows.Count > pendingBefore);
 
-            // EXi Program: .pcg (4960) and wire (4960) already match — placed as-is,
+            // EXi Program: .pcg (4960) and wire (4960) already match - placed as-is,
             // untruncated. See ProgramFormatConverter.
             var exiDestLoc = new ObjLoc(LibObj.Program, 0x41, 5);
             var (exiOk, exiError) = vm.PlaceFromPcg(pcgExiProgLoc, exiDestLoc);
@@ -108,7 +108,7 @@ static class CrossPanePlacementSelfTests
             Check("place-exi-program-is-exi", cache.IsExi(exiDestLoc.ObjType, exiDestLoc.Bank, exiDestLoc.Number));
 
             // HD-1 Program: the wire body is the first 3706 bytes of the 4960-byte .pcg slot
-            // — placement must apply that truncation, not write the raw 4960-byte record.
+            // - placement must apply that truncation, not write the raw 4960-byte record.
             var hd1DestLoc = new ObjLoc(LibObj.Program, 0x42, 5);
             var (hd1Ok, hd1Error) = vm.PlaceFromPcg(pcgHd1ProgLoc, hd1DestLoc);
             Check("place-hd1-program-ok", hd1Ok && hd1Error == null);
@@ -121,7 +121,7 @@ static class CrossPanePlacementSelfTests
             Check("place-batch-program-ok", progBatchOk);
             Check("place-batch-program-truncated", cache.GetCurrentBody(LibObj.Program, 0x43, 0)?.Length == ProgramFormatConverter.WireSizeHd1);
 
-            // Exact placement (drop on a specific slot) — Combi's on-disk (7810) and wire
+            // Exact placement (drop on a specific slot) - Combi's on-disk (7810) and wire
             // (7810) sizes match, so this IS safe to place directly.
             var destLoc = new ObjLoc(LibObj.Combi, 0x40, 5);
             var (ok, error) = vm.PlaceFromPcg(pcgCombiLoc, destLoc);
@@ -133,7 +133,7 @@ static class CrossPanePlacementSelfTests
             // the session dependency clipboard (requirement 13/14).
             Check("dependency-tracked", vm.SessionClipboardRows.Count > 0);
 
-            // Auto-fill (drop on a bank) — next free slot in a fresh bank is 0.
+            // Auto-fill (drop on a bank) - next free slot in a fresh bank is 0.
             var (ok2, msg2) = vm.BatchPlaceFromPcg(LibObj.Combi, new[] { pcgCombiLoc }, 0x41);
             Check("place-batch-ok", ok2);
             Check("place-batch-lands-at-slot-0", cache.GetDisplayName(LibObj.Combi, 0x41, 0) == combiName);
@@ -147,7 +147,7 @@ static class CrossPanePlacementSelfTests
             // size against what its destination bank is ACTUALLY configured as. Wire a fake
             // "real hardware" answer through FakeMoveExecutor.ProgramBankTypesToReturn and
             // confirm LibrarianShellViewModel.WarmProgramBankTypesAsync/BankTypeOf/
-            // PlanBatchMove's new check actually catch it — every prior test in this file ran
+            // PlanBatchMove's new check actually catch it - every prior test in this file ran
             // with ProgramBankTypesToReturn still null (BankTypeOf returns null for every
             // bank, CHECK-only, never refuses), confirming this whole feature is opt-in and
             // doesn't disturb any of the above.
@@ -158,13 +158,13 @@ static class CrossPanePlacementSelfTests
             await vm.WarmProgramBankTypesForTestingAsync();
 
             var wrongTypeDestLoc = new ObjLoc(LibObj.Program, 0x46, 0);
-            var (wrongTypeOk, wrongTypeError) = vm.PlaceFromPcg(pcgExiProgLoc, wrongTypeDestLoc);   // pcgExiProgLoc is EXi (4960B) — bank says HD-1
+            var (wrongTypeOk, wrongTypeError) = vm.PlaceFromPcg(pcgExiProgLoc, wrongTypeDestLoc);   // pcgExiProgLoc is EXi (4960B) - bank says HD-1
             Check("bank-type-mismatch-refused", !wrongTypeOk &&
                 wrongTypeError != null && wrongTypeError.Contains("wrong format for this bank"));
             Check("bank-type-mismatch-nothing-written", cache.GetCurrentBody(wrongTypeDestLoc.ObjType, wrongTypeDestLoc.Bank, wrongTypeDestLoc.Number) == null);
 
             var matchedTypes = new bool[bankTypeBit + 1];
-            matchedTypes[bankTypeBit] = true;   // "hardware" now says U-G is EXi — matches pcgExiProgLoc
+            matchedTypes[bankTypeBit] = true;   // "hardware" now says U-G is EXi - matches pcgExiProgLoc
             exec.ProgramBankTypesToReturn = new ProgramBankTypes(matchedTypes);
             await vm.WarmProgramBankTypesForTestingAsync();
 
@@ -189,7 +189,7 @@ static class CrossPanePlacementSelfTests
         combiName = "PCG COMBI";
         combiDepExiName = "PCG COMBI DEP EXI";
         combiDepHd1Name = "PCG COMBI DEP HD1";
-        // Every .pcg Program slot is 4960 bytes regardless of tag (MBK1/EXi or PBK1/HD-1) —
+        // Every .pcg Program slot is 4960 bytes regardless of tag (MBK1/EXi or PBK1/HD-1) -
         // see ProgramFormatConverter's class comment for the confirmed real-file evidence.
         const int programSize = ProgramFormatConverter.PcgSlotSize, combiSize = 7810;
 
@@ -200,13 +200,13 @@ static class CrossPanePlacementSelfTests
         Encoding.ASCII.GetBytes(programHd1Name).CopyTo(hd1ProgramBody, 0);
 
         // Combi references a Program (func33 bank 5, index 42) that this synthetic PCG does
-        // NOT itself contain — deliberately, to exercise the dependency-tracking check.
+        // NOT itself contain - deliberately, to exercise the dependency-tracking check.
         var combiBody = new byte[combiSize];
         Encoding.ASCII.GetBytes(combiName).CopyTo(combiBody, 0);
         LibRefs.SetCombiTimbreRef(combiBody, 0, 5, 42);
 
         // Two more Combis, each referencing one of THIS PCG's own Programs at its natural
-        // address — for the auto-heal section below (DependencyScanner.RepointPcgReferences):
+        // address - for the auto-heal section below (DependencyScanner.RepointPcgReferences):
         // placing one of these directly exercises repoint-if-found-elsewhere and
         // stage-if-genuinely-missing against a real, known dependency.
         int fbExiProg = KronosBanks.ObjBankToFunc33(1, 0x00);

@@ -6,21 +6,21 @@ namespace KronosScreenRemote.ViewModels;
 
 // The left ("local copy") pane's view-state: builds/refreshes a Program/Combi/Set List
 // tree from LocalLibraryCache, and exposes file-manager-style Cut/Copy/Paste plus per-node
-// Rename/Discard/property-edit — all running against LocalEditOps (Core/LocalLibrary),
+// Rename/Discard/property-edit - all running against LocalEditOps (Core/LocalLibrary),
 // never touching hardware directly. Cross-pane drag-drop placement (PCG -> local) lives on
-// LibrarianShellViewModel instead, since it's the one thing that needs both panes at once —
+// LibrarianShellViewModel instead, since it's the one thing that needs both panes at once -
 // this pane doesn't know the PCG pane exists.
 //
-// Cut/Copy/Paste/Rename/Discard are plain public methods, not [RelayCommand]s — a per-node
+// Cut/Copy/Paste/Rename/Discard are plain public methods, not [RelayCommand]s - a per-node
 // WPF ContextMenu inside a HierarchicalDataTemplate is a well-known MVVM binding-scope
 // friction point (the ContextMenu isn't part of the visual tree, so it can't reach an
 // ancestor's DataContext the normal way). Views/LibrarianShellWindow.xaml.cs's code-behind
-// grabs the clicked node(s) and calls straight into these methods — the state/logic stays
+// grabs the clicked node(s) and calls straight into these methods - the state/logic stays
 // here and is exactly as testable, only the click-to-method wiring (and the toolbar's own
 // enabled-state, since "what's currently selected" is code-behind's tree-selection state,
 // not this ViewModel's) lives in code-behind.
 //
-// The Cut/Copy clipboard here is a small, session-only field (_clipItems/ClipboardMode) —
+// The Cut/Copy clipboard here is a small, session-only field (_clipItems/ClipboardMode) -
 // deliberately NOT the persisted BatchClipboard/ClipboardEntry model in
 // Core/BatchMoveModel.cs. That model exists for a different, already-solved problem (a
 // durable safety net for occupants displaced by a batch placement) and stays exactly as-is;
@@ -31,31 +31,31 @@ partial class LocalLibraryPaneViewModel : ObservableObject
 
     public ObservableCollection<ObjectTreeNode> Roots { get; } = new();
 
-    // Raised at the end of RefreshTree() — every edit rebuilds Roots from scratch (brand new
+    // Raised at the end of RefreshTree() - every edit rebuilds Roots from scratch (brand new
     // ObjectTreeNode instances), so code-behind's selection tracking (keyed by node reference)
     // would otherwise go stale the moment anything is Cut/Copy/Paste/Renamed/Deleted. Subscribers
     // re-walk the fresh Roots and re-apply IsSelected by identity (Loc/BankRef), not by the old
     // object reference.
     public event Action? TreeRefreshed;
 
-    // Set once by LibrarianShellViewModel's constructor to its own BankTypeOf method — this
+    // Set once by LibrarianShellViewModel's constructor to its own BankTypeOf method - this
     // pane has no direct access to _sysEx/_host, so the live-queried Program bank-type lookup
     // is injected the same way ConfirmContinueWithPendingDependencies is elsewhere. Null (a
     // headless self-test, or before the first successful func-0x61 query) just means
-    // PasteBatch's own bank-type check can't verify — advisory only, never blocks.
+    // PasteBatch's own bank-type check can't verify - advisory only, never blocks.
     public Func<int, bool?>? BankTypeOf { get; set; }
 
     // Injected by LibrarianShellViewModel the same way BankTypeOf is: opens one undo capture scope
     // (Core/LocalLibrary/LibrarianUndo.cs) per user action here, so Ctrl+Z walks back a paste/
     // rename/delete/discard exactly as it does a Merge Window drop. Null in a headless self-test
-    // that constructs this pane on its own — the action then simply isn't undoable, never broken.
+    // that constructs this pane on its own - the action then simply isn't undoable, never broken.
     public Func<string, IDisposable>? BeginUndo { get; set; }
 
     IDisposable? Undoable(string description) => BeginUndo?.Invoke(description);
 
     public enum ClipboardMode { None, Cut, Copy }
 
-    // Field named `mode` (not `clipMode`) deliberately — CommunityToolkit's generated
+    // Field named `mode` (not `clipMode`) deliberately - CommunityToolkit's generated
     // property from a `clipMode` field would itself be named `ClipMode`, colliding with the
     // `ClipboardMode` enum type name one letter away (a real CS0102 the first pass hit).
     [ObservableProperty]
@@ -82,7 +82,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     // The centered placeholder shown in the tree's place while indexing (see AppMessages).
     public string IndexingPlaceholder => AppMessages.Librarian.Local.IndexingPlaceholder;
 
-    // True when the library holds no objects at all — set from _cache.HasAnyObjects on every
+    // True when the library holds no objects at all - set from _cache.HasAnyObjects on every
     // RefreshTree(). A fresh install (or the exe run from a folder with no library beside it,
     // since DataDir is the exe's own directory) starts here.
     [ObservableProperty]
@@ -90,13 +90,13 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ShowEmptyHint))]
     bool isLibraryEmpty;
 
-    // The tree shows only once indexing is done AND the library actually holds something — an
+    // The tree shows only once indexing is done AND the library actually holds something - an
     // empty library shows the Sync hint in its place instead, so the bare type-root headers
     // (Programs/Combis/Set Lists) never appear until the first Sync populates them.
     public bool ShowTree => !IsIndexing && !IsLibraryEmpty;
 
     // The Sync hint takes the tree's place when indexing is done (instant for an empty library)
-    // AND there's genuinely nothing to show — the exact complement of ShowTree within IsReady.
+    // AND there's genuinely nothing to show - the exact complement of ShowTree within IsReady.
     public bool ShowEmptyHint => !IsIndexing && IsLibraryEmpty;
 
     public string EmptyLibraryHint => AppMessages.Librarian.Local.EmptyLibraryHint;
@@ -116,7 +116,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     }
 
     // The Programs/Combis/Set Lists tree SHAPE is shared with the PCG pane (ObjectTreeScaffold);
-    // this pane supplies only what's local-specific — which slots the cache holds, and the rich
+    // this pane supplies only what's local-specific - which slots the cache holds, and the rich
     // per-leaf decoration (dirty/conflicted/pending-delete/dependency dot). keepEmptyRoots: true
     // keeps all three type roots visible even when empty (a Set List root, for instance, is a
     // valid auto-fill drop target regardless), the behavior this pane has always had.
@@ -133,7 +133,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         TreeRefreshed?.Invoke();
     }
 
-    // The populated banks of one Program/Combi object type, in EditableBanks() order — a bank's
+    // The populated banks of one Program/Combi object type, in EditableBanks() order - a bank's
     // Locs are only the slots the cache actually holds (index-only Exists check, no blob read).
     IReadOnlyList<ObjectTreeScaffold.Bank> BanksFor(int objType)
     {
@@ -162,10 +162,10 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         return locs;
     }
 
-    // Mirrors PcgPaneViewModel.BankNodeLabel's own "(EXi)"/"(HD-1)" suffix exactly — which
+    // Mirrors PcgPaneViewModel.BankNodeLabel's own "(EXi)"/"(HD-1)" suffix exactly - which
     // wire format a bank holds matters just as much once it's local as it did in a loaded
     // .pcg file (a real prior gap: Local Library showed no format indicator at all). Derived
-    // from the first occupied slot's cached IsExi bit (LocalLibraryCache.IsExi — index-only,
+    // from the first occupied slot's cached IsExi bit (LocalLibraryCache.IsExi - index-only,
     // no blob read), since every Program in one bank shares the same format. Only ever called
     // for a populated bank (the scaffold skips empty ones), so bank.Locs is never empty here.
     string BankNodeLabel(int objType, IObjectTypeDescriptor descriptor, ObjectTreeScaffold.Bank bank)
@@ -183,9 +183,9 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         bool isDirty = _cache.IsDirty(loc.ObjType, loc.Bank, loc.Number);
 
         // The dependency-completeness dot only means anything for a Combi/Set List that's
-        // still pending Sync/Commit — a Program never has references to be missing, and a
+        // still pending Sync/Commit - a Program never has references to be missing, and a
         // clean/already-synced object isn't what this dot communicates. Backed by
-        // LocalLibraryCache's own cached bit (see LocalIndexEntry's doc comment) — index-only,
+        // LocalLibraryCache's own cached bit (see LocalIndexEntry's doc comment) - index-only,
         // no blob read, same "cheap on every tree refresh" discipline as everything else here.
         bool showsDependencyDot = isDirty && loc.ObjType is LibObj.Combi or LibObj.SetList;
 
@@ -200,19 +200,19 @@ partial class LocalLibraryPaneViewModel : ObservableObject
 
     // Public so the View's double-click handler can pre-populate PropertiesDialog with the
     // current (unlabeled) name before showing it. Backed by LocalLibraryCache's cached
-    // DisplayName — never reads a body from disk (see LocalIndexEntry's doc comment for
+    // DisplayName - never reads a body from disk (see LocalIndexEntry's doc comment for
     // why that matters: this is called once per populated slot on every tree refresh).
     public string ReadDisplayName(ObjLoc loc) => _cache.GetDisplayName(loc.ObjType, loc.Bank, loc.Number);
 
-    // ── Cut / Copy / Paste — replaces the old Set as Source/Destination + Swap flow ──────
+    // ── Cut / Copy / Paste - replaces the old Set as Source/Destination + Swap flow ──────
 
     // Cut is capped at one item: the only correct "move" this app can perform is a true,
     // symmetric swap onto an already-occupied slot (LocalEditOps.Move, writing both
-    // directions) — there is no way to vacate a source slot otherwise (see PasteSingle's own
+    // directions) - there is no way to vacate a source slot otherwise (see PasteSingle's own
     // comment), so a multi-item or move-to-empty Cut can never be completed correctly. Copy
     // has no such limit, since it never touches the source.
     //
-    // Set Lists are eligible now (requirement 1): a Set-List swap is a pure body-swap — nothing
+    // Set Lists are eligible now (requirement 1): a Set-List swap is a pure body-swap - nothing
     // ever references a Set List (LibraryCatalog.ReferrersOf returns empty for it), so
     // Librarian.PlanMove just writes the two bodies swapped, with no referrer patching. The
     // earlier Set-List exclusion here was conservatism, not a correctness guard.
@@ -241,7 +241,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         Mode = ClipboardMode.None;
     }
 
-    // Paste onto one specific slot — the common case. Cut is always exactly one item here
+    // Paste onto one specific slot - the common case. Cut is always exactly one item here
     // (see Cut's own comment) and lands via a true swap if the slot is occupied, or refuses
     // if it's empty; Copy can be one or many items, auto-filling from dest onward if there's
     // more than one (same fill behavior as PasteIntoBank below).
@@ -259,10 +259,10 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         return result;
     }
 
-    // Paste onto a bank (or the Set Lists root) — always auto-fill into free slots, same as
+    // Paste onto a bank (or the Set Lists root) - always auto-fill into free slots, same as
     // the PCG pane's own drop-on-a-bank behavior. Cut refuses here unconditionally: a bank
     // drop has no specific occupied slot to swap onto, and this app has no way to vacate a
-    // source slot otherwise (see PasteSingle's comment) — drop directly on a specific
+    // source slot otherwise (see PasteSingle's comment) - drop directly on a specific
     // occupied slot instead, or use Copy.
     public (bool Ok, string? Message) PasteIntoBank(int objType, int bank)
     {
@@ -278,7 +278,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         return result;
     }
 
-    // Paste onto a TYPE-ROOT header ("Programs"/"Combis"/"Set Lists") — requirement 6: no bank was
+    // Paste onto a TYPE-ROOT header ("Programs"/"Combis"/"Set Lists") - requirement 6: no bank was
     // named, so land in the first one with room, then reuse PasteIntoBank exactly as if that bank
     // had been the drop target. Cut still refuses there for the same reason it does on a bank (see
     // PasteIntoBank). Null bank = every writable bank of this type is full.
@@ -290,7 +290,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         return PasteIntoBank(objType, bank);
     }
 
-    // The clipboard's own Programs decide which banks are eligible (HD-1 vs EXi) — see
+    // The clipboard's own Programs decide which banks are eligible (HD-1 vs EXi) - see
     // LocalEditOps.FindBankWithFreeSlot. Public so the View can resolve a drop target's bank
     // before deciding what to call.
     public int? FindBankForPaste(int objType) =>
@@ -335,10 +335,10 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         else
         {
             // No move-to-empty here: this cache has no primitive that vacates a source slot
-            // (Discard only reverts a pending edit back to baseline — a no-op on a clean,
+            // (Discard only reverts a pending edit back to baseline - a no-op on a clean,
             // just-pulled object) and no way to push "this slot is now empty" to hardware
             // either. A real move is only ever a true swap (LocalEditOps.Move, both
-            // directions written) — swap onto an occupied slot instead, or use Copy.
+            // directions written) - swap onto an occupied slot instead, or use Copy.
             return (false, AppMessages.Librarian.Local.EmptySlotCut(dest.Label()));
         }
     }
@@ -347,7 +347,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     // Cut is capped at one item and never reaches this (see Cut's and PasteIntoBank's
     // comments), so there is no source to vacate and no `From` to repoint here.
     // autoFill: the caller picked startSlot itself (a paste onto a BANK/type-root), so the fill may
-    // skip past slots holding real content — init placeholders make those holes scattered rather
+    // skip past slots holding real content - init placeholders make those holes scattered rather
     // than a contiguous tail. A paste onto a SPECIFIC slot passes false: the user pointed at it,
     // and filling from exactly there is the explicit intent. See ResolveSequentialFill.
     (bool Ok, string? Message) PasteBatch(IReadOnlyList<ObjLoc> srcs, int objType, int destBank, int startSlot, bool autoFill = false)
@@ -406,7 +406,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         if (ok) RefreshTree();
     }
 
-    // Multi-select Delete — best-effort across the whole selection rather than all-or-
+    // Multi-select Delete - best-effort across the whole selection rather than all-or-
     // nothing, since a mid-selection failure (e.g. something already discarded elsewhere)
     // shouldn't block discarding the rest.
     public void DiscardMany(IReadOnlyList<ObjLoc> locs)
@@ -420,11 +420,11 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         if (ok > 0) RefreshTree();
     }
 
-    // "Delete" (toolbar/context-menu/Del key) — local-only: abandons any pending edit (same as
+    // "Delete" (toolbar/context-menu/Del key) - local-only: abandons any pending edit (same as
     // Discard above) and marks the object PendingDelete so it fades in place instead of
     // vanishing; hardware is unaffected until Commit (which today simply pushes nothing for a
     // pending-delete with no other edit, same as it always has). Calling this again on an
-    // already-pending item is the undo — just clears the flag, no re-Discard.
+    // already-pending item is the undo - just clears the flag, no re-Discard.
     public void ToggleDelete(ObjLoc loc)
     {
         bool markForDeletion = !_cache.IsPendingDelete(loc.ObjType, loc.Bank, loc.Number);
@@ -439,7 +439,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         if (ok) RefreshTree();
     }
 
-    // Multi-select Delete/Restore — one direction for the whole selection (whichever the
+    // Multi-select Delete/Restore - one direction for the whole selection (whichever the
     // toolbar/menu is currently showing, per LibrarianShellWindow's label logic: Restore only
     // when EVERY selected item is already pending-delete, Delete otherwise), best-effort like
     // DiscardMany above.
@@ -458,10 +458,10 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         if (ok > 0) RefreshTree();
     }
 
-    // Backing data for PropertiesDialog — a single body read (not a bulk operation), so
+    // Backing data for PropertiesDialog - a single body read (not a bulk operation), so
     // this is fine to call once when the dialog opens (unlike the tree-building path,
     // which must never touch a blob per slot).
-    // "Clear Changes" — reverts EVERY pending local edit back to baseline and clears every
+    // "Clear Changes" - reverts EVERY pending local edit back to baseline and clears every
     // pending-delete flag, in one action. Confirmation lives in code-behind (destructive, same
     // split as ClearHistory/Clear Merge). Each object still goes through the same Discard/
     // SetPendingDelete primitives every other local edit action uses, so it's auditable history
@@ -485,7 +485,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     public ObjectDump? GetObjectDump(ObjLoc loc) => LocalEditOps.GetObjectDump(_cache, loc);
 
     // Human-readable descriptions of every Combi timbre / Set List slot that currently points at
-    // `loc` (issue 1 — used to warn before deleting a dependency that would leave those referrers
+    // `loc` (issue 1 - used to warn before deleting a dependency that would leave those referrers
     // dangling). Empty for a Set List (nothing ever references one) and for anything nothing
     // points at. Uses the memoized catalog, so the first call after the window opens may build it.
     public IReadOnlyList<string> DescribeReferrers(ObjLoc loc)

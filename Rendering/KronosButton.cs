@@ -27,7 +27,7 @@ public class KronosButton : Button
 
     // ── Dependency Properties ─────────────────────────────────────────────────
 
-    // String paths — avoid ImageSourceConverter at XAML parse time so missing
+    // String paths - avoid ImageSourceConverter at XAML parse time so missing
     // images degrade gracefully instead of throwing XamlParseException.
     public static readonly DependencyProperty UnlitSourceProperty =
         DependencyProperty.Register(nameof(UnlitSource), typeof(string), typeof(KronosButton),
@@ -49,7 +49,7 @@ public class KronosButton : Button
         DependencyProperty.Register(nameof(IsActive), typeof(bool), typeof(KronosButton),
             new PropertyMetadata(false, (d, _) => ((KronosButton)d).SyncDisplay()));
 
-    // Internal — the template Image binds to this
+    // Internal - the template Image binds to this
     static readonly DependencyProperty DisplaySourceProperty =
         DependencyProperty.Register("DisplaySource", typeof(ImageSource), typeof(KronosButton));
 
@@ -173,7 +173,7 @@ public class KronosButton : Button
                 break;
 
             case KButtonMode.Radio:
-                if (IsActive) return; // already lit — no-op
+                if (IsActive) return; // already lit - no-op
                 IsActive = true;
                 DeactivateGroupPeers();
                 break;

@@ -2,14 +2,14 @@ namespace KronosScreenRemote;
 
 // Collects SysEx Object Dump (func 0x73) replies off the live MIDI stream.
 //
-// The daemon's SYSEX command captures only a single F0…F7 block and caps at
+// The daemon's SYSEX command captures only a single F0...F7 block and caps at
 // 64 KB, so it can't return a multi-object bank dump or a large object (a full
 // Set List is ~79 KB of SysEx). Instead we send the request fire-and-forget
 // (IKronosMidiTransport.SendAsync) and gather the 0x73 replies off the
 // transport's live stream (SysExMessageReceived), which broadcasts every message
-// with no size limit — identically over the TCP (port-9875) and USB backends.
+// with no size limit - identically over the TCP (port-9875) and USB backends.
 //
-// Requires SysEx receive ("Enable Exclusive") on the Kronos — same prerequisite
+// Requires SysEx receive ("Enable Exclusive") on the Kronos - same prerequisite
 // as every other SysEx feature here. Dumps are serialized through a gate so two
 // callers can't interleave their 0x73 streams.
 sealed class SysExDumpCollector
@@ -24,12 +24,12 @@ sealed class SysExDumpCollector
 
     // Send a dump request (func 0x72 single object, or 0x77 whole bank) and
     // collect the matching func 0x73 replies.
-    //   expectObj     — object-type byte to match in the 0x73 replies
-    //   expectedCount — stop as soon as this many replies arrive (null = idle-only)
-    //   idleMs        — after ≥1 reply, stop once this long passes with no new one
-    //   noResponseMs  — give up if no SysEx activity at all within this long
-    //   stallMs       — give up if activity started then stalled this long (mid-xfer)
-    //   overallMs     — hard cap on the whole collection
+    //   expectObj     - object-type byte to match in the 0x73 replies
+    //   expectedCount - stop as soon as this many replies arrive (null = idle-only)
+    //   idleMs        - after ≥1 reply, stop once this long passes with no new one
+    //   noResponseMs  - give up if no SysEx activity at all within this long
+    //   stallMs       - give up if activity started then stalled this long (mid-xfer)
+    //   overallMs     - hard cap on the whole collection
     //
     // "Activity" (SysExActivity) pulses on SysEx start and every ~512 bytes, so a
     // slow multi-second object keeps the collector alive; only a real stall or
@@ -53,7 +53,7 @@ sealed class SysExDumpCollector
                 Volatile.Write(ref lastMatchTicks, DateTime.Now.Ticks);
                 Volatile.Write(ref lastActTicks,   DateTime.Now.Ticks);
             }
-            // Reply (func 0x24): the Kronos rejects a dump request with a code —
+            // Reply (func 0x24): the Kronos rejects a dump request with a code -
             // 4 = "target object not found" (empty/absent bank). Capturing it makes
             // "rejected" distinct from "silent" in the sweep log.
             else if (KronosSysEx.HasKorgHeaderAt(m, 0, 0x24) && m.Length >= 6)
@@ -89,7 +89,7 @@ sealed class SysExDumpCollector
                 if (c > 0 && Elapsed(now, Volatile.Read(ref lastMatchTicks)) > idleMs) { exit = "idle"; break; }
                 // A Reply (func 0x24) with no matching objects = the Kronos declined
                 // this request (e.g. code 4 after the func-0x77 dump path exhausts).
-                // End immediately instead of waiting out stallMs — the caller retries
+                // End immediately instead of waiting out stallMs - the caller retries
                 // after a rest. NOTE: callers that rely on this fast exit MUST insert
                 // their own recovery pause; the old slow stall used to be the rest.
                 if (c == 0 && Volatile.Read(ref rejectCode) >= 0) { exit = "reject"; break; }
@@ -124,12 +124,12 @@ sealed class SysExDumpCollector
     // Dump Request), for WRITABLE banks whose func-0x77 whole-bank name ENUM the
     // firmware rejects. That enum is preset-only (INT/GM); it returns Reply code 4
     // for every user bank. But a per-object func-0x72 name fetch works for EVERY
-    // bank — confirmed on hardware at a full 128/128 for USER-A, with no per-object
+    // bank - confirmed on hardware at a full 128/128 for USER-A, with no per-object
     // session throttle (the old "~13 banks/session" ceiling was the preset-only
     // enum rejecting user banks, not a real cap).
     //
     // PACED, never bursted: firing requests back-to-back overruns the Kronos MIDI-in
-    // — it drops every reply AND can corrupt a request (losing its F7), popping a
+    // - it drops every reply AND can corrupt a request (losing its F7), popping a
     // user-facing "MIDI Receiving Error". A ~10 ms send spacing streams a clean
     // 128/128. Names are cached by SysExService.ParseIncoming off the same stream;
     // this returns the indices that replied plus whether the pull CONVERGED (a full
@@ -147,7 +147,7 @@ sealed class SysExDumpCollector
 
         void OnMsg(byte[] m)
         {
-            // Object Dump reply: F0 42 3g 68 73 <obj> <bank> <idH> <idL> …
+            // Object Dump reply: F0 42 3g 68 73 <obj> <bank> <idH> <idL> ...
             if (KronosSysEx.HasKorgHeaderAt(m, 0, 0x73) && m.Length >= 9 && m[5] == obj && m[6] == bank)
             {
                 int idx = (m[7] << 7) | (m[8] & 0x7F);
@@ -176,7 +176,7 @@ sealed class SysExDumpCollector
                 int before; lock (replied) before = replied.Count;
 
                 // Send in BATCHES (many func-0x72 requests concatenated into one
-                // MIDI_SEND) — ~32 keeps a batch under the daemon's 2 KB ctrl line and
+                // MIDI_SEND) - ~32 keeps a batch under the daemon's 2 KB ctrl line and
                 // holds connection churn to ~4/bank instead of one TCP connect per
                 // object (which hammers the tiny on-Kronos daemon). Drain each batch
                 // before the next: a back-to-back flood overruns the Kronos MIDI-in,
@@ -209,7 +209,7 @@ sealed class SysExDumpCollector
                         if ((DateTime.Now - t0).TotalMilliseconds > batchMaxMs) break;  // slow/absent cap
                     }
 
-                    // Absent-bank early out AFTER a full generous batchMaxMs wait — so a
+                    // Absent-bank early out AFTER a full generous batchMaxMs wait - so a
                     // real bank's first-reply latency can never be mistaken for "absent"
                     // (a warm monitor answers in ~tens of ms, far under the cap). Zero
                     // replies to a whole first batch = nothing here; stop pacing 128.
@@ -239,17 +239,17 @@ sealed class SysExDumpCollector
 
     // ── Writes (Object Dump send + Store Bank Request) ──────────────────────────
     //
-    // MIDI_SEND is fire-and-forget on the daemon's ctrl port — there's no
+    // MIDI_SEND is fire-and-forget on the daemon's ctrl port - there's no
     // synchronous response to a write the way KronosSysEx's SYSEX command has for
     // reads. The Kronos's func 0x24 Reply comes back asynchronously on the live
     // stream instead, so these await it there, the same way CollectAsync watches
     // for 0x73 replies. Only small, directly-addressed sub-objects (e.g. Set List
-    // Slot Name/Comments) go through here — see BuildObjectDumpMessage's caveat
+    // Slot Name/Comments) go through here - see BuildObjectDumpMessage's caveat
     // about the daemon's 4096-byte MIDI_SEND cap.
 
     // Send a SysEx message and wait for the next func 0x24 Reply on the live
     // stream. Returns the Reply Code (0 = success), or null on send failure or
-    // timeout (no Reply arrived — e.g. SysEx receive disabled on the Kronos).
+    // timeout (no Reply arrived - e.g. SysEx receive disabled on the Kronos).
     public async Task<int?> SendAndAwaitReplyAsync(byte[] message, int timeoutMs = 4000)
     {
         await _gate.WaitAsync().ConfigureAwait(false);
@@ -267,8 +267,8 @@ sealed class SysExDumpCollector
     public Task<int?> SendObjectDumpAsync(int obj, int bank, int index, byte version, byte[] binaryData, int timeoutMs = 4000) =>
         SendAndAwaitReplyAsync(KronosSysEx.BuildObjectDumpMessage(obj, bank, index, version, binaryData), timeoutMs);
 
-    // Send a LARGE Object Dump (func 0x73) — a full Combi (~8.9 KB) or Set List
-    // (~79 KB) that exceeds the daemon's per-MIDI_SEND cap — and await the func 0x24
+    // Send a LARGE Object Dump (func 0x73) - a full Combi (~8.9 KB) or Set List
+    // (~79 KB) that exceeds the daemon's per-MIDI_SEND cap - and await the func 0x24
     // Reply on the live stream. Uses the transport's backend-aware large send
     // (TCP chunks across MIDI_SEND; USB one long message). Longer default timeout:
     // a big object plus (over TCP) many chunk round-trips take a few seconds before
@@ -286,11 +286,11 @@ sealed class SysExDumpCollector
         finally { _gate.Release(); }
     }
 
-    // Store Bank Request (func 0x76) — commits previously-sent Object Dump data.
+    // Store Bank Request (func 0x76) - commits previously-sent Object Dump data.
     public Task<int?> SendStoreBankRequestAsync(int obj, int bank, int timeoutMs = 4000) =>
         SendAndAwaitReplyAsync(KronosSysEx.BuildStoreBankRequest(obj, bank), timeoutMs);
 
-    // Change Program Bank Type (func 0x7C) — reformats+ERASES the bank to HD-1/EXi. Longer
+    // Change Program Bank Type (func 0x7C) - reformats+ERASES the bank to HD-1/EXi. Longer
     // default timeout: reformatting a bank on the instrument takes noticeably longer than a
     // plain Store before the func 0x24 Reply comes back.
     public Task<int?> SendChangeProgramBankTypeAsync(int bank, bool isExi, int timeoutMs = 20000) =>

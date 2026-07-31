@@ -5,7 +5,7 @@ namespace KronosScreenRemote;
 
 // Cohesive state holders extracted from MainWindow's former flat field wall.  Each is a plain
 // reference type held in a single readonly MainWindow field, so closures that capture the holder
-// (timer ticks, event lambdas) stay valid.  Behaviour is unchanged — MainWindow's partial methods
+// (timer ticks, event lambdas) stay valid.  Behaviour is unchanged - MainWindow's partial methods
 // now read/write `_group.Field` instead of a loose `_groupField`.  Only trivially-pure helper
 // logic (no WPF/UI/socket access) is moved in; UI-touching orchestration stays in MainWindow.
 
@@ -67,7 +67,7 @@ sealed class DragState
 }
 
 // Touch-calibration mode: warp mesh, bias dots, drag/hover state, and the undo stack.
-// (The undo push/undo/redo logic stays in MainWindow.Calibration.cs — it also flips Dirty and
+// (The undo push/undo/redo logic stays in MainWindow.Calibration.cs - it also flips Dirty and
 // invalidates the overlay, so it's not pure enough to move here.)
 sealed class CalibrationState
 {
@@ -87,7 +87,7 @@ sealed class CalibrationState
 }
 
 // "Editing a Program from within a Combi/Sequence" (daemon EDITCTX) state + its
-// flashing-button animation. Driven directly by the daemon's STATE poll — EDITCTX is
+// flashing-button animation. Driven directly by the daemon's STATE poll - EDITCTX is
 // exact per call, so (unlike the old pixel-badge heuristic this replaced) no holdoff
 // is needed: a failed poll just leaves the state unchanged until the next success.
 sealed class EditContextState

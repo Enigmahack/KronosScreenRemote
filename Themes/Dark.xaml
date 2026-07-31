@@ -2,7 +2,7 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <!-- ══════════════════════════════════════════════════════════════════
-         Brush tokens — the single source of truth for the app's dark theme.
+         Brush tokens - the single source of truth for the app's dark theme.
          Every Window/control style below (and every View) should reference
          these instead of hard-coding hex values, so a shade only ever needs
          to change in one place.
@@ -32,14 +32,14 @@
     <SolidColorBrush x:Key="DangerTextBrush"           Color="#FFDD6666"/>
 
     <!-- ══════════════════════════════════════════════════════════════════
-         Window — NOTE: unlike every other implicit style in this file, WPF does
+         Window - NOTE: unlike every other implicit style in this file, WPF does
          NOT auto-apply an implicit TargetType="Window" style to the Window element
-         itself (only to its descendants — confirmed empirically: a child Button
+         itself (only to its descendants - confirmed empirically: a child Button
          picks up its implicit style, but the Window's own .Style stays null). A
          Window is the root of its own tree and never receives the "attached to a
          styled parent" trigger that drives implicit-style resolution elsewhere.
          So every Window's root tag must set Background/Foreground explicitly,
-         referencing these same tokens — that's still one place to change the
+         referencing these same tokens - that's still one place to change the
          shade, just not through this Style. Kept here mainly as documentation
          of the intended default (and for anyone who explicitly opts in via
          Style="{StaticResource {x:Type Window}}").
@@ -51,7 +51,7 @@
     </Style>
 
     <!-- ══════════════════════════════════════════════════════════════════
-         Button — retemplated so Background/Foreground actually take effect
+         Button - retemplated so Background/Foreground actually take effect
          (the stock theme chrome mostly ignores simple property setters,
          especially in the Disabled state, which is what produced the
          low-contrast "Commit Move" button).
@@ -101,7 +101,7 @@
         <Setter Property="BorderBrush" Value="{StaticResource DangerBorderBrush}"/>
     </Style>
 
-    <!-- Standard dialog action button (the OK/Cancel/Continue/Select rows) — one shared minimum
+    <!-- Standard dialog action button (the OK/Cancel/Continue/Select rows) - one shared minimum
          width so the affirmative/cancel pair reads uniformly across every dialog, in one place
          instead of a repeated inline MinWidth="75". The 8px gap between a pair stays inline Margin
          (it's positional, not per-button). -->
@@ -145,7 +145,7 @@
     </Style>
 
     <!-- ══════════════════════════════════════════════════════════════════
-         CheckBox / RadioButton — the stock theme style sets Foreground to a
+         CheckBox / RadioButton - the stock theme style sets Foreground to a
          fixed system color that wins over inherited Window.Foreground, which
          is what caused dark text on dark backgrounds. An implicit style here
          replaces the theme style outright.
@@ -319,8 +319,8 @@
         <Setter Property="Template">
             <Setter.Value>
                 <!-- Border binds Background/BorderBrush to the ListViewItem's own properties (rather
-                     than hardcoding Transparent) so a BasedOn style's Style.Triggers — e.g. Settings'
-                     amber "recording a new key" highlight — can override them. MouseOver/Selected below
+                     than hardcoding Transparent) so a BasedOn style's Style.Triggers - e.g. Settings'
+                     amber "recording a new key" highlight - can override them. MouseOver/Selected below
                      still win over that via TargetName, since template triggers outrank style triggers. -->
                 <ControlTemplate TargetType="ListViewItem">
                     <Border x:Name="Bd" Background="{TemplateBinding Background}"
@@ -515,16 +515,16 @@
     </Style>
 
     <!-- ══════════════════════════════════════════════════════════════════
-         TreeView / TreeViewItem — first use of TreeView anywhere in the app
+         TreeView / TreeViewItem - first use of TreeView anywhere in the app
          (the Librarian's object browser), so there's no existing dark-theme
          precedent to copy. Uses the stock control template (TreeViewItem's
          default template does thread Background/Foreground via TemplateBinding,
-         unlike Button) plus SystemColors overrides for selection highlighting —
+         unlike Button) plus SystemColors overrides for selection highlighting -
          the same technique SysExToolWindow's ListBox already uses.
          ══════════════════════════════════════════════════════════════════ -->
 
-    <!-- App-wide SystemColors overrides (Setter can't target FrameworkElement.Resources — it's
-         not a DependencyProperty — so these live at the top level instead, same effect: any
+    <!-- App-wide SystemColors overrides (Setter can't target FrameworkElement.Resources - it's
+         not a DependencyProperty - so these live at the top level instead, same effect: any
          stock-templated control anywhere, not just TreeViewItem, picks up dark selection
          highlighting instead of the OS default). -->
     <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}"                  Color="#FF1A4E6E"/>
@@ -532,12 +532,12 @@
     <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}"                    Color="#FF232323"/>
     <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#FF1A4E6E"/>
 
-    <!-- Named for direct use by custom (non-native) selection highlighting — e.g. the
+    <!-- Named for direct use by custom (non-native) selection highlighting - e.g. the
          Librarian's TV_Local/TV_Pcg (Views/LibrarianShellWindow.xaml), which drive their own
          IsSelected-bound highlight (shared TreeNodeSelectionStyle, that file's Resources) instead
          of relying on TreeViewItem.IsSelected (that native, single-item-only highlight is
          deliberately neutralized for those trees). Deliberately the SAME color as AccentBrush
-         above, not just "a blue" — user feedback (2026-07-20) was that the previous dark navy
+         above, not just "a blue" - user feedback (2026-07-20) was that the previous dark navy
          (#FF1A4E6E, still used by the raw SystemColors.HighlightBrushKey override below for
          native controls elsewhere) barely read as a highlight at all, and didn't match the blue
          used for text (StatusText etc.) elsewhere in the app. TreeNodeSelectionStyle also flips
@@ -545,9 +545,9 @@
     <SolidColorBrush x:Key="SelectionHighlightBrush" Color="#FF88AADD"/>
 
     <!-- Git-style staging color for the Librarian's local pane (TV_Local in Views/
-         LibrarianShellWindow.xaml) — Committed/green = this session's Sync/Commit wrote it.
+         LibrarianShellWindow.xaml) - Committed/green = this session's Sync/Commit wrote it.
          (The Staged/red counterpart, for a local edit that hasn't been pushed yet, used to
-         live here as a whole-row Background fill — StagedHighlightBrush — but that fought
+         live here as a whole-row Background fill - StagedHighlightBrush - but that fought
          with the row's own selection highlight; IsDirty now drives a small red dot using
          DangerTextBrush instead, so it no longer needs its own brush.) Same content-level-
          Border technique as SelectionHighlightBrush, for the same reason (the stock
@@ -555,13 +555,13 @@
     <SolidColorBrush x:Key="CommittedHighlightBrush" Color="#FF1A6E2A"/>
 
     <!-- New Librarian rebuild (Views/LibrarianShellWindow.xaml): a local edit whose bank
-         changed on hardware since baseline — flagged, distinct from the plain "dirty/
+         changed on hardware since baseline - flagged, distinct from the plain "dirty/
          uncommitted" state above, since it needs the user's attention before it can push.
          Same content-level-Border technique, same reason. -->
     <SolidColorBrush x:Key="ConflictHighlightBrush" Color="#FFC08A20"/>
 
     <!-- Local-only "marked for deletion, pending Commit" (Views/LibrarianShellWindow.xaml,
-         ObjectTreeNode.IsPendingDelete) — a muted grey rather than a color used for anything
+         ObjectTreeNode.IsPendingDelete) - a muted grey rather than a color used for anything
          else here, paired with reduced Opacity on the row so it visibly fades in place instead
          of just disappearing. Same content-level-Border technique, same reason. -->
     <SolidColorBrush x:Key="PendingDeleteHighlightBrush" Color="#FF3A3A3A"/>
@@ -578,7 +578,7 @@
         <Setter Property="Background" Value="Transparent"/>
         <Setter Property="Padding"    Value="2 2"/>
         <!-- Explicit values, not just left to the (OverridesDefaultStyle=false) theme fallback
-             above — the stock theme style's own Setters for these two bind via
+             above - the stock theme style's own Setters for these two bind via
              RelativeSource FindAncestor/AncestorType=ItemsControl, which reliably fails to
              resolve for a TreeViewItem ("Cannot find source" binding error) and floods the
              output window; a real Setter here is evaluated instead of that binding, at no
@@ -639,7 +639,7 @@
                                 </Grid.ColumnDefinitions>
 
                                 <!-- Hidden (not Collapsed) so every submenu row reserves this
-                                     gutter uniformly, whether or not it is checkable — keeps
+                                     gutter uniformly, whether or not it is checkable - keeps
                                      header text aligned across all dropdowns. Top-level bar
                                      buttons still collapse it via the Role trigger below. -->
                                 <Border x:Name="CheckMark" Grid.Column="0"
@@ -730,11 +730,11 @@
     </Style>
 
     <!-- ══════════════════════════════════════════════════════════════════
-         Silence the item-container alignment binding noise — the default
+         Silence the item-container alignment binding noise - the default
          ListBox item style binds Horizontal/VerticalContentAlignment to
          {RelativeSource FindAncestor, AncestorType=ItemsControl}, which
          fails (and logs a data-binding ERROR) whenever a container is
-         realized before it is connected to its ItemsControl ancestor —
+         realized before it is connected to its ItemsControl ancestor -
          e.g. items inside a Popup, or realized during a layout pass.
          Setting the two properties explicitly here overrides the failing
          theme binding for any ListBoxItem that doesn't get its own

@@ -2,7 +2,7 @@ namespace KronosScreenRemote;
 
 // Off-hardware self-test for Phase 0 of the Librarian rebuild: the object-type
 // registry and the shared raw-body decoders (Core/ObjectBody). Same convention as
-// Librarian.SelfTest/BatchLibrarian.SelfTest — pure, synchronous, returns failing
+// Librarian.SelfTest/BatchLibrarian.SelfTest - pure, synchronous, returns failing
 // check names (empty = all passed). Invoked from App.xaml.cs's --librarian-selftest.
 static class ObjectBodySelfTests
 {
@@ -70,7 +70,7 @@ static class ObjectBodySelfTests
         Check("global-program-subcategory", names?.SubCategoryLabel(LibObj.Program, 5, 2) == "Acoustic");
         Check("global-combi-category", names?.CategoryLabel(LibObj.Combi, 3) == "Combi Keys");
         Check("global-combi-subcategory", names?.SubCategoryLabel(LibObj.Combi, 3, 1) == "Layered");
-        // Program and Combi tables are independent — the same index must not bleed across.
+        // Program and Combi tables are independent - the same index must not bleed across.
         Check("global-program-combi-independent", names?.CategoryLabel(LibObj.Combi, 5) != "Guitar/Plucked");
         // An unnamed category falls back to its numeric label rather than showing an empty row.
         Check("global-unnamed-falls-back", names?.CategoryLabel(LibObj.Program, 17) == "Category 17");
@@ -86,7 +86,7 @@ static class ObjectBodySelfTests
 
         // ── SetListBody.FromRawBody: build a synthetic raw body, decode it directly,
         //    then confirm SetListData.FromObjectDump (via the refactored wire path)
-        //    produces the byte-identical result — the shared-decoder regression pin. ──
+        //    produces the byte-identical result - the shared-decoder regression pin. ──
         var slBody = new byte[69416];
         Array.Fill(slBody, (byte)0x20);   // blank-padded baseline (space, like real hardware)
         WriteAscii(slBody, 0, "TESTLIST");

@@ -3,7 +3,7 @@ namespace KronosScreenRemote.ViewModels;
 // The librarian's one missing seam: "pick a .pcg from the Kronos and hand back its bytes."
 //
 // PcgPaneViewModel.LoadFromKronosAsync used to do the login prompt, browse dialog, and
-// download inline — constructing a Window and talking to the Kronos's FTP server — which is
+// download inline - constructing a Window and talking to the Kronos's FTP server - which is
 // the single librarian branch the off-hardware self-tests can't reach. This interface pulls
 // those two untestable halves (login + browse/download) behind one boundary, exactly the way
 // ISysExService seams the hardware off the pull pipeline. The production implementation

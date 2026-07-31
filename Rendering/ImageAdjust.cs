@@ -1,12 +1,12 @@
 namespace KronosScreenRemote;
 
 // How the 800×600 frame is resampled up to the display size.  Maps directly onto WPF's
-// BitmapScalingMode on FrameImage — see MainWindow.ApplyScalingMode().
+// BitmapScalingMode on FrameImage - see MainWindow.ApplyScalingMode().
 public enum ScalingQuality
 {
-    Sharp,        // NearestNeighbor — crisp, blocky pixels; no interpolation
-    Smooth,       // LowQuality (bilinear) — soft, cheap
-    HighQuality,  // Fant — best resample quality (default; matches the prior fixed behaviour)
+    Sharp,        // NearestNeighbor - crisp, blocky pixels; no interpolation
+    Smooth,       // LowQuality (bilinear) - soft, cheap
+    HighQuality,  // Fant - best resample quality (default; matches the prior fixed behaviour)
 }
 
 // A live snapshot of the five image-adjustment slider values. Pushed from the Settings
@@ -18,7 +18,7 @@ public readonly record struct ImagePreview(
 // Pure, stateless image-adjustment math shared by the render pipeline.
 //
 // Tone (brightness / contrast / gamma) collapses into a single 256-entry per-channel curve, so the
-// whole frame is adjusted for free inside the existing palette LUT — no per-pixel cost beyond the
+// whole frame is adjusted for free inside the existing palette LUT - no per-pixel cost beyond the
 // LUT lookup already done.  Saturation mixes the three curve-adjusted channels toward luma.  Sharpen
 // is the only spatial operation: a 3×3 unsharp mask over the packed-BGR32 frame, run once per frame.
 //

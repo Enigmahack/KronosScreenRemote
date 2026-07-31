@@ -59,7 +59,7 @@ static class LocalCutCopyPasteSelfTests
             Check("copy-into-empty-source-untouched", cache.Exists(progA.ObjType, progA.Bank, progA.Number));
             Check("copy-into-empty-dest-has-copy", cache.GetDisplayName(emptySlot.ObjType, emptySlot.Bank, emptySlot.Number) == "PROG A");
 
-            // 2. Copy into an OCCUPIED slot: existing displacement-to-clipboard path — the
+            // 2. Copy into an OCCUPIED slot: existing displacement-to-clipboard path - the
             // occupant is preserved in the persisted clipboard, not lost.
             var occupiedForCopy = new ObjLoc(LibObj.Program, 0x40, 1);
             pane.Copy(new[] { progA });
@@ -79,12 +79,12 @@ static class LocalCutCopyPasteSelfTests
                 swapOk && cache.GetDisplayName(progC.ObjType, progC.Bank, progC.Number) == "PROG B"
                        && cache.GetDisplayName(progB.ObjType, progB.Bank, progB.Number) == "PROG C");
 
-            // 4. Cut + paste onto an EMPTY slot — must REFUSE, not silently leave a duplicate.
+            // 4. Cut + paste onto an EMPTY slot - must REFUSE, not silently leave a duplicate.
             // This app has no primitive that vacates a clean source slot (Discard only
             // reverts a pending edit to baseline) and no way to push "now empty" to hardware,
             // so a move-to-empty can never be completed correctly; Cut is swap-onto-occupied
             // only (see LocalLibraryPaneViewModel.PasteSingle/Cut's own comments). Confirms
-            // the refusal leaves everything exactly as it was — source intact, no phantom
+            // the refusal leaves everything exactly as it was - source intact, no phantom
             // copy at the destination, referrer untouched.
             var emptyForD = new ObjLoc(LibObj.Program, 0x42, 0);
             pane.Cut(new[] { progD });
@@ -98,7 +98,7 @@ static class LocalCutCopyPasteSelfTests
             Check("cut-onto-empty-referrer-unchanged", refBank == progD.Bank && refIndex == progD.Number);
             pane.ClearClipboard();
 
-            // 5. Multi-select Cut is refused outright (no correct N-way move exists) —
+            // 5. Multi-select Cut is refused outright (no correct N-way move exists) -
             // nothing is armed, so a follow-up Paste can't do anything either.
             var progE = new ObjLoc(LibObj.Program, 0x00, 4);
             var progF = new ObjLoc(LibObj.Program, 0x00, 5);
@@ -106,7 +106,7 @@ static class LocalCutCopyPasteSelfTests
             Check("multi-cut-refused", !pane.HasClipboard);
             Check("multi-cut-sources-untouched", cache.Exists(progE.ObjType, progE.Bank, progE.Number) && cache.Exists(progF.ObjType, progF.Bank, progF.Number));
 
-            // 5b. A single-item Cut dropped on a BANK (not a specific slot) is refused too —
+            // 5b. A single-item Cut dropped on a BANK (not a specific slot) is refused too -
             // a bank target has no specific occupied slot to swap onto, and PasteIntoBank
             // always auto-fills into the next free (i.e. empty) slot.
             pane.Cut(new[] { progE });
@@ -124,7 +124,7 @@ static class LocalCutCopyPasteSelfTests
             Check("batch-copy-sources-unchanged", cache.Exists(progG.ObjType, progG.Bank, progG.Number) && cache.Exists(progH.ObjType, progH.Bank, progH.Number));
             Check("batch-copy-both-landed", cache.GetDisplayName(LibObj.Program, 0x44, 0) == "PROG G" && cache.GetDisplayName(LibObj.Program, 0x44, 1) == "PROG H");
 
-            // 7. Set Lists: Copy allowed, and Cut now allowed too (requirement 1) — a Set-List
+            // 7. Set Lists: Copy allowed, and Cut now allowed too (requirement 1) - a Set-List
             // swap is a pure body-swap (nothing references a Set List), so Cut + paste onto
             // another occupied Set List swaps the two exactly like Programs/Combis.
             var slLoc = new ObjLoc(LibObj.SetList, 0, 0);
