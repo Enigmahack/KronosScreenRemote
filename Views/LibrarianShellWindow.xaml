@@ -114,6 +114,15 @@
                                 <Setter Property="TextElement.Foreground" Value="{StaticResource MutedTextBrush}"/>
                                 <Setter Property="Opacity" Value="0.6"/>
                             </DataTrigger>
+                            <!-- Read-only factory banks (GM, g(1)-g(9), g(d)) and their slots:
+                                 browsable, never writable. Faded rather than hidden - the whole
+                                 point is being able to see what is in them. No Background setter,
+                                 unlike the triggers above: read-onlyness is a permanent property of
+                                 the bank, not a transient state worth highlighting a row for. -->
+                            <DataTrigger Binding="{Binding IsReadOnly}" Value="True">
+                                <Setter Property="TextElement.Foreground" Value="{StaticResource MutedTextBrush}"/>
+                                <Setter Property="Opacity" Value="0.6"/>
+                            </DataTrigger>
                         </Style.Triggers>
                     </Style>
                 </Border.Style>
@@ -319,12 +328,17 @@
                      own Grid below - status text used to sit BELOW the tree here, which both
                      left a blank strip under a short tree when StatusText was empty and made
                      this tree start higher than PCG's, since PCG's status line sits above its
-                     tree. Same 2 Auto rows above the tree in both now, so the trees line up. -->
+                     tree. Same 2 Auto rows above the tree in both now, so the trees line up.
+                     The legend in row 3 is the one thing deliberately BELOW the tree - it's a
+                     static key, not per-selection state, so it belongs out of the way at the
+                     bottom; it costs the tree only its own height and doesn't shift the tree's
+                     TOP, so the two panes still line up. -->
                 <Grid Margin="6">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0 0 0 6"
@@ -378,6 +392,71 @@
                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                TextAlignment="Center" TextWrapping="Wrap" FontStyle="Italic"
                                Foreground="{StaticResource AccentBrush}"/>
+
+                    <!-- Indicator legend. Every swatch below pulls the SAME StaticResource brush
+                         its LocalNodeTemplate trigger uses, so a theme change or a brush rename
+                         moves both together and the legend can't quietly start lying about the
+                         colours it is describing.
+
+                         The two dots are distinguished by POSITION, not colour - "edited" and
+                         "dependencies missing" are both DangerTextBrush - so the labels say which
+                         is which rather than leaving the red/red pair ambiguous.
+
+                         TWO stacked WrapPanels rather than one, so the break between them is
+                         guaranteed instead of falling wherever the pane width happens to put it.
+                         The split is the real distinction in the template as well: line 1 is the
+                         per-item DOTS drawn beside a row's label, line 2 is the whole-ROW states
+                         (tint/fade). Each line still wraps on its own if the pane gets narrow, so
+                         nothing clips. -->
+                    <Border Grid.Row="3" Margin="0 6 0 0" Padding="0 5 0 0"
+                            BorderThickness="0 1 0 0" BorderBrush="{StaticResource MutedTextBrush}"
+                            ToolTip="Each row can show up to two dots: the FIRST is its edit state, the SECOND its dependency state. Row tints show conflict / pending-delete / read-only status.">
+                        <StackPanel Orientation="Vertical">
+                            <!-- Line 1: per-item dots, drawn beside the row label. -->
+                            <WrapPanel Orientation="Horizontal">
+                                <TextBlock Text="●" FontSize="9" VerticalAlignment="Center"
+                                           Foreground="{StaticResource DangerTextBrush}"/>
+                                <TextBlock Text="1st: edited locally" FontSize="10" Margin="3 0 12 0"
+                                           VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+
+                                <TextBlock Text="●" FontSize="9" VerticalAlignment="Center"
+                                           Foreground="{StaticResource CommittedHighlightBrush}"/>
+                                <TextBlock Text="2nd: dependencies OK" FontSize="10" Margin="3 0 12 0"
+                                           VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+
+                                <TextBlock Text="●" FontSize="9" VerticalAlignment="Center"
+                                           Foreground="{StaticResource DangerTextBrush}"/>
+                                <TextBlock Text="2nd: dependencies missing" FontSize="10" Margin="3 0 0 0"
+                                           VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                            </WrapPanel>
+
+                            <!-- Line 2: whole-row states. Starts with "conflicted" by design. -->
+                            <WrapPanel Orientation="Horizontal" Margin="0 4 0 0">
+                                <!-- Outlined, because the fills are the row tints verbatim and the
+                                     pending-delete one (#3A3A3A at 0.6) would otherwise be an
+                                     invisible chip against a dark background. The border makes the
+                                     swatch legible without misrepresenting the colour it stands for. -->
+                                <Border Width="11" Height="11" VerticalAlignment="Center"
+                                        BorderThickness="1" BorderBrush="{StaticResource MutedTextBrush}"
+                                        Background="{StaticResource ConflictHighlightBrush}"/>
+                                <TextBlock Text="conflicted" FontSize="10" Margin="3 0 12 0"
+                                           VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+
+                                <Border Width="11" Height="11" VerticalAlignment="Center" Opacity="0.6"
+                                        BorderThickness="1" BorderBrush="{StaticResource MutedTextBrush}"
+                                        Background="{StaticResource PendingDeleteHighlightBrush}"/>
+                                <TextBlock Text="marked for deletion" FontSize="10" Margin="3 0 12 0"
+                                           VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+
+                                <!-- Read-only has no fill of its own in the template - it's the faded
+                                     text alone - so the swatch here is faded TEXT, not a colour chip. -->
+                                <TextBlock Text="Aa" FontSize="10" FontFamily="Consolas" Opacity="0.6"
+                                           VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                                <TextBlock Text="read-only (GM/g)" FontSize="10" Margin="3 0 0 0"
+                                           VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
                 </Grid>
             </GroupBox>
 
@@ -395,21 +474,69 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0 0 0 6">
-                        <Button Content="Clear Merge" Padding="10 2" HorizontalAlignment="Left"
-                                Click="OnClearMergeButton"
-                                ToolTip="Abandons everything staged here, whether or not any of it has been placed into Local Library yet."/>
-                        <!-- Bypasses PlanBatchMove's orphan gate (Core/BatchMoveModel.cs), which
-                             otherwise REFUSEs placing onto a slot still referenced by another
-                             local Combi/Set List. Read at the moment of placement by
-                             LibrarianShellViewModel's PlaceFromMerge/PlaceMergeGroupSequentially/
-                             PlaceMergeBankWithTypeChange (see MergePaneViewModel.ForceOverwrite) -
-                             leave it unchecked unless a placement was just REFUSED for exactly
-                             this reason. -->
-                        <CheckBox Content="Force Overwrite" VerticalAlignment="Center" Margin="12 0 0 0"
-                                  IsChecked="{Binding MergePane.ForceOverwrite}"
-                                  ToolTip="Placing onto a slot still referenced by another Combi/Set List normally refuses, to avoid silently breaking that reference. Check this to overwrite it anyway - the referrer(s) will then resolve to the NEW object instead of the old one. The old occupant is still diverted to the session clipboard, never lost outright."/>
-                    </StackPanel>
+                    <!-- Two groups, deliberately pushed to opposite ends: the CONSTRUCTIVE action
+                         (Auto-Fill, which adds staged placements) on the left, and the
+                         DESTRUCTIVE/modifier controls (Clear Merge, Force Overwrite) on the
+                         right, so a stray click near one can't land on the other. -->
+                    <Grid Grid.Row="0" Margin="0 0 0 6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Places everything staged into Local Library's next free slots,
+                             dependencies before referrers (LibrarianShellViewModel.
+                             AutoFillFromMerge). Local/staged only - nothing reaches the
+                             instrument until Commit Changes.
+
+                             The indeterminate bar sits BEHIND the label inside the button (both
+                             in the same single-cell Grid) rather than beside it, so the button
+                             doesn't change width when it starts working - a resizing button under
+                             the cursor is how a double-click lands somewhere unintended. Both
+                             indicator and label are driven by IsAutoFilling; the command's own
+                             CanExecute is what actually blocks the second click. -->
+                        <Button Grid.Column="0" Padding="10 2" MinWidth="128" HorizontalAlignment="Left"
+                                Command="{Binding AutoFillToLibraryCommand}"
+                                ToolTip="Place everything staged here into the next free slots of its own type in Local Library - Programs first, then Combis, then Set Lists, so each one's dependencies are already placed and its references point at where they actually landed. Nothing is sent to the Kronos: this only stages, exactly like dragging items across yourself. Review the result, then Commit Changes to push.">
+                            <Grid>
+                                <ProgressBar IsIndeterminate="True" Height="14" Opacity="0.35"
+                                             Background="Transparent" BorderThickness="0"
+                                             Visibility="{Binding IsAutoFilling, Converter={StaticResource BoolToVis}}"/>
+                                <!-- The idle caption is a Style SETTER, not a local Text="..."
+                                     attribute: a locally-set value outranks a style trigger in
+                                     WPF's value precedence, so with Text set inline the
+                                     IsAutoFilling trigger below would silently never apply. -->
+                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="Auto-Fill to Library"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsAutoFilling}" Value="True">
+                                                    <Setter Property="Text" Value="Filling..."/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+                        </Button>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <!-- Bypasses PlanBatchMove's orphan gate (Core/BatchMoveModel.cs), which
+                                 otherwise REFUSEs placing onto a slot still referenced by another
+                                 local Combi/Set List. Read at the moment of placement by
+                                 LibrarianShellViewModel's PlaceFromMerge/PlaceMergeGroupSequentially/
+                                 PlaceMergeBankWithTypeChange (see MergePaneViewModel.ForceOverwrite) -
+                                 leave it unchecked unless a placement was just REFUSED for exactly
+                                 this reason. -->
+                            <CheckBox Content="Force Overwrite" VerticalAlignment="Center" Margin="0 0 12 0"
+                                      IsChecked="{Binding MergePane.ForceOverwrite}"
+                                      ToolTip="Placing onto a slot still referenced by another Combi/Set List normally refuses, to avoid silently breaking that reference. Check this to overwrite it anyway - the referrer(s) will then resolve to the NEW object instead of the old one. The old occupant is still diverted to the session clipboard, never lost outright."/>
+                            <Button Content="Clear Merge" Padding="10 2"
+                                    Click="OnClearMergeButton"
+                                    ToolTip="Abandons everything staged here, whether or not any of it has been placed into Local Library yet."/>
+                        </StackPanel>
+                    </Grid>
 
                     <TextBlock Grid.Row="1" Margin="0 0 0 6" FontSize="11" Foreground="{StaticResource AccentBrush}"
                                TextTrimming="CharacterEllipsis" Text="{Binding MergePane.StatusText}"

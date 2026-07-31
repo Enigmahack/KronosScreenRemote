@@ -163,7 +163,9 @@ static class ObjectBodySelfTests
         Check("erase-combi-timbre-cleared", etBank == 0 && etNum == 0);
 
         // ── Registry: bank enumeration matches the pre-existing hardcoded ranges ──
-        var expectedProgramBanks = Enumerable.Range(0x00, 7).Concat(Enumerable.Range(0x40, 14)).ToList();
+        // SIX internal Program banks (I-A..I-F), not seven - object-dump bank 0x06 is not a real
+        // Program bank; see ProgramDescriptor.EditableBanks. Combi below genuinely has seven.
+        var expectedProgramBanks = Enumerable.Range(0x00, 6).Concat(Enumerable.Range(0x40, 14)).ToList();
         Check("registry-program-banks",
             ObjectTypeRegistry.Get(LibObj.Program).EditableBanks().SequenceEqual(expectedProgramBanks));
         var expectedCombiBanks = Enumerable.Range(0x00, 7).Concat(Enumerable.Range(0x40, 7)).ToList();

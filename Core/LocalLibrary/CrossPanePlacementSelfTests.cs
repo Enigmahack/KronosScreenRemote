@@ -52,7 +52,7 @@ static class CrossPanePlacementSelfTests
             if (file == null) return fails;
 
             vm.PcgPane.LoadForTesting(new PcgLibraryView(file));
-            var pcgExiProgLoc = new ObjLoc(LibObj.Program, 0x00, 0);   // MBK1 bank -> EXi
+            var pcgExiProgLoc = new ObjLoc(LibObj.Program, 0x01, 0);   // MBK1 bank I-B -> EXi
             var pcgHd1ProgLoc = new ObjLoc(LibObj.Program, 0x40, 0);   // PBK1 bank -> HD-1
             var pcgCombiLoc = new ObjLoc(LibObj.Combi, 0x00, 0);
 
@@ -67,7 +67,7 @@ static class CrossPanePlacementSelfTests
             var combiDepHd1Loc = new ObjLoc(LibObj.Combi, 0x00, 2);   // references the HD-1 Program's own PCG address
 
             // Step 1 - repoint: the EXi Program's content exists locally, but at a DIFFERENT
-            // address than the PCG's own (0x00:000 is left empty). Placing a Combi that
+            // address than the PCG's own (I-B:000 is left empty). Placing a Combi that
             // references the PCG address must repoint the reference to where the content
             // ACTUALLY lives, not leave it pointing at the empty original address.
             var exiElsewhere = new ObjLoc(LibObj.Program, 0x41, 20);
@@ -203,20 +203,34 @@ static class CrossPanePlacementSelfTests
         // NOT itself contain - deliberately, to exercise the dependency-tracking check.
         var combiBody = new byte[combiSize];
         Encoding.ASCII.GetBytes(combiName).CopyTo(combiBody, 0);
-        LibRefs.SetCombiTimbreRef(combiBody, 0, 5, 42);
+        // Its timbres are filled in with the other two Combis' below, all 16 at once.
 
         // Two more Combis, each referencing one of THIS PCG's own Programs at its natural
         // address - for the auto-heal section below (DependencyScanner.RepointPcgReferences):
         // placing one of these directly exercises repoint-if-found-elsewhere and
         // stage-if-genuinely-missing against a real, known dependency.
-        int fbExiProg = KronosBanks.ObjBankToFunc33(1, 0x00);
+        //
+        // The EXi Program sits in I-B, NOT I-A. Deliberate: func-33 bank 0 / number 0 is the zero
+        // default every timbre of an INIT Combi already holds, so a Combi whose only reference is
+        // (0, 0) satisfies CombiBody.AllTimbresAtDefault and reads as an init placeholder that
+        // InitObjects correctly reports as having NO dependencies - there would be nothing left
+        // for RepointPcgReferences to repoint. (combiDepHd1 never had this problem: U-A is func-33
+        // bank 17, so its timbre write was always a real, non-default reference.)
+        int fbExiProg = KronosBanks.ObjBankToFunc33(1, 0x01);
         int fbHd1Prog = KronosBanks.ObjBankToFunc33(1, 0x40);
+        // All 16 timbres, not just timbre 0: a timbre left at (0, 0) is a live reference to
+        // Program I-A:000, which this PCG doesn't contain, so 15 untouched timbres would add 15
+        // phantom pending dependencies to every count these tests make. All defaults, or none.
         var combiDepExiBody = new byte[combiSize];
         Encoding.ASCII.GetBytes(combiDepExiName).CopyTo(combiDepExiBody, 0);
-        LibRefs.SetCombiTimbreRef(combiDepExiBody, 0, fbExiProg, 0);
         var combiDepHd1Body = new byte[combiSize];
         Encoding.ASCII.GetBytes(combiDepHd1Name).CopyTo(combiDepHd1Body, 0);
-        LibRefs.SetCombiTimbreRef(combiDepHd1Body, 0, fbHd1Prog, 0);
+        for (int t = 0; t < LibRefs.TimbreCount; t++)
+        {
+            LibRefs.SetCombiTimbreRef(combiDepExiBody, t, fbExiProg, 0);
+            LibRefs.SetCombiTimbreRef(combiDepHd1Body, t, fbHd1Prog, 0);
+            LibRefs.SetCombiTimbreRef(combiBody, t, 5, 42);
+        }
 
         using var ms = new MemoryStream();
         void WriteAscii(string s) => ms.Write(Encoding.ASCII.GetBytes(s));
@@ -231,7 +245,7 @@ static class CrossPanePlacementSelfTests
         ms.WriteByte(0x68); ms.WriteByte(0x00); ms.WriteByte(0x02); ms.WriteByte(0x01);
         ms.Write(new byte[8]);
 
-        WriteBank("MBK1", 1, programSize, 0, exiProgramBody);        // bank 0x00 (I-A) -> EXi
+        WriteBank("MBK1", 1, programSize, 0x01, exiProgramBody);     // bank 0x01 (I-B) -> EXi; see fbExiProg
         WriteBank("PBK1", 1, programSize, 0x20000, hd1ProgramBody);  // bank 0x40 (U-A) -> HD-1
 
         using var combis = new MemoryStream();

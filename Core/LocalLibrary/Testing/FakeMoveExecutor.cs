@@ -54,9 +54,15 @@ sealed class FakeMoveExecutor : ILibrarianService
         return Task.FromResult(result);
     }
 
+    // Banks that answer NO digest at all (null), the way a real instrument stays silent for a
+    // bank it doesn't recognize - as opposed to an empty bank, which still returns a real SHA-1
+    // over nothing. Lets a self-test exercise LibraryPullPipeline's NoDigest sentinel.
+    public HashSet<(int Obj, int Bank)> NoDigestBanks { get; } = new();
+
     public Task<byte[]?> BankDigestAsync(int obj, int bank)
     {
         CallLog.Add($"Digest:{obj}:{bank}");
+        if (NoDigestBanks.Contains((obj, bank))) return Task.FromResult<byte[]?>(null);
         using var sha1 = SHA1.Create();
         using var ms = new MemoryStream();
         for (int n = 0; n < 128; n++)
@@ -116,6 +122,12 @@ sealed class FakeMoveExecutor : ILibrarianService
     public Task<SetListSyncResult> DumpAllSetListsAsync(IProgress<(int Done, int Total, int Found)>? progress, CancellationToken ct) =>
         Task.FromResult(new SetListSyncResult(new Dictionary<int, SetListData>(), Array.Empty<int>(), 0, false));
     public Task<int> SyncNamesAsync(IProgress<(int Done, int Total, int Names)>? progress, CancellationToken ct) => Task.FromResult(0);
+
+    // Seedable by a self-test (key: func-33 type 1=program/0=combi, object bank) so the Local
+    // pane's read-only GM/g rows can be exercised without a live name sweep.
+    public Dictionary<(int Type, int Bank), Dictionary<int, string>> BankNames { get; } = new();
+    public IReadOnlyDictionary<int, string> CachedBankNames(int type, int objBank) =>
+        BankNames.TryGetValue((type, objBank), out var names) ? names : new Dictionary<int, string>();
     public ObjLoc? CurrentPerformanceLoc() => null;
 
     // Settable by a self-test before constructing the ViewModel under test, to exercise

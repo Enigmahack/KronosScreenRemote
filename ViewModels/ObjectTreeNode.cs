@@ -32,6 +32,12 @@ partial class ObjectTreeNode : ObservableObject
     // "drop onto a specific bank or slot" - see LocalEditOps.FindBankWithFreeSlot.
     public int? TypeRootObjType { get; }
 
+    // A factory bank (or a slot inside one) that can be browsed but never written - the
+    // read-only GM/g Program banks, see IObjectTypeDescriptor.ReadOnlyBanks. Drives the faded
+    // look in the View, and is what the drop/paste handlers check before offering the node as a
+    // destination. Distinct from IsPendingDelete, which fades a row for an unrelated reason.
+    public bool IsReadOnly { get; }
+
     [ObservableProperty] bool isDirty;
     [ObservableProperty] bool isConflicted;
     [ObservableProperty] bool isExpanded;
@@ -56,13 +62,15 @@ partial class ObjectTreeNode : ObservableObject
     public System.Collections.ObjectModel.ObservableCollection<ObjectTreeNode> Children { get; } = new();
 
     public ObjectTreeNode(string label, ObjLoc? loc = null, (int ObjType, int Bank)? bankRef = null,
-                          string? mergeContentHash = null, int? typeRootObjType = null)
+                          string? mergeContentHash = null, int? typeRootObjType = null,
+                          bool isReadOnly = false)
     {
         Label = label;
         Loc = loc;
         BankRef = bankRef;
         MergeContentHash = mergeContentHash;
         TypeRootObjType = typeRootObjType;
+        IsReadOnly = isReadOnly;
     }
 
     // Every Loc among this node's own descendants (this node included) - the "expand a bank

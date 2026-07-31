@@ -45,6 +45,13 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     // PasteBatch's own bank-type check can't verify - advisory only, never blocks.
     public Func<int, bool?>? BankTypeOf { get; set; }
 
+    // Injected by LibrarianShellViewModel, same pattern as BankTypeOf: (objType, bank) -> the
+    // slot names known for a READ-ONLY factory bank. Kept out of LocalLibraryCache on purpose -
+    // that store is the writable, host-independent library, and folding browse-only ROM names
+    // into it would put them in the index, the op-log, dirty tracking and the push changeset.
+    // Null (a headless self-test, or no name data yet) just means no GM/g banks are shown.
+    public Func<int, int, IReadOnlyDictionary<int, string>>? ReadOnlyBankNames { get; set; }
+
     // Injected by LibrarianShellViewModel the same way BankTypeOf is: opens one undo capture scope
     // (Core/LocalLibrary/LibrarianUndo.cs) per user action here, so Ctrl+Z walks back a paste/
     // rename/delete/discard exactly as it does a Merge Window drop. Null in a headless self-test
@@ -133,22 +140,42 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         TreeRefreshed?.Invoke();
     }
 
-    // The populated banks of one Program/Combi object type, in EditableBanks() order - a bank's
-    // Locs are only the slots the cache actually holds (index-only Exists check, no blob read).
+    // The populated banks of one Program/Combi object type, in BrowsableBanks() order - a
+    // writable bank's Locs are the slots the cache actually holds (index-only Exists check, no
+    // blob read); a READ-ONLY bank's come from the name source instead, since GM/g bodies are
+    // never pulled into the cache at all (browse-only, see ReadOnlyBankNames).
     IReadOnlyList<ObjectTreeScaffold.Bank> BanksFor(int objType)
     {
         var descriptor = ObjectTypeRegistry.Get(objType);
         var banks = new List<ObjectTreeScaffold.Bank>();
-        foreach (var bank in descriptor.EditableBanks())
+        foreach (var bank in descriptor.BrowsableBanks())
         {
             var locs = new List<ObjLoc>();
-            for (int number = 0; number < descriptor.SlotCount; number++)
-                if (_cache.Exists(objType, bank, number))
+            if (descriptor.IsReadOnlyBank(bank))
+            {
+                foreach (var number in ReadOnlyNamesIn(objType, bank).Keys.OrderBy(n => n))
                     locs.Add(new ObjLoc(objType, bank, number));
+            }
+            else
+            {
+                for (int number = 0; number < descriptor.SlotCount; number++)
+                    if (_cache.Exists(objType, bank, number))
+                        locs.Add(new ObjLoc(objType, bank, number));
+            }
             banks.Add(new ObjectTreeScaffold.Bank(bank, locs));
         }
         return banks;
     }
+
+    // Names for one read-only bank's slots, or empty when nothing is known yet. Empty is the
+    // normal starting state, not an error: these names come from the shared name sweep (Sync
+    // Names / passive capture), which the instrument rate-limits to roughly a dozen banks per
+    // app session, so the GM/g banks appear a few at a time across sessions rather than all at
+    // once. A bank with no names simply doesn't become a node (the scaffold drops empty banks).
+    IReadOnlyDictionary<int, string> ReadOnlyNamesIn(int objType, int bank) =>
+        ReadOnlyBankNames?.Invoke(objType, bank) ?? EmptyNames;
+
+    static readonly Dictionary<int, string> EmptyNames = new();
 
     // The populated Set List slots (flat, all bank 0), in numeric order.
     IReadOnlyList<ObjLoc> SetListLocs()
@@ -172,12 +199,24 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     {
         string label = descriptor.BankLabel(bank.Number);
         if (objType != LibObj.Program) return label;
+        // A read-only GM/g bank has no HD-1/EXi type at all (func 0x61's bitmap doesn't cover
+        // them), and its slots have no cache entry to read one from - label it as what it is.
+        if (descriptor.IsReadOnlyBank(bank.Number)) return label + " (read-only)";
         var first = bank.Locs[0];
         return label + (_cache.IsExi(first.ObjType, first.Bank, first.Number) ? " (EXi)" : " (HD-1)");
     }
 
     ObjectTreeNode MakeLeafNode(ObjLoc loc)
     {
+        // A read-only factory slot has no cache entry at all, so none of the dirty/conflicted/
+        // pending-delete/dependency state below can apply to it - it is a name and nothing else.
+        if (ObjectTypeRegistry.Get(loc.ObjType).IsReadOnlyBank(loc.Bank))
+        {
+            string romName = ReadOnlyNamesIn(loc.ObjType, loc.Bank).GetValueOrDefault(loc.Number, "");
+            return new ObjectTreeNode(
+                romName.Length == 0 ? loc.Label() : $"{loc.Label()}  {romName}", loc, isReadOnly: true);
+        }
+
         string name = ReadDisplayName(loc);
         var label = string.IsNullOrEmpty(name) ? loc.Label() : $"{loc.Label()}  {name}";
         bool isDirty = _cache.IsDirty(loc.ObjType, loc.Bank, loc.Number);
@@ -218,6 +257,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     // earlier Set-List exclusion here was conservatism, not a correctness guard.
     public void Cut(IReadOnlyList<ObjLoc> locs)
     {
+        locs = locs.Where(l => !ObjectTypeRegistry.IsReadOnly(l)).ToList();   // GM/g rows are browse-only
         if (locs.Count == 0) { ClearClipboard(); StatusText = AppMessages.Librarian.Local.NothingToCut; return; }
         if (locs.Count > 1) { StatusText = AppMessages.Librarian.Local.CutOneAtATime; return; }
         _clipItems = locs.ToList();
@@ -227,6 +267,9 @@ partial class LocalLibraryPaneViewModel : ObservableObject
 
     public void Copy(IReadOnlyList<ObjLoc> locs)
     {
+        // A GM/g row has no body in the library to copy - letting it into the clipboard would
+        // report "Copied GM:000" and then fail at paste, blaming the destination.
+        locs = locs.Where(l => !ObjectTypeRegistry.IsReadOnly(l)).ToList();
         if (locs.Count == 0) return;
         _clipItems = locs.ToList();
         Mode = ClipboardMode.Copy;
@@ -247,6 +290,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     // more than one (same fill behavior as PasteIntoBank below).
     public (bool Ok, string? Message) PasteIntoSlot(ObjLoc dest)
     {
+        if (IsReadOnlyDest(dest.ObjType, dest.Bank) is { } roSlot) return (false, roSlot);
         using var undo = Undoable(AppMessages.Librarian.Shell.UndoPastedAt(dest.Label()));
         if (!HasClipboard) return (false, AppMessages.Librarian.Local.NothingCutOrCopied);
         if (_clipItems.Any(l => l.ObjType != dest.ObjType)) return (false, AppMessages.Librarian.Local.TypeMismatch);
@@ -266,6 +310,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     // occupied slot instead, or use Copy.
     public (bool Ok, string? Message) PasteIntoBank(int objType, int bank)
     {
+        if (IsReadOnlyDest(objType, bank) is { } roBank) return (false, roBank);
         using var undo = Undoable(AppMessages.Librarian.Shell.UndoPastedAt(ObjectTypeRegistry.Get(objType).BankLabel(bank)));
         if (!HasClipboard) return (false, AppMessages.Librarian.Local.NothingCutOrCopied);
         if (_clipItems.Any(l => l.ObjType != objType)) return (false, AppMessages.Librarian.Local.TypeMismatch);
@@ -295,6 +340,16 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     // before deciding what to call.
     public int? FindBankForPaste(int objType) =>
         LocalEditOps.FindBankWithFreeSlot(_cache, objType, ClipboardIsExi(objType), BankTypeOf);
+
+    // The refusal message for a read-only factory destination, or null when the target is
+    // writable. Checked BEFORE the undo scope opens, so a refused paste doesn't push an empty
+    // step onto the undo stack. LocalEditOps.BatchPlace refuses these too - that's the guard
+    // that actually protects the data; this one exists so the user sees it at the drop, and
+    // so no half-built undo/clipboard state is left behind.
+    string? IsReadOnlyDest(int objType, int bank) =>
+        ObjectTypeRegistry.Get(objType).IsReadOnlyBank(bank)
+            ? AppMessages.Librarian.Local.ReadOnlyBank(ObjectTypeRegistry.Get(objType).BankLabel(bank))
+            : null;
 
     public bool? ClipboardIsExi(int objType)
     {
@@ -427,6 +482,12 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     // already-pending item is the undo - just clears the flag, no re-Discard.
     public void ToggleDelete(ObjLoc loc)
     {
+        if (ObjectTypeRegistry.IsReadOnly(loc))
+        {
+            StatusText = AppMessages.Librarian.Local.ReadOnlyBank(
+                ObjectTypeRegistry.Get(loc.ObjType).BankLabel(loc.Bank));
+            return;
+        }
         bool markForDeletion = !_cache.IsPendingDelete(loc.ObjType, loc.Bank, loc.Number);
         // Discard + SetPendingDelete both write this same slot; the capture keeps the FIRST prior
         // state per slot, so one Ctrl+Z restores the pending edit AND the flag together.
@@ -445,6 +506,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     // DiscardMany above.
     public void ToggleDeleteMany(IReadOnlyList<ObjLoc> locs)
     {
+        locs = locs.Where(l => !ObjectTypeRegistry.IsReadOnly(l)).ToList();   // GM/g rows are browse-only
         if (locs.Count == 0) return;
         bool markForDeletion = !locs.All(l => _cache.IsPendingDelete(l.ObjType, l.Bank, l.Number));
         using var undo = Undoable(AppMessages.Librarian.Shell.UndoDeletedOrRestoredMany(markForDeletion, locs.Count));

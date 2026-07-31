@@ -39,6 +39,15 @@
 		<Resource Include="Resources\Refs\*.png" />
 	</ItemGroup>
 
+	<!-- Factory INIT object bodies, captured once from a real Kronos and shipped WITH the
+	     assembly (Core/LocalLibrary/BlankTemplateStore.cs reads them via
+	     Assembly.GetManifestResourceStream). EmbeddedResource, deliberately not Content/None:
+	     a loose file next to the exe would inherit DataDir's portability failure mode, where
+	     any build/publish move strands it. -->
+	<ItemGroup>
+		<EmbeddedResource Include="Resources\InitBodies\*.bin" />
+	</ItemGroup>
+
 	<ItemGroup>
 		<Resource Include="Resources\Icons\AppIcon.ico">
 			<CopyToOutputDirectory>Never</CopyToOutputDirectory>

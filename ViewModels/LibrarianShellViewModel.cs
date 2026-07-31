@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Windows;
+using System.Windows.Threading;   // Dispatcher.Yield - see AutoFillToLibraryAsync on why the priority matters
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -63,6 +64,12 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         LocalPane = new LocalLibraryPaneViewModel(cache);
         MergePane = new MergePaneViewModel(new MergeCache(BuildMergePersistence(settings)));
         LocalPane.BankTypeOf = BankTypeOf;
+        // Assigned AFTER the pane's ctor has already built its tree once, so that first tree has
+        // no read-only rows in it - and nothing else refreshes it on the way to being shown
+        // (WarmCatalogAsync only flips IsIndexing). Without this rebuild the GM/g banks would
+        // stay invisible until some unrelated edit or sync happened to refresh the tree.
+        LocalPane.ReadOnlyBankNames = ReadOnlyBankNames;
+        LocalPane.RefreshTree();
 
         _undo = new LibrarianUndoRecorder(
             cache,
@@ -229,6 +236,50 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
             ? types.IsExi[bit]
             : null;
 
+    // ── Read-only factory (GM/g) bank names for the Local pane's browse-only rows ───────────
+    // These banks' BODIES are deliberately never pulled (they are ROM: nothing can be written
+    // there, and ObjectReferenceWalker.IsAlwaysAvailable already treats references into them as
+    // permanently satisfied, so the library needs no copy). Only names are shown, and they come
+    // from the name cache the shared name sweep already maintains - NOT from a second sweep of
+    // our own. That matters: the instrument rate-limits name dumps to roughly a dozen banks per
+    // app session, so a competing sweep would spend the same scarce budget twice and neither
+    // would converge.
+    //
+    // Read through the service (ISysExService.CachedBankNames), never Storage.LoadNames(_host):
+    // the cache is keyed by the TRANSPORT's key, which is the host only for TCP - a USB session
+    // keys on "usb:<device match>", so a host-keyed read would come back empty on USB and look
+    // identical to "no names known yet".
+    //
+    // The name-cache type code is the func-33 SLOT TYPE (1 = program, 0 = combi), NOT a LibObj
+    // constant - the same trap InitObjects documents (LibObj.Program is 0x00, which would select
+    // combi here).
+    Dictionary<(int ObjType, int Bank), IReadOnlyDictionary<int, string>>? _readOnlyNames;
+
+    IReadOnlyDictionary<int, string> ReadOnlyBankNames(int objType, int bank)
+    {
+        var byBank = _readOnlyNames ??= new();
+        if (byBank.TryGetValue((objType, bank), out var cached)) return cached;
+        IReadOnlyDictionary<int, string> names;
+        try
+        {
+            names = _sysEx.CachedBankNames(objType == LibObj.Program ? 1 : 0, bank);
+        }
+        catch (Exception ex)
+        {
+            // Browse-only decoration: no names means no GM rows, never a broken Librarian.
+            AppLog.Warn($"[librarian] read-only bank names unavailable: {ex.Message}");
+            names = EmptyReadOnlyNames;
+        }
+        return byBank[(objType, bank)] = names;
+    }
+
+    static readonly Dictionary<int, string> EmptyReadOnlyNames = new();
+
+    // Drops the memoized snapshot so the next tree refresh re-reads the name cache - the sweep
+    // runs outside this window and converges over several sessions, so a long-open Librarian
+    // would otherwise keep showing whichever GM banks were known when it opened.
+    void InvalidateReadOnlyBankNames() => _readOnlyNames = null;
+
     // The Merge Window's "Merge behavior" setting (Views/SettingsWindow.xaml's Librarian tab)
     // selects the persistence strategy at construction time - see MergeCachePersistence.cs.
     // A setting change while THIS window is already open only takes effect the next time the
@@ -338,6 +389,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
             if (!push.Ok) WarningText = push.Error;
             else ClearAfterSuccessfulPush();
             AppLog.Info($"[librarian] sync done: fetched={pull.ObjectsFetched} pushed={push.Written} hasObjects={_cache.HasAnyObjects}");
+            InvalidateReadOnlyBankNames();   // the name sweep may have learned new GM/g banks meanwhile
         }
         catch (Exception ex)
         {
@@ -421,6 +473,51 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         SyncLibraryCommand.NotifyCanExecuteChanged();
         CommitChangesCommand.NotifyCanExecuteChanged();
         UndoCommand.NotifyCanExecuteChanged();   // see CanUndo - undo must not race a push
+        AutoFillToLibraryCommand.NotifyCanExecuteChanged();
+    }
+
+    // Set for the duration of an Auto-Fill so the button can show it's working. Distinct from
+    // IsBusy, which means "a HARDWARE operation is in flight" - Auto-Fill touches only Local
+    // Library, so it must not read as a sync/commit, but it does still need to lock its own
+    // button against a second click landing mid-run.
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(AutoFillToLibraryCommand))]
+    bool isAutoFilling;
+
+    bool CanAutoFill() => !IsBusy && !IsAutoFilling;
+
+    // The placement work can't leave the UI thread - it mutates the ObservableCollections both
+    // trees bind to - so "don't freeze" here means "yield to the Dispatcher between banks", which
+    // is what the pump below does.
+    //
+    // The priority matters and is the whole reason a first attempt showed no indicator at all.
+    // Task.Yield() posts its continuation through the DispatcherSynchronizationContext at
+    // DispatcherPriority.Normal (9), which OUTRANKS Render (7) - so the continuation ran, and the
+    // entire sweep completed, before WPF ever painted. IsAutoFilling went true and false again
+    // without a single render pass. Yielding at Background (4) sits BELOW Render, so the pending
+    // layout/render/animation actually runs before control comes back here.
+    [RelayCommand(CanExecute = nameof(CanAutoFill))]
+    async Task AutoFillToLibraryAsync()
+    {
+        IsAutoFilling = true;
+        try
+        {
+            // Once up front so the button repaints as busy before any work starts, then again
+            // per bank from inside the sweep.
+            await Dispatcher.Yield(DispatcherPriority.Background);
+            var (_, message) = await AutoFillFromMergeAsync(async status =>
+            {
+                MergePane.StatusText = status;
+                await Dispatcher.Yield(DispatcherPriority.Background);
+            });
+            MergePane.StatusText = message;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"[librarian] auto-fill failed: {ex}");
+            MergePane.StatusText = AppMessages.Librarian.Shell.OperationFailed(ex.Message);
+        }
+        finally { IsAutoFilling = false; }
     }
 
     // Called after any local edit (rename/move/discard/placement) so the permanent history
@@ -522,11 +619,19 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     // ── Local -> Merge Window (requirement 3, transitive - see MergeCache.PullFromLocal) ──
     // The Merge Window as a general scratchpad: stage an already-placed Local object (plus its
     // local dependencies) back in so it can be moved/rearranged and pushed somewhere else.
-    public void PullLocalIntoMerge(ObjLoc localLoc) => MergePane.PullFromLocal(_cache, localLoc);
+    // A read-only GM/g row has no body in the library to stage - it is a name from the shared
+    // name cache and nothing more (see ReadOnlyBankNames), so staging it would add an empty or
+    // phantom Merge entry.
+    public void PullLocalIntoMerge(ObjLoc localLoc)
+    {
+        if (ObjectTypeRegistry.IsReadOnly(localLoc)) return;
+        MergePane.PullFromLocal(_cache, localLoc);
+    }
 
     // Same one-gesture-one-step reasoning as PullIntoMerge's list overload above.
     public void PullLocalIntoMerge(IReadOnlyList<ObjLoc> localLocs)
     {
+        localLocs = localLocs.Where(l => !ObjectTypeRegistry.IsReadOnly(l)).ToList();
         if (localLocs.Count == 0) return;
         using var undo = _undo.Begin(AppMessages.Librarian.Shell.UndoPulledIntoMerge(localLocs.Count));
         foreach (var loc in localLocs) PullLocalIntoMerge(loc);
@@ -628,6 +733,116 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
             : $"Placed {take}";
         if (dedupNote.Length > 0) msg += $"; {dedupNote}";
         return (true, msg);
+    }
+
+    // ── Auto-Fill: place EVERYTHING staged into the next free slots ──────────────────────
+    // One button for what the Merge Window otherwise costs a drag per type per bank: take every
+    // staged Set List / Combi / Program (top-level pulls AND the dependencies that came with
+    // them) and fill them into Local Library's next free slots of their own type. Purely LOCAL -
+    // it stages, exactly like every other placement in this pane; nothing reaches the instrument
+    // until Commit Changes. One Ctrl+Z undoes the whole sweep (LibrarianUndo's nested Begins
+    // join the outer step, so the per-bank scopes inside PlaceMergeGroupSequentially fold in).
+    //
+    // DEPENDENCIES FIRST, and that ordering is the whole reason this isn't just three loops in
+    // any order: PlaceMergeGroupSequentially resolves each entry's outgoing references against
+    // what is local AT PLACEMENT TIME (MergeCache.ResolveReferencesForPlacement), so a Combi
+    // placed after its Programs gets repointed at where they actually landed, while a Combi
+    // placed first can only be tracked as pending and repaired later, lazily, at Commit. Both
+    // paths are correct - one just leaves nothing to repair. Hence Programs, then Combis, then
+    // Set Lists: strictly referenced-before-referrer.
+    //
+    // Programs are additionally partitioned by WIRE FORMAT, and each partition placed into the
+    // next free slots of a bank of ITS OWN format. Without that, a mixed EXi+HD-1 group makes
+    // MergeGroupIsExi answer null, and a null format turns FindBankWithFreeSlot's format filter
+    // OFF - so it returns the first bank with room whatever its type, and BatchPlace then refuses
+    // the whole thing with Move.WrongFormatForBank. Nothing is destroyed by that (the refusal is
+    // the gate doing its job), but it aborts the entire Program pass over a bank the user never
+    // chose, leaving everything staged. Partitioning means the question never comes up.
+    //
+    // Note this path never calls BankTypeChangeNeeded - that's the drag handler's escalation
+    // (LibrarianShellWindow.OnMergeToLocalDrop), and a func-0x7C bank reformat is not something
+    // "fill the free slots" should ever reach.
+    // `pump`, when supplied, is awaited before each bank's placement: the UI passes one that
+    // reports the message and then yields to the Dispatcher, which is what lets the button's
+    // progress indicator paint and animate instead of the whole sweep landing as one frozen
+    // block. Pass null (the self-tests do) and NOTHING suspends - every await completes
+    // synchronously, so this stays safe to drive from App.xaml.cs's GetAwaiter().GetResult() on
+    // the UI thread, which a genuinely-async version would deadlock.
+    public async Task<(bool Ok, string Message)> AutoFillFromMergeAsync(Func<string, Task>? pump = null)
+    {
+        var staged = MergePane.Entries.ToList();
+        if (staged.Count == 0) return (false, AppMessages.Librarian.Merge.AutoFillNothingStaged);
+
+        using var undo = _undo.Begin(AppMessages.Librarian.Shell.UndoAutoFilled(staged.Count));
+
+        int startCount = staged.Count;
+        string? refusal = null, refusedWhat = null;
+
+        foreach (var objType in new[] { LibObj.Program, LibObj.Combi, LibObj.SetList })
+        {
+            var ofType = staged.Where(e => e.ObjType == objType).ToList();
+            if (ofType.Count == 0) continue;
+
+            // Programs: one run per wire format. Everything else is a single run (format is not a
+            // concept for Combis/Set Lists, so the lone partition carries a null "isExi").
+            var partitions = objType == LibObj.Program
+                ? ofType.GroupBy(e => e.Body.Length == ProgramFormatConverter.WireSizeExi)
+                        .Select(g => ((bool?)g.Key, g.Select(e => e.ContentHash).ToList()))
+                        .ToList()
+                : new List<(bool?, List<string>)> { (null, ofType.Select(e => e.ContentHash).ToList()) };
+
+            foreach (var (isExi, hashes) in partitions)
+            {
+                var remaining = hashes;
+                while (remaining.Count > 0)
+                {
+                    // Re-asked every pass: the previous pass filled that bank up, so the next one
+                    // has to resolve to a different bank (or to null = nothing of this format has
+                    // room left, and the rest stays staged rather than being lost).
+                    if (LocalEditOps.FindBankWithFreeSlot(_cache, objType, isExi, BankTypeOf) is not { } bank) break;
+
+                    // One yield per bank - the finest granularity available without splitting a
+                    // BatchPlace, which has to stay atomic. Placing a full 128-slot bank is
+                    // therefore still one un-interruptible step; this makes the sweep BETWEEN
+                    // banks visible, it doesn't make any single bank's write interruptible.
+                    var descriptor = ObjectTypeRegistry.Get(objType);
+                    if (pump != null)
+                        await pump(AppMessages.Librarian.Merge.AutoFillProgress(
+                            descriptor.DisplayName, descriptor.BankLabel(bank), remaining.Count));
+
+                    int before = remaining.Count;
+                    var (ok, message) = PlaceMergeGroupSequentially(objType, bank, remaining);
+                    // Survivors, straight from the Merge Window itself rather than from the count
+                    // in `message`: PlaceMergeGroupSequentially both PLACES and DEDUPES (content
+                    // already elsewhere locally is reused, not written), and CommitPlacement
+                    // removes an entry either way. "Still staged" is the only definition of
+                    // "still needs a slot" that covers both.
+                    remaining = remaining.Where(h => MergePane.TryGet(h) != null).ToList();
+
+                    if (!ok)
+                    {
+                        // A REFUSE (orphan gate, wrong format, ...) is reported, not swallowed,
+                        // and not retried against the same bank - but the other types still get
+                        // their turn, so one bad group can't strand the rest.
+                        refusal ??= message;
+                        refusedWhat ??= ObjectTypeRegistry.Get(objType).DisplayName;
+                        break;
+                    }
+                    // Progress guard: a bank that accepted nothing would otherwise be chosen
+                    // again forever, since FindBankWithFreeSlot would keep returning it.
+                    if (remaining.Count >= before) break;
+                }
+            }
+        }
+
+        LocalPane.RefreshTree();
+        int stillStaged = MergePane.Entries.Count;
+        int resolved = startCount - stillStaged;
+
+        if (refusal != null)
+            return (false, AppMessages.Librarian.Merge.AutoFillRefused(resolved, refusedWhat ?? "a staged group", refusal));
+
+        return (resolved > 0, AppMessages.Librarian.Merge.AutoFillResult(resolved, stillStaged));
     }
 
     // ── Whole Program bank copy with EXi/HD-1 type change (requirement 4) ────────────────

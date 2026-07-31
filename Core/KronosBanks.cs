@@ -141,7 +141,12 @@ static class KronosBanks
     // immediately while the (slower) per-object user-bank pulls follow.
     public static IEnumerable<(int Type, int ObjBank)> AllNameBanks()
     {
-        for (int b = 0x00; b <= 0x06; b++) yield return (1, b);   // program INT   I-A..I-G
+        // Program INT is I-A..I-F - SIX banks. Object-dump bank 0x06 is not a real Program bank
+        // (see Func33ToObjBank and ObjectTypeRegistry.ProgramDescriptor.EditableBanks), and the
+        // instrument rate-limits name dumps to roughly a dozen banks per app session - so asking
+        // for it spent one of those scarce slots on a bank that answers nothing, delaying the
+        // GM/g names the Local pane's read-only rows are waiting on.
+        for (int b = 0x00; b <= 0x05; b++) yield return (1, b);   // program INT   I-A..I-F
         for (int b = 0x00; b <= 0x06; b++) yield return (0, b);   // combi INT     I-A..I-G
         for (int b = 0x10; b <= 0x1A; b++) yield return (1, b);   // program GM/g  (GM+g1-6 dump; g7-gd absent)
         for (int b = 0x40; b <= 0x4D; b++) yield return (1, b);   // program USER  (reject → front-panel dump)

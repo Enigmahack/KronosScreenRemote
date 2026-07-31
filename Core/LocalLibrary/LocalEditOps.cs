@@ -57,6 +57,17 @@ static class LocalEditOps
         LocalLibraryCache cache, int objType, IReadOnlyList<BatchPlacement> placements,
         bool divertDisplacedToClipboard, Func<int, bool?>? bankTypeOf, DateTime utcNow, bool forceOverwrite = false)
     {
+        // Read-only factory banks are browse-only (they appear in the tree so GM content can be
+        // looked up, see IObjectTypeDescriptor.ReadOnlyBanks). This is the one choke point every
+        // placement goes through - PlaceObject delegates here, and so does every pane's drop,
+        // paste and auto-fill - so refusing here means no UI path can write to one, whatever the
+        // caller believed. The UI checks too, but only to give a better message than this.
+        var descriptor = ObjectTypeRegistry.Get(objType);
+        foreach (var p in placements)
+            if (descriptor.IsReadOnlyBank(p.To.Bank))
+                return (false, AppMessages.Librarian.Local.ReadOnlyBank(descriptor.BankLabel(p.To.Bank)),
+                        new List<ClipboardEntry>());
+
         var cat = cache.BuildCatalog();
         var destOccupants = new Dictionary<ObjLoc, ObjectDump>();
         foreach (var p in placements)
@@ -230,10 +241,13 @@ static class LocalEditOps
     // refused outright ("drop onto a specific bank or slot"), even though "anywhere there's space"
     // is a perfectly clear intent. Null only when EVERY writable bank of this type is full.
     //
-    // USER banks are tried before INT ones regardless of tree order: "put this somewhere" means a
-    // user bank on a Kronos: INT banks hold factory content, and on a fully-synced library they're
-    // full anyway, so this only ever differs on a partially-populated library - where landing in
-    // I-A would be the surprising outcome, not the helpful one. Read-only GM/g banks are skipped
+    // Banks are tried in plain registry order - I-A onward, then U-A onward - i.e. literally "the
+    // next bank with a free slot," which is what a drop on the header reads as. An earlier version
+    // tried USER banks FIRST on the theory that INT banks hold factory content and are full anyway,
+    // so preferring them would only ever matter on a partially-populated library. That theory was
+    // wrong in the one case it mattered: a real Kronos ships INT Combi banks I-E/I-F/I-G as init
+    // placeholders, which HasContent correctly reads as free, so a drop that should have landed at
+    // I-E:001 skipped seven internal banks and jumped to U-A. Read-only GM/g banks are skipped
     // entirely (nothing can be written there at all).
     //
     // incomingIsExi (Programs only) confines the search to banks of the MATCHING HD-1/EXi format.
@@ -259,7 +273,6 @@ static class LocalEditOps
         var descriptor = ObjectTypeRegistry.Get(objType);
         var banks = descriptor.EditableBanks()
             .Where(b => !descriptor.IsReadOnlyBank(b))
-            .OrderByDescending(b => b >= 0x40)   // USER banks first, each group otherwise in registry order
             .ToList();
 
         int? firstUnverifiable = null;

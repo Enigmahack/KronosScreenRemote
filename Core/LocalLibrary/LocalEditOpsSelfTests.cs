@@ -150,20 +150,27 @@ static class LocalEditOpsSelfTests
                 mixedMissing[0].MissingRef.Equals(new ObjLoc(LibObj.Program, 0x41, 77)));
 
             // ── Type-root drop target: "first bank with room" (requirement 6) ──
-            // Dropping on the "Programs"/"Combis" header names a type but no bank. USER banks are
-            // preferred over INT ones, and for Programs the chosen bank must match the incoming
-            // wire format - otherwise this would just trade "drop onto a specific bank" for
-            // PlanBatchMove's wrong-format REFUSE. This fixture holds only HD-1 Programs (3706-byte
-            // bodies) in U-A/U-B, so an EXi drop must skip past both to an unformatted (empty) bank.
-            Check("typeroot-combi-prefers-user-bank",
-                LocalEditOps.FindBankWithFreeSlot(cache, LibObj.Combi) == 0x40);
+            // Dropping on the "Programs"/"Combis" header names a type but no bank. Banks are walked
+            // in plain registry order - I-A onward, then U-A onward - and for Programs the chosen
+            // bank must match the incoming wire format, otherwise this would just trade "drop onto a
+            // specific bank" for PlanBatchMove's wrong-format REFUSE. This fixture holds only HD-1
+            // Programs (3706-byte bodies) in I-A/U-A/U-B, so an EXi drop must skip past all three to
+            // an unformatted (empty) bank.
+            //
+            // The reported bug, exactly: BOTH I-A and U-A have room here, and the internal one must
+            // win. An earlier version preferred USER banks outright, which sent a Combi dropped on
+            // the header to U-A while seven internal banks still had free slots.
+            Check("typeroot-combi-takes-first-internal-bank-with-room",
+                LocalEditOps.FindBankWithFreeSlot(cache, LibObj.Combi) == 0x00);
             Check("typeroot-program-hd1-lands-in-hd1-bank",
-                LocalEditOps.FindBankWithFreeSlot(cache, LibObj.Program, incomingIsExi: false) == 0x40);
+                LocalEditOps.FindBankWithFreeSlot(cache, LibObj.Program, incomingIsExi: false) == 0x00);
+            // I-A is HD-1 (slot 7), so an EXi drop skips it and settles on the first bank whose
+            // format nothing can rule out - I-B, not the first empty USER bank.
             Check("typeroot-program-exi-skips-hd1-banks",
                 LocalEditOps.FindBankWithFreeSlot(cache, LibObj.Program, incomingIsExi: true) is int exiBank &&
-                exiBank >= 0x42 && LocalEditOps.LocalProgramBankFormat(cache, exiBank) == null);
-            Check("typeroot-program-unknown-format-takes-first-user-bank",
-                LocalEditOps.FindBankWithFreeSlot(cache, LibObj.Program) == 0x40);
+                exiBank == 0x01 && LocalEditOps.LocalProgramBankFormat(cache, exiBank) == null);
+            Check("typeroot-program-unknown-format-takes-first-bank-with-room",
+                LocalEditOps.FindBankWithFreeSlot(cache, LibObj.Program) == 0x00);
             Check("typeroot-setlist-single-pseudo-bank",
                 LocalEditOps.FindBankWithFreeSlot(cache, LibObj.SetList) == 0);
             // The live bank-type lookup wins over the locally-inferred one when it's available.
@@ -182,11 +189,11 @@ static class LocalEditOpsSelfTests
             Check("typeroot-program-no-matching-format-refuses-other-way",
                 LocalEditOps.FindBankWithFreeSlot(cache, LibObj.Program, incomingIsExi: true,
                     bankTypeOf: _ => false) == null);
-            // A bank of UNVERIFIABLE type (no live answer AND empty locally - in practice I-G,
-            // which func 0x61's bitmap doesn't cover) is a fallback, never a first choice: U-C/U-D
-            // are unverifiable and come first in bank order, but U-E is a CONFIRMED EXi match, so
-            // it wins. Taking U-C would have deferred a real format error to the hardware write,
-            // since an unverifiable destination only earns PlanBatchMove's advisory CHECK.
+            // A bank of UNVERIFIABLE type (no live answer AND empty locally) is a fallback, never a
+            // first choice: I-B onward are unverifiable and come first in bank order, but U-E is a
+            // CONFIRMED EXi match, so it wins. Taking I-B would have deferred a real format error to
+            // the hardware write, since an unverifiable destination only earns PlanBatchMove's
+            // advisory CHECK.
             Check("typeroot-program-prefers-known-match-over-unverifiable",
                 LocalEditOps.FindBankWithFreeSlot(cache, LibObj.Program, incomingIsExi: true,
                     bankTypeOf: b => b == 0x44 ? true : (bool?)null) == 0x44);
@@ -194,7 +201,7 @@ static class LocalEditOpsSelfTests
             // than refusing a drop that a fresh/unsynced library can perfectly well accept.
             Check("typeroot-program-falls-back-to-unverifiable-bank",
                 LocalEditOps.FindBankWithFreeSlot(cache, LibObj.Program, incomingIsExi: true,
-                    bankTypeOf: _ => null) == 0x42);
+                    bankTypeOf: _ => null) == 0x01);
 
             // The reported bug, in its exact shape. I-G has no bit in func 0x61's Program Bank
             // Types bitmap, so the LIVE lookup can only ever answer null for it - but once any
@@ -216,6 +223,57 @@ static class LocalEditOpsSelfTests
             Check("typeroot-never-picks-readonly-bank",
                 LocalEditOps.FindBankWithFreeSlot(cache, LibObj.Program) is int anyBank &&
                 !KronosBanks.IsReadOnlyProgramBank(anyBank));
+
+            // ── The reported Combi shape, end to end ────────────────────────────────────────
+            // A real Kronos: internal Combi banks filled with factory content up to some bank, then
+            // a partly-used one - I-E holding one real Combi at 000 and init placeholders after it.
+            // A drop on the "Combis" header must land at I-E:001, not skip seven internal banks to
+            // U-A. Fill I-A entirely so the search has to WALK, not just answer with the first bank.
+            var realCombi = new byte[7810];
+            for (int t = 0; t < LibRefs.TimbreCount; t++) LibRefs.SetCombiTimbreRef(realCombi, t, fbDst, 5);
+            var initCombi = new byte[7810];   // every timbre at the zero default -> CombiBody.IsInit
+            for (int n = 0; n < 128; n++)
+                LocalEditOps.PlaceObject(cache, new ObjLoc(LibObj.Combi, 0x00, n), LibObj.Combi, 3,
+                    realCombi, "fill-IA", divertDisplacedToClipboard: false, utcNow);
+            for (int n = 0; n < 128; n++)
+                LocalEditOps.PlaceObject(cache, new ObjLoc(LibObj.Combi, 0x01, n), LibObj.Combi, 3,
+                    n == 0 ? realCombi : initCombi, "fill-IB", divertDisplacedToClipboard: false, utcNow);
+            Check("combi-init-body-reads-as-free", !cache.HasContent(LibObj.Combi, 0x01, 1));
+            Check("combi-real-body-reads-as-occupied", cache.HasContent(LibObj.Combi, 0x01, 0));
+            Check("typeroot-combi-walks-past-full-internal-bank",
+                LocalEditOps.FindBankWithFreeSlot(cache, LibObj.Combi) == 0x01);
+            Check("typeroot-combi-lands-after-the-real-occupant",
+                LocalEditOps.FindNextFreeSlot(cache, LibObj.Combi, 0x01) == 1);
+
+            // ── Read-only factory banks: browsable, never writable ──────────────────────────
+            // GM/g Program banks are shown in Local Library so their content can be looked up, and
+            // that is the whole risk: a bank the user can SEE is a bank a drop can land on. BatchPlace
+            // is the single choke point every drop/paste/auto-fill goes through, so the refusal has to
+            // hold there, not only in the handlers that remember to ask.
+            var romDest = new ObjLoc(LibObj.Program, 0x10, 0);   // GM:000
+            var (romOk, romErr, _) = LocalEditOps.PlaceObject(
+                cache, romDest, LibObj.Program, 5, new byte[ProgramFormatConverter.WireSizeHd1], "rom-write",
+                divertDisplacedToClipboard: false, utcNow);
+            Check("readonly-bank-write-refused", !romOk);
+            Check("readonly-bank-refusal-names-the-bank", romErr != null && romErr.Contains("GM"));
+            Check("readonly-bank-nothing-landed", !cache.Exists(romDest.ObjType, romDest.Bank, romDest.Number));
+
+            // The registry split itself: read-only banks are browsable but must never appear in the
+            // WRITE scope, which is what every auto-fill and BackfillInitFlags iterates.
+            var progDescriptor = ObjectTypeRegistry.Get(LibObj.Program);
+            Check("readonly-banks-not-editable",
+                !progDescriptor.EditableBanks().Any(b => progDescriptor.IsReadOnlyBank(b)));
+            Check("readonly-banks-are-browsable",
+                progDescriptor.ReadOnlyBanks().All(b => progDescriptor.BrowsableBanks().Contains(b)) &&
+                progDescriptor.ReadOnlyBanks().SequenceEqual(Enumerable.Range(0x10, 11)));
+            // Program object-dump bank 0x06 ("I-G") is not a real Program bank - it answers no digest
+            // and no dump, and while it was listed it stayed a legal write destination.
+            Check("program-has-six-internal-banks",
+                progDescriptor.EditableBanks().Where(b => b < 0x40).SequenceEqual(Enumerable.Range(0x00, 6)));
+            // Combi I-G is real and must NOT have been caught by that removal.
+            Check("combi-keeps-seven-internal-banks",
+                ObjectTypeRegistry.Get(LibObj.Combi).EditableBanks().Where(b => b < 0x40)
+                    .SequenceEqual(Enumerable.Range(0x00, 7)));
             // ── INIT placeholders count as free space ──────────────────────────────────────
             // The Kronos protocol has no empty slot, so a synced library indexes all 128 slots of
             // every bank and an Exists-based scan calls a bank of 128 "Init Program"s FULL - the

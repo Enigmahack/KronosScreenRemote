@@ -63,9 +63,15 @@ static class DependencyResolutionSelfTests
             var (combiOk, combiErr) = vm.PlaceFromMerge(combiXHash, combiDestLoc);
             Check("place-combiX-ok", combiOk && combiErr == null);
 
+            // "Unresolved" means the timbre still holds the address the PCG itself encoded
+            // (Program A's own I-B:000), untouched - NOT some sentinel. Program A isn't local
+            // anywhere yet, so there is nothing to repoint it to.
+            var pcgProgALoc = new ObjLoc(LibObj.Program, 0x01, 0);
+            int fbProgASource = KronosBanks.ObjBankToFunc33(1, pcgProgALoc.Bank);
             var combiBodyRightAfterPlacement = cache.GetCurrentBody(combiDestLoc.ObjType, combiDestLoc.Bank, combiDestLoc.Number);
             Check("combiX-reference-unresolved-right-after-placement",
-                combiBodyRightAfterPlacement != null && LibRefs.CombiTimbreRef(combiBodyRightAfterPlacement, 0) == (0, 0));
+                combiBodyRightAfterPlacement != null &&
+                LibRefs.CombiTimbreRef(combiBodyRightAfterPlacement, 0) == (fbProgASource, pcgProgALoc.Number));
             Check("combiX-tracked-pending", vm.SessionClipboardRows.Count > 0);
 
             // Now place Program A - deliberately at a DIFFERENT address than its own natural
@@ -79,7 +85,7 @@ static class DependencyResolutionSelfTests
             // Program A lands; nothing repatches it until the next Sync/Commit.
             var combiBodyStillUnresolved = cache.GetCurrentBody(combiDestLoc.ObjType, combiDestLoc.Bank, combiDestLoc.Number);
             Check("combiX-not-repatched-before-commit", combiBodyStillUnresolved != null &&
-                LibRefs.CombiTimbreRef(combiBodyStillUnresolved, 0) == (0, 0));
+                LibRefs.CombiTimbreRef(combiBodyStillUnresolved, 0) == (fbProgASource, pcgProgALoc.Number));
 
             await vm.CommitChangesCommand.ExecuteAsync(null);
 
@@ -116,6 +122,12 @@ static class DependencyResolutionSelfTests
         return fails;
     }
 
+    static void SetAllTimbres(byte[] combiBody, int func33Bank, int number)
+    {
+        for (int t = 0; t < LibRefs.TimbreCount; t++)
+            LibRefs.SetCombiTimbreRef(combiBody, t, func33Bank, number);
+    }
+
     // Minimal fixture: one Program (A), one Combi (X) referencing it, and one Combi (Z)
     // referencing something this PCG doesn't contain at all (a true gap).
     static byte[] BuildSyntheticPcg(out byte[] progABody, out byte[] combiXBody, out byte[] combiZBody)
@@ -125,14 +137,24 @@ static class DependencyResolutionSelfTests
         progABody = new byte[programSize];
         Encoding.ASCII.GetBytes("PROG A").CopyTo(progABody, 0);
 
-        int fbProgA = KronosBanks.ObjBankToFunc33(1, 0x00);
+        // Program A lives in I-B, NOT I-A. Deliberate: func-33 bank 0 / number 0 is the zero
+        // default every timbre of an INIT Combi already holds, so a Combi whose only reference
+        // is (0, 0) satisfies CombiBody.AllTimbresAtDefault and reads as an init placeholder -
+        // InitObjects then correctly reports it as having NO dependencies at all, and Program A
+        // would never be pulled, tracked, or repatched. Pointing at I-B:000 makes the timbre
+        // write a real, non-default reference, which is what this whole test is about.
+        // ...and EVERY timbre is pointed at it, never just timbre 0: a timbre left at (0, 0) is
+        // not "unset", it is a live reference to Program I-A:000, so 15 untouched timbres would
+        // manufacture 15 phantom gaps on top of the one dependency under test. All defaults, or
+        // none - there is no useful middle ground.
+        int fbProgA = KronosBanks.ObjBankToFunc33(1, 0x01);
         combiXBody = new byte[combiSize];
         Encoding.ASCII.GetBytes("COMBI X").CopyTo(combiXBody, 0);
-        LibRefs.SetCombiTimbreRef(combiXBody, 0, fbProgA, 0);   // -> Program A
+        SetAllTimbres(combiXBody, fbProgA, 0);   // -> Program A
 
         combiZBody = new byte[combiSize];
         Encoding.ASCII.GetBytes("COMBI Z").CopyTo(combiZBody, 0);
-        LibRefs.SetCombiTimbreRef(combiZBody, 0, 5, 42);   // -> a Program this PCG does NOT contain
+        SetAllTimbres(combiZBody, 5, 42);   // -> a Program this PCG does NOT contain
 
         using var ms = new MemoryStream();
         void WriteAscii(string s) => ms.Write(Encoding.ASCII.GetBytes(s));
@@ -147,7 +169,7 @@ static class DependencyResolutionSelfTests
         ms.WriteByte(0x68); ms.WriteByte(0x00); ms.WriteByte(0x02); ms.WriteByte(0x01);
         ms.Write(new byte[8]);
 
-        WriteBank("MBK1", 1, programSize, 0, progABody);   // bank 0x00 (I-A) -> EXi
+        WriteBank("MBK1", 1, programSize, 0x01, progABody);   // bank 0x01 (I-B) -> EXi; see fbProgA
 
         using var combis = new MemoryStream();
         combis.Write(combiXBody); combis.Write(combiZBody);

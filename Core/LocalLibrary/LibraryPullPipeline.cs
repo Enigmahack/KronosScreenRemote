@@ -13,17 +13,42 @@ static class LibraryPullPipeline
 {
     public sealed record PullResult(int BanksChecked, int ObjectsFetched, int Conflicts);
 
+    // Baseline value meaning "this bank answered no digest at all" - see PullAsync's own
+    // comment. Distinct from every real digest (40 hex chars) and from "no baseline recorded
+    // yet" (the key being absent), which is what makes a first pull still sweep the bank once.
+    public const string NoDigest = "";
+
     public static async Task<PullResult> PullAsync(
         ILibrarianService sysEx, LocalLibraryCache cache, bool full,
         Action<string>? progress = null, CancellationToken ct = default)
     {
         var persisted = cache.BankDigestBaselineHex();
         var fresh = new Dictionary<(int, int), string>();
+        var noDigest = new List<(int, int)>();
         foreach (var b in LibraryPullPlanner.AllBanks())
         {
             var d = await sysEx.BankDigestAsync(b.ObjType, b.Bank).ConfigureAwait(false);
             if (d != null) fresh[(b.ObjType, b.Bank)] = Convert.ToHexString(d).ToLowerInvariant();
+            else noDigest.Add((b.ObjType, b.Bank));
         }
+
+        // A bank the instrument never answers a digest request for still needs a PERSISTED
+        // baseline, or it is "changed" forever: LibraryPullPlanner.PlanPull treats a missing
+        // fresh OR missing persisted digest as changed, so without this the bank was re-swept
+        // in full on EVERY lazy Sync Library - 128 slots, and (since a bank that won't answer
+        // a digest generally won't answer a bulk dump either) 128 individual DumpObjectAsync
+        // round-trips through the bulk-empty fallback below. Observed on Program I-G. The
+        // NoDigest sentinel is the same empty-string convention ChangesetBuilder's conflict
+        // pre-scan and LocalLibraryIndex.NoBaselineSentinel already use, and it can never
+        // collide with a real digest (always 40 hex chars). A bank pinned this way is then
+        // only re-fetched by an explicit Force Pull-All, which bypasses Changed() entirely.
+        //
+        // Only when at least one bank DID answer, though: if none did, the instrument is
+        // unreachable rather than quiet about one bank, and overwriting every good baseline
+        // with the sentinel would silently mark the whole library up to date. Leaving those
+        // baselines untouched keeps the next connected sync honest.
+        if (fresh.Count > 0)
+            foreach (var key in noDigest) fresh[key] = NoDigest;
 
         var plan = LibraryPullPlanner.PlanPull(persisted, fresh, full);
 

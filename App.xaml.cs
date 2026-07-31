@@ -27,6 +27,7 @@ public partial class App : Application
             fails.AddRange(PcgPaneLoadSelfTests.SelfTest());
             fails.AddRange(CrossPanePlacementSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(LocalCutCopyPasteSelfTests.SelfTestAsync().GetAwaiter().GetResult());
+            fails.AddRange(ReadOnlyBankBrowseSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(MergeCacheSelfTests.SelfTest());
             fails.AddRange(DependencyResolutionSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(MergeTreeVisibilitySelfTests.SelfTest());
@@ -37,6 +38,7 @@ public partial class App : Application
             fails.AddRange(ScreenSessionSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(MidiTransportReplySelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(MergeGroupPlacementSelfTests.SelfTestAsync().GetAwaiter().GetResult());
+            fails.AddRange(MergeAutoFillSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(LibrarianUndoSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             var outPath = Path.Combine(Path.GetTempPath(), "kronos_librarian_selftest.txt");
             File.WriteAllText(outPath, fails.Count == 0 ? "OK" : "FAIL: " + string.Join(", ", fails));

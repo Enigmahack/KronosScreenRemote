@@ -653,6 +653,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
             return;
         }
         var target = GetNodeAt(TV_Local, e.GetPosition(TV_Local));
+        if (ReadOnlyDropRefusal(target) is { } pcgRo) { _vm.StatusText = pcgRo; return; }
         if (target == null)
         {
             _vm.StatusText = AppMessages.Librarian.Shell.DropOutsideRow;
@@ -708,6 +709,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
         }
         var target = GetNodeAt(TV_Local, e.GetPosition(TV_Local));
         AppLog.Debug($"[librarian] local internal drop: {payload.Locs.Count} item(s); target={(target?.Loc?.Label() ?? (target?.BankRef is { } br ? $"bank {br.ObjType:X2}:{br.Bank:X2}" : "(none)"))}");
+        if (ReadOnlyDropRefusal(target) is { } localRo) { _vm.StatusText = localRo; return; }
         if (target == null)
         {
             _vm.LocalPane.StatusText = AppMessages.Librarian.Shell.DropOutsideRow;
@@ -747,6 +749,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
             return;
         }
         var target = GetNodeAt(TV_Local, e.GetPosition(TV_Local));
+        if (ReadOnlyDropRefusal(target) is { } mergeRo) { _vm.MergePane.StatusText = mergeRo; return; }
 
         if (payload.ContentHashes.Count == 1)
         {
@@ -822,6 +825,20 @@ internal partial class LibrarianShellWindow : ThemedWindow
     // bank - of the first bank with room (format-matched for Programs, see
     // LocalEditOps.FindBankWithFreeSlot). Null when the target isn't addressable at all, or
     // everything eligible is full; the caller distinguishes those two for its status message.
+    // The refusal message for a drop landing on a read-only factory bank or one of its slots
+    // (GM, g(1)-g(9), g(d) - see IObjectTypeDescriptor.ReadOnlyBanks), or null when the target is
+    // writable. Every Local drop entry point checks this first so the reason appears at the drop
+    // itself; LocalEditOps.BatchPlace refuses the same destinations again, and that is the guard
+    // that actually protects the library - this one is purely about the message.
+    static string? ReadOnlyDropRefusal(ObjectTreeNode? target)
+    {
+        if (target is not { IsReadOnly: true }) return null;
+        var (objType, bank) = target.Loc is { } loc ? (loc.ObjType, loc.Bank)
+            : target.BankRef is { } br ? (br.ObjType, br.Bank)
+            : (LibObj.Program, 0x10);
+        return AppMessages.Librarian.Local.ReadOnlyBank(ObjectTypeRegistry.Get(objType).BankLabel(bank));
+    }
+
     ObjLoc? ResolveFreeSlotTarget(ObjectTreeNode? target, IReadOnlyList<string> contentHashes)
     {
         (int ObjType, int Bank)? bank = target?.BankRef is { } bankRef ? (bankRef.ObjType, bankRef.Bank)
@@ -922,6 +939,12 @@ internal partial class LibrarianShellWindow : ThemedWindow
         }
         _vm.PullIntoMerge(payload.Locs);
     }
+
+    // Auto-Fill has no click handler here on purpose - it binds straight to the ViewModel's
+    // AutoFillToLibraryCommand, whose CanExecute is what disables the button while it runs. Unlike
+    // Clear Merge below it needs no confirmation prompt: it only ADDS staged local edits (nothing
+    // is sent to the instrument), it can't overwrite a referenced slot without the Force Overwrite
+    // checkbox, and the whole sweep is a single Ctrl+Z.
 
     // Confirmation lives here (not the ViewModel), same split as OnClearHistoryButton.
     void OnClearMergeButton(object sender, RoutedEventArgs e)

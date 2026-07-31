@@ -933,6 +933,17 @@ sealed class SysExService : ISysExService
         finally { _dumpGate.End(gateEpoch); }
     }
 
+    // Snapshot of one bank's known slot names, taken under the same lock every other
+    // _streamNames reader uses. A copy, not a view: callers hold it across a tree rebuild.
+    public IReadOnlyDictionary<int, string> CachedBankNames(int type, int objBank)
+    {
+        var result = new Dictionary<int, string>();
+        lock (_streamNames)
+            foreach (var (key, name) in _streamNames)
+                if (key.Type == type && key.ObjBank == objBank) result[key.Number] = name;
+        return result;
+    }
+
     public async Task<ProgramBankTypes?> RequestProgramBankTypesAsync()
     {
         var transport = _transport;

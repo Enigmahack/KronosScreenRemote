@@ -193,7 +193,14 @@ static class SyncPipelineSelfTests
 
                 var result = await SyncPipeline.PushAsync(exec, cache, new SessionDependencyClipboard());
                 Check("e1-refused", !result.Ok);
-                Check("e1-error-mentions-format", result.Error != null && result.Error.Contains("wrong format"));
+                // Assert against the message SOURCE, not a hand-copied substring: the exact
+                // wording is UI copy that gets revised (it already lost the literal "wrong
+                // format" this line used to look for), while the identity of the refusal - "the
+                // bank-type mismatch one, not some other REFUSE" - is what the test cares about.
+                Check("e1-error-mentions-format", result.Error != null &&
+                    result.Error.Contains(
+                        AppMessages.Librarian.Sync.RefuseBankTypeMismatch(KronosBanks.ProgramLabel(0x40), "EXi"),
+                        StringComparison.Ordinal));
                 Check("e1-still-dirty", cache.IsDirty(loc.ObjType, loc.Bank, loc.Number));
                 Check("e1-no-hardware-write", !exec.CallLog.Contains("Write"));
             }
@@ -290,7 +297,11 @@ static class SyncPipelineSelfTests
                 Check("g-setlist-erased-name-is-slot-default",
                     hwSl != null && SetListBody.FromRawBody(5, hwSl.Body)?.Name == SetListData.DefaultName(5));
                 var hwProg = await exec.DumpObjectAsync(progLoc.ObjType, progLoc.Bank, progLoc.Number);
-                Check("g-program-erased-on-hardware", hwProg != null && ProgramBody.ReadName(hwProg.Body) == "INIT PROGRAM");
+                // "Init Program" (mixed case) is the instrument's OWN name, from the factory body
+                // shipped in Resources/InitBodies. It used to read "INIT PROGRAM" here - EraseBody's
+                // derived fallback - because nothing better was available; the case difference is
+                // precisely what distinguishes the two, so don't "fix" this to match EraseBody.
+                Check("g-program-erased-on-hardware", hwProg != null && ProgramBody.ReadName(hwProg.Body) == "Init Program");
 
                 // The slots STAY in the local library, reverted to the init/blank object at their
                 // address (requirement 2 - a bank slot never vanishes), clean + no longer pending.
@@ -300,7 +311,7 @@ static class SyncPipelineSelfTests
                 Check("g-setlist-reverted-name-is-slot-default",
                     cache.GetDisplayName(slLoc.ObjType, slLoc.Bank, slLoc.Number) == SetListData.DefaultName(5));
                 Check("g-program-kept-locally", cache.Exists(progLoc.ObjType, progLoc.Bank, progLoc.Number));
-                Check("g-program-reverted-init", cache.GetDisplayName(progLoc.ObjType, progLoc.Bank, progLoc.Number) == "INIT PROGRAM");
+                Check("g-program-reverted-init", cache.GetDisplayName(progLoc.ObjType, progLoc.Bank, progLoc.Number) == "Init Program");
                 Check("g-no-longer-pending-delete",
                     !cache.IsPendingDelete(slLoc.ObjType, slLoc.Bank, slLoc.Number) &&
                     !cache.IsPendingDelete(progLoc.ObjType, progLoc.Bank, progLoc.Number));
@@ -415,7 +426,12 @@ static class SyncPipelineSelfTests
                 exec.CallLog.Clear();
                 var result = await SyncPipeline.CommitChangesAsync(exec, cache, new SessionDependencyClipboard());
                 Check("j-refused", !result.Ok);
-                Check("j-error-format", result.Error != null && result.Error.Contains("wrong format"));
+                // Same reasoning as e1-error-mentions-format: match the message SOURCE, not a
+                // hand-copied substring. Here the bank is HD-1 and the pending Programs are EXi.
+                Check("j-error-format", result.Error != null &&
+                    result.Error.Contains(
+                        AppMessages.Librarian.Sync.RefuseBankTypeMismatch(KronosBanks.ProgramLabel(destBank), "HD-1"),
+                        StringComparison.Ordinal));
                 Check("j-refuse-deduped-per-bank", result.Error != null &&
                     System.Text.RegularExpressions.Regex.Matches(result.Error, "REFUSE:").Count == 1);
                 Check("j-no-typechange", !exec.CallLog.Any(c => c.StartsWith("ChangeBankType:")));
@@ -424,22 +440,28 @@ static class SyncPipelineSelfTests
             finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
         }
 
-        // ── K: a committed deletion uses the REAL captured blank template (requirement 2) when a
-        //      blank source slot is available, not the derived name-blank fallback. ──
+        // ── K: a committed deletion uses the REAL blank body shipped with the app (requirement 2),
+        //      not the derived name-blank fallback - and needs no blank slot on the instrument to
+        //      do it. Programs, HD-1 format. ──
         {
             string root = ScratchRoot + "_k";
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
             try
             {
                 var exec = new FakeMoveExecutor();
-                // A recognizable blank HD-1 program at the HD-1 capture source (U-GG000 = 0x4D:0).
-                // Marker byte proves THIS body was written back, not a renamed copy of the deleted one.
-                var blankHd1 = ProgramBody.WriteName(new byte[ProgramFormatConverter.WireSizeHd1], "InitProgram");
-                blankHd1[100] = 0x5A;
-                exec.Seed(LibObj.Program, 0x4D, 0, 5, blankHd1);
+                // NO blank donor slot is seeded anywhere: the HD-1 blank ships with the assembly
+                // (Resources/InitBodies/program_hd1_init.bin), so the erase must work on an
+                // instrument where nothing happens to be blank. That independence is the entire
+                // reason the bodies are baked in rather than captured.
                 exec.Seed(LibObj.Program, 0x40, 0, 5, ProgramBody.WriteName(new byte[ProgramFormatConverter.WireSizeHd1], "MY PATCH"));
                 var cache = new LocalLibraryCache(root);
                 await LibraryPullPipeline.PullAsync(exec, cache, full: true);
+
+                // Pre-poison the store with a real patch, the way the old length-only LooksBlank
+                // did on a real install. The shipped body is consulted first, so this file can no
+                // longer decide the outcome however it got there.
+                new BlankTemplateStore(cache.Root).Set(LibObj.Program, false,
+                    ProgramBody.WriteName(new byte[ProgramFormatConverter.WireSizeHd1], "MY PATCH"));
 
                 var delLoc = new ObjLoc(LibObj.Program, 0x40, 0);
                 LocalEditOps.SetPendingDelete(cache, delLoc, true, DateTime.UtcNow);
@@ -448,13 +470,208 @@ static class SyncPipelineSelfTests
                 Check("k-commit-ok", result.Ok && result.Deleted == 1);
 
                 var hw = await exec.DumpObjectAsync(delLoc.ObjType, delLoc.Bank, delLoc.Number);
-                Check("k-used-captured-template", hw != null && hw.Body.Length == blankHd1.Length &&
-                    hw.Body[100] == 0x5A && ProgramBody.ReadName(hw.Body) == "InitProgram");
+                // "Init Program" is the instrument's own spelling, from U-GG:000. EraseBody's
+                // derived fallback writes "INIT PROGRAM" (upper case), so this assertion also
+                // distinguishes "used the real factory body" from "gave up and blanked the name".
+                Check("k-used-baked-template", hw != null && hw.Body.Length == ProgramFormatConverter.WireSizeHd1 &&
+                    ProgramBody.ReadName(hw.Body) == "Init Program");
+                Check("k-poisoned-store-not-used", hw != null && ProgramBody.ReadName(hw.Body) != "MY PATCH");
                 // The slot stays locally, now byte-identical to the blank template, clean.
                 Check("k-slot-kept-locally", cache.Exists(delLoc.ObjType, delLoc.Bank, delLoc.Number));
                 Check("k-local-reverted-to-blank",
-                    cache.GetDisplayName(delLoc.ObjType, delLoc.Bank, delLoc.Number) == "InitProgram" &&
+                    cache.GetDisplayName(delLoc.ObjType, delLoc.Bank, delLoc.Number) == "Init Program" &&
                     !cache.IsDirty(delLoc.ObjType, delLoc.Bank, delLoc.Number));
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+        }
+
+        // ── K1b: the other two shipped bodies - EXi Programs and Set Lists. Same contract as K,
+        //      and the Set List adds one wrinkle of its own: its default name encodes its OWN slot
+        //      number, so the donor's "Set List 127" must be re-stamped to the erased slot's name
+        //      (ChangesetBuilder) rather than written through verbatim. That was a real bug once -
+        //      it renamed live hardware set-list slots to "Set List 127". ──
+        {
+            string root = ScratchRoot + "_k1b";
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            try
+            {
+                var exec = new FakeMoveExecutor();
+                // Again no blank donor slots anywhere - only the two objects being deleted.
+                exec.Seed(LibObj.Program, 0x40, 1, 5,
+                    ProgramBody.WriteName(new byte[ProgramFormatConverter.WireSizeExi], "MY EXI PATCH"));
+                var realSetList = SetListBody.WriteSlotName(
+                    SetListBody.WriteName(new byte[69416], "MY SET LIST"), 0, "A REAL SLOT");
+                exec.Seed(LibObj.SetList, 0, 6, 0, realSetList);
+
+                var cache = new LocalLibraryCache(root);
+                await LibraryPullPipeline.PullAsync(exec, cache, full: true);
+
+                var exiLoc = new ObjLoc(LibObj.Program, 0x40, 1);
+                var slLoc = new ObjLoc(LibObj.SetList, 0, 6);
+                LocalEditOps.SetPendingDelete(cache, exiLoc, true, DateTime.UtcNow);
+                LocalEditOps.SetPendingDelete(cache, slLoc, true, DateTime.UtcNow);
+
+                var result = await SyncPipeline.CommitChangesAsync(exec, cache, new SessionDependencyClipboard());
+                Check("k1b-commit-ok", result.Ok && result.Deleted == 2);
+
+                var exiHw = await exec.DumpObjectAsync(exiLoc.ObjType, exiLoc.Bank, exiLoc.Number);
+                Check("k1b-exi-used-baked-template", exiHw != null &&
+                    exiHw.Body.Length == ProgramFormatConverter.WireSizeExi &&
+                    ProgramBody.ReadName(exiHw.Body) == "Init EXi Program");
+
+                var slHw = await exec.DumpObjectAsync(slLoc.ObjType, slLoc.Bank, slLoc.Number);
+                Check("k1b-setlist-used-baked-template", slHw != null && slHw.Body.Length == 69416);
+                Check("k1b-setlist-reads-as-init", slHw != null && InitObjects.IsInit(LibObj.SetList, slHw.Body));
+                // Named for the slot it now occupies, NOT for the donor slot it was captured from.
+                Check("k1b-setlist-renamed-to-its-own-slot", slHw != null &&
+                    Librarian.ReadName(slHw.Body) == SetListData.DefaultName(slLoc.Number));
+                Check("k1b-setlist-not-donor-name", slHw != null && Librarian.ReadName(slHw.Body) != "Set List 127");
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+        }
+
+        // ── K2: the same capture path for COMBIS, which is where it went wrong in the field. ──
+        //      A deleted Combi came back named "SCREAMING HEAD Gmin RIFF": LooksBlank's Combi arm
+        //      only checked the body LENGTH, and every valid Combi is >= 7810 bytes, so the real
+        //      patch sitting in the old capture source slot was enshrined as "the blank Combi" and
+        //      stamped onto every subsequent erase. Both halves are covered here - the source slot
+        //      must actually be init, and a template that ISN'T must be discarded rather than
+        //      trusted (BlankTemplates.EnsureAsync re-validates before returning a stored one).
+        {
+            string root = ScratchRoot + "_k2";
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            try
+            {
+                var exec = new FakeMoveExecutor();
+                // NOTHING is seeded as a blank source slot, deliberately: the Combi blank comes
+                // from the body shipped with the assembly (Resources/InitBodies/combi_init.bin),
+                // so this must work with no donor slot anywhere on the "instrument" - which is the
+                // entire point of baking it in rather than capturing it.
+
+                // The Combi to delete: REAL content (non-default timbres), so it can't be confused
+                // with an init placeholder at any point in the pipeline.
+                var realCombi = new byte[7810];
+                System.Text.Encoding.ASCII.GetBytes("MY COMBI").CopyTo(realCombi, 0);
+                for (int t = 0; t < LibRefs.TimbreCount; t++)
+                    LibRefs.SetCombiTimbreRef(realCombi, t, KronosBanks.ObjBankToFunc33(1, 0x40), t + 1);
+                exec.Seed(LibObj.Combi, 0x40, 0, 3, realCombi);
+
+                var cache = new LocalLibraryCache(root);
+                await LibraryPullPipeline.PullAsync(exec, cache, full: true);
+
+                var delLoc = new ObjLoc(LibObj.Combi, 0x40, 0);
+                LocalEditOps.SetPendingDelete(cache, delLoc, true, DateTime.UtcNow);
+
+                var result = await SyncPipeline.CommitChangesAsync(exec, cache, new SessionDependencyClipboard());
+                Check("k2-commit-ok", result.Ok && result.Deleted == 1);
+
+                var hw = await exec.DumpObjectAsync(delLoc.ObjType, delLoc.Bank, delLoc.Number);
+                // The shipped body's own identity: 7810 bytes, named "Init Combi" (the
+                // instrument's own spelling, NOT EraseBody's derived "INIT COMBI" fallback - the
+                // difference is exactly what distinguishes "used the real factory body" from
+                // "gave up and blanked the name"), and init by shape.
+                Check("k2-used-baked-init-combi", hw != null && hw.Body.Length == 7810 &&
+                    CombiBody.ReadName(hw.Body) == "Init Combi");
+                Check("k2-erased-slot-reads-as-init", hw != null && CombiBody.IsInit(hw.Body));
+                Check("k2-not-the-deleted-patch", hw != null && CombiBody.ReadName(hw.Body) != "MY COMBI");
+                // No capture happened, so nothing was persisted to the per-library store either.
+                Check("k2-no-capture-persisted", new BlankTemplateStore(cache.Root).Get(LibObj.Combi, false) == null &&
+                    new BlankTemplateStore(cache.Root).Get(LibObj.Combi, true) == null);
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+        }
+
+        // ── K3: an install that ALREADY has a poisoned blank_templates/combi.bin - the exact state
+        //      the field bug leaves behind - erases correctly anyway. This is the regression test
+        //      for the reported symptom itself: the shipped body is consulted before any stored
+        //      capture, so the bad file can't decide the outcome no matter how it got there. ──
+        {
+            string root = ScratchRoot + "_k3";
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            try
+            {
+                var exec = new FakeMoveExecutor();
+                var realCombi = new byte[7810];
+                System.Text.Encoding.ASCII.GetBytes("MY COMBI").CopyTo(realCombi, 0);
+                for (int t = 0; t < LibRefs.TimbreCount; t++)
+                    LibRefs.SetCombiTimbreRef(realCombi, t, KronosBanks.ObjBankToFunc33(1, 0x40), t + 1);
+                exec.Seed(LibObj.Combi, 0x40, 0, 3, realCombi);
+
+                var cache = new LocalLibraryCache(root);
+                await LibraryPullPipeline.PullAsync(exec, cache, full: true);
+
+                // Pre-poison the store exactly as the old weak LooksBlank did: a real patch saved
+                // as "the blank Combi". The isExi argument is irrelevant here by design -
+                // BlankTemplateStore.Key maps every Combi to one "combi" file, since the HD-1/EXi
+                // split is a Program-only concept - so this lands on the same file the erase path
+                // reads back whatever cache.IsExi happens to report for a Combi slot.
+                var poison = new byte[7810];
+                System.Text.Encoding.ASCII.GetBytes("SCREAMING HEAD Gmin RIFF").CopyTo(poison, 0);
+                for (int t = 0; t < LibRefs.TimbreCount; t++)
+                    LibRefs.SetCombiTimbreRef(poison, t, KronosBanks.ObjBankToFunc33(1, 0x41), t + 1);
+                new BlankTemplateStore(cache.Root).Set(LibObj.Combi, false, poison);
+
+                var delLoc = new ObjLoc(LibObj.Combi, 0x40, 0);
+                LocalEditOps.SetPendingDelete(cache, delLoc, true, DateTime.UtcNow);
+                var result = await SyncPipeline.CommitChangesAsync(exec, cache, new SessionDependencyClipboard());
+                Check("k3-commit-ok", result.Ok && result.Deleted == 1);
+
+                var hw = await exec.DumpObjectAsync(delLoc.ObjType, delLoc.Bank, delLoc.Number);
+                Check("k3-poisoned-template-not-used", hw != null && CombiBody.ReadName(hw.Body) != "SCREAMING HEAD Gmin RIFF");
+                Check("k3-erased-slot-reads-as-init", hw != null && CombiBody.IsInit(hw.Body));
+                Check("k3-baked-body-used-instead", hw != null && CombiBody.ReadName(hw.Body) == "Init Combi");
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+        }
+
+        // ── L: a bank that answers NO digest is swept ONCE, not on every lazy pull ──
+        //      Regression test for "Sync Library re-syncs the whole I-G bank every time": with no
+        //      digest there was nothing to persist as a baseline, so PlanPull saw the bank as
+        //      changed forever. It must now pin a NoDigest baseline (first pull sweeps it, later
+        //      lazy pulls skip it, an explicit full pull still sweeps it) - while a pull where NO
+        //      bank answered (instrument unreachable) must leave every baseline alone.
+        {
+            string root = ScratchRoot + "_l";
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            try
+            {
+                var exec = new FakeMoveExecutor();
+                var quiet = (LibObj.Program, 0x05);   // I-F: any bank the fake keeps silent
+                exec.NoDigestBanks.Add(quiet);
+                exec.Seed(LibObj.Program, 0x00, 0, 5, new byte[ProgramFormatConverter.WireSizeHd1]);
+                var cache = new LocalLibraryCache(root);
+
+                // First (lazy) pull: no baselines at all yet, so every bank is swept.
+                var first = await LibraryPullPipeline.PullAsync(exec, cache, full: false);
+                Check("l-first-pull-covers-quiet-bank", first.BanksChecked == LibraryPullPlanner.AllBanks().Count());
+                Check("l-quiet-bank-baseline-pinned",
+                    cache.BankDigestBaselineHex().TryGetValue(quiet, out var pinned) &&
+                    pinned == LibraryPullPipeline.NoDigest);
+
+                // Second lazy pull: nothing changed on "hardware", so NOTHING is swept - the
+                // quiet bank included. That is the whole bug.
+                exec.CallLog.Clear();
+                var second = await LibraryPullPipeline.PullAsync(exec, cache, full: false);
+                Check("l-second-pull-skips-everything", second.BanksChecked == 0);
+                Check("l-second-pull-no-quiet-bank-dumps",
+                    !exec.CallLog.Any(c => c.StartsWith($"Dump:{LibObj.Program}:5:") ||
+                                           c == $"BulkDump:{LibObj.Program}:5"));
+
+                // Force Pull-All still sweeps it - the documented escape hatch.
+                exec.CallLog.Clear();
+                var forced = await LibraryPullPipeline.PullAsync(exec, cache, full: true);
+                Check("l-full-pull-still-sweeps-quiet-bank",
+                    forced.BanksChecked == LibraryPullPlanner.AllBanks().Count() &&
+                    exec.CallLog.Contains($"BulkDump:{LibObj.Program}:5"));
+
+                // A pull where NOTHING answered (unreachable instrument) must not overwrite the
+                // good baselines with sentinels, or the next connected sync would see a library
+                // that is silently, wrongly "up to date".
+                var goodBaseline = cache.BankDigestBaselineHex()[(LibObj.Program, 0x00)];
+                foreach (var b in LibraryPullPlanner.AllBanks()) exec.NoDigestBanks.Add((b.ObjType, b.Bank));
+                await LibraryPullPipeline.PullAsync(exec, cache, full: false);
+                Check("l-offline-pull-keeps-baselines",
+                    cache.BankDigestBaselineHex()[(LibObj.Program, 0x00)] == goodBaseline);
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
         }

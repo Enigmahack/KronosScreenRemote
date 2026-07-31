@@ -27,7 +27,12 @@ static class MergeCacheSelfTests
             // PCG A: Program A; Combi X and Combi Y both reference Program A (dedup + shared
             // marker); Combi Z references a Program NOT in this PCG (a gap); Set List S
             // references Combi X (exercises the transitive Set List -> Combi -> Program pull).
-            int fbProg0 = KronosBanks.ObjBankToFunc33(1, 0x00);     // Program bank 0x00 -> func33
+            // Program A lives in I-B, NOT I-A. Deliberate: func-33 bank 0 / number 0 is the zero
+            // default every timbre of an INIT Combi already holds, so a Combi whose only reference
+            // is (0, 0) satisfies CombiBody.AllTimbresAtDefault and reads as an init placeholder
+            // that InitObjects correctly reports as having NO dependencies. Combi X/Y would then
+            // stage alone, Program A would never appear, and every progAEntry! below would throw.
+            int fbProg0 = KronosBanks.ObjBankToFunc33(1, 0x01);     // Program bank 0x01 (I-B) -> func33
             int fbCombi0 = KronosBanks.ObjBankToFunc33(0, 0x00);    // Combi bank 0x00 -> func33
             int fbProgMissing = KronosBanks.ObjBankToFunc33(1, 0x40);   // Program bank 0x40 -> func33
 
@@ -37,7 +42,7 @@ static class MergeCacheSelfTests
             if (fileA == null) return fails;
             var pcgA = new PcgLibraryView(fileA);
 
-            var progALoc = new ObjLoc(LibObj.Program, 0x00, 0);
+            var progALoc = new ObjLoc(LibObj.Program, 0x01, 0);
             var combiXLoc = new ObjLoc(LibObj.Combi, 0x00, 0);
             var combiYLoc = new ObjLoc(LibObj.Combi, 0x00, 1);
             var combiZLoc = new ObjLoc(LibObj.Combi, 0x00, 2);
@@ -158,15 +163,18 @@ static class MergeCacheSelfTests
             // referrer bookkeeping must be wired, and the origin must be labeled Local Library. ─
             string localRoot = Path.Combine(root, "local_lib");
             var localCache = new LocalLibraryCache(localRoot);
-            int fbLocalProg = KronosBanks.ObjBankToFunc33(1, 0x00);
+            // I-B again, and for the same reason as fbProg0 above: a lone (0, 0) timbre makes the
+            // referrer read as an INIT Combi with no dependencies at all, so "local-pull-adds-2"
+            // would only ever see the Combi.
+            int fbLocalProg = KronosBanks.ObjBankToFunc33(1, 0x01);
             var localProgBody = new byte[3706];
             Encoding.ASCII.GetBytes("LOCAL PROG").CopyTo(localProgBody, 0);
             var localCombiBody = new byte[7810];
             Encoding.ASCII.GetBytes("LOCAL COMBI").CopyTo(localCombiBody, 0);
-            LibRefs.SetCombiTimbreRef(localCombiBody, 0, fbLocalProg, 0);   // -> the local Program
+            SetAllTimbres(localCombiBody, fbLocalProg, 0);   // -> the local Program (all 16, see BuildSyntheticPcg)
             localCache.RecordPullBaselines(new[]
             {
-                (LibObj.Program, 0x00, 0, (byte)5, localProgBody),
+                (LibObj.Program, 0x01, 0, (byte)5, localProgBody),
                 (LibObj.Combi, 0x00, 0, (byte)3, localCombiBody),
             }, DateTime.UtcNow);
 
@@ -243,6 +251,14 @@ static class MergeCacheSelfTests
         return fails;
     }
 
+    // Points all 16 timbres of a Combi at one Program - see BuildSyntheticPcg's own comment for
+    // why a fixture Combi must never be left with a mix of real and defaulted timbres.
+    static void SetAllTimbres(byte[] combiBody, int func33Bank, int number)
+    {
+        for (int t = 0; t < LibRefs.TimbreCount; t++)
+            LibRefs.SetCombiTimbreRef(combiBody, t, func33Bank, number);
+    }
+
     // Builds a synthetic .pcg buffer with Program A, Combi X/Y/Z, and a one-slot Set List -
     // same byte-level construction technique as CrossPanePlacementSelfTests.BuildSyntheticPcg.
     static byte[] BuildSyntheticPcg(int fbProg0, int fbCombi0, int fbProgMissing)
@@ -252,17 +268,29 @@ static class MergeCacheSelfTests
         var progABody = new byte[programSize];
         Encoding.ASCII.GetBytes("PROG A").CopyTo(progABody, 0);
 
+        // EVERY timbre is pointed at the intended target, never just timbre 0. A timbre left at
+        // its (0, 0) default is not "unset" - it is a live reference to Program I-A:000, which
+        // this PCG does not contain, so 15 untouched timbres would manufacture 15 phantom gaps on
+        // top of whatever the test is actually measuring. (Only a Combi with ALL 16 still at the
+        // default escapes that, by reading as an INIT placeholder with no dependencies at all -
+        // see fbProg0 above. There is no middle ground: all defaults, or none.)
         var combiXBody = new byte[combiSize];
         Encoding.ASCII.GetBytes("COMBI X").CopyTo(combiXBody, 0);
-        LibRefs.SetCombiTimbreRef(combiXBody, 0, fbProg0, 0);   // -> Program A
+        SetAllTimbres(combiXBody, fbProg0, 0);   // -> Program A
 
         var combiYBody = new byte[combiSize];
         Encoding.ASCII.GetBytes("COMBI Y").CopyTo(combiYBody, 0);
-        LibRefs.SetCombiTimbreRef(combiYBody, 0, fbProg0, 0);   // -> Program A too (shared dependency)
+        SetAllTimbres(combiYBody, fbProg0, 0);   // -> Program A too (shared dependency)
 
+        // Combi Z carries EXACTLY ONE gap, and the surrounding assertions count on that ("one
+        // unresolved reference site", not "one distinct missing address" - gaps are reported per
+        // SITE, so 16 timbres aimed at the same absent Program would report 16 gaps). Timbre 0 is
+        // the gap; the other 15 point at Program A, which this PCG does have, so they resolve and
+        // stay out of the way.
         var combiZBody = new byte[combiSize];
         Encoding.ASCII.GetBytes("COMBI Z").CopyTo(combiZBody, 0);
-        LibRefs.SetCombiTimbreRef(combiZBody, 0, fbProgMissing, 2);   // -> a Program NOT in this PCG
+        SetAllTimbres(combiZBody, fbProg0, 0);                        // 1..15 -> Program A (resolvable)
+        LibRefs.SetCombiTimbreRef(combiZBody, 0, fbProgMissing, 2);   // 0 -> a Program NOT in this PCG
 
         var setListBody = new byte[setListSize];
         Encoding.ASCII.GetBytes("SETLIST S").CopyTo(setListBody, 0);
@@ -282,7 +310,7 @@ static class MergeCacheSelfTests
         ms.WriteByte(0x68); ms.WriteByte(0x00); ms.WriteByte(0x02); ms.WriteByte(0x01);
         ms.Write(new byte[8]);
 
-        WriteBank("MBK1", 1, programSize, 0, progABody);
+        WriteBank("MBK1", 1, programSize, 0x01, progABody);   // bank 0x01 (I-B) - see fbProg0
 
         using var combis = new MemoryStream();
         combis.Write(combiXBody); combis.Write(combiYBody); combis.Write(combiZBody);

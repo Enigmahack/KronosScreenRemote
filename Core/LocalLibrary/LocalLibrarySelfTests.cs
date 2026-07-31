@@ -82,7 +82,11 @@ static class LocalLibrarySelfTests
         // ── LibraryPullPlanner: generalized PlanScan, mirrors LibraryRepository.SelfTest's
         //    five cases, generalized from "combi banks + 1 setlist" to "every registry bank" ──
         var allBanks = LibraryPullPlanner.AllBanks().ToList();
-        Check("registry-bank-count", allBanks.Count == 21 + 14 + 1);   // 21 program + 14 combi + 1 setlist pseudo-bank
+        // 20 program (I-A..I-F + U-A..U-GG; no I-G, and the read-only GM/g banks are browse-only
+        // and never pulled) + 14 combi (I-A..I-G + U-A..U-G) + 1 setlist pseudo-bank.
+        Check("registry-bank-count", allBanks.Count == 20 + 14 + 1);
+        Check("pull-scope-excludes-readonly-banks",
+            !allBanks.Any(b => ObjectTypeRegistry.Get(b.ObjType).IsReadOnlyBank(b.Bank)));
 
         var empty = new Dictionary<(int, int), string>();
         var freshAllPresent = allBanks.ToDictionary(b => (b.ObjType, b.Bank), b => $"{b.ObjType}-{b.Bank}");

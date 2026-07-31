@@ -107,6 +107,12 @@ partial class MergePaneViewModel : ObservableObject
     }
 
     public MergeEntry? TryGet(string contentHash) => _cache.TryGet(contentHash);
+
+    // Everything currently staged, flat - the tree (Roots) is a DISPLAY shape that nests
+    // dependencies under their referrers and hides a nested entry from its own type root, so it
+    // can't be walked to answer "what is still staged". Auto-Fill needs exactly that flat answer
+    // (LibrarianShellViewModel.AutoFillFromMerge).
+    public IReadOnlyCollection<MergeEntry> Entries => _cache.Entries;
     public (byte[] Body, List<MergeRefSite> Unresolved) ResolveReferencesForPlacement(
         MergeEntry entry, Func<int, string, ObjLoc?>? localLookup = null) =>
         _cache.ResolveReferencesForPlacement(entry, localLookup);

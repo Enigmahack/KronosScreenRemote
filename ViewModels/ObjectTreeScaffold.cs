@@ -58,11 +58,17 @@ static class ObjectTreeScaffold
         // typeRootObjType (not bankRef - this level has no bank): lets a drop landing on the
         // "Programs"/"Combis" header resolve to a bank with room instead of being refused. See
         // ObjectTreeNode.TypeRootObjType.
+        var descriptor = ObjectTypeRegistry.Get(objType);
         var typeRoot = new ObjectTreeNode(rootLabel, typeRootObjType: objType);
         foreach (var bank in banksFor(objType))
         {
             if (bank.Locs.Count == 0) continue;   // an empty bank never becomes a node
-            var bankNode = new ObjectTreeNode(bankLabel(objType, bank), bankRef: (objType, bank.Number));
+            // Read-onlyness is a property of the BANK, so the scaffold derives it from the
+            // registry rather than making each pane remember to pass it - a pane that forgot
+            // would render a GM bank as an ordinary, writable-looking drop target.
+            bool readOnly = descriptor.IsReadOnlyBank(bank.Number);
+            var bankNode = new ObjectTreeNode(bankLabel(objType, bank), bankRef: (objType, bank.Number),
+                                              isReadOnly: readOnly);
             foreach (var loc in bank.Locs) bankNode.Children.Add(makeLeaf(loc));
             // Bubbled up from the leaves just added - a bank node otherwise defaults to
             // IsDirty=false forever (nothing else ever sets it), so a locally-changed leaf

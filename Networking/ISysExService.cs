@@ -115,6 +115,17 @@ interface IBankDumpService
     // cheap, non-destructive request, unlike the deprecated per-bank 0x7D/0x7E query.
     // Null if unavailable/no reply.
     Task<ProgramBankTypes?> RequestProgramBankTypesAsync();
+
+    // Names already known for one bank's slots, keyed by slot number; empty when none are.
+    // Purely a cache read - no SysEx request, safe to call per tree refresh. `type` is the
+    // func-33 SLOT TYPE code (1 = program, 0 = combi), NOT a LibObj constant.
+    //
+    // Exposed here rather than letting callers read Storage.LoadNames themselves because the
+    // name cache is keyed by the TRANSPORT's cache key - the TCP host for a network session,
+    // but "usb:<device match>" for a USB one (IKronosMidiTransport.CacheKey). A caller holding
+    // only the host string would therefore return nothing at all on USB, silently, and look
+    // exactly like an instrument that simply has no names cached yet.
+    IReadOnlyDictionary<int, string> CachedBankNames(int type, int objBank);
 }
 
 // Everything the Librarian's read+write pipeline touches on the instrument: the write/apply

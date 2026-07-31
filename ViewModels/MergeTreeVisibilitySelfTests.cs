@@ -80,10 +80,19 @@ static class MergeTreeVisibilitySelfTests
         progABody = new byte[programSize];
         Encoding.ASCII.GetBytes("PROG A").CopyTo(progABody, 0);
 
-        int fbProgA = KronosBanks.ObjBankToFunc33(1, 0x00);
+        // Program A lives in I-B, NOT I-A. Deliberate: func-33 bank 0 / number 0 is the zero
+        // default every timbre of an INIT Combi already holds, so a Combi whose only reference
+        // is (0, 0) satisfies CombiBody.AllTimbresAtDefault and reads as an init placeholder
+        // with NO dependencies at all (InitObjects) - Program A would never be staged, and the
+        // three-level chain this test exists to exercise would collapse to two.
+        int fbProgA = KronosBanks.ObjBankToFunc33(1, 0x01);
+        // ...and every timbre points at it, never just timbre 0: a timbre left at (0, 0) is a live
+        // reference to Program I-A:000, which this PCG doesn't contain, so 15 untouched timbres
+        // would manufacture 15 phantom gaps. All defaults, or none.
         combiXBody = new byte[combiSize];
         Encoding.ASCII.GetBytes("COMBI X").CopyTo(combiXBody, 0);
-        LibRefs.SetCombiTimbreRef(combiXBody, 0, fbProgA, 0);   // -> Program A
+        for (int t = 0; t < LibRefs.TimbreCount; t++)
+            LibRefs.SetCombiTimbreRef(combiXBody, t, fbProgA, 0);   // -> Program A
 
         int fbCombiX = KronosBanks.ObjBankToFunc33(0, 0x00);
         var slBody = new byte[setListSize];
@@ -105,7 +114,7 @@ static class MergeTreeVisibilitySelfTests
         ms.WriteByte(0x68); ms.WriteByte(0x00); ms.WriteByte(0x02); ms.WriteByte(0x01);
         ms.Write(new byte[8]);
 
-        WriteBank("MBK1", 1, programSize, 0, progABody);
+        WriteBank("MBK1", 1, programSize, 0x01, progABody);   // bank 0x01 (I-B) - see fbProgA
         WriteBank("CBK1", 1, combiSize, 0, combiXBody);
         WriteBank("SBK1", 1, setListSize, 0, setListBody);
 

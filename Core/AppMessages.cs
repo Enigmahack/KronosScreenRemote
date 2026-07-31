@@ -294,6 +294,10 @@ public static class AppMessages
             public static string MoveFailed(string? error)         => $"Move failed: {error}";
             public static string EmptySlotCut(string dest) =>
                 $"{dest} is empty - Cut can only be pasted onto an occupied slot (to swap). Use Copy to place a copy there instead.";
+            // A drop/paste aimed at a read-only factory bank (GM, g(1)-g(9), g(d)). Those banks are
+            // shown so their content can be browsed, but the instrument has no way to write to them.
+            public static string ReadOnlyBank(string bankLabel) =>
+                $"{bankLabel} is a read-only factory bank - it can be browsed but never written to. Choose a user or internal bank instead.";
             // A drop/paste onto a type-root header ("Programs"/"Combis"/"Set Lists") found no bank
             // with a free slot at all - requirement 6's one genuine failure case.
             //
@@ -347,6 +351,33 @@ public static class AppMessages
             public const string Cleared    = "Merge Window cleared.";
             public const string RemovedOne = "Removed 1 item from the Merge Window.";
             public static string RemovedMany(int removed) => $"Removed {removed} item(s) from the Merge Window.";
+
+            // ── Auto-Fill (LibrarianShellViewModel.AutoFillFromMerge) ──
+            // Staging only: everything it reports has landed in Local Library, not on the
+            // instrument, so the wording must never read as "pushed".
+            public const string AutoFillNothingStaged = "Nothing staged in the Merge Window to auto-fill.";
+            // Shown per bank as the sweep runs (LibrarianShellViewModel.AutoFillToLibraryAsync's
+            // pump), so a long fill reads as progress rather than as a hang.
+            public static string AutoFillProgress(string what, string bankLabel, int remaining) =>
+                $"Auto-Fill: placing {what}(s) into {bankLabel} - {remaining} to go...";
+            // `resolved` lumps together items written into a free slot and items whose content
+            // already existed elsewhere locally (reused rather than copied a second time) - the
+            // per-item split isn't tracked, and from the user's side both mean the same thing:
+            // that item no longer needs a slot.
+            public static string AutoFillResult(int resolved, int stillStaged)
+            {
+                string msg = $"Auto-Fill placed {resolved} item(s) into Local Library - review, then Commit Changes to push.";
+                if (stillStaged > 0) msg += $" {stillStaged} could not be placed and are still staged (no matching bank has room).";
+                return msg;
+            }
+            // A refusal partway through still leaves everything placed BEFORE it sitting in Local
+            // Library as pending edits. Leading with that count is what tells the user whether to
+            // keep the partial result or Ctrl+Z the whole sweep - a bare "stopped on X" reads as
+            // "nothing happened", which is the one thing it never means.
+            public static string AutoFillRefused(int resolved, string what, string? error) =>
+                (resolved > 0
+                    ? $"Auto-Fill placed {resolved} item(s), then stopped on {what}: "
+                    : $"Auto-Fill stopped on {what}: ") + error;
         }
 
         /// <summary>PCG pane / remote-PCG picker load results.</summary>
@@ -468,6 +499,7 @@ public static class AppMessages
             public static string UndoPlacedAt(string what, string where)   => $"Placed {what} at {where}";
             public static string UndoPlacedMergeItemAt(string where)       => $"Placed a Merge Window item at {where}";
             public static string UndoPlacedGroup(int count, string bank)   => $"Placed {count} item(s) into {bank}";
+            public static string UndoAutoFilled(int count)                 => $"Auto-Filled {count} staged item(s) into Local Library";
             public static string UndoCopiedBankWithTypeChange(string bank) => $"Copied a whole bank into {bank} with a type change";
             public static string UndoPulledIntoMerge(int count)            => $"Pulled {count} item(s) into the Merge Window";
             public static string UndoRemovedFromMerge(int count)           => $"Removed {count} item(s) from the Merge Window";
