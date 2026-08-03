@@ -162,14 +162,19 @@ sealed class StreamReceiver : IStreamReceiver
         double interval = _mode == ModePull && _fps > 0 ? 1000.0 / _fps : 0;
         var hdrBuf = new byte[4];
         bool firstFrame = true;
+
+        // Snapshot the socket into a loop-local variable so Dispose() can safely null
+        // _sock without the loop observing the null mid-flight. All socket ops in this
+        // method go through `sock`, never `_sock!`.
+        Socket? sock = _sock;
         try
         {
-            while (!_stop)
+            while (!_stop && sock != null)
             {
                 if (_mode == ModePull)
                 {
-                    _sock!.Send([(byte)0xFF]);
-                    if (!Poll(5000)) break;
+                    sock.Send([(byte)0xFF]);
+                    if (!Poll(sock, 5000)) break;
                 }
                 else
                 {
@@ -178,35 +183,35 @@ sealed class StreamReceiver : IStreamReceiver
                     // so a static Kronos display means the client sees nothing until the
                     // UI moves.
                     if (firstFrame)
-                        _sock!.Send([(byte)0xFF]);
+                        sock.Send([(byte)0xFF]);
                     firstFrame = false;
-                    if (!Poll(5000)) continue; // idle gap is normal - Kronos screen unchanged
+                    if (!Poll(sock, 5000)) continue; // idle gap is normal - Kronos screen unchanged
                     // Dead-connection detection is handled entirely by TCP keepalive (set in
                     // ConnectAsync).  When keepalive fails, the socket enters error state,
                     // Poll returns true (error = readable), and RecvAllInto breaks the loop.
                 }
 
-                if (!RecvAllInto(_sock!, hdrBuf, 4)) break;
+                if (!RecvAllInto(sock, hdrBuf, 4)) break;
                 int len = hdrBuf[0] | (hdrBuf[1] << 8) | (hdrBuf[2] << 16) | (hdrBuf[3] << 24);
 
                 int frameSize = _masterFrame!.Length;
                 if (len == frameSize)
                 {
-                    if (!RecvAllInto(_sock!, _masterFrame, 0, frameSize)) break;
+                    if (!RecvAllInto(sock, _masterFrame, 0, frameSize)) break;
                     PublishFrame(frameSize);
                 }
                 else if (len > 4 && len < frameSize)
                 {
                     // Dirty rect with PackBits RLE - decode into _masterFrame, then publish snapshot.
                     var subHdr = new byte[4];
-                    if (!RecvAllInto(_sock!, subHdr, 0, 4)) break;
+                    if (!RecvAllInto(sock, subHdr, 0, 4)) break;
                     int firstRow = subHdr[0] | (subHdr[1] << 8);
                     int rowCount = subHdr[2] | (subHdr[3] << 8);
                     int rleBytes = len - 4;
                     int rawBytes = rowCount * Width;
                     if (rawBytes > frameSize || firstRow + rowCount > Height ||
                         rleBytes > _rleBuf!.Length) break;
-                    if (!RecvAllInto(_sock!, _rleBuf, 0, rleBytes)) break;
+                    if (!RecvAllInto(sock, _rleBuf, 0, rleBytes)) break;
                     if (PackbitsExpand(_rleBuf, rleBytes, _masterFrame!, firstRow * Width, rawBytes) != rawBytes) break;
                     PublishFrame(frameSize);
                 }
@@ -257,9 +262,9 @@ sealed class StreamReceiver : IStreamReceiver
         }
     }
 
-    bool Poll(int timeoutMs)
+    bool Poll(Socket sock, int timeoutMs)
     {
-        try { return _sock!.Poll(timeoutMs * 1000, SelectMode.SelectRead); }
+        try { return sock.Poll(timeoutMs * 1000, SelectMode.SelectRead); }
         catch { return false; }
     }
 
@@ -322,7 +327,15 @@ sealed class StreamReceiver : IStreamReceiver
     {
         _stop = true;
         try { _sock?.Shutdown(SocketShutdown.Both); } catch { }
-        _sock?.Close();
+        try { _sock?.Close(); } catch { }
+
+        // Join the receive thread with a bounded wait so the loop is deterministicly
+        // done before this returns.  Guard: if Disconnected's handler calls Dispose
+        // (the handler runs on _thread), joining would deadlock.
+        var t = _thread;
+        if (t != null && t != Thread.CurrentThread && t.IsAlive)
+            t.Join(TimeSpan.FromSeconds(3));
+
         _sock = null;
     }
 }

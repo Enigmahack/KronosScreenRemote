@@ -32,15 +32,24 @@ sealed class CtrlClient : ICtrlClient, IDisposable
 
     string? _pendingMove;    // latest TOUCH_MOVE - Interlocked.Exchange only
 
-    // Persistent socket. Written only from SendLoop (single Task) except DropSocket
-    // which is also called from DrainLoop. Reads use Volatile/Interlocked.
+    // ── Lifecycle: guards _generation + _sock together ───────────────────────
+    // Reset() bumps _generation and nulls _sock atomically.  ConnectPersistentAsync
+    // captures the generation at entry and re-checks after connect; if the generation
+    // has moved on, the socket is stale and must be disposed rather than published.
+    // This protects both Dispose() AND ordinary Reset() (called from ScreenSession
+    // during reconnect/disconnect) against racing with an in-flight connection attempt
+    // that started before the reset.
+    readonly object _lifecycleLock = new();
+    int     _generation;
     Socket? _sock;
+
+    Task? _sendLoopTask;
 
     public CtrlClient(string host, int port)
     {
         _host = host;
         _port = port;
-        _ = Task.Run(SendLoop);
+        _sendLoopTask = Task.Run(SendLoop);
     }
 
     public void Send(string cmd)
@@ -60,23 +69,41 @@ sealed class CtrlClient : ICtrlClient, IDisposable
         }
     }
 
-    /// <summary>Drop the persistent connection (e.g. on reconnect to the same endpoint).</summary>
     public void Reset()
     {
-        var s = Interlocked.Exchange(ref _sock, null);
-        s?.Dispose();
+        Socket? old;
+        lock (_lifecycleLock)
+        {
+            _generation++;
+            old = _sock;
+            _sock = null;
+        }
+        old?.Dispose();
     }
 
     /// <summary>One-shot request/response on this instance's endpoint.</summary>
     public Task<string?> QueryAsync(string cmd, int timeoutMs = 2000)
         => CtrlQuery.QueryAsync(_host, _port, cmd, timeoutMs);
 
-    // Stop the send loop and tear down the socket. After Dispose, Send() is a no-op
-    // (the completed channel refuses writes).
+    // Stop the send loop and tear down the socket.
     public void Dispose()
     {
         _ch.Writer.TryComplete();
-        Reset();
+        // Wait for the send loop to drain and exit.  The generation bump below
+        // makes any still-in-flight ConnectPersistentAsync (if the wait times out)
+        // self-abort rather than publish a socket we are about to dispose.
+        if (_sendLoopTask != null)
+        {
+            try { _sendLoopTask.Wait(TimeSpan.FromSeconds(2)); } catch { }
+        }
+        Socket? old;
+        lock (_lifecycleLock)
+        {
+            _generation++;
+            old = _sock;
+            _sock = null;
+        }
+        old?.Dispose();
     }
 
     async Task SendLoop()
@@ -102,7 +129,8 @@ sealed class CtrlClient : ICtrlClient, IDisposable
     {
         var data = Encoding.ASCII.GetBytes(cmd + "\n");
 
-        var sock = Volatile.Read(ref _sock);
+        Socket? sock;
+        lock (_lifecycleLock) sock = _sock;
         if (sock != null)
         {
             // First attempt on the existing socket. A failure here is normal reconnect
@@ -113,10 +141,8 @@ sealed class CtrlClient : ICtrlClient, IDisposable
         }
 
         sock = await ConnectPersistentAsync();
-        if (sock is null) return;   // connect failure already logged by ConnectPersistentAsync
+        if (sock is null) return;
 
-        // Second attempt, on a socket we JUST connected - a failure here is unexpected and
-        // means the command was silently dropped, so surface it (not reconnect noise).
         try { await sock.SendAsync(data, SocketFlags.None); }
         catch (Exception e)
         {
@@ -127,17 +153,24 @@ sealed class CtrlClient : ICtrlClient, IDisposable
 
     async Task<Socket?> ConnectPersistentAsync()
     {
+        int gen;
+        lock (_lifecycleLock) gen = _generation;
         try
         {
             var s = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
             s.NoDelay = true;
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
             await s.ConnectAsync(_host, _port, cts.Token);
-            // Identify this as a persistent session so the server keeps the connection open.
             await s.SendAsync(Encoding.ASCII.GetBytes(DaemonCommand.PersistentSession + "\n"), SocketFlags.None, cts.Token);
 
-            // Publish before starting the drain loop so SendOneAsync can use it.
-            Interlocked.Exchange(ref _sock, s);
+            // Atomically check whether Reset()/Dispose() invalidated this connection
+            // while it was in flight.  If the generation moved, the socket belongs to
+            // a dead session — dispose it and return null.
+            lock (_lifecycleLock)
+            {
+                if (gen != _generation) { s.Dispose(); return null; }
+                _sock = s;
+            }
             _ = Task.Run(() => DrainLoop(s));
             return s;
         }
@@ -196,8 +229,11 @@ sealed class CtrlClient : ICtrlClient, IDisposable
 
     void DropSocket(Socket s)
     {
-        // Atomically claim ownership; only the first caller disposes.
-        if (Interlocked.CompareExchange(ref _sock, null, s) == s)
-            s.Dispose();
+        // Atomically claim ownership; only the owner clears the field.
+        lock (_lifecycleLock)
+        {
+            if (_sock == s) _sock = null;
+        }
+        s.Dispose();
     }
 }

@@ -14,9 +14,9 @@
 		<SignAssembly>False</SignAssembly>
 		<PackageIcon>AppIcon.png</PackageIcon>
 		<AssemblyTitle>Kronos ScreenRemote</AssemblyTitle>
-		<Version>2.0.3</Version>
-		<AssemblyVersion>2.0.3</AssemblyVersion>
-		<FileVersion>2.0.3</FileVersion>
+		<Version>2.0.4</Version>
+		<AssemblyVersion>2.0.4</AssemblyVersion>
+		<FileVersion>2.0.4</FileVersion>
 		<Product>Kronos ScreenRemote</Product>
 		<Description>Remote viewer and control interface for Korg Kronos</Description>
 		<ApplicationIcon>Resources\Icons\AppIcon.ico</ApplicationIcon>
