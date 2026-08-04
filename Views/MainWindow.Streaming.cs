@@ -404,12 +404,13 @@ public partial class MainWindow
         var origin = FrameImage.TranslatePoint(new Point(0, 0), RootGrid);
         double imgW = FrameImage.ActualWidth, imgH = FrameImage.ActualHeight;
 
+        Rect rect;
         if (_aspectLock)
         {
             FrameImage.Stretch = Stretch.Uniform;
             double scale = Math.Min(imgW / _frameW, imgH / _frameH);
             double cw = _frameW * scale, ch = _frameH * scale;
-            _frameRect = new Rect(
+            rect = new Rect(
                 origin.X + (imgW - cw) / 2,
                 origin.Y + (imgH - ch) / 2,
                 cw, ch);
@@ -417,8 +418,13 @@ public partial class MainWindow
         else
         {
             FrameImage.Stretch = Stretch.Fill;
-            _frameRect = new Rect(origin, new Size(imgW, imgH));
+            rect = new Rect(origin, new Size(imgW, imgH));
         }
+
+        // Idempotent: this now runs on FrameImage's own resizes as well as the window's, so bail
+        // out when nothing actually moved rather than invalidating the overlay every time.
+        if (rect == _frameRect) return;
+        _frameRect = rect;
         OverlayLayer.InvalidateVisual();
     }
 }

@@ -246,6 +246,34 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         FrameImage.LostMouseCapture += OnFrameLostMouseCapture;
         SizeChanged += (sender, e) => RefreshFrameRect();
 
+        // The window's own SizeChanged is NOT enough. FrameImage gets resized or moved by
+        // plenty of things that leave the window's size alone - the status bar growing when
+        // the sequencer transport items appear on a mode change, the performance-name binding
+        // getting a longer string, the MIDI badge showing up, a rail collapsing. None of those
+        // fire Window.SizeChanged, so _frameRect would go on describing a layout that no longer
+        // exists. Every click on the screen then falls outside it: no TOUCH_DOWN is sent, no
+        // click marker is drawn, and _kbdCapture never turns on - clicks AND keyboard both go
+        // dead with nothing logged, until something happens to resize the window. Track the
+        // element's own geometry instead of trying to enumerate the things that can change it.
+        // (SizeChanged only, deliberately - not LayoutUpdated, which fires on every completed
+        // layout pass anywhere in the tree and would put a TranslatePoint on a hot path. In this
+        // Grid of star-sized columns every known trigger resizes FrameImage rather than purely
+        // moving it, so SizeChanged covers them.)
+        FrameImage.SizeChanged += (sender, e) => RefreshFrameRect();
+
+        // Last-resort reconciliation for the wheel/slider capture hazard described at
+        // EndWheelDrag. If either still holds capture while claiming no active drag, a MouseUp
+        // went missing - drop it before this click is routed, or the captured element eats the
+        // event and marks it Handled and the window never sees another click. Deliberately
+        // scoped to those two elements: menus, popups and ComboBoxes hold capture legitimately.
+        PreviewMouseDown += (sender, e) =>
+        {
+            var captured = Mouse.Captured;
+            if (captured == null) return;
+            if (ReferenceEquals(captured, Data_Wheel)        && !_wheel.DragActive)  Mouse.Capture(null);
+            if (ReferenceEquals(captured, ValueSliderCanvas) && !_vsliderDragActive) Mouse.Capture(null);
+        };
+
         // Build the command registry BEFORE any surface wires to it (WireButtons here, WireMenu in
         // OnLoaded). ToDictionary fails fast on a duplicate Id - a launch is what trips it.
         _commands = BuildCommandRegistry().ToDictionary(c => c.Id);
@@ -381,9 +409,23 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         _wheel.AnimTimer.Tick    += (sender, e) => AdvanceWheelAnim();
     }
 
+    // Capturing the mouse AND marking the event Handled is a dangerous pair: if the MouseUp that
+    // should end the gesture is ever lost (a dialog opening mid-drag, a popup taking capture),
+    // the capture persists, every later click is routed here instead of to whatever was clicked,
+    // and this handler marks it Handled - which starves the window-level OnMouseDown that owns
+    // screen touches and keyboard capture. Worse, it is self-sustaining: each swallowed click
+    // re-enters this method and re-captures. So never trust DragActive alone - reconcile against
+    // the physical button state, which cannot go stale.
+    void EndWheelDrag()
+    {
+        _wheel.DragActive = false;
+        if (Data_Wheel.IsMouseCaptured) Data_Wheel.ReleaseMouseCapture();
+    }
+
     void OnWheelMouseDown(object s, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left) return;
+        if (Mouse.LeftButton != MouseButtonState.Pressed) { EndWheelDrag(); return; }
         _wheel.DragActive = true;
         _wheel.DragStartY = e.GetPosition(Data_Wheel).Y;
         _wheel.DragSteps  = 0;
@@ -394,6 +436,9 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     void OnWheelMouseMove(object s, MouseEventArgs e)
     {
         if (!_wheel.DragActive) return;
+        // Primary recovery point: the first mouse move after a missed MouseUp ends the drag
+        // instead of spinning the wheel for every pixel of ordinary cursor movement.
+        if (e.LeftButton != MouseButtonState.Pressed) { EndWheelDrag(); return; }
         double dy    = _wheel.DragStartY - e.GetPosition(Data_Wheel).Y; // +ve = up = CW
         int    steps = (int)(dy / WheelState.PxPerStep);
         int    diff  = steps - _wheel.DragSteps;
@@ -410,8 +455,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     void OnWheelMouseUp(object s, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left) return;
-        _wheel.DragActive = false;
-        Data_Wheel.ReleaseMouseCapture();
+        EndWheelDrag();
         e.Handled = true;
     }
 
@@ -451,9 +495,17 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         ValueSliderCanvas.LostMouseCapture += (_, _) => _vsliderDragActive = false;
     }
 
+    // Same capture-plus-Handled hazard as the data wheel - see EndWheelDrag.
+    void EndVSliderDrag()
+    {
+        _vsliderDragActive = false;
+        if (ValueSliderCanvas.IsMouseCaptured) ValueSliderCanvas.ReleaseMouseCapture();
+    }
+
     void OnVSliderMouseDown(object s, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left) return;
+        if (Mouse.LeftButton != MouseButtonState.Pressed) { EndVSliderDrag(); return; }
         if (e.ClickCount == 2)
         {
             double centerY = VSliderTravel * (127 - 64) / 127.0 + VSliderThumbHalf;
@@ -470,6 +522,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     void OnVSliderMouseMove(object s, MouseEventArgs e)
     {
         if (!_vsliderDragActive) return;
+        if (e.LeftButton != MouseButtonState.Pressed) { EndVSliderDrag(); return; }
         UpdateVSliderFromMouse(e.GetPosition(ValueSliderCanvas).Y);
         e.Handled = true;
     }
@@ -477,8 +530,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     void OnVSliderMouseUp(object s, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left) return;
-        _vsliderDragActive = false;
-        ValueSliderCanvas.ReleaseMouseCapture();
+        EndVSliderDrag();
         e.Handled = true;
     }
 

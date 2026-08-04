@@ -755,6 +755,10 @@ public partial class MainWindow
             _drag.Marker = null;
             OverlayLayer.InvalidateVisual();
         }
+        // Mirror the mouse-up paths, which always release. Reaching here from
+        // OnFrameLostMouseCapture is a no-op (capture is already gone); reaching here from
+        // OnMouseLeave is not, and would otherwise leave FrameImage holding capture.
+        if (FrameImage.IsMouseCaptured) FrameImage.ReleaseMouseCapture();
     }
 
     // ── Built-in macros ──────────────────────────────────────────────────────
