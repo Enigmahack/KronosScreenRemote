@@ -404,22 +404,15 @@ public partial class MainWindow
         var origin = FrameImage.TranslatePoint(new Point(0, 0), RootGrid);
         double imgW = FrameImage.ActualWidth, imgH = FrameImage.ActualHeight;
 
-        Rect rect;
-        if (_aspectLock)
-        {
-            FrameImage.Stretch = Stretch.Uniform;
-            double scale = Math.Min(imgW / _frameW, imgH / _frameH);
-            double cw = _frameW * scale, ch = _frameH * scale;
-            rect = new Rect(
-                origin.X + (imgW - cw) / 2,
-                origin.Y + (imgH - ch) / 2,
-                cw, ch);
-        }
-        else
-        {
-            FrameImage.Stretch = Stretch.Fill;
-            rect = new Rect(origin, new Size(imgW, imgH));
-        }
+        // Aspect lock is permanent: the screen is always letterboxed to the Kronos' native
+        // ratio, never stretched to fill. There is no longer a toggle for it anywhere.
+        FrameImage.Stretch = Stretch.Uniform;
+        double scale = Math.Min(imgW / _frameW, imgH / _frameH);
+        double cw = _frameW * scale, ch = _frameH * scale;
+        var rect = new Rect(
+            origin.X + (imgW - cw) / 2,
+            origin.Y + (imgH - ch) / 2,
+            cw, ch);
 
         // Idempotent: this now runs on FrameImage's own resizes as well as the window's, so bail
         // out when nothing actually moved rather than invalidating the overlay every time.

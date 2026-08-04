@@ -321,8 +321,6 @@ public partial class MainWindow
             DoZoomOut(); return;
         }
 
-        if (IsAction("AspectLock", e))   { _aspectLock = !_aspectLock; RefreshFrameRect(); return; }
-
         if (IsAction("Mirror", e))
         {
             _mirrorState = !_mirrorState;

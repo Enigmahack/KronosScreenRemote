@@ -38,7 +38,6 @@
                 <MenuItem x:Name="MNU_FileManager" Header="File _Manager..." InputGestureText="M"/>
             </MenuItem>
             <MenuItem x:Name="MENU_View" Header="_View">
-                <MenuItem x:Name="MNU_AspectLock"    Header="_Aspect Lock"     IsCheckable="True" InputGestureText="A"/>
                 <MenuItem x:Name="MNU_Zoom"          Header="_Zoom Window"      IsCheckable="True" InputGestureText="Z"/>
                 <Separator/>
                 <MenuItem x:Name="MNU_Fullscreen"    Header="_Fullscreen"                          InputGestureText="F"/>
@@ -618,7 +617,6 @@
                         <MenuItem x:Name="CTX_ZoomOut"         Header="Zoom _Out"/>
                         <MenuItem x:Name="CTX_ZoomReset"       Header="_Reset Zoom"/>
                         <Separator/>
-                        <MenuItem x:Name="CTX_AspectLock"      Header="_Aspect Lock"  IsCheckable="True" InputGestureText="A"/>
                         <MenuItem x:Name="CTX_Fullscreen"      Header="_Fullscreen"  IsCheckable="True" InputGestureText="F"/>
                         <Separator/>
                         <MenuItem x:Name="CTX_ScalingMode" Header="Scaling _Quality">

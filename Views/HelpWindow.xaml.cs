@@ -164,7 +164,7 @@ public partial class HelpWindow : ThemedWindow
         // ── Screen Panel ──────────────────────────────────────────────────────
         Add(SectionHead("Screen Panel  (centre)"));
         Add(Body("The screen panel streams the Kronos touchscreen display. The image is scaled to fill the panel " +
-                 "while optionally preserving the original 4∶3 aspect ratio (A key or View → Aspect Lock)."));
+                 "while preserving the original 4∶3 aspect ratio."));
         var sp = ShortcutTable();
         Row(sp, "Click",            "Send a tap to the Kronos touchscreen at that position.");
         Row(sp, "Click and drag",   "Send a swipe gesture. Drag must exceed 8 Kronos screen pixels before the touch-down is sent.");
@@ -230,7 +230,6 @@ public partial class HelpWindow : ThemedWindow
         Row(ks, K("Seq Record",    "-"),      "Sequencer: Record  (Sequence mode only).");
         Row(ks, K("Seq Start",     "-"),      "Sequencer: Start / Stop  (Sequence mode only).");
         Row(ks, K("Seq Save",      "-"),      "Write / Save current edit  (Setlist/Combi/Program/Global).");
-        Row(ks, K("AspectLock",    "A"),      "Toggle aspect-ratio lock on the screen panel.");
         Row(ks, K("Calibrate",     "C"),      "Toggle touch calibration mode.");
         Row(ks, K("Fullscreen",    "F"),      "Toggle fullscreen.");
         Row(ks, K("Mirror",        "M"),      "Toggle VGA output mirroring on the Kronos.");

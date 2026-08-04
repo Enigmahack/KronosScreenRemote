@@ -39,7 +39,6 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     Dictionary<int, PaletteEntry> _overrides = new();
 
     // ── Display state ─────────────────────────────────────────────────────────
-    bool   _aspectLock   = true;
     bool   _mirrorState  = false;
     bool   _zoomOn       = false;
     double _zoomLevel    = 2.5;
@@ -48,6 +47,9 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     bool   _focusedDataExpanded  = false;
     bool   _focusedValueExpanded = false;
     double _currentScale    = 1.0;
+    // Size SetWindowSize last applied, so a subsequent manual resize can be told apart from
+    // one we caused. NaN = SetWindowSize has not run yet.
+    double _scaledW = double.NaN, _scaledH = double.NaN;
     Rect   _frameRect;           // screen rect of displayed frame
 
     // ── Data wheel drag / animation ──────────────────────────────────────────
@@ -610,7 +612,6 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
 
         MENU_View.SubmenuOpened += (sender, e) =>
         {
-            MNU_AspectLock.IsChecked   = _aspectLock;
             MNU_Zoom.IsChecked         = _zoomOn;
             MNU_HideDataInput.IsChecked  = _hideDataInput;
             MNU_HideValueInput.IsChecked = _hideValueInput;
@@ -629,7 +630,6 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             Topmost = _settings.AlwaysOnTop;
             Storage.SaveSettings(_settings);
         };
-        MNU_AspectLock.Click   += (sender, e) => { _aspectLock = MNU_AspectLock.IsChecked; RefreshFrameRect(); };
         MNU_Zoom.Click         += (sender, e) => { _zoomOn = MNU_Zoom.IsChecked; OverlayLayer.InvalidateVisual(); };
         MNU_Fullscreen.Click   += (sender, e) => ToggleFullscreen();
         MNU_HideDataInput.Click  += (sender, e) => ToggleHideDataInput();
@@ -782,7 +782,6 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         CTX_ZoomIn.Click         += (sender, e) => { _zoomLevel = Math.Min(10.0, Math.Round(_zoomLevel + 0.5, 1)); _zoomOn = true; OverlayLayer.InvalidateVisual(); };
         CTX_ZoomOut.Click        += (sender, e) => { _zoomLevel = Math.Max(_settings.ZoomDefaultLevel, Math.Round(_zoomLevel - 0.5, 1)); OverlayLayer.InvalidateVisual(); };
         CTX_ZoomReset.Click      += (sender, e) => { _zoomLevel = _settings.ZoomDefaultLevel; _zoomOn = false; OverlayLayer.InvalidateVisual(); };
-        CTX_AspectLock.Click     += (sender, e) => { _aspectLock = CTX_AspectLock.IsChecked; RefreshFrameRect(); };
         CTX_Fullscreen.Click     += (sender, e) => ToggleFullscreen();
         CTX_ScaleSharp.Click     += (sender, e) => SetScalingMode(ScalingQuality.Sharp);
         CTX_ScaleSmooth.Click    += (sender, e) => SetScalingMode(ScalingQuality.Smooth);
@@ -793,7 +792,6 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         FrameImage.ContextMenuOpening += (s, e) =>
         {
             if (_cal.Mode) { e.Handled = true; return; }
-            CTX_AspectLock.IsChecked = _aspectLock;
             CTX_Fullscreen.IsChecked = _fs.Active;
             CTX_Disconnect.IsEnabled = _connState != ConnState.Disconnected;
             CTX_ZoomOut.IsEnabled    = _zoomOn && _zoomLevel > _settings.ZoomDefaultLevel;
@@ -1588,7 +1586,6 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             new("Settings",        "Settings...",       "",              () => OpenSettingsDialog()),
             // ── View
             new("Fullscreen",      "Toggle Fullscreen",  K("Fullscreen"),    () => ToggleFullscreen()),
-            new("AspectLock",      "Toggle Aspect Lock", K("AspectLock"),    () => { _aspectLock = !_aspectLock; RefreshFrameRect(); }),
             new("Zoom Window",     "Toggle Zoom Window", K("Zoom Window"),   () => { _zoomOn = !_zoomOn; OverlayLayer.InvalidateVisual(); }),
             new("Zoom In",         "Zoom In",            K("Zoom In"),       () => DoZoomIn()),
             new("Zoom Out",        "Zoom Out",           K("Zoom Out"),      () => DoZoomOut()),
@@ -1877,6 +1874,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         };
         Width  = targetW * scale + chromeW;
         Height = FrameDesignHeight * scale + menuH + chromeH;
+        _scaledW = Width; _scaledH = Height;
     }
 
     void ResizeAndRefresh()
@@ -1886,7 +1884,14 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         // Skip SetWindowSize when already maximized (non-fullscreen): the window fills
         // the screen and there is nothing to resize. SetWindowSize would force it back
         // to Normal, which is exactly the bug we are avoiding here.
-        if (!_fs.Active && WindowState != WindowState.Maximized)
+        // Re-apply the preset scale only while the window is still exactly the size
+        // SetWindowSize last produced. Once it has been dragged to a size of the user's own,
+        // forcing _currentScale back would silently discard it - which is what made OK on a
+        // child dialog snap the main window back to the default. Unknown (_scaledW == NaN,
+        // i.e. SetWindowSize has not run yet) keeps the original behaviour.
+        bool userResized = !double.IsNaN(_scaledW)
+                           && (Math.Abs(Width - _scaledW) > 0.5 || Math.Abs(Height - _scaledH) > 0.5);
+        if (!_fs.Active && WindowState != WindowState.Maximized && !userResized)
             SetWindowSize(_currentScale);
         // SizeChanged may not fire (fullscreen, or maximized with no size change),
         // so always defer an explicit layout refresh.

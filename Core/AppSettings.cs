@@ -90,7 +90,6 @@ public class AppSettings
         ("Zoom Window",   "Toggle Zoom Window",      Key.Z),
         ("Zoom In",       "Zoom In",                 Key.None),
         ("Zoom Out",      "Zoom Out",                Key.None),
-        ("AspectLock",    "Toggle Aspect Lock",      Key.A),
         ("Mirror",        "Toggle VGA Mirror",       Key.M),
         ("Help",          "Toggle Help",             Key.F1),
         ("Calibrate",     "Toggle Calibration Mode", Key.C),
