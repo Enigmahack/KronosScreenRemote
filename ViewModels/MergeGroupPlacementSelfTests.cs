@@ -191,7 +191,9 @@ static class MergeGroupPlacementSelfTests
         // ── Duplicate-content guard: placing a Merge-staged item whose content is byte-
         //    identical to something ALREADY elsewhere in Local Library reuses that location
         //    instead of writing a second copy - single-item (PlaceFromMerge) and group
-        //    (PlaceMergeGroupSequentially) paths both covered. ──────────────────────────────────
+        //    (PlaceMergeGroupSequentially) paths both covered. Gated per type by the
+        //    preserve-duplication toggles, so the block opts Combis out of preservation
+        //    first (their default is now preserve/copy-as-is). ───────────────────────────────
         string dedupRoot = Path.Combine(Path.GetTempPath(), "kronos_selftest_merge_dedup");
         if (Directory.Exists(dedupRoot)) Directory.Delete(dedupRoot, recursive: true);
         try
@@ -201,6 +203,10 @@ static class MergeGroupPlacementSelfTests
             await LibraryPullPipeline.PullAsync(exec, cache, full: true);   // empty local library
 
             var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), MergeGroupHost);
+            // This block exercises the duplicate-REUSE path, which is no longer the default for
+            // Combis (AppSettings.MergePreserveDuplicateCombis defaults true - "copies as-is").
+            // Opt out explicitly, exactly like a user unchecking the toolbar/Settings toggle.
+            vm.MergePreserveDuplicateCombis = false;
 
             var pcgBuffer = BuildSyntheticPcg(out var combiABody, out var combiBBody, out var combiCBody);
             var file = PcgFile.Open(pcgBuffer);

@@ -964,7 +964,11 @@ sealed class SysExService : ISysExService
         await using var fs = new FileStream(path, FileMode.Create, FileAccess.Write);
         foreach (var op in ops)
         {
-            var m = KronosSysEx.BuildObjectDumpMessage(op.Obj, op.Bank, op.Index, op.Version, op.Body);
+            // Same version stamping as WriteObjectAsync (see its comment) - a backup
+            // should be restorable byte-for-byte, which means carrying the CURRENT
+            // object version, not a stale placeholder stored on the op.
+            byte version = LibObj.CurrentObjectVersion(op.Obj) ?? op.Version;
+            var m = KronosSysEx.BuildObjectDumpMessage(op.Obj, op.Bank, op.Index, version, op.Body);
             await fs.WriteAsync(m).ConfigureAwait(false);
         }
     }

@@ -25,9 +25,10 @@ A Windows desktop application for remotely viewing and controlling a **Korg Kron
 - **Live Screen Streaming** - 800×600 8-bit indexed color at up to 15 FPS via TCP; supports full-frame (pull) and change-only modes for bandwidth efficiency
 - **Value Slider** - Left-panel INC/DEC buttons and draggable 0–127 value slider mirroring the Kronos front-panel VALUE control; double-click to snap to center (64)
 - **Remote Control** - Virtual button panel (mode keys, number pad, data wheel, bank selects) with drag, scroll, and keyboard-shortcut support
-- **Mode Detection** - Automatic operating-mode tracking from live SysEx mode-change messages, with reference-image screen matching as a fallback
-- **MIDI / SysEx Integration** - Live MIDI-out monitoring with a SysEx/MIDI traffic window and on-screen keyboard; automatic mode-follow, program-change follow, and VALUE-slider mirroring from the hardware. Runs over the daemon's TCP MIDI bridge or a direct USB-MIDI link (selectable in Settings → MIDI/SysEx)
-- **Set List & Name Tools** - Dump and browse Kronos Set Lists, and sync program/combi names into a local cache for flash-free program-change display ("Sync All" collects both)
+- **Mode Detection** - The current Kronos operating mode is read from the daemon's STATE command (exact, from Eva's own state via the daemon's `eva_mode` module), with boot-gating so a stray press during boot can't light the wrong button
+- **MIDI / SysEx Integration** - Live MIDI-out monitoring with a SysEx/MIDI traffic window; automatic program-change follow, mode follow, and VALUE-slider mirroring from the hardware. Runs over the daemon's TCP MIDI bridge (port 9875) or a direct USB-MIDI link (selectable in Settings → MIDI/SysEx; Auto prefers USB, with live hot-plug)
+- **Librarian** - Full library manager: sync programs/combis/set lists to an on-disk local library, import `.pcg` files, stage objects in a Merge Window, and place them back onto the Kronos with transitive dependency resolution and undo
+- **Set List & Name Tools** - Dump and browse Kronos Set Lists, and sync program/combi names into a per-Kronos cache for flash-free program-change display ("Sync All" collects both)
 - **Audio VU Meter** - WASAPI real-time level monitoring (L/R peak + RMS) with device selection
 <img width="1414" height="508" alt="2026-06-19 17_44_49-Kronos ValueSlider - 192 168 100 15" src="https://github.com/user-attachments/assets/fa7ad681-8056-489f-99e8-32f90af12e98" />
 
@@ -112,27 +113,29 @@ A PowerShell helper script is included for self-signed or CA-signed code signing
 ```
 KronosScreenRemote/
 ├── Audio/          # WASAPI audio capture and VU meter engine
-├── Core/           # Logging, settings, models, and JSON persistence
-├── Detection/      # Reference-image mode/help-overlay detection
+├── Core/           # Logging, settings, models, JSON persistence, local library & PCG
+├── Detection/      # Help-overlay detection
 ├── Networking/     # Stream receiver, control client, FTP, MIDI/SysEx transports
 ├── Rendering/      # Overlay, palette, and button rendering helpers
-├── Views/          # WPF windows and XAML (MainWindow, FileManager, dialogs)
+├── ViewModels/     # Librarian / Merge / Pane view-models and their self-tests
+├── Views/          # WPF windows and XAML (MainWindow, LibrarianShell, FileManager, dialogs)
 ├── Resources/      # Icons, button images, calibration reference data
-├── Documentation/  # Extended documentation (architecture, protocols, etc.)
+├── Documentation/  # Extended documentation (user guide, daemon API reference)
 ├── sign.ps1        # Code-signing helper script
 └── KronosScreenRemote.sln
 ```
 
-`MainWindow` is split across ~10 partial classes (`MainWindow*.cs`) covering streaming, input, audio, calibration, the palette editor, and general UI state.
+`MainWindow` is split across partial classes (`MainWindow*.cs`) covering streaming, input, audio, calibration, and general UI state. The Librarian lives in `ViewModels/LibrarianShellViewModel.cs` + `Views/LibrarianShellWindow.xaml` with an extensive off-hardware self-test suite (`App.xaml.cs` `--librarian-selftest`).
 
 ---
 
 ## Connecting to a Kronos
 
 1. Ensure the Kronos is connected to your local network and its **Global > Ethernet** settings have a valid IP address.
-2. Launch **KronosScreenRemote** and enter the Kronos IP in the connection bar.
-3. The application connects on **TCP 7373** (screen stream) and **TCP 7374** (control commands). MIDI/SysEx monitoring uses the daemon's internal bridge on **TCP 9875**, or a direct USB-MIDI connection.
+2. Launch **KronosScreenRemote** and enter the Kronos IP in the connection bar (the app probes UDP discovery to find the daemon's ports automatically).
+3. The application connects on **TCP 7373** (screen stream) and **TCP 7374** (control commands). MIDI/SysEx monitoring uses the daemon's internal bridge on **TCP 9875**, or a direct USB-MIDI connection (Auto prefers USB when a Kronos is plugged in).
 4. FTP access (file manager) uses the standard FTP port **21** with the credentials configured on the Kronos.
+5. The **Librarian** (Tools → Librarian...) additionally syncs programs/combis/set lists from the Kronos into a local library (see the [user guide](Documentation/KronosScreenRemote_Guide.md)).
 
 ---
 
@@ -142,7 +145,6 @@ KronosScreenRemote/
 |---|---|
 | F1 | Open help window |
 | F2–F8 | Switch Kronos operating mode (Setlist through Disk) |
-| A | Toggle aspect lock |
 | C | Toggle calibration mode |
 | F | Toggle fullscreen |
 | M | Toggle VGA mirror |

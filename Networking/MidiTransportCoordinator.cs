@@ -95,14 +95,31 @@ sealed class MidiTransportCoordinator : IDisposable
     // standalone before any screen connection).
     public void Start()
     {
-        PollUsb();
+        // The STARTUP evaluation stays synchronous: MainWindow's launch flow reads
+        // UsingUsb immediately after this to decide daemon auto-connect, so the
+        // initial answer must already exist. Steady-state ticks use the background
+        // path (see PollUsb).
+        PollUsb(runInline: true);
         _hotplug.Start();
     }
 
     public void Dispose() => _hotplug.Stop();
 
-    void PollUsb()
+    // 1 = a background Reevaluate is already queued/running (Interlocked guard in
+    // QueueReevaluate collapses back-to-back ticks into one pending evaluation).
+    int _reevalPending;
+
+    void PollUsb() => PollUsb(runInline: false);
+
+    void PollUsb(bool runInline)
     {
+        // The tick itself does only the cheap presence diff. The actual switch
+        // (Reevaluate -> SysExService.Start -> per-host cache disk I/O, winmm port
+        // open/probe) is pushed off the UI thread for timer ticks - a 3 s
+        // DispatcherTimer firing a disk read during ordinary app use was a needless
+        // UI stutter. The Interlocked guard means a burst of ticks can't stack up
+        // duplicate evaluations.
+        bool retryOpenCheck = false;
         bool changed = false;
         lock (_gate)
         {
@@ -115,7 +132,8 @@ sealed class MidiTransportCoordinator : IDisposable
                 _usbDevice     = found;
                 _usbOpenFailed = null;   // a re-plug (presence change) gets a fresh open attempt
                 _usbRetryTick  = 0;
-                changed = Reevaluate(out _);
+                if (runInline) changed = Reevaluate(out _);
+                else QueueReevaluate();
             }
             else if (found != null && _usbOpenFailed == found && _current?.Kind != "usb"
                      && ++_usbRetryTick >= UsbRetryEveryTicks)
@@ -126,15 +144,52 @@ sealed class MidiTransportCoordinator : IDisposable
                 // lightweight open now succeeds, so a still-busy device never tears down
                 // the working transport.
                 _usbRetryTick = 0;
-                if (KronosMidiDevices.CanOpen(_usbMatch))
-                {
-                    AppLog.Info($"[midi-coord] USB '{found}' openable again - upgrading from fallback");
-                    _usbOpenFailed = null;
-                    changed = Reevaluate(out _);
-                }
+                retryOpenCheck = true;
             }
         }
+        // ActiveTransportChanged always fires OUTSIDE _gate (subscriber freedom), same
+        // invariant the original PollUsb kept.
         if (changed) ActiveTransportChanged?.Invoke(ActiveDescription);
+        if (retryOpenCheck)
+        {
+            if (runInline)
+            {
+                bool changedRetry = false;
+                if (TryReopenUsb())
+                {
+                    lock (_gate) changedRetry = Reevaluate(out _);
+                    if (changedRetry) ActiveTransportChanged?.Invoke(ActiveDescription);
+                }
+            }
+            else QueueReevaluate(retryOpenCheck: true);
+        }
+    }
+
+    // The backoff retry's open test + latch clear. True when the previously-failed device
+    // now opens cleanly (and the latch has been cleared so the next evaluation picks it up).
+    bool TryReopenUsb()
+    {
+        string match;
+        lock (_gate) match = _usbMatch;
+        if (!KronosMidiDevices.CanOpen(match)) return false;
+        AppLog.Info("[midi-coord] USB openable again - upgrading from fallback");
+        lock (_gate) _usbOpenFailed = null;
+        return true;
+    }
+
+    void QueueReevaluate(bool retryOpenCheck = false)
+    {
+        if (Interlocked.Exchange(ref _reevalPending, 1) != 0) return;
+        Task.Run(() =>
+        {
+            Interlocked.Exchange(ref _reevalPending, 0);
+            // A queued presence-change evaluation wins over a queued retry check: if the
+            // device vanished meanwhile, Reevaluate's Decide() simply won't pick USB.
+            if (retryOpenCheck && !TryReopenUsb()) return;
+            bool changed;
+            lock (_gate) changed = Reevaluate(out _);
+            if (changed) ActiveTransportChanged?.Invoke(ActiveDescription);
+        });
     }
 
     // USB is a candidate only if a device is present AND it didn't just fail to open

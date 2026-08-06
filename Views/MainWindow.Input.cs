@@ -477,8 +477,10 @@ public partial class MainWindow
         }
 
         bool cw = e.Delta > 0;
-        Ctrl(DaemonCommand.Wheel(cw));
+        if (_scrollDirection)
+            cw = !cw;
         TriggerWheelAnim(cw ? 1 : -1);
+        Ctrl(DaemonCommand.Wheel(cw));
     }
 
     void OnMouseMove(object s, MouseEventArgs e)

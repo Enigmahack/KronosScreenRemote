@@ -159,7 +159,7 @@ public partial class HelpWindow : ThemedWindow
                                      "Top = 127, bottom = 0. The command is sent only when the value changes.");
         Add(vs);
         Add(Note("The left panel is visible in the Full layout when controls are shown. It hides automatically\n" +
-                 "in Focused layout or when controls are hidden via View → Hide Controls."));
+                 "in Focused layout or when the value-input panel is hidden via View → Hide Value Input."));
 
         // ── Screen Panel ──────────────────────────────────────────────────────
         Add(SectionHead("Screen Panel  (centre)"));
@@ -185,6 +185,15 @@ public partial class HelpWindow : ThemedWindow
         Row(cs, "Exit / Enter",   "Send the EXIT or ENTER hardware buttons.");
         Row(cs, "Data wheel",     "Drag up or down to scroll. Mouse scroll wheel also works everywhere.");
         Add(cs);
+
+        // ── Mode Detection ───────────────────────────────────────────────────
+        Add(SectionHead("Mode Detection  (status bar)"));
+        Add(Body("The current Kronos operating mode is read directly from the daemon (its STATE command), " +
+                 "which reports the mode from Eva's own live state - exact, no image matching. A few frames " +
+                 "after you change mode, the corresponding mode button lights up and the status bar " +
+                 "reads  \"Mode: <name>\"."));
+        Add(Note("Mode change buttons are disabled until the daemon confirms the board has finished " +
+                 "booting (its BOOT= gate), so a stray press during boot can't light the wrong button."));
 
         // ── Sequencer Transport & Save ────────────────────────────────────────
         Add(SectionHead("Sequencer Transport & Save  (status bar)"));
@@ -381,7 +390,41 @@ public partial class HelpWindow : ThemedWindow
         Row(st, "Zoom Default Level",      "Initial magnification when the zoom window opens  (2.5× – 10×).");
         Row(st, "Zoom Window Size",        "Size of the zoom inset window as a fraction of the frame area.");
         Row(st, "Keybindings",             "Rebind any shortcut listed in the Keyboard Shortcuts section above.");
+        Row(st, "MIDI/SysEx",              "MIDI link (Auto / USB / TCP), monitor toggle, proactive SysEx\n" +
+                                           "polling, and the VALUE-slider CC#.");
+        Row(st, "Librarian",               "Merge Window staging behavior: Temporary Memory or Local Storage.");
         Add(st);
+
+        // ── MIDI / SysEx ─────────────────────────────────────────────────────
+        Add(SectionHead("MIDI / SysEx  (status bar + Tools)"));
+        Add(Body("The app monitors the Kronos' live MIDI output - program-change and mode-change follow, " +
+                 "the VALUE slider mirror, and the SysEx traffic window all run off it. The link can be the " +
+                 "daemon's TCP MIDI bridge (port 9875) or a direct USB-MIDI connection to the Kronos - " +
+                 "chosen in Settings → MIDI/SysEx (Auto prefers USB). The footer badge shows which link " +
+                 "is live:  USB  (green, fast),  DIN  (amber, 5-pin interface),  TCP  (blue, network)."));
+        Add(Body("The SysEx/MIDI tool (Tools → SysEx/MIDI Monitor) shows live traffic, lets you send raw " +
+                 "MIDI, and performs bulk dumps (Sync Names, Set Lists) off the same stream."));
+        Add(Note("If you use a DAW on the same PC, the USB port is exclusive - open the DAW first and " +
+                 "this app falls back to TCP, or vice versa."));
+
+        // ── Librarian ────────────────────────────────────────────────────────
+        Add(SectionHead("Librarian  (Tools → Librarian...)"));
+        Add(Body("The Librarian manages Kronos programs, combis, and set lists: pull everything from the " +
+                 "Kronos into a local library, import .pcg files, stage objects in a Merge Window, and " +
+                 "place them back onto the instrument with dependency resolution."));
+        Add(Body("• PCG pane: load a .pcg file and pull programs/combis/set lists (transitively - a set " +
+                 "list pulls its combis, which pull their programs) into the Merge Window.\n" +
+                 "• Local Library: the on-disk cache synced from the Kronos (Sync Library). Move, edit, " +
+                 "and place objects; writes are committed to the Kronos with a Store-Bank step.\n" +
+                 "• Merge Window: a staging area. Auto-Fill places everything staged into the next free " +
+                 "slots of the right type; dependencies are placed before their referrers so references " +
+                 "resolve to where things actually landed.\n" +
+                 "• Merge behavior (Settings → Librarian): Temporary Memory clears the staging when the " +
+                 "app closes; Local Storage persists it across sessions.\n" +
+                 "• Preserve duplicate Programs/Combis (Merge Window toolbar, or Settings → Librarian): " +
+                 "when checked, placing staged content that already exists in Local Library still writes " +
+                 "a fresh copy; when unchecked, the existing copy is reused instead of writing a " +
+                 "duplicate. Defaults: Programs are reused, Combis are copied as-is."));
 
         // ── Command Palette ───────────────────────────────────────────────────
         Add(SectionHead("Command Palette  (Ctrl+K)"));
@@ -412,8 +455,8 @@ public partial class HelpWindow : ThemedWindow
                                         "Click the ▲ button to pick the device to monitor. Choice is saved in settings.");
         Row(sb, "Sequencer transport + Save", "SEQUENCER buttons and Record/Write - see “Sequencer Transport\n" +
                                                "& Save” above.");
-        Row(sb, "Mode: ...",              "Current Kronos operating mode. Detected from the screen image when\n" +
-                                         "reference images are available; otherwise polled from the daemon every 1 s.");
+        Row(sb, "Mode: ...",              "Current Kronos operating mode - read from the daemon's STATE command\n" +
+                                         "(exact, from Eva's own state) and re-polled every 500 ms.");
         Add(sb);
 
         return doc;

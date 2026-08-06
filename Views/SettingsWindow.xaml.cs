@@ -83,6 +83,7 @@ public partial class SettingsWindow : ThemedWindow
         ChkPromptQuit.IsChecked   = Result.PromptBeforeQuitting;
         ChkHideDataInput.IsChecked  = Result.HideDataInput;
         ChkHideValueInput.IsChecked = Result.HideValueInput;
+        ChkReverseScrolling.IsChecked = Result.ReverseScrolling;
         TxtScreenshotDir.Text     = Result.ScreenshotDirectory;
 
         // VGA output
@@ -112,6 +113,8 @@ public partial class SettingsWindow : ThemedWindow
 
         // Librarian
         CMB_MergeBehavior.SelectedIndex = Result.MergeBehavior == MergeCacheBehavior.LocalStorage ? 1 : 0;
+        ChkPreserveDupPrograms.IsChecked = Result.MergePreserveDuplicatePrograms;
+        ChkPreserveDupCombis.IsChecked   = Result.MergePreserveDuplicateCombis;
 
         // View
         SlZoomLevel.Value      = Result.ZoomDefaultLevel;
@@ -321,8 +324,9 @@ public partial class SettingsWindow : ThemedWindow
 
         // General
         Result.PromptBeforeQuitting = ChkPromptQuit.IsChecked == true;
-        Result.HideDataInput         = ChkHideDataInput.IsChecked  == true;
-        Result.HideValueInput        = ChkHideValueInput.IsChecked == true;
+        Result.HideDataInput = ChkHideDataInput.IsChecked  == true;
+        Result.HideValueInput = ChkHideValueInput.IsChecked == true;
+        Result.ReverseScrolling = ChkReverseScrolling.IsChecked == true;
         Result.ScreenshotDirectory  = TxtScreenshotDir.Text.Trim();
 
         // VGA output
@@ -357,6 +361,8 @@ public partial class SettingsWindow : ThemedWindow
 
         // Librarian
         Result.MergeBehavior = CMB_MergeBehavior.SelectedIndex == 1 ? MergeCacheBehavior.LocalStorage : MergeCacheBehavior.TemporaryMemory;
+        Result.MergePreserveDuplicatePrograms = ChkPreserveDupPrograms.IsChecked == true;
+        Result.MergePreserveDuplicateCombis   = ChkPreserveDupCombis.IsChecked == true;
 
         // View
         Result.ZoomDefaultLevel = SlZoomLevel.Value;
@@ -620,7 +626,7 @@ public partial class SettingsWindow : ThemedWindow
         if (RawList.SelectedItem is RawMapping rm) BeginRawEdit(rm);
     }
 
-    void OnRawAdd(object s, RoutedEventArgs e)    => BeginRawEdit(null);
+    void OnRawAdd(object s, RoutedEventArgs e) => BeginRawEdit(null);
     void OnRawRemove(object s, RoutedEventArgs e)
     {
         if (RawList.SelectedItem is RawMapping rm) { RawKeyMap.Remove(rm); _rawEdited = true; }

@@ -41,7 +41,7 @@ If credentials are wrong, an "Authentication Failed" message appears. If the con
 
 ### 4. Once Connected
 
-The Kronos screen is displayed live in the main window. The title bar shows the current mode (Setlist, Combi, Program, etc.) detected from the screen content.
+The Kronos screen is displayed live in the main window. The status bar shows the current mode (Setlist, Combi, Program, etc.), read from the daemon (see [Mode Detection](#mode-detection)).
 
 ---
 
@@ -119,9 +119,9 @@ Bank shortcuts are unassigned by default. Assign them in Settings → Key Bindin
 - **Mouse wheel** over the frame - zoom in/out while keeping the area under the cursor centred.
 - **Toggle Zoom Window** (default: `Z`) - opens a floating magnification window. The zoom level and window size are set in Settings → View.
 
-### Aspect Lock
+### Aspect Ratio
 
-The frame maintains the native 800×600 aspect ratio by default. Press `A` to toggle aspect lock. When unlocked, the frame stretches to fill the window.
+The frame is always letterboxed to the Kronos' native 800×600 ratio - it is never stretched to fill the window. (There is no longer an aspect-lock toggle.)
 
 ### Fullscreen
 
@@ -252,7 +252,7 @@ Triggers require a modifier key. Single keys without a modifier are not accepted
 
 ### Step Delay
 
-The delay between macro steps is configurable per-macro (5–500 ms). A higher delay gives slower Kronos UIs more time to process each step.
+The delay between macro steps is configurable per-macro (10–2000 ms). A higher delay gives slower Kronos UIs more time to process each step.
 
 ---
 
@@ -294,6 +294,7 @@ Open via **Settings → Settings...**.
 | Setting | Description |
 |---|---|
 | Kronos Host | IP address or hostname of the Kronos |
+| UDP Discovery | The app probes the daemon's UDP discovery port to find the stream/control ports automatically (falls back to the configured 7373/7374) |
 | Stream Port | TCP port for the framebuffer stream (default 7373) |
 | Control Port | TCP port for the control channel (default 7374) |
 | FTP Port | TCP port for FTP file access used by the File Manager (default 21) |
@@ -346,6 +347,23 @@ All rebindable actions are listed. Double-click any row to capture a new key com
 - Mode: Setlist / Combi / Program / Sequence / Sampling / Global / Disk
 - Bank: I-A through I-G, U-A through U-G, U-AA through U-GG
 
+### MIDI/SysEx
+
+| Setting | Description |
+|---|---|
+| MIDI transport | **Auto** (USB if present, else TCP) / **USB** / **TCP** |
+| USB device name | Device-name substring used to find the Kronos USB-MIDI port (default `KRONOS`) |
+| Monitor incoming MIDI | Connect/read the live MIDI stream (needed for follow, the monitor, and dumps) |
+| Proactive SysEx polling | Periodically query the current performance id even when no change was seen |
+| SysEx poll interval | Seconds between proactive polls (default 60) |
+| Value slider CC# | MIDI controller number the Kronos VALUE slider transmits (default 18) |
+
+### Librarian
+
+| Setting | Description |
+|---|---|
+| Merge behavior | **Temporary Memory** (staging cleared on close) or **Local Storage** (persisted across sessions) |
+
 ### Macros
 
 See [Macros](#macros).
@@ -364,13 +382,70 @@ See [Macros](#macros).
 
 ---
 
+## MIDI / SysEx
+
+The app monitors the Kronos' live MIDI output - program-change and mode-change follow, the VALUE-slider mirror, and the SysEx/MIDI traffic window all run off it.
+
+### Transport selection
+
+The MIDI link is chosen in **Settings → MIDI/SysEx** (default **Auto**):
+
+- **USB** - a Kronos directly connected via USB-MIDI (no daemon/network needed). Fast and exclusive - if a DAW already holds the port, the app falls back to TCP.
+- **TCP** - the daemon's MIDI bridge (port 9875), used when the screen is connected.
+
+The footer badge shows which link is live: **USB** (green, fast), **DIN** (amber, a 5-pin interface bridging the Kronos), **TCP** (blue, network), or **-** (none). Hot-plug is automatic - plugging in a USB Kronos switches over live.
+
+### SysEx / MIDI Monitor (Tools → SysEx/MIDI Monitor)
+
+- Live traffic log with per-message decode (notes, CC, PC, SysEx function codes).
+- Send raw MIDI hex.
+- **Sync Names** - dumps every program/combi name bank once and caches it, so program-change display is flash-free (a bank is re-dumped only after its storage digest changes).
+- **Set List sync** - dumps all set lists into a local cache.
+
+> **Note:** SysEx receive ("Enable Exclusive") must be on in the Kronos Global/MIDI settings for the monitor, name sync, and set-list features to work. If a DAW is running, it may hold the USB port - the app auto-falls-back to TCP.
+
+---
+
+## Librarian (Tools → Librarian...)
+
+The Librarian is a full library manager for Kronos programs, combis, and set lists: it can pull the whole instrument into a local library, import `.pcg` files, stage objects in a Merge Window, and place them back onto the Kronos with dependency resolution. Everything is undoable (Ctrl+Z) and every write to the Kronos is preceded by a backup.
+
+### PCG pane (left)
+
+Load a `.pcg` file to browse its banks. Pull objects into the Merge Window (right-click or drag):
+
+- Pulling a **set list** transitively pulls the combis it references, which in turn pull their programs.
+- Pulling a **combi** pulls its programs.
+- References that don't resolve inside the loaded file are reported as gaps - they stay unresolved until a file that does contain them is loaded and pulled.
+
+### Local Library (center)
+
+- **Sync Library** pulls every program/combi/set list from the Kronos into the on-disk local library (content-addressed, with per-bank SHA-1 digests).
+- Cut/copy/paste to rearrange within the library, including whole-bank moves (Program banks can be copied across an EXi/HD-1 boundary, which stages a bank-type reformat for the next Commit).
+- **Commit** writes pending edits to the Kronos and issues the Store-Bank step. Conflicts (the bank changed on the Kronos since baseline) are flagged, never silently overwritten.
+- Read-only factory banks (GM, g1–g9, gd) are browseable but never writable.
+
+### Merge Window (right)
+
+A staging area between a loaded `.pcg` file / the local library and the instrument:
+
+- Stage objects from the PCG pane or from Local Library ("Move to Merge Window").
+- **Auto-Fill** places everything staged into the next free slots of the correct type - dependencies are placed before their referrers, so a combi's timbres point at where its programs actually landed. Placement follows the Merge Window's own display order (source bank, then slot), so re-copying the same `.pcg` and auto-filling again lands in the same order every time.
+- Placing is address-sensitive (you choose the destination); dependencies are resolved automatically.
+- **Preserve duplicate Programs/Combis** (Merge Window toolbar, mirrored in Settings → Librarian): when checked, placing staged content that already exists in Local Library still writes a fresh copy ("preserve duplication"); when unchecked, the existing byte-identical copy is reused instead of consuming a slot. Combis are compared *after* their program references are re-pointed at local reality, so a re-copied chain still matches. Defaults: Programs reused (unchecked), Combis copied as-is (checked).
+- **Merge behavior** (Settings → Librarian): **Temporary Memory** clears the staging when the app closes; **Local Storage** persists it across sessions.
+
+---
+
 ## Mode Detection
 
-The client automatically identifies which Kronos mode is active by comparing the top-left corner of each received frame against reference images. The detected mode is shown in the title bar and status bar.
+The current Kronos operating mode is read from the daemon's **STATE** command (polled every 500 ms). The daemon reports it from Eva's own live state (via its `eva_mode` kernel module), falling back to its own framebuffer pixel detection during early boot - so the mode shown is exact and doesn't depend on client-side image matching.
 
-Detection uses embedded PNG reference images for each of the 7 modes and the help screen. A mode is declared when 85% or more of the reference mask pixels match within a colour tolerance of ±30 per channel. The help-screen overlay requires 97% match.
+- The mode is shown in the status bar and drives the lit mode button on the control surface.
+- Mode change buttons are ignored until the daemon confirms the board has finished booting (its `BOOT=` gate), so a stray press during boot can't light the wrong button.
+- The daemon also reports a program-edit context (`EDITCTX`), which lights the Combi or Sequence button while you're editing a Program from inside one.
 
-If the reference images are missing (unlikely in a normal build), the mode display shows "Unknown".
+(The client still uses a reference-image match purely for the on-screen Help overlay.)
 
 ---
 
@@ -393,6 +468,7 @@ The status bar at the bottom of the window shows:
 | Notification bubble | Click to open the log file; turns red on errors |
 | Keyboard Info | Opens a pane displaying CPU, memory, temperature, and storage stats |
 | VU meter | Audio level of a local Windows device (e.g. your DAW output). Click ▾ to pick the device; choice is saved |
+| MIDI link badge | USB (green) / DIN (amber) / TCP (blue) - which link carries MIDI/SysEx (see [MIDI / SysEx](#midi--sysex)) |
 | Change / Pull | Active streaming mode for the current connection |
 | Mode | Current Kronos operating mode - right-click to change mode |
 
@@ -410,7 +486,6 @@ The app minimises to the system tray when the window is closed with **Minimize t
 |---|---|
 | `F1` | Open help window |
 | `F2`–`F8` | Switch Kronos mode (Setlist through Disk) |
-| `A` | Toggle aspect lock |
 | `C` | Toggle calibration mode |
 | `F` | Toggle fullscreen |
 | `M` | Toggle VGA mirror |
@@ -432,20 +507,29 @@ All shortcuts (except Ctrl combos) are rebindable in Settings → Key Bindings.
 
 ## Data Files
 
-Application data is stored in:
+Application data is stored next to the executable (portable - the exe's own folder):
 
 ```
-%APPDATA%\KronosScreenRemote\
-  settings.json           - connection, streaming, display settings, key bindings, credentials
-  raw_key_mappings.json   - raw key map entries
-  macros.json             - recorded macro sequences
-  cal_data.json           - calibration mesh
-  palette_override.json   - palette overrides
-  palette_lock.json       - palette lock state
-  screenremote.log        - verbose diagnostic log (written when Debug Logging is enabled)
+<exe directory>/
+  settings.json            - connection, streaming, display, MIDI settings, key bindings, credentials
+  raw_key_mappings.json    - raw key map entries
+  macros.json              - recorded macro sequences
+  cal_data.json            - calibration mesh
+  palette_override.json    - palette overrides
+  screenremote.log         - diagnostic log (written when Debug Logging is enabled)
+
+  local_library/           - the Librarian's local library (index.json, oplog.jsonl, content-addressable blobs)
+  name_cache.json          - per-Kronos program/combi name cache (program-change follow)
+  setlist_cache.json       - per-Kronos set-list cache
+  dumped_banks.json        - per-Kronos ledger of name banks already dumped
+  category_names_cache.json - per-Kronos category names (from a Global dump)
+  librarian_backups/       - timestamped .syx backups taken before every Kronos write
+  local_library_clipboard.json - the Librarian's cross-session clipboard
 ```
 
-All files are JSON and can be hand-edited. The **Export/Import** feature in Settings is the supported way to back them up or transfer them to another machine.
+All files are JSON (the local library uses JSON + append-only op-log + SHA-1-addressed blobs) and can be hand-edited. The **Export/Import** feature in Settings backs up/restores `settings.json` (including key bindings and macros); the local library and caches are separate.
+
+> **Note:** the local library and caches are keyed per Kronos (by host for TCP, by device match for USB), so reconnecting to the same instrument reuses them.
 
 ---
 
@@ -456,6 +540,7 @@ All files are JSON and can be hand-edited. The **Export/Import** feature in Sett
 - The Kronos FTP service (vsftpd) must be running - check with `ps | grep vsftpd` via SSH.
 - Credentials can be tested from a command line: `ftp 192.168.1.2` (or your Kronos IP).
 - If using KronosNet.conf, ensure the file at `/korg/rw/screenremote/KronosNet.conf` is readable and correctly formatted (`username:password`, one entry per line).
+- **Note:** the daemon also accepts the username `kronos` with the device's PublicID as a password (an emergency recovery path for screen connect).
 
 **Connection times out after 10 seconds:**
 - Check that the Kronos is powered on and the `screenremote` daemon is running (`ps | grep screenremote` via SSH).
@@ -467,9 +552,11 @@ All files are JSON and can be hand-edited. The **Export/Import** feature in Sett
 - Confirm the control port (7374) is reachable - try `telnet 192.168.1.2 7374`.
 - Check that the stream client connected first (access control: only the stream client IP can send control commands).
 - If using a VPN or multiple network interfaces, the daemon may have bound to a different LAN IP. Check `dmesg | grep screenremote` on the Kronos for the bound address.
+- The daemon may still be in its boot gate (BOOT=1) - mutating commands return `ERR BOOTING` until it clears.
 
 **Keys do not produce the expected characters:**
 - Eva's character mapping is inverted from standard keyboards: unshifted keys produce uppercase, shifted keys produce lowercase. This is intentional.
+- Caps Lock is emulated by injecting Left Shift - if a letter is stuck lowercase, check the keyboard status (⌨ indicator) and that Shift was released.
 - Check the raw key map (Settings → Raw Key Map) for conflicting entries.
 - Numpad keys route to physical buttons and cannot be used for text input.
 
@@ -480,6 +567,7 @@ All files are JSON and can be hand-edited. The **Export/Import** feature in Sett
 **VGA mirror turns off after a while:**
 - The screensaver timeout has fired. Reduce or disable it in Settings → VGA Output → Screensaver timeout.
 
-**Mode is shown as "Unknown":**
-- The reference PNG images are missing from the app bundle.
-- The Kronos firmware version uses a slightly different UI layout. The tolerance (±30) covers minor differences; a major UI change would require new reference images.
+**Mode is shown as "Unknown" / mode buttons don't light:**
+- The daemon's boot gate is still closed (BOOT=1) - the daemon refuses mutating commands and reports mode as 0 until the board has finished booting. Wait a few seconds after power-on; the app disables mode presses until it clears.
+- The daemon's `eva_mode` module couldn't resolve (check MODE_DETAIL on the daemon).
+- You're not connected (mode follows the daemon's STATE poll, which needs a connection).

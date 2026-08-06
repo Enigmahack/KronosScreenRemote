@@ -66,7 +66,12 @@ public sealed class AudioEngine : IDisposable
     void OnData(object? sender, WaveInEventArgs e)
     {
         if (e.BytesRecorded == 0) return;
-        var fmt = _capture!.WaveFormat;
+        // Snapshot the capture: Stop() (UI thread) nulls _capture, and a WasapiCapture
+        // callback can already be in flight on the audio thread when that happens -
+        // dereferencing the field directly here was a latent NullReferenceException.
+        var cap = _capture;
+        if (cap == null) return;
+        var fmt = cap.WaveFormat;
         int ch = fmt.Channels;
 
         // Track per-sample peak amplitude so the VU meter reaches amber/red for

@@ -42,6 +42,7 @@ sealed class SysExDumpCollector
         var  results       = new List<byte[]>();
         long lastMatchTicks = 0;
         long lastActTicks   = 0;
+        long rejectTicks    = 0;
         int  activity       = 0;
         int  rejectCode     = -1;   // last func 0x24 Reply code seen (−1 = none)
 
@@ -57,7 +58,10 @@ sealed class SysExDumpCollector
             // 4 = "target object not found" (empty/absent bank). Capturing it makes
             // "rejected" distinct from "silent" in the sweep log.
             else if (KronosSysEx.HasKorgHeaderAt(m, 0, 0x24) && m.Length >= 6)
+            {
                 Volatile.Write(ref rejectCode, m[5] & 0x7F);
+                Volatile.Write(ref rejectTicks, DateTime.Now.Ticks);
+            }
         }
         void OnActivity()
         {
@@ -92,7 +96,12 @@ sealed class SysExDumpCollector
                 // End immediately instead of waiting out stallMs - the caller retries
                 // after a rest. NOTE: callers that rely on this fast exit MUST insert
                 // their own recovery pause; the old slow stall used to be the rest.
-                if (c == 0 && Volatile.Read(ref rejectCode) >= 0) { exit = "reject"; break; }
+                // A 0x24 carries no request correlation, so only trust it while it is
+                // still the NEWEST thing on the stream: once any later SysEx activity
+                // (e.g. the first bytes of our real reply) outdates it, the fast exit
+                // is off and the normal match/idle paths decide.
+                if (c == 0 && Volatile.Read(ref rejectCode) >= 0 &&
+                    Volatile.Read(ref lastActTicks) <= Volatile.Read(ref rejectTicks)) { exit = "reject"; break; }
                 if (Volatile.Read(ref activity) == 0)
                 {
                     if ((now - start).TotalMilliseconds > noResponseMs) { exit = "silence"; break; }   // total silence

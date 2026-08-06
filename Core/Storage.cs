@@ -224,10 +224,13 @@ static class Storage
     // Which (type, objBank) name-dumps have already been collected, persisted per
     // host. SEPARATE from the name cache on purpose: an EMPTY bank dumps 128 blank
     // names (all filtered out, nothing cached), so "has cached names" cannot tell a
-    // never-dumped bank from a dumped-but-empty one. The Kronos rejects name dumps
-    // after ~13 banks per app session, so a full sweep needs several sessions; this
-    // ledger lets each session skip banks already done and spend its budget on the
-    // rest, converging instead of re-grabbing the same first banks every time.
+    // never-dumped bank from a dumped-but-empty one. The ledger lets a Sync skip
+    // banks already done (across sessions), and a bank that didn't complete is left
+    // un-dumped so it retries next time. NOTE: the "~13 banks/session then the Kronos
+    // rejects everything" rationale this ledger was built under turned out to be a
+    // misdiagnosis (the func-0x77 whole-bank name enum is preset-only - it was
+    // rejecting USER banks, not imposing a session cap; see SysExService.
+    // SyncNamesAsync). The ledger is still useful, just not a throttle budget.
     // Invalidated per bank on a Bank Digest (func 0x38), same as the name cache.
 
     static string DumpedBanksPath => Path.Combine(DataDir, "dumped_banks.json");

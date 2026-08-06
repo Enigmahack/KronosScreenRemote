@@ -9,25 +9,36 @@ public class AppSettings
     public int    StreamPort { get; set; } = 7373;
     public int    CtrlPort   { get; set; } = 7374;
 
-    public bool PullMode { get; set; } = true;
-    public int  MaxFps   { get; set; } = 15;
+    public bool   PullMode { get; set; } = true;
+    public int    MaxFps   { get; set; } = 15;
 
     public bool   PromptBeforeQuitting { get; set; } = true;
     public bool   HideDataInput        { get; set; } = false;
     public bool   HideValueInput       { get; set; } = false;
+    public bool   ReverseScrolling { get; set;  } = false;
     public string ScreenshotDirectory  { get; set; } = "";
 
-    public bool VgaMirrorEnabled   { get; set; } = false;
-    public int  ScreensaverTimeout { get; set; } = 300;
+    public bool   VgaMirrorEnabled   { get; set; } = false;
+    public int    ScreensaverTimeout { get; set; } = 300;
 
     public LayoutPreset LayoutPreset { get; set; } = LayoutPreset.Full;
-    public bool FocusedDataExpanded  { get; set; } = false;
-    public bool FocusedValueExpanded { get; set; } = false;
+    public bool   FocusedDataExpanded  { get; set; } = false;
+    public bool   FocusedValueExpanded { get; set; } = false;
 
-    public bool DebugLogging { get; set; } = false;
+    public bool   DebugLogging { get; set; } = false;
 
     // Librarian: Merge Window staging cache - see MergeCacheBehavior's own doc comment.
     public MergeCacheBehavior MergeBehavior { get; set; } = MergeCacheBehavior.TemporaryMemory;
+
+    // Merge Window -> Local Library duplication policy (Settings > Librarian; also mirrored as
+    // quick toggles in the Merge Window toolbar - see LibrarianShellViewModel's same-named
+    // properties). When checked, placing a staged object whose content already exists somewhere
+    // in Local Library still writes a FRESH copy ("preserve duplication"); when unchecked, the
+    // existing copy is reused instead of writing a duplicate (LibrarianShellViewModel.
+    // FindExistingLocalCopy). Defaults mirror the long-standing behavior: Programs dedup,
+    // Combis copy as-is.
+    public bool MergePreserveDuplicatePrograms { get; set; } = false;
+    public bool MergePreserveDuplicateCombis   { get; set; } = true;
 
     // MIDI / SysEx
     // Which backend carries MIDI/SysEx to the Kronos (screen/video stays TCP).

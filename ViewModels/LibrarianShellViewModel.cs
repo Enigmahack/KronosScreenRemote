@@ -48,6 +48,33 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     [ObservableProperty] string? warningText;
     [ObservableProperty] bool forceFullPull;
 
+    // Merge Window -> Local Library duplication policy, seeded from AppSettings in the ctor and
+    // mirrored by the Merge Window toolbar's quick toggles (persisted defaults live in Settings >
+    // Librarian). ON = always write a FRESH copy, even when byte-identical content already sits
+    // somewhere in Local Library ("preserve duplication"); OFF = reuse the existing copy instead
+    // of writing a duplicate (see FindExistingLocalCopy). Read at the moment of placement, same
+    // as MergePane.ForceOverwrite - flipping one doesn't retroactively change anything placed.
+    [ObservableProperty] bool mergePreserveDuplicatePrograms;
+    [ObservableProperty] bool mergePreserveDuplicateCombis;
+
+    // Write-through persistence for the two toggles above - LibrarianShellWindow sets this to
+    // Storage.SaveSettings so a toolbar flip survives a restart. Left null in a headless
+    // self-test: flipping a toggle mid-test must never touch the real settings.json beside the
+    // exe (the AppSettings OBJECT is still updated, which is all the placement paths read).
+    public Action<AppSettings>? PersistSettings { get; set; }
+
+    partial void OnMergePreserveDuplicateProgramsChanged(bool value)
+    {
+        _settings.MergePreserveDuplicatePrograms = value;
+        PersistSettings?.Invoke(_settings);
+    }
+
+    partial void OnMergePreserveDuplicateCombisChanged(bool value)
+    {
+        _settings.MergePreserveDuplicateCombis = value;
+        PersistSettings?.Invoke(_settings);
+    }
+
     // Set once by LibrarianShellWindow's constructor to a WPF MessageBox prompt - keeps this
     // ViewModel free of WPF types (the established split: confirmations are a code-behind
     // concern). Called from PrepareForPushAsync only when ResolvePendingDependencies couldn't
@@ -61,6 +88,11 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         _cache = cache;
         _settings = settings;
         _host = host;
+        // Field assignment, not the property setters: seeding from settings must not fire the
+        // OnChanged write-through above (nothing changed - and a headless self-test has no
+        // PersistSettings hook to fire it into anyway).
+        mergePreserveDuplicatePrograms = settings.MergePreserveDuplicatePrograms;
+        mergePreserveDuplicateCombis   = settings.MergePreserveDuplicateCombis;
         LocalPane = new LocalLibraryPaneViewModel(cache);
         MergePane = new MergePaneViewModel(new MergeCache(BuildMergePersistence(settings)));
         LocalPane.BankTypeOf = BankTypeOf;
@@ -671,12 +703,12 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         // Duplicate-content guard (same as PlaceFromMerge's single-item path): anything whose
         // content already lives elsewhere in Local Library is repointed there instead of
         // consuming a destination slot for a second copy - never even reaches the sequential
-        // fill below.
+        // fill below. Honours the per-type preserve-duplication toggles (FindExistingLocalCopy).
         var dedupedLocs = new List<ObjLoc>();
         var toPlace = new List<MergeEntry>();
         foreach (var entry in group)
         {
-            if (!WasStagedFromLocal(entry) && _cache.FindByContentHash(entry.ObjType, entry.ContentHash) is { } existingLoc)
+            if (FindExistingLocalCopy(entry) is { } existingLoc)
             {
                 MergePane.CommitPlacement(entry.ContentHash, existingLoc);
                 dedupedLocs.Add(existingLoc);
@@ -770,7 +802,13 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     // the UI thread, which a genuinely-async version would deadlock.
     public async Task<(bool Ok, string Message)> AutoFillFromMergeAsync(Func<string, Task>? pump = null)
     {
-        var staged = MergePane.Entries.ToList();
+        // EntriesInDisplayOrder, NEVER raw Entries: MergeCache's backing Dictionary recycles
+        // the array slots this sweep's own CommitPlacement removals freed, LIFO, so a re-copied
+        // PCG pulled in afterwards enumerates SCRAMBLED (a whole-bank re-copy comes out exactly
+        // backwards) - and anything enumerated here is the order slots are filled in. Display
+        // order (source bank, then source slot) is the order the Merge Window itself shows, so
+        // every Auto-Fill lands in the same order the user sees, first run or fifth.
+        var staged = MergePane.EntriesInDisplayOrder;
         if (staged.Count == 0) return (false, AppMessages.Librarian.Merge.AutoFillNothingStaged);
 
         using var undo = _undo.Begin(AppMessages.Librarian.Shell.UndoAutoFilled(staged.Count));
@@ -982,6 +1020,47 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     static bool WasStagedFromLocal(MergeEntry entry) =>
         entry.Origins.Any(o => o.PcgFileName == MergeCache.LocalSourceLabel);
 
+    // The per-type "preserve duplication" policy (Settings > Librarian; Merge Window toolbar
+    // quick toggles). Set Lists have no toggle and always take the duplicate-reuse path below.
+    bool PreserveDuplicationFor(int objType) => objType switch
+    {
+        LibObj.Program => MergePreserveDuplicatePrograms,
+        LibObj.Combi   => MergePreserveDuplicateCombis,
+        _              => false,
+    };
+
+    // The duplicate-content guard shared by PlaceFromMerge and PlaceMergeGroupSequentially:
+    // returns the Local Library location whose content already IS this entry (so the placement
+    // should repoint at it instead of writing a second copy), or null when the entry must be
+    // written - because it was staged FROM Local (its placement elsewhere is the whole point),
+    // because the user asked for duplication to be preserved for its type, or because nothing
+    // byte-identical exists anywhere locally.
+    //
+    // A Combi is compared TWICE when duplication isn't being preserved. Its staged body still
+    // holds the SOURCE (PCG) addresses for its timbres, so the raw content hash almost never
+    // matches a previously-placed copy - that copy was repointed at where its Programs actually
+    // landed before being written. Comparing the RESOLVED body (references repointed at local
+    // reality, exactly as placement itself would write it) is what makes "scan duplicates and
+    // reuse" actually fire for the re-copied-PCG case: the second copy resolves to the very
+    // same Program destinations the first copy was written with, so the bodies hash equal.
+    // Programs have no outgoing references (resolved == raw), and Set Lists deliberately keep
+    // the historical raw-hash-only comparison.
+    ObjLoc? FindExistingLocalCopy(MergeEntry entry)
+    {
+        if (WasStagedFromLocal(entry)) return null;
+        if (PreserveDuplicationFor(entry.ObjType)) return null;
+        if (_cache.FindByContentHash(entry.ObjType, entry.ContentHash) is { } raw) return raw;
+        if (entry.ObjType == LibObj.Combi && entry.RefSites.Count > 0)
+        {
+            var (resolved, _) = MergePane.ResolveReferencesForPlacement(entry, LocalLookup);
+            string resolvedHash = LocalObjectStore.ComputeHash(resolved);
+            if (resolvedHash != entry.ContentHash &&
+                _cache.FindByContentHash(entry.ObjType, resolvedHash) is { } found)
+                return found;
+        }
+        return null;
+    }
+
     public (bool Ok, string? Error) PlaceFromMerge(string mergeContentHash, ObjLoc destLoc)
     {
         using var undo = _undo.Begin(AppMessages.Librarian.Shell.UndoPlacedMergeItemAt(destLoc.Label()));
@@ -998,9 +1077,9 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         // hash at that existing location the same way a dependency would (RecordPlacement),
         // so any Merge-staged sibling that references it resolves to the ONE copy. Skipped
         // when the match IS the requested destination - that's just re-placing onto its own
-        // slot, not a duplicate elsewhere.
-        if (!WasStagedFromLocal(entry) &&
-            _cache.FindByContentHash(entry.ObjType, entry.ContentHash) is { } existingLoc && !existingLoc.Equals(destLoc))
+        // slot, not a duplicate elsewhere - or when the user preserves duplicates for this
+        // type (FindExistingLocalCopy's own policy check).
+        if (FindExistingLocalCopy(entry) is { } existingLoc && !existingLoc.Equals(destLoc))
         {
             MergePane.CommitPlacement(mergeContentHash, existingLoc);
             return (true, AppMessages.Librarian.Shell.ReusedExistingContent(existingLoc.Label()));

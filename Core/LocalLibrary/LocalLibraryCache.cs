@@ -179,13 +179,18 @@ sealed class LocalLibraryCache
         return null;
     }
 
-    public IEnumerable<ObjLoc> AllObjects() => _index.Entries.Keys.Select(ParseKey);
+    // The ObjType >= 0 filter drops ParseKey's malformed-key sentinel (-1,-1,-1) so it
+    // can never leak into a caller's hardware request or tree node (see ParseKey).
+    public IEnumerable<ObjLoc> AllObjects() =>
+        _index.Entries.Keys.Select(ParseKey).Where(loc => loc.ObjType >= 0);
 
     public IEnumerable<ObjLoc> PendingDeleteObjects() =>
-        _index.Entries.Where(kv => kv.Value.PendingDelete).Select(kv => ParseKey(kv.Key));
+        _index.Entries.Where(kv => kv.Value.PendingDelete).Select(kv => ParseKey(kv.Key))
+              .Where(loc => loc.ObjType >= 0);
 
     public IEnumerable<ObjLoc> DirtyObjects() =>
-        _index.Entries.Where(kv => kv.Value.CurrentHash != kv.Value.BaselineHash).Select(kv => ParseKey(kv.Key));
+        _index.Entries.Where(kv => kv.Value.CurrentHash != kv.Value.BaselineHash).Select(kv => ParseKey(kv.Key))
+              .Where(loc => loc.ObjType >= 0);
 
     public Dictionary<(int ObjType, int Bank), string> BankDigestBaselineHex()
     {
@@ -193,7 +198,13 @@ sealed class LocalLibraryCache
         foreach (var (key, hex) in _index.BankDigestBaseline)
         {
             var parts = key.Split(':');
-            result[(int.Parse(parts[0]), int.Parse(parts[1]))] = hex;
+            // TryParse, not Parse: these keys round-trip through a user-visible JSON
+            // file - a hand-edited or corrupted cache must skip a bad key, not throw
+            // FormatException into a tree-refresh path.
+            if (parts.Length == 2 &&
+                int.TryParse(parts[0], out int t) &&
+                int.TryParse(parts[1], out int b))
+                result[(t, b)] = hex;
         }
         return result;
     }
@@ -219,10 +230,19 @@ sealed class LocalLibraryCache
         lock (_lock) _index.PendingProgramBankTypeChanges.Remove(bank);
     }
 
+    // Keys are written by LocalLibraryIndex.Key ("type:bank:number") but live in a
+    // user-visible JSON file - tolerate a malformed key rather than crashing the
+    // caller. The (-1,-1,-1) sentinel never matches a real LibObj type in direct
+    // comparisons, and the enumeration properties above filter it out entirely.
     static ObjLoc ParseKey(string key)
     {
         var parts = key.Split(':');
-        return new ObjLoc(int.Parse(parts[0]), int.Parse(parts[1]), int.Parse(parts[2]));
+        if (parts.Length == 3 &&
+            int.TryParse(parts[0], out int t) &&
+            int.TryParse(parts[1], out int b) &&
+            int.TryParse(parts[2], out int n))
+            return new ObjLoc(t, b, n);
+        return new ObjLoc(-1, -1, -1);
     }
 
     // Decodes just the name field from a raw body - cheap, in-memory, no disk I/O. Called

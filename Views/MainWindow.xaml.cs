@@ -39,12 +39,13 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     Dictionary<int, PaletteEntry> _overrides = new();
 
     // ── Display state ─────────────────────────────────────────────────────────
-    bool   _mirrorState  = false;
-    bool   _zoomOn       = false;
-    double _zoomLevel    = 2.5;
-    bool   _hideDataInput       = false;
-    bool   _hideValueInput      = false;
-    bool   _focusedDataExpanded  = false;
+    bool   _mirrorState = false;
+    bool   _zoomOn = false;
+    double _zoomLevel = 2.5;
+    bool   _hideDataInput = false;
+    bool   _scrollDirection = false;
+    bool   _hideValueInput = false;
+    bool   _focusedDataExpanded = false;
     bool   _focusedValueExpanded = false;
     double _currentScale    = 1.0;
     // Size SetWindowSize last applied, so a subsequent manual resize can be told apart from
@@ -218,6 +219,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         KbdInfoBtn.MouseLeftButtonDown   += (_, _) => OpenKeyboardInfoWindow();
 
         _hideDataInput  = _settings.HideDataInput;
+        _scrollDirection = _settings.ReverseScrolling;
         _hideValueInput = _settings.HideValueInput;
         _overrides    = Storage.LoadOverrides();
         (_cal.Mesh, _cal.BiasDots) = Storage.LoadCal();
@@ -443,6 +445,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         if (e.LeftButton != MouseButtonState.Pressed) { EndWheelDrag(); return; }
         double dy    = _wheel.DragStartY - e.GetPosition(Data_Wheel).Y; // +ve = up = CW
         int    steps = (int)(dy / WheelState.PxPerStep);
+        
         int    diff  = steps - _wheel.DragSteps;
 
         if (diff > 0)
@@ -935,7 +938,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
                 case "--host":  _host     = args[++i]; break;
                 case "--port":  if (int.TryParse(args[++i], out int p))  _port     = p; break;
                 case "--ctrl":  if (int.TryParse(args[++i], out int cp)) _ctrlPort = cp; break;
-                case "--fps":   if (int.TryParse(args[++i], out int f))  _fps      = Math.Min(f, 15); break;
+                case "--fps":   if (int.TryParse(args[++i], out int f))  _fps      = Math.Clamp(f, 0, 15); break;   // 0 = daemon max
                 case "--mode":  _pullMode = args[++i] == "pull"; break;
             }
         }
@@ -1048,6 +1051,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         _fps      = _settings.MaxFps;
         _hideDataInput  = _settings.HideDataInput;
         _hideValueInput = _settings.HideValueInput;
+        _scrollDirection = _settings.ReverseScrolling;
         SetCtrlClient(_host, _ctrlPort);
         Storage.SaveSettings(_settings);
 

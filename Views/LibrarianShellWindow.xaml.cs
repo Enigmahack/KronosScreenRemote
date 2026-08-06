@@ -44,6 +44,11 @@ internal partial class LibrarianShellWindow : ThemedWindow
     {
         InitializeComponent();
         _vm = new LibrarianShellViewModel(sysEx, cache, settings, host);
+        // The Merge Window toolbar's duplication toggles double as persisted settings (they
+        // mirror Settings > Librarian): flipping one writes through to the shared AppSettings
+        // and saves. The ViewModel deliberately leaves the hook null itself so headless
+        // self-tests never touch the real settings.json beside the exe.
+        _vm.PersistSettings = Storage.SaveSettings;
         DataContext = _vm;
 
         // Break the Owner link before closing so WPF doesn't minimize the parent when this

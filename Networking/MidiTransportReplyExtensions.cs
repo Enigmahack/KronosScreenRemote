@@ -28,7 +28,14 @@ static class MidiTransportReplyExtensions
         where T : struct
     {
         var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-        void OnMsg(byte[] m) { if (match(m) is { } value) tcs.TrySetResult(value); }
+        void OnMsg(byte[] m)
+        {
+            // match() runs on the transport's stream-read thread via the event - a
+            // throwing parser would propagate back into that loop and kill it. A
+            // malformed message is simply not our reply; keep listening.
+            try { if (match(m) is { } value) tcs.TrySetResult(value); }
+            catch { }
+        }
 
         transport.SysExMessageReceived += OnMsg;
         try
@@ -53,7 +60,13 @@ static class MidiTransportReplyExtensions
         where T : class
     {
         var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-        void OnMsg(byte[] m) { if (match(m) is { } value) tcs.TrySetResult(value); }
+        void OnMsg(byte[] m)
+        {
+            // Same reasoning as the struct overload above: never let a throwing match()
+            // escape onto the stream-read thread.
+            try { if (match(m) is { } value) tcs.TrySetResult(value); }
+            catch { }
+        }
 
         transport.SysExMessageReceived += OnMsg;
         try

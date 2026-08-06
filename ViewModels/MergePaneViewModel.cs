@@ -111,8 +111,18 @@ partial class MergePaneViewModel : ObservableObject
     // Everything currently staged, flat - the tree (Roots) is a DISPLAY shape that nests
     // dependencies under their referrers and hides a nested entry from its own type root, so it
     // can't be walked to answer "what is still staged". Auto-Fill needs exactly that flat answer
-    // (LibrarianShellViewModel.AutoFillFromMerge).
+    // (LibrarianShellViewModel.AutoFillFromMerge) - but only for COUNTING; the walk that decides
+    // placement order must use EntriesInDisplayOrder, never this raw enumeration.
     public IReadOnlyCollection<MergeEntry> Entries => _cache.Entries;
+
+    // Everything staged, flat, in the same (source bank, source slot, hash) order the tree
+    // displays - see InDisplayOrder below for why raw Entries enumeration can never be trusted:
+    // after a first Auto-Fill's CommitPlacement removals recycle the backing Dictionary's array
+    // slots (LIFO), the next pull's inserts land in those slots in reverse, so raw Entries
+    // enumerates the re-copied content SCRAMBLED - for a whole-bank re-copy, exactly backwards.
+    // Auto-Fill (LibrarianShellViewModel.AutoFillFromMerge) places whatever this returns, so a
+    // second Auto-Fill lands in the same source order the Merge Window itself shows.
+    public IReadOnlyList<MergeEntry> EntriesInDisplayOrder => InDisplayOrder(_cache.Entries).ToList();
     public (byte[] Body, List<MergeRefSite> Unresolved) ResolveReferencesForPlacement(
         MergeEntry entry, Func<int, string, ObjLoc?>? localLookup = null) =>
         _cache.ResolveReferencesForPlacement(entry, localLookup);
@@ -170,7 +180,7 @@ partial class MergePaneViewModel : ObservableObject
         // A Set List is always effectively "top-level" - nothing else in this reference
         // graph ever points at one (see ObjectReferenceWalker) - so every staged Set List
         // shows up here, fully expanded.
-        foreach (var e in _cache.Entries.Where(e => e.ObjType == LibObj.SetList))
+        foreach (var e in InDisplayOrder(_cache.Entries.Where(e => e.ObjType == LibObj.SetList)))
             setListsRoot.Children.Add(MakeNodeWithChildren(e, byHash));
 
         // Combis/Programs show at THEIR OWN top-level section when the user explicitly pulled
@@ -211,8 +221,12 @@ partial class MergePaneViewModel : ObservableObject
         // still-referenced only if that referrer is ITSELF still staged (Remove/CommitPlacement
         // never retroactively clean up a placed/removed entry's ReferencedBy bookkeeping, so it's
         // recomputed fresh against the CURRENT snapshot here rather than trusted at face value).
-        var groups = _cache.Entries
-            .Where(e => e.ObjType == objType && (e.IsTopLevelPull || !e.ReferencedBy.Any(byHash.ContainsKey)))
+        // InDisplayOrder sorts BEFORE grouping: GroupBy keeps each group's elements in
+        // source-sequence order, so the sorted walk makes children appear in source-slot
+        // order inside their bank group (and groups themselves end up bank-ordered, made
+        // explicit by the OrderBy below regardless).
+        var groups = InDisplayOrder(_cache.Entries
+                .Where(e => e.ObjType == objType && (e.IsTopLevelPull || !e.ReferencedBy.Any(byHash.ContainsKey))))
             .GroupBy(PrimaryBank)
             .OrderBy(g => g.Key);
         foreach (var group in groups)
@@ -231,6 +245,22 @@ partial class MergePaneViewModel : ObservableObject
     // it has no origin at all). Dedup can give one entry multiple origins; the first is a stable,
     // good-enough choice for grouping (the common case is a single-source pull anyway).
     static int PrimaryBank(MergeEntry entry) => entry.Origins.Count > 0 ? entry.Origins[0].SourceLoc.Bank : 0;
+
+    // Same idea, for the slot within that bank.
+    static int PrimaryNumber(MergeEntry entry) => entry.Origins.Count > 0 ? entry.Origins[0].SourceLoc.Number : 0;
+
+    // Canonical display order for a cache walk. MergeCache's store is a plain Dictionary,
+    // whose enumeration order equals insertion order ONLY until the first removal: a removed
+    // entry's array slot gets recycled by the next insert, so after any placement/removal
+    // (an Auto-Fill sweep's CommitPlacement, a manual Remove) the NEXT pull can surface
+    // mid-list instead of at the end - "pulled another object in right after Auto-Fill and
+    // the Merge tree shows it out of order". Never trust raw enumeration order for display:
+    // sort by source bank, then source slot; content hash is only a deterministic tiebreak
+    // for the rare same-slot collision (two different files sharing a filename).
+    static IOrderedEnumerable<MergeEntry> InDisplayOrder(IEnumerable<MergeEntry> entries) =>
+        entries.OrderBy(PrimaryBank)
+               .ThenBy(PrimaryNumber)
+               .ThenBy(e => e.ContentHash, StringComparer.Ordinal);
 
     ObjectTreeNode MakeNodeWithChildren(MergeEntry entry, Dictionary<string, MergeEntry> byHash)
     {

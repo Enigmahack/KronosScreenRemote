@@ -43,7 +43,10 @@ sealed class StreamReceiver : IStreamReceiver
         _host = host;
         _port = port;
         _mode = pullMode ? ModePull : ModeChange;
-        _fps  = (byte)Math.Min(fps, 15);
+        // Protocol: 1-15, 0 = daemon uses its maximum. Clamp negative garbage from a
+        // hand-edited settings file / CLI arg to 0 (daemon max) rather than letting a
+        // negative int wrap to 200+ through the byte cast (daemon clamps that to 15).
+        _fps  = (byte)Math.Clamp(fps, 0, 15);
         _user = user;
         _pass = pass;
     }
@@ -161,7 +164,6 @@ sealed class StreamReceiver : IStreamReceiver
     {
         double interval = _mode == ModePull && _fps > 0 ? 1000.0 / _fps : 0;
         var hdrBuf = new byte[4];
-        bool firstFrame = true;
 
         // Snapshot the socket into a loop-local variable so Dispose() can safely null
         // _sock without the loop observing the null mid-flight. All socket ops in this
@@ -178,13 +180,14 @@ sealed class StreamReceiver : IStreamReceiver
                 }
                 else
                 {
-                    // Pull the first frame so the client always starts with the current
-                    // screen state.  Change-driven mode only sends when the screen changes,
-                    // so a static Kronos display means the client sees nothing until the
-                    // UI moves.
-                    if (firstFrame)
-                        sock.Send([(byte)0xFF]);
-                    firstFrame = false;
+                    // NOTE: no initial-frame pull here. The daemon pushes a full frame
+                    // immediately on connect in change mode (screenremote.c's
+                    // client_just_connected path), and it never reads from the client
+                    // socket in this mode, so a 0xFF here would sit unread in the
+                    // daemon's recv buffer forever. (An earlier version sent exactly
+                    // that, under a comment claiming it pulled the first frame - it
+                    // never did anything.) A forced resync after drift is what the
+                    // REFRESH ctrl command is for.
                     if (!Poll(sock, 5000)) continue; // idle gap is normal - Kronos screen unchanged
                     // Dead-connection detection is handled entirely by TCP keepalive (set in
                     // ConnectAsync).  When keepalive fails, the socket enters error state,

@@ -30,12 +30,15 @@
             <!-- ── General ───────────────────────────────────────────────── -->
             <TabItem Header="General">
                 <StackPanel Margin="0 4 0 0">
+                    <TextBlock Text="General" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 0 0 8"/>
                     <CheckBox x:Name="ChkPromptQuit"   Content="Prompt before quitting"    Margin="0 0 0 10"
                               ToolTip="Shows a confirmation dialog before the app closes."/>
                     <CheckBox x:Name="ChkHideDataInput"  Content="Hide data input panel on startup"  Margin="0 0 0 10"
                               ToolTip="Hides the right-hand button panel at launch. Toggle from View → Hide Data Input."/>
-                    <CheckBox x:Name="ChkHideValueInput" Content="Hide value input panel on startup" Margin="0 0 0 18"
+                    <CheckBox x:Name="ChkHideValueInput" Content="Hide value input panel on startup" Margin="0 0 0 10"
                               ToolTip="Hides the left-hand slider panel at launch. Toggle from View → Hide Value Input."/>
+                    <CheckBox x:Name="ChkReverseScrolling" Content="Reverse mouse scrolling direction" Margin="0 0 0 18"
+                              ToolTip="Reverses the direction of mouse scrolling."/>
 
                     <TextBlock Text="Screenshots" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 0 0 8"/>
                     <Grid Margin="0 0 0 4">
@@ -44,7 +47,7 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Output folder" VerticalAlignment="Center"
+                        <TextBlock Grid.Column="0" Text="Output folder:" VerticalAlignment="Center" HorizontalAlignment="Right" Margin="0 0 8 0"
                                    ToolTip="Folder where quick-save screenshots are stored."/>
                         <TextBox   Grid.Column="1" x:Name="TxtScreenshotDir" Margin="0 0 6 0"
                                    ToolTip="Type a path directly, or click Browse to pick one. Leave empty to save next to the app executable."/>
@@ -717,6 +720,17 @@
                     </Grid>
                     <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
                                Text="Controls whether the Librarian's Merge Window (a staging area for objects pulled from loaded PCG files, before they're placed into your Local Library) survives an app restart or crash."/>
+
+                    <Border Background="#FF444444" Margin="0 14 0 14" Height="1"/>
+
+                    <CheckBox x:Name="ChkPreserveDupPrograms" Content="Programs: preserve duplication"
+                              Margin="0 0 0 6"
+                              ToolTip="Checked: placing a Program from the Merge Window always copies it as-is into a fresh slot, even if byte-identical content already exists in your Local Library. Unchecked (default): duplicates are detected and the existing copy is reused."/>
+                    <CheckBox x:Name="ChkPreserveDupCombis" Content="Combis: preserve duplication"
+                              Margin="0 0 0 6"
+                              ToolTip="Checked (default): placing a Combi from the Merge Window always copies it as-is into a fresh slot. Unchecked: duplicates are detected and the existing copy is reused - compared after its Program references are re-pointed, so a re-copied PCG still matches."/>
+                    <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
+                               Text="When placing from the Merge Window into Local Library, choose per object type whether duplicates are preserved (copied as-is) or detected and reused. Also available as quick toggles in the Merge Window toolbar; both stay in sync."/>
                 </StackPanel>
             </TabItem>
 

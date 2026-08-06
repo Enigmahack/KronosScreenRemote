@@ -427,10 +427,10 @@ sealed class KronosSysEx
             if (dataEnd < 0) dataEnd = bytes.Length;
 
             int sysExLen = dataEnd - dataStart;
-            if (sysExLen < 2) return null;
+            if (sysExLen < 2) continue;   // spurious header match - keep scanning
 
             var decoded = Decode8to7(bytes, dataStart, sysExLen);
-            if (decoded.Length < 24) return null;
+            if (decoded.Length < 24) continue;
 
             return Encoding.ASCII.GetString(decoded, 0, 24).TrimEnd('\0', ' ');
         }
@@ -599,7 +599,7 @@ sealed class KronosSysEx
         int dataStart = 10;                                      // after version byte
         int dataEnd = Array.IndexOf(msg, (byte)0xF7, dataStart);
         if (dataEnd < 0) dataEnd = msg.Length;
-        if (dataEnd - dataStart < 2) return (index, "");
+        if (dataEnd - dataStart < 2) return (-1, "");   // too short to hold a name at all
 
         // Name is the first 24 bytes of every object (name-only or full). Decode
         // just enough (32 sys/ex bytes → ≥24 binary) so a full 4 KB program dump
