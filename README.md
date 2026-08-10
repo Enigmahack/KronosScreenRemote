@@ -11,7 +11,7 @@ This application has not been vibe-coded - Some AI was used in the development o
 | Repository | Description |
 |---|---|
 | [KronosScreenRemote](https://github.com/Enigmahack/KronosScreenRemote) | This repo - Windows desktop client |
-| [KronosScreenRemoteDaemon](https://github.com/Enigmahack/KronosScreenRemoteDaemon) | Kronos-side daemon (required) |
+| [KronosScreenRemoteDaemon](https://github.com/Enigmahack/KronosScreenRemoteDaemon) | Kronos-side daemon (required - gets installed on the Kronos) |
 
 > **Shared context**: this project is part of a larger Kronos RE/modding
 > ecosystem (this client + [KronosScreenRemotePy](../KronosScreenRemotePy/) +
