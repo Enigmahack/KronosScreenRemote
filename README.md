@@ -16,10 +16,6 @@ This application has not been vibe-coded - Some AI was used in the development o
 > **Shared context**: this project is part of a larger Kronos RE/modding
 > ecosystem (this client + [KronosScreenRemotePy](../KronosScreenRemotePy/) +
 > [kronosology](../kronosology/) + [KronosScreenRemoteDaemon](../KronosScreenRemoteDaemon/)).
-> Cross-project architecture, shared dev environments, credentials/access
-> pointers, and agent/tooling policy live in
-> [`/home/share/PROJECT_BRAIN/BRAIN.md`](../PROJECT_BRAIN/BRAIN.md) -
-> check there before duplicating knowledge into this repo.
 
 ---
 
