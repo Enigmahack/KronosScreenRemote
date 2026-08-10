@@ -22,6 +22,19 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     readonly string _host;
     readonly SessionDependencyClipboard _sessionClipboard = new();
 
+    // Bounds a Sync's PULL half (LibraryPullPipeline.PullAsync, the only phase that loops over
+    // every registry bank - up to minutes on a Force Full Sync) to this window's own lifetime.
+    // _cache and _sysEx are the MainWindow-owned, app-lifetime singletons (constructed once,
+    // reused across every open/close of the Librarian), so without this a window closed
+    // mid-pull left its SyncLibraryAsync Task running headless in the background - nothing ever
+    // cancelled it, nothing ever awaited it. Reopening and starting another sync while the
+    // orphan was still grinding through hundreds of banks meant two concurrent pulls serializing
+    // through the same SysExDumpCollector gate, each still allocating for as long as it ran -
+    // repeat that a few times (open, start a Full Sync, close before it finishes) and memory
+    // climbs with every cycle, exactly because nothing was ever torn down, only orphaned. See
+    // Dispose().
+    CancellationTokenSource? _syncCts;
+
     // Linear undo over every LOCAL (pre-Commit) edit made in this window - see
     // Core/LocalLibrary/LibrarianUndo.cs for the capture model and what's deliberately out of
     // scope. Every mutating action here (and on LocalPane, via its injected BeginUndo) wraps
@@ -45,6 +58,10 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] bool isBusy;
     [ObservableProperty] string statusText = "";
+    // Drives StatusText's green/neutral styling (LibrarianShellWindow.xaml) - true only for the
+    // "pulled fine, nothing local to push" outcome of a Sync (see SyncLibraryAsync). Reset in
+    // ClearPaneStatuses so a later Undo/Commit never inherits a stale green from a prior Sync.
+    [ObservableProperty] bool statusIsSuccess;
     [ObservableProperty] string? warningText;
     [ObservableProperty] bool forceFullPull;
 
@@ -81,6 +98,13 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     // clear everything automatically; returns true to proceed anyway, false to cancel the
     // Sync/Commit entirely. Null (e.g. a headless self-test) defaults to proceeding.
     public Func<IReadOnlyList<SessionDependencyEntry>, Task<bool>>? ConfirmContinueWithPendingDependencies { get; set; }
+
+    // Set once by LibrarianShellWindow's constructor to a WPF MessageBox prompt, same split as
+    // ConfirmContinueWithPendingDependencies above. Called (via ConfirmDestinationBankAsync) only
+    // when the destination bank of a Merge/PCG -> Local placement has never been confirmed
+    // against the Kronos. Returns true to place anyway, false to cancel. Null (e.g. a headless
+    // self-test) defaults to proceeding - same convention as every other confirm gate here.
+    public Func<int, int, Task<bool>>? ConfirmDestinationBankMaybeStale { get; set; }
 
     public LibrarianShellViewModel(ILibrarianService sysEx, LocalLibraryCache cache, AppSettings settings, string host)
     {
@@ -411,6 +435,13 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     // previous session's dead recorder.
     public void Dispose()
     {
+        // Cancel BEFORE unhooking undo: an in-flight pull observes this within one bank's worth
+        // of network round trips (LibraryPullPipeline.PullAsync's own checks), not "runs to
+        // completion headless" - see _syncCts's own comment for why that distinction is the
+        // whole point. Deliberately not awaited here - Dispose is synchronous, and the pull
+        // unwinds on its own within a few seconds now that it actually observes cancellation;
+        // waiting for that here would block the window's Closing handler on network I/O.
+        _syncCts?.Cancel();
         _undo.Changed -= OnUndoStackChanged;
         _undo.Dispose();
     }
@@ -418,20 +449,38 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanRunHardwareOp))]
     async Task SyncLibraryAsync()
     {
-        IsBusy = true; WarningText = null;
+        IsBusy = true; WarningText = null; StatusIsSuccess = false;
+        using var cts = new CancellationTokenSource();
+        _syncCts = cts;
         try
         {
             if (!await PrepareForPushAsync()) return;
             var (pull, push) = await SyncPipeline.SyncLibraryAsync(
-                _sysEx, _cache, _sessionClipboard, ForceFullPull, m => StatusText = m);
-            StatusText = AppMessages.Librarian.Shell.SyncResult(pull.ObjectsFetched, pull.Conflicts, push.Written, push.Deleted);
-            // Surface a CHECK/REFUSE explanation whenever one exists, not just on a hard failure -
-            // a "0 written" push (nothing to push, or every change conflicted) still reports Ok:
-            // true, and the text is the only thing that explains why. Only actually reaching
-            // hardware justifies dropping the undo stack (see ClearAfterSuccessfulPush's own
-            // comment) - a push that wrote/deleted nothing must not be treated as "this local
-            // state is now safely on hardware."
-            if (push.Error != null) WarningText = push.Error;
+                _sysEx, _cache, _sessionClipboard, ForceFullPull, m => StatusText = m, cts.Token);
+            // A pull that succeeded with nothing locally dirty to push back is a complete,
+            // successful Sync - not the CHECK/warning ChangesetBuilder's early-return produces for
+            // the same state (that's meant for Commit Changes, which has no pull to justify "why
+            // did nothing happen"). Only when the pull ALSO flagged zero conflicts: a pull that
+            // conflicted something is not "Complete" even though the push still had nothing to
+            // write (a conflicted object is deliberately excluded from Writes, not "not dirty").
+            bool nothingToPushClean = push.Ok && push.Written == 0 && push.Deleted == 0
+                && pull.Conflicts == 0 && push.Error == AppMessages.Librarian.Sync.CheckNothingToPush;
+            if (nothingToPushClean)
+            {
+                StatusText = AppMessages.Librarian.Shell.SyncComplete(ForceFullPull, pull.ObjectsFetched, pull.Conflicts);
+                StatusIsSuccess = true;
+            }
+            else
+            {
+                StatusText = AppMessages.Librarian.Shell.SyncResult(pull.ObjectsFetched, pull.Conflicts, push.Written, push.Deleted);
+                // Surface a CHECK/REFUSE explanation whenever one exists, not just on a hard
+                // failure - a "0 written" push (nothing to push, or every change conflicted) still
+                // reports Ok: true, and the text is the only thing that explains why.
+                if (push.Error != null) WarningText = push.Error;
+            }
+            // Only actually reaching hardware justifies dropping the undo stack (see
+            // ClearAfterSuccessfulPush's own comment) - a push that wrote/deleted nothing must not
+            // be treated as "this local state is now safely on hardware."
             if (push.Ok && push.Written + push.Deleted > 0) ClearAfterSuccessfulPush();
             AppLog.Info($"[librarian] sync done: fetched={pull.ObjectsFetched} pushed={push.Written} hasObjects={_cache.HasAnyObjects}");
             InvalidateReadOnlyBankNames();   // the name sweep may have learned new GM/g banks meanwhile
@@ -447,6 +496,11 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         }
         finally
         {
+            // Cleared before `using var cts` disposes it below (both run on the UI thread, in
+            // this order, with nothing able to interleave) - Dispose() calling Cancel() on an
+            // already-disposed CTS would throw ObjectDisposedException instead of the no-op it
+            // needs to be once a sync has already finished on its own.
+            _syncCts = null;
             LocalPane.RefreshTree();
             RefreshHistory();
             IsBusy = false;
@@ -456,7 +510,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanRunHardwareOp))]
     async Task CommitChangesAsync()
     {
-        IsBusy = true; WarningText = null;
+        IsBusy = true; WarningText = null; StatusIsSuccess = false;
         try
         {
             if (!await PrepareForPushAsync()) return;
@@ -513,6 +567,54 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         RefreshSessionClipboard();
         return true;
     }
+
+    // ── Cross-pane placement staleness gate (Merge Window / Loaded PCG File -> Local Library) ──
+    // A destination bank Local Library has never digested against the Kronos - no
+    // BankDigestBaselineHex entry at all, or the Kronos didn't answer the last time one was
+    // requested (LibraryPullPipeline.NoDigest) - might already differ from what's about to be
+    // built on top of it (a front-panel edit, a write from elsewhere). This is deliberately a
+    // CHEAP, LOCAL-ONLY, OFFLINE-SAFE check: it only reads what the last Pull/Push already
+    // recorded, never a fresh BankDigestAsync round trip. A live per-drop hardware query would
+    // be both redundant with ChangesetBuilder's own fresh-digest conflict pre-scan (the real,
+    // authoritative gate - this runs again at every Sync/Commit regardless) and actively wrong
+    // offline: BankDigestAsync returns null with no transport at all, which is indistinguishable
+    // from "hardware answered and differs" - it would warn on every single PCG-only placement
+    // with no Kronos ever connected. Reading the persisted baseline sidesteps both problems.
+    async Task<bool> ConfirmDestinationBankAsync(int objType, int bank)
+    {
+        var baseline = _cache.BankDigestBaselineHex();
+        bool neverConfirmed = !baseline.TryGetValue((objType, bank), out var hex) || hex == LibraryPullPipeline.NoDigest;
+        if (!neverConfirmed) return true;
+        return ConfirmDestinationBankMaybeStale == null || await ConfirmDestinationBankMaybeStale(objType, bank);
+    }
+
+    // Thin async wrappers around the synchronous placement methods below/above, for the real
+    // drag-drop entry points (LibrarianShellWindow's OnLocalDrop/OnMergeToLocalDrop) to call
+    // instead. The confirm has to happen BEFORE the synchronous method's own
+    // `using var undo = _undo.Begin(...)` scope opens - awaiting a modal dialog inside that scope
+    // would let any UI input during the wait fold into the wrong undo step, the same hazard
+    // IsInputLocked guards against elsewhere (see AutoFillToLibraryAsync) - so these wrap,
+    // never modify, the existing methods. Every self-test that calls the synchronous methods
+    // directly bypasses this gate entirely, by design - it exists for the live UI only.
+    public async Task<(bool Ok, string? Error)> PlaceFromPcgAsync(ObjLoc pcgLoc, ObjLoc destLoc) =>
+        await ConfirmDestinationBankAsync(destLoc.ObjType, destLoc.Bank)
+            ? PlaceFromPcg(pcgLoc, destLoc) : (false, AppMessages.Librarian.Shell.PlacementCancelledOutOfSync);
+
+    public async Task<(bool Ok, string? Message)> BatchPlaceFromPcgAsync(int objType, IReadOnlyList<ObjLoc> pcgLocs, int destBank) =>
+        await ConfirmDestinationBankAsync(objType, destBank)
+            ? BatchPlaceFromPcg(objType, pcgLocs, destBank) : (false, AppMessages.Librarian.Shell.PlacementCancelledOutOfSync);
+
+    public async Task<(bool Ok, string? Error)> PlaceFromMergeAsync(string mergeContentHash, ObjLoc destLoc) =>
+        await ConfirmDestinationBankAsync(destLoc.ObjType, destLoc.Bank)
+            ? PlaceFromMerge(mergeContentHash, destLoc) : (false, AppMessages.Librarian.Shell.PlacementCancelledOutOfSync);
+
+    public async Task<(bool Ok, string? Message)> PlaceMergeGroupSequentiallyAsync(int objType, int destBank, IReadOnlyList<string> contentHashes, int? destSlot = null) =>
+        await ConfirmDestinationBankAsync(objType, destBank)
+            ? PlaceMergeGroupSequentially(objType, destBank, contentHashes, destSlot) : (false, AppMessages.Librarian.Shell.PlacementCancelledOutOfSync);
+
+    public async Task<(bool Ok, string? Message)> PlaceMergeBankWithTypeChangeAsync(int destBank, IReadOnlyList<string> contentHashes, bool targetIsExi) =>
+        await ConfirmDestinationBankAsync(LibObj.Program, destBank)
+            ? PlaceMergeBankWithTypeChange(destBank, contentHashes, targetIsExi) : (false, AppMessages.Librarian.Shell.PlacementCancelledOutOfSync);
 
     bool CanRunHardwareOp() => !IsBusy;
 
@@ -598,6 +700,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         LocalPane.StatusText = "";
         MergePane.StatusText = "";
         PcgPane.StatusText = "";
+        StatusIsSuccess = false;
     }
 
     [RelayCommand]

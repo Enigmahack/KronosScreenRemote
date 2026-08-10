@@ -21,6 +21,7 @@
     <SolidColorBrush x:Key="DisabledTextBrush"        Color="#FF606060"/>
 
     <SolidColorBrush x:Key="AccentBrush"               Color="#FF88AADD"/>
+    <SolidColorBrush x:Key="SuccessBrush"              Color="#FF7DCB7D"/>
 
     <SolidColorBrush x:Key="HoverBrush"                Color="#FF363636"/>
     <SolidColorBrush x:Key="SelectionBrush"            Color="#FF1A4E6E"/>

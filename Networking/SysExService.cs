@@ -34,8 +34,22 @@ sealed class SysExService : ISysExService
     readonly DumpGate _dumpGate = new();
     CancellationTokenSource? _cts;
     CancellationTokenSource? _perfPollDelayCts;
-    CancellationTokenSource? _refreshDebounceCts;
-    CancellationTokenSource? _namePullCts;
+    // These three used to be CancellationTokenSource-per-debounce, cancelling the PREVIOUS
+    // pending Task.Delay whenever a new event superseded it - correct, but a genuine
+    // TaskCanceledException THROW (caught, but still a real first-chance exception) on every
+    // single collision. Fine for light, human-interaction-paced events; catastrophic under a
+    // Sync's burst of passive stream traffic - a Full Sync's own bank-digest replies collide
+    // with DeferredRefreshAsync's 300ms window on nearly every one, and every newly-learned
+    // object name collides with SchedulePersist's 2s window on nearly every one, which is
+    // exactly the "thousands of TaskCanceledException, roughly one per synced object" symptom
+    // this was rewritten to fix (2026-08-10, diagnosed from a live repro: ~4386 exceptions
+    // against 4480 synced objects). An epoch counter is the non-throwing equivalent: bump it,
+    // start a plain (tokenless) Task.Delay, and after it elapses check whether a LATER call
+    // already bumped the epoch past this one - if so, a newer settle is already in flight and
+    // this one silently no-ops instead of doing the work AND instead of throwing to get there.
+    long _refreshEpoch;
+    long _namePullEpoch;
+    long _persistEpoch;
     DateTime _lastUserActivity = DateTime.MinValue;
     // Stable per-Kronos key for the on-disk name / dumped-bank caches (from the
     // transport: host for TCP, "usb:<match>" for USB).
@@ -62,7 +76,6 @@ sealed class SysExService : ISysExService
     BankId? _lastBankId;         // last decoded id - lets a bare PC reuse the bank
     readonly Dictionary<(int Type, int ObjBank, int Number), string> _streamNames = new();
     readonly HashSet<(int Type, int Bank)> _dumpedBanks = new();  // name-dumps already collected (persisted)
-    CancellationTokenSource? _persistDebounceCts;   // batches name-cache disk writes
     readonly HashSet<int> _loggedDumpObjs = new();  // log each unexpected dump obj once
 
     bool _midiMonitorEnabled = true;
@@ -106,16 +119,14 @@ sealed class SysExService : ISysExService
         // MidiTransportCoordinator's synchronous _gate - left for a dedicated pass.
         _dumpGate.NewGeneration();
 
-        // Cancel debounced work from the outgoing connection and flush its captured
-        // names under the OLD cache key first - otherwise a still-pending PersistNames
-        // (2 s debounce) could fire after _cacheKey is repointed and write the previous
-        // Kronos's names under the new one's key (cross-instrument contamination).
-        try { _refreshDebounceCts?.Cancel(); _refreshDebounceCts?.Dispose(); } catch { }
-        _refreshDebounceCts = null;
-        try { _persistDebounceCts?.Cancel(); _persistDebounceCts?.Dispose(); } catch { }
-        _persistDebounceCts = null;
-        try { _namePullCts?.Cancel(); _namePullCts?.Dispose(); } catch { }
-        _namePullCts = null;
+        // Supersede debounced work from the outgoing connection and flush its captured names
+        // under the OLD cache key first - otherwise a still-pending PersistNames (2 s debounce)
+        // could fire after _cacheKey is repointed and write the previous Kronos's names under
+        // the new one's key (cross-instrument contamination). Bumping the epoch makes any
+        // already-waiting settle task a no-op when it wakes, same effect the old Cancel() had.
+        Interlocked.Increment(ref _refreshEpoch);
+        Interlocked.Increment(ref _persistEpoch);
+        Interlocked.Increment(ref _namePullEpoch);
         if (!string.IsNullOrEmpty(_cacheKey)) PersistNames();
 
         // Tear down any previously-running transport (e.g. switching TCP → USB).
@@ -170,12 +181,9 @@ sealed class SysExService : ISysExService
         _cts?.Dispose();
         _cts = null;
         _dumpGate.NewGeneration();
-        try { _refreshDebounceCts?.Cancel(); _refreshDebounceCts?.Dispose(); } catch { }
-        _refreshDebounceCts = null;
-        try { _persistDebounceCts?.Cancel(); _persistDebounceCts?.Dispose(); } catch { }
-        _persistDebounceCts = null;
-        try { _namePullCts?.Cancel(); _namePullCts?.Dispose(); } catch { }
-        _namePullCts = null;
+        Interlocked.Increment(ref _refreshEpoch);
+        Interlocked.Increment(ref _persistEpoch);
+        Interlocked.Increment(ref _namePullEpoch);
         if (_transport != null)
         {
             _transport.Traffic -= OnTransportTraffic;
@@ -357,18 +365,14 @@ sealed class SysExService : ISysExService
     // Debounced single-object name fetch for the current program/combi (func 0x72).
     void ScheduleNamePull(BankId id)
     {
-        var cts  = new CancellationTokenSource();
-        var prev = Interlocked.Exchange(ref _namePullCts, cts);
-        try { prev?.Cancel(); prev?.Dispose(); } catch { }
-        _ = NamePullAfterSettleAsync(id, cts);
+        long epoch = Interlocked.Increment(ref _namePullEpoch);
+        _ = NamePullAfterSettleAsync(id, epoch);
     }
 
-    async Task NamePullAfterSettleAsync(BankId id, CancellationTokenSource cts)
+    async Task NamePullAfterSettleAsync(BankId id, long epoch)
     {
-        try { await Task.Delay(NamePullDebounceMs, cts.Token).ConfigureAwait(false); }
-        catch (OperationCanceledException) { return; }
-        Interlocked.CompareExchange(ref _namePullCts, null, cts);
-        cts.Dispose();
+        await Task.Delay(NamePullDebounceMs).ConfigureAwait(false);
+        if (Interlocked.Read(ref _namePullEpoch) != epoch) return;   // a later call superseded this one
 
         // Never inject a single-name request into a bulk sweep's 0x73 stream.
         if (_dumpGate.Active) return;
@@ -404,20 +408,18 @@ sealed class SysExService : ISysExService
         Storage.SaveNames(_cacheKey, snapshot);
     }
 
-    // Passive capture can add hundreds of names in a burst; debounce the disk
-    // write so a full dump persists once when it settles, not per object.
+    // Passive capture can add hundreds of names in a burst (a Full Sync can mean thousands);
+    // debounce the disk write so a full dump persists once when it settles, not per object.
     void SchedulePersist()
     {
-        var cts  = new CancellationTokenSource();
-        var prev = Interlocked.Exchange(ref _persistDebounceCts, cts);
-        try { prev?.Cancel(); prev?.Dispose(); } catch { }
-        _ = PersistAfterSettleAsync(cts.Token);
+        long epoch = Interlocked.Increment(ref _persistEpoch);
+        _ = PersistAfterSettleAsync(epoch);
     }
 
-    async Task PersistAfterSettleAsync(CancellationToken ct)
+    async Task PersistAfterSettleAsync(long epoch)
     {
-        try { await Task.Delay(2000, ct).ConfigureAwait(false); }
-        catch (OperationCanceledException) { return; }
+        await Task.Delay(2000).ConfigureAwait(false);
+        if (Interlocked.Read(ref _persistEpoch) != epoch) return;   // a later call superseded this one
         PersistNames();
     }
 
@@ -485,11 +487,16 @@ sealed class SysExService : ISysExService
                     // Blocks until its replies go idle, the Kronos rejects (func 0x24 →
                     // fast exit), or it stays silent.
                     var req  = SysExDumpCollector.DumpBankRequest(nameObj, objBank);
-                    var msgs = await dump.CollectAsync(req, nameObj, expectedCount: null,
+                    var (msgs, _) = await dump.CollectAsync(req, nameObj, expectedCount: null,
                                             idleMs: 600, noResponseMs: 1200,
                                             stallMs: 3000, overallMs: 30000)
                               .ConfigureAwait(false);
                     AppLog.Info($"[sync] {label} bank=0x{objBank:X2} (0x77 enum) collected {msgs.Count} name(s)");
+                    // A send failure here just leaves the bank out of _dumpedBanks below (not
+                    // "done"), so an unlucky transient failure self-heals on the next Sync Names
+                    // run - unlike the object-body pull path (DumpObjectAsync/DumpBankBulkAsync),
+                    // nothing here writes a false "confirmed empty" into the local cache, so no
+                    // retry is needed for correctness.
                     done = msgs.Count > 0;
                 }
                 else
@@ -657,10 +664,34 @@ sealed class SysExService : ISysExService
     async Task<SetListData?> DumpOneSetListAsync(SysExDumpCollector dump, int number)
     {
         var req  = SysExDumpCollector.ObjectDumpRequest(0x0D, 0, number);
-        var msgs = await dump.CollectAsync(req, 0x0D, expectedCount: 1, noResponseMs: 10000)
+        var msgs = await CollectRetryingSendAsync(dump, req, 0x0D, expectedCount: 1, noResponseMs: 10000)
             .ConfigureAwait(false);
         var msg  = msgs.Count > 0 ? msgs[0] : null;
         return msg != null ? SetListData.FromObjectDump(msg) : null;
+    }
+
+    // Retries a CollectAsync call ONCE, but ONLY when the request never reached the wire at all
+    // (SendFailed - see SysExDumpCollector.CollectAsync's own comment), never on a genuine
+    // empty/no-reply/rejected result. A transient ctrl-port send timeout under heavy Sync load
+    // (CtrlQuery's own comment) is normally gone within milliseconds, so this turns what would
+    // otherwise silently read as "the Kronos confirmed this slot is empty" into a real answer
+    // the large majority of the time - closing the gap where LibraryPullPipeline could record a
+    // populated hardware slot as empty just because its dump request's SEND happened to time out.
+    async Task<List<byte[]>> CollectRetryingSendAsync(
+        SysExDumpCollector dump, string requestHex, byte expectObj, int? expectedCount,
+        int idleMs = 600, int noResponseMs = 4000, int stallMs = 4000, int overallMs = 60000)
+    {
+        var (msgs, sendFailed) = await dump.CollectAsync(requestHex, expectObj, expectedCount, idleMs, noResponseMs, stallMs, overallMs)
+            .ConfigureAwait(false);
+        if (!sendFailed) return msgs;
+
+        AppLog.Debug($"[sysex-dump] retrying after send failure: {requestHex}");
+        await Task.Delay(200).ConfigureAwait(false);
+        var (retryMsgs, retrySendFailed) = await dump.CollectAsync(requestHex, expectObj, expectedCount, idleMs, noResponseMs, stallMs, overallMs)
+            .ConfigureAwait(false);
+        if (retrySendFailed)
+            AppLog.Warn($"[sysex-dump] send failed twice in a row - giving up; this will read as an empty/no reply: {requestHex}");
+        return retryMsgs;
     }
 
     // Coalescing debounce: each Program/Bank message restarts a short timer, so
@@ -670,15 +701,9 @@ sealed class SysExService : ISysExService
     // external changes on the Kronos have no app activity, so they follow fast.
     async Task DeferredRefreshAsync()
     {
-        var cts  = new CancellationTokenSource();
-        var prev = Interlocked.Exchange(ref _refreshDebounceCts, cts);
-        try { prev?.Cancel(); prev?.Dispose(); } catch { }
-
-        try { await Task.Delay(PerfRefreshDebounceMs, cts.Token).ConfigureAwait(false); }
-        catch (OperationCanceledException) { return; }
-
-        Interlocked.CompareExchange(ref _refreshDebounceCts, null, cts);
-        cts.Dispose();
+        long epoch = Interlocked.Increment(ref _refreshEpoch);
+        await Task.Delay(PerfRefreshDebounceMs).ConfigureAwait(false);
+        if (Interlocked.Read(ref _refreshEpoch) != epoch) return;   // a later call superseded this one
 
         // Wake the perf loop. It resolves identity + a cached name (cheap, no
         // freeze); only an uncached name triggers a dump, and that dump is what
@@ -834,7 +859,7 @@ sealed class SysExService : ISysExService
             // Set Lists (~79 KB) and Global (~24 KB) are the big, slow-to-serialize objects -
             // give their "no activity" window headroom rather than timing out on a reply that
             // was on its way.
-            var msgs = await dump.CollectAsync(req, (byte)obj, expectedCount: 1,
+            var msgs = await CollectRetryingSendAsync(dump, req, (byte)obj, expectedCount: 1,
                                     noResponseMs: obj is 0x0D or LibObj.Global ? 10000 : 6000).ConfigureAwait(false);
             var msg = msgs.Count > 0 ? msgs[0] : null;
             return msg != null ? KronosSysEx.ParseObjectDump(msg) : null;
@@ -857,7 +882,7 @@ sealed class SysExService : ISysExService
             // SyncNamesAsync path), which only ever moves ~128 short names. A rejected or
             // genuinely-empty bank still exits promptly via CollectAsync's idle/reject
             // fast-paths, so the generous cap only matters when data is actually flowing.
-            var msgs = await dump.CollectAsync(req, (byte)obj, expectedCount: count,
+            var msgs = await CollectRetryingSendAsync(dump, req, (byte)obj, expectedCount: count,
                 idleMs: 2000, noResponseMs: 3000, stallMs: 15000, overallMs: 300000).ConfigureAwait(false);
             foreach (var m in msgs)
             {

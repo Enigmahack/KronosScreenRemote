@@ -74,6 +74,19 @@ internal partial class LibrarianShellWindow : ThemedWindow
             return Task.FromResult(dlg.ShowDialog() == true);
         };
 
+        // Cross-pane placement staleness gate (Merge Window / Loaded PCG File -> Local Library) -
+        // see LibrarianShellViewModel.ConfirmDestinationBankAsync for what triggers this. A plain
+        // MessageBox is enough here (unlike the dependency dialog above, this never lists more
+        // than one bank at a time - same reasoning as the bank-type-change confirm below).
+        _vm.ConfirmDestinationBankMaybeStale = (objType, bank) =>
+        {
+            string bankLabel = ObjectTypeRegistry.Get(objType).BankLabel(bank);
+            var result = MessageBox.Show(this,
+                AppMessages.Librarian.Shell.ConfirmStaleBank(bankLabel),
+                AppMessages.Librarian.Shell.ConfirmStaleBankTitle, MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            return Task.FromResult(result == MessageBoxResult.Yes);
+        };
+
         _localSelection = new PaneSelection(n => PaneSelection.FindParent(_vm.LocalPane.Roots, n), msg => _vm.LocalPane.StatusText = msg);
         _pcgSelection = new PaneSelection(n => PaneSelection.FindParent(_vm.PcgPane.Roots, n), msg => _vm.PcgPane.StatusText = msg)
         {
@@ -647,10 +660,10 @@ internal partial class LibrarianShellWindow : ThemedWindow
         e.Handled = true;
     }
 
-    void OnLocalDrop(object sender, DragEventArgs e)
+    async void OnLocalDrop(object sender, DragEventArgs e)
     {
         if (e.Data.GetDataPresent(LocalDragFormat)) { OnLocalInternalDrop(e); return; }
-        if (e.Data.GetDataPresent(MergeDragFormat)) { OnMergeToLocalDrop(e); return; }
+        if (e.Data.GetDataPresent(MergeDragFormat)) { await OnMergeToLocalDrop(e); return; }
 
         if (e.Data.GetData(PcgDragFormat) is not PcgDragPayload payload)
         {
@@ -669,7 +682,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
         {
             // Dropped one item on a specific slot -> exact placement (prompts-via-orphan-gate
             // if occupied, same as the existing paste-to-occupied-slot flow).
-            var (ok, error) = _vm.PlaceFromPcg(payload.Locs[0], destLoc);
+            var (ok, error) = await _vm.PlaceFromPcgAsync(payload.Locs[0], destLoc);
             _vm.StatusText = ok ? AppMessages.Librarian.Shell.PlacedAt(payload.Locs[0].Label(), destLoc.Label()) : AppMessages.Librarian.Shell.PlaceFailedDetail(error);
         }
         else if (target.Loc is { } slotLoc)
@@ -677,13 +690,13 @@ internal partial class LibrarianShellWindow : ThemedWindow
             // Multiple items dropped on one specific slot - no single address applies to all
             // of them, so auto-fill starting at that slot's bank instead (same rationale as
             // the Local pane's own multi-item Paste onto a specific slot).
-            var (ok, msg) = _vm.BatchPlaceFromPcg(slotLoc.ObjType, payload.Locs, slotLoc.Bank);
+            var (ok, msg) = await _vm.BatchPlaceFromPcgAsync(slotLoc.ObjType, payload.Locs, slotLoc.Bank);
             _vm.StatusText = msg ?? (ok ? AppMessages.Librarian.Placed : AppMessages.Librarian.PlaceFailed);
         }
         else if (target.BankRef is { } bankRef)
         {
             // Dropped on a bank (or the Set Lists root) -> auto-fill starting at the next free slot.
-            var (ok, msg) = _vm.BatchPlaceFromPcg(bankRef.ObjType, payload.Locs, bankRef.Bank);
+            var (ok, msg) = await _vm.BatchPlaceFromPcgAsync(bankRef.ObjType, payload.Locs, bankRef.Bank);
             _vm.StatusText = msg ?? (ok ? AppMessages.Librarian.Placed : AppMessages.Librarian.PlaceFailed);
         }
         else if (target.TypeRootObjType is int typeRoot)
@@ -696,7 +709,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
                     ObjectTypeRegistry.Get(typeRoot).DisplayName, _vm.PcgGroupIsExi(typeRoot, payload.Locs));
                 return;
             }
-            var (ok, msg) = _vm.BatchPlaceFromPcg(typeRoot, payload.Locs, destBank);
+            var (ok, msg) = await _vm.BatchPlaceFromPcgAsync(typeRoot, payload.Locs, destBank);
             _vm.StatusText = msg ?? (ok ? AppMessages.Librarian.Placed : AppMessages.Librarian.PlaceFailed);
         }
         else
@@ -746,7 +759,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
     // slot or the bank/group node both just identify WHICH bank, same as the PCG pane's own
     // multi-item drop (OnLocalDrop's BatchPlaceFromPcg branch) - see LibrarianShellViewModel.
     // PlaceMergeGroupSequentially's own comment.
-    void OnMergeToLocalDrop(DragEventArgs e)
+    async Task OnMergeToLocalDrop(DragEventArgs e)
     {
         if (e.Data.GetData(MergeDragFormat) is not MergeDragPayload payload || payload.ContentHashes.Count == 0)
         {
@@ -776,7 +789,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
                         : AppMessages.Librarian.Shell.DropOntoSpecificSlot;
                 return;
             }
-            var (ok, note) = _vm.PlaceFromMerge(payload.ContentHashes[0], dest);
+            var (ok, note) = await _vm.PlaceFromMergeAsync(payload.ContentHashes[0], dest);
             _vm.MergePane.StatusText = ok
                 ? (note ?? AppMessages.Librarian.Shell.PlacedAtWhere(dest.Label()))
                 : AppMessages.Librarian.Shell.PlaceFailedDetail(note);
@@ -816,12 +829,12 @@ internal partial class LibrarianShellWindow : ThemedWindow
                 _vm.MergePane.StatusText = AppMessages.Librarian.Shell.BankTypeChangeCancelled;
                 return;
             }
-            var (tcOk, tcMsg) = _vm.PlaceMergeBankWithTypeChange(db.Bank, payload.ContentHashes, targetIsExi);
+            var (tcOk, tcMsg) = await _vm.PlaceMergeBankWithTypeChangeAsync(db.Bank, payload.ContentHashes, targetIsExi);
             _vm.MergePane.StatusText = tcMsg ?? (tcOk ? AppMessages.Librarian.Placed : AppMessages.Librarian.PlaceFailed);
             return;
         }
 
-        var (bulkOk, msg) = _vm.PlaceMergeGroupSequentially(db.ObjType, db.Bank, payload.ContentHashes, db.Slot);
+        var (bulkOk, msg) = await _vm.PlaceMergeGroupSequentiallyAsync(db.ObjType, db.Bank, payload.ContentHashes, db.Slot);
         _vm.MergePane.StatusText = msg ?? (bulkOk ? AppMessages.Librarian.Placed : AppMessages.Librarian.PlaceFailed);
     }
 

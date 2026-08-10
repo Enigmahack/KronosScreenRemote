@@ -401,6 +401,13 @@ public static class AppMessages
             public static string SyncResult(int fetched, int conflicts, int written, int deleted) =>
                 $"Pulled {fetched} object(s) ({conflicts} conflict(s)). Pushed {written} object(s)."
                 + (deleted > 0 ? $" Deleted {deleted}." : "");
+            // Pull succeeded and nothing was locally dirty to push back - a normal, successful
+            // outcome, not the CHECK/warning ChangesetBuilder's early-return produces for the same
+            // state (that warning is meant for Commit Changes, where "nothing to push" with no
+            // preceding pull is more likely a mistaken click).
+            public static string SyncComplete(bool full, int fetched, int conflicts) =>
+                $"{(full ? "Full Sync" : "Sync")} Complete - pulled {fetched} object(s)"
+                + (conflicts > 0 ? $" ({conflicts} conflict(s))" : "") + ", nothing to push.";
             public static string CommitResult(int written, int deleted) =>
                 $"Pushed {written} object(s)." + (deleted > 0 ? $" Deleted {deleted}." : "");
             public const string CommitFailed         = "Commit failed - see warning.";
@@ -437,6 +444,21 @@ public static class AppMessages
                 $"{bankLabel} is currently {curType}, but you're copying a {newType} bank into it.\n\n" +
                 $"Changing the bank type ERASES everything currently in {bankLabel} on the Kronos and replaces it with this whole bank. This takes effect on Commit.\n\n" +
                 $"Proceed?";
+
+            // Cross-pane placement gate (Merge Window / Loaded PCG File -> Local Library):
+            // the destination bank's Local Library copy has never been confirmed against the
+            // Kronos (no digest baseline yet, or the Kronos didn't answer the last time one was
+            // requested) - see LibrarianShellViewModel.ConfirmDestinationBankAsync.
+            public const string ConfirmStaleBankTitle = "Local Library may be out of sync";
+            public static string ConfirmStaleBank(string bankLabel) =>
+                $"{bankLabel} in Local Library has never been confirmed against the Kronos this session " +
+                $"(no successful Sync has checked it yet).\n\n" +
+                $"If it changed on the instrument - a front-panel edit, or a write from elsewhere - placing here " +
+                $"bases the edit on a copy that may already be stale, and Sync's own conflict check only catches " +
+                $"this at push time, after the placement is already made.\n\n" +
+                $"Run Sync Library first to be sure, or place anyway?";
+            public const string PlacementCancelledOutOfSync =
+                "Cancelled - destination bank not confirmed in sync with the Kronos.";
 
             // ── Drop-target status hints ──
             public const string DropNotRecognizedLibraryObject = "Drop didn't carry a recognized library object.";
@@ -536,6 +558,11 @@ public static class AppMessages
                 $"(drag the bank onto it), or place them in a matching bank.";
 
             public const string CheckNothingToPush = "CHECK: nothing to push - no local changes are pending";
+            // The window closed (LibrarianShellViewModel.Dispose cancelling its sync token)
+            // partway through the pull half - the push half never started, so nothing was
+            // written. Only ever reaches AppLog; nothing renders WarningText once the window
+            // that owned it is gone.
+            public const string CheckSyncCancelled = "CHECK: sync cancelled - the Librarian window closed before it finished";
             public const string CheckEveryChangeConflicted =
                 "CHECK: every pending change conflicted or was rejected - nothing left to push";
         }

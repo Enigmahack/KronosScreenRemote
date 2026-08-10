@@ -92,11 +92,20 @@ static class SyncPipeline
     // bank digests, minimizing spurious conflicts (a deliberate ordering choice: push-then-
     // pull would push against a possibly-stale baseline and then immediately re-pull over
     // data it just wrote).
+    // `ct` only ever bounds the PULL half (see LibraryPullPipeline.PullAsync's own checks) -
+    // deliberately NOT threaded into PushAsync/ArmPlanAsync/ApplyMoveAsync below. Once a hardware
+    // write has started, aborting partway is worse than letting it finish: a half-applied
+    // changeset (some objects written, some not, mid-bank) is a real corruption risk a slow
+    // window close never is. If `ct` is already cancelled by the time the pull returns (a window
+    // closed mid-pull), skip the push entirely rather than starting new hardware writes on behalf
+    // of a session that's already gone - PushAsync hasn't touched anything yet at that point.
     public static async Task<(LibraryPullPipeline.PullResult Pull, PushResult Push)> SyncLibraryAsync(
         ILibrarianService sysEx, LocalLibraryCache cache, SessionDependencyClipboard sessionClip,
-        bool fullPull, Action<string>? progress = null)
+        bool fullPull, Action<string>? progress = null, CancellationToken ct = default)
     {
-        var pull = await LibraryPullPipeline.PullAsync(sysEx, cache, fullPull, progress).ConfigureAwait(false);
+        var pull = await LibraryPullPipeline.PullAsync(sysEx, cache, fullPull, progress, ct).ConfigureAwait(false);
+        if (ct.IsCancellationRequested)
+            return (pull, new PushResult(false, AppMessages.Librarian.Sync.CheckSyncCancelled, 0, new List<ObjLoc>()));
         var push = await PushAsync(sysEx, cache, sessionClip, progress).ConfigureAwait(false);
         return (pull, push);
     }

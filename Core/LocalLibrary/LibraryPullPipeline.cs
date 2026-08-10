@@ -25,8 +25,15 @@ static class LibraryPullPipeline
         var persisted = cache.BankDigestBaselineHex();
         var fresh = new Dictionary<(int, int), string>();
         var noDigest = new List<(int, int)>();
+        // Checked per bank, not just in the fetch loop below - this digest sweep alone is
+        // ~100-200 round trips over EVERY registry bank regardless of `full`, so a window closed
+        // (or a Sync cancelled) mid-sweep must stop here too, not keep querying every remaining
+        // bank before cancellation ever gets a chance to matter. A partial `fresh` is safe:
+        // PlanPull already treats a missing digest the same as NoDigest (see below), which is
+        // conservative (re-checks more next time) rather than lossy.
         foreach (var b in LibraryPullPlanner.AllBanks())
         {
+            if (ct.IsCancellationRequested) break;
             var d = await sysEx.BankDigestAsync(b.ObjType, b.Bank).ConfigureAwait(false);
             if (d != null) fresh[(b.ObjType, b.Bank)] = Convert.ToHexString(d).ToLowerInvariant();
             else noDigest.Add((b.ObjType, b.Bank));
@@ -64,6 +71,11 @@ static class LibraryPullPipeline
 
         foreach (var bankRef in plan.BanksToFetch)
         {
+            // Same reasoning as the digest sweep above: without this, a cancelled pull still
+            // issued one more full DumpBankBulkAsync round trip per remaining bank before the
+            // per-slot check further down ever got a chance to observe cancellation - for a
+            // Force Full Sync that's potentially every registry bank, not "stops within a call."
+            if (ct.IsCancellationRequested) break;
             var descriptor = ObjectTypeRegistry.Get(bankRef.ObjType);
             bool bankChangedOnHardware =
                 !persisted.TryGetValue((bankRef.ObjType, bankRef.Bank), out var baseHex) ||

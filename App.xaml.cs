@@ -41,6 +41,8 @@ public partial class App : Application
             fails.AddRange(MergeAutoFillSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(MergeOrderingSelfTests.SelfTest());
             fails.AddRange(LibrarianUndoSelfTests.SelfTestAsync().GetAwaiter().GetResult());
+            fails.AddRange(PlacementStalenessGateSelfTests.SelfTestAsync().GetAwaiter().GetResult());
+            fails.AddRange(SyncCancellationSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             var outPath = Path.Combine(Path.GetTempPath(), "kronos_librarian_selftest.txt");
             File.WriteAllText(outPath, fails.Count == 0 ? "OK" : "FAIL: " + string.Join(", ", fails));
             Environment.Exit(fails.Count == 0 ? 0 : 1);

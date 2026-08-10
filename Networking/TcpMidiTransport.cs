@@ -106,7 +106,16 @@ sealed class TcpMidiTransport : IKronosMidiTransport
 
     public async Task<bool> SendAsync(byte[] message)
     {
-        var resp = await CtrlQuery.QueryAsync(_host, _ctrlPort, DaemonCommand.MidiSend(MidiHex.ToHex(message)), 2000)
+        // This is the ONE choke point every dump/digest/write request's outbound send funnels
+        // through during a Sync (SysExDumpCollector.CollectAsync, AwaitReplyAsync's `send`) - a
+        // Force Full Sync can fire hundreds to thousands of these back-to-back, each its own
+        // short-lived ctrl-port TCP connection (CtrlQuery's own comment). 2000ms was tuned for a
+        // single idle request; under that much connection churn against the daemon's tiny ctrl
+        // server, occasional replies land past it, and CtrlQuery's cts-driven timeout genuinely
+        // throws (caught, but visible in a debugger as a repeating TaskCanceledException - see
+        // CtrlQuery's catch). Generous headroom here costs nothing in the common case (the daemon
+        // answers in well under a second) and only matters exactly when it's needed.
+        var resp = await CtrlQuery.QueryAsync(_host, _ctrlPort, DaemonCommand.MidiSend(MidiHex.ToHex(message)), 4000)
             .ConfigureAwait(false);
         return resp?.TrimEnd() == "OK";
     }
@@ -146,7 +155,7 @@ sealed class TcpMidiTransport : IKronosMidiTransport
             int len = Math.Min(MaxMidiSendBytes, sysex.Length - off);
             var chunk = sysex[off..(off + len)];
             var resp = await CtrlQuery.QueryAsync(_host, _ctrlPort,
-                DaemonCommand.MidiSend(MidiHex.ToHex(chunk)), 3000).ConfigureAwait(false);
+                DaemonCommand.MidiSend(MidiHex.ToHex(chunk)), 5000).ConfigureAwait(false);
             if (resp?.TrimEnd() != "OK")
             {
                 AppLog.Warn($"[midi-tcp] large SysEx chunk at {off}/{sysex.Length} failed");

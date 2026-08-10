@@ -41,7 +41,13 @@ static class CtrlQuery
             }
             return sb.Length > 0 ? sb.ToString().Trim() : null;
         }
-        catch { return null; }
+        // A cancelled connect/send/receive (cts hit timeoutMs) surfaces as
+        // TaskCanceledException here - previously swallowed with no trace at all, so a run
+        // that hit it repeatedly (e.g. heavy ctrl-port churn during a Force Full Sync, one
+        // short-lived connection per dump/digest request) left nothing in screenremote.log
+        // to confirm it. Debug, not Warn: a single slow reply under load is expected and the
+        // caller already treats null as a normal, handled failure.
+        catch (Exception ex) { AppLog.Debug($"[ctrl] {cmd} timed out/failed ({host}:{port}): {ex.GetType().Name}: {ex.Message}"); return null; }
     }
 
     /// <summary>
@@ -69,6 +75,6 @@ static class CtrlQuery
             }
             return sb.Length > 0 ? sb.ToString() : null;
         }
-        catch { return null; }
+        catch (Exception ex) { AppLog.Debug($"[ctrl] {cmd} timed out/failed ({host}:{port}): {ex.GetType().Name}: {ex.Message}"); return null; }
     }
 }

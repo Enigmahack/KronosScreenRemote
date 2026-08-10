@@ -190,8 +190,19 @@
             <Button x:Name="BTN_Undo" Content="Undo" Padding="10 2" Margin="16 0 0 0"
                     Command="{Binding UndoCommand}" ToolTip="{Binding UndoLabel}"/>
             <TextBlock VerticalAlignment="Center" Margin="16 0 0 0"
-                       Foreground="{StaticResource AccentBrush}" TextTrimming="CharacterEllipsis"
-                       Text="{Binding StatusText}" ToolTip="{Binding StatusText, Converter={StaticResource EmptyToNull}}"/>
+                       TextTrimming="CharacterEllipsis" FontWeight="Bold"
+                       Text="{Binding StatusText}" ToolTip="{Binding StatusText, Converter={StaticResource EmptyToNull}}">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding StatusIsSuccess}" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource SuccessBrush}"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
         </StackPanel>
 
         <!-- Non-refusable ("CHECK:") or refusal ("REFUSE:") warnings from the last Sync/Commit. -->

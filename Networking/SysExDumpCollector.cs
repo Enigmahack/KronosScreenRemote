@@ -34,7 +34,14 @@ sealed class SysExDumpCollector
     // "Activity" (SysExActivity) pulses on SysEx start and every ~512 bytes, so a
     // slow multi-second object keeps the collector alive; only a real stall or
     // total silence ends it early.
-    public async Task<List<byte[]>> CollectAsync(
+    // SendFailed distinguishes "the request never reached the wire at all" (e.g. a transient
+    // ctrl-port timeout under heavy Sync load - see CtrlQuery's own comment) from "it sent fine
+    // and the Kronos genuinely said nothing/rejected/replied" (an empty Messages list either
+    // way). Every caller in SysExService retries once specifically on SendFailed before falling
+    // through to its normal null/empty-means-confirmed-empty handling - without this, a
+    // transient send failure was silently indistinguishable from a real empty slot, and
+    // LibraryPullPipeline would happily record a Kronos-populated slot as empty.
+    public async Task<(List<byte[]> Messages, bool SendFailed)> CollectAsync(
         string requestHex, byte expectObj, int? expectedCount,
         int idleMs = 600, int noResponseMs = 4000, int stallMs = 4000, int overallMs = 60000)
     {
@@ -79,7 +86,7 @@ sealed class SysExDumpCollector
             if (!sent)
             {
                 AppLog.Warn($"[sysex-dump] send failed for request: {requestHex}");
-                return results;
+                return (results, true);
             }
 
             var start = DateTime.Now;
@@ -123,7 +130,7 @@ sealed class SysExDumpCollector
         // stall → activity but no matching object; reject=4 → Kronos said "not found".
         AppLog.Info($"[sysex-dump] obj={expectObj:X2} collected {got} object(s) " +
                     $"(exit={exit} reject={(rej < 0 ? "none" : rej.ToString())})");
-        lock (results) return new List<byte[]>(results);
+        lock (results) return (new List<byte[]>(results), false);
     }
 
     static double Elapsed(DateTime now, long ticks) =>
