@@ -7,6 +7,11 @@ namespace KronosScreenRemote;
 
 public partial class MainWindow
 {
+    // 0 until the first frame of the current session has been drawn; drives the one-shot
+    // "[conn] first frame rendered" log that distinguishes "connected but never painted"
+    // from "painted then went stale" when diagnosing a blank window.
+    int _diagFrames;
+
     void TriggerReconnect()
     {
         BeginConnect();
@@ -27,6 +32,7 @@ public partial class MainWindow
             return;
         }
 
+        _diagFrames = 0;
         AppLog.Info($"[conn] connecting to {_host}:{_port} mode={(_pullMode ? "pull" : "change")} fps={_fps}");
         SetConnectionStatus(ConnState.Connecting);
         UpdateTitle($"Connecting to {_host}...");
@@ -253,11 +259,24 @@ public partial class MainWindow
         bool newFrame = false;
         byte[]? raw   = null;
         int frameSize = _frameW * _frameH;
-        if (frameSize > 0)
+        // Only take a frame we can actually draw.  TryCopyLatestFrame is destructive - it clears the
+        // receiver's has-frame flag - and _wb is null from SetConnectionStatus(Connecting) until
+        // OnSessionConnected builds the bitmap.  The daemon's connect-time full frame lands inside
+        // exactly that window, so consuming it here dropped it for good: ApplyLut bails on a null
+        // _wb, and in change-only mode nothing resends until the Kronos screen itself changes -
+        // on an idle synth that is the "connected but blank until you touch it" bug.  Leaving the
+        // frame unread parks it in the receiver until the first tick after _wb exists.
+        // _frameW/_frameH cannot gate this: they default to the design size, so frameSize > 0 even
+        // before a session exists.
+        if (frameSize > 0 && _wb != null)
         {
             var buf = _frameBuf;
             if (buf == null || buf.Length != frameSize) { buf = new byte[frameSize]; _frameBuf = buf; }
-            if (_screenSession.TryCopyLatestFrame(buf)) { raw = buf; newFrame = true; }
+            if (_screenSession.TryCopyLatestFrame(buf))
+            {
+                raw = buf; newFrame = true;
+                if (_diagFrames == 0) { _diagFrames = 1; AppLog.Debug("[conn] first frame rendered"); }
+            }
         }
 
         if (newFrame && raw != null)
