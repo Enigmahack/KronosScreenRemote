@@ -131,11 +131,20 @@ sealed class LocalLibraryCache
             for (int n = 0; n < descriptor.SlotCount; n++)
             {
                 string key = LocalLibraryIndex.Key(objType, bank, n);
+                string hash;
                 lock (_lock)
                 {
                     if (!_index.Entries.TryGetValue(key, out var e) || e.IsInit != null) continue;
+                    hash = e.CurrentHash;
                 }
-                var body = GetCurrentBody(objType, bank, n);   // blob read, deliberately outside the lock
+                // The blob read itself - deliberately outside the lock (this runs on a background
+                // thread; see LibrarianShellViewModel's fire-and-forget caller). Reads
+                // LocalObjectStore directly rather than through GetCurrentBody, which re-enters
+                // _index.Entries WITHOUT the lock - safe for the UI thread's own synchronous reads
+                // (never races itself), but this method's calling thread races the UI thread's
+                // _index.Entries WRITES (RecordEdits et al.), which a plain unlocked
+                // Dictionary read/write pair does not tolerate.
+                var body = LocalObjectStore.TryGet(Root, hash);
                 if (body == null) continue;
                 bool isInit = ComputeIsInit(objType, body);
                 lock (_lock)

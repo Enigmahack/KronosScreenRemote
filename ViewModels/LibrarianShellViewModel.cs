@@ -362,7 +362,14 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     // advanced BACKWARD - re-dirtying an object that was in fact already written to hardware.
     // Every other local edit path only ever preserves the existing baseline; this is the one that
     // can move it, so it must not run concurrently with a push.
-    public bool CanUndo => _undo.CanUndo && !IsBusy;
+    //
+    // Also gated on !IsAutoFilling: AutoFillFromMergeAsync holds ONE undo capture scope open
+    // across its per-bank `await pump(...)` yields (deliberately, so the progress bar can paint -
+    // see AutoFillToLibraryAsync's own comment), which means the UI stays interactive for the
+    // whole sweep. Without this, Undo could fire mid-sweep and roll back the step BEFORE the one
+    // currently being written, while the sweep keeps going and pushes its own step on top - a
+    // silently half-reverted Auto-Fill.
+    public bool CanUndo => _undo.CanUndo && !IsBusy && !IsAutoFilling;
 
     [RelayCommand(CanExecute = nameof(CanUndo))]
     void Undo()
@@ -418,8 +425,14 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
             var (pull, push) = await SyncPipeline.SyncLibraryAsync(
                 _sysEx, _cache, _sessionClipboard, ForceFullPull, m => StatusText = m);
             StatusText = AppMessages.Librarian.Shell.SyncResult(pull.ObjectsFetched, pull.Conflicts, push.Written, push.Deleted);
-            if (!push.Ok) WarningText = push.Error;
-            else ClearAfterSuccessfulPush();
+            // Surface a CHECK/REFUSE explanation whenever one exists, not just on a hard failure -
+            // a "0 written" push (nothing to push, or every change conflicted) still reports Ok:
+            // true, and the text is the only thing that explains why. Only actually reaching
+            // hardware justifies dropping the undo stack (see ClearAfterSuccessfulPush's own
+            // comment) - a push that wrote/deleted nothing must not be treated as "this local
+            // state is now safely on hardware."
+            if (push.Error != null) WarningText = push.Error;
+            if (push.Ok && push.Written + push.Deleted > 0) ClearAfterSuccessfulPush();
             AppLog.Info($"[librarian] sync done: fetched={pull.ObjectsFetched} pushed={push.Written} hasObjects={_cache.HasAnyObjects}");
             InvalidateReadOnlyBankNames();   // the name sweep may have learned new GM/g banks meanwhile
         }
@@ -451,8 +464,11 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
             StatusText = result.Ok
                 ? AppMessages.Librarian.Shell.CommitResult(result.Written, result.Deleted)
                 : AppMessages.Librarian.Shell.CommitFailed;
-            if (!result.Ok) WarningText = result.Error;
-            else ClearAfterSuccessfulPush();
+            // See SyncLibraryAsync's identical comment: a CHECK explanation must surface even on
+            // the Ok path, and the undo stack is only ever safe to drop once something actually
+            // reached hardware.
+            if (result.Error != null) WarningText = result.Error;
+            if (result.Ok && result.Written + result.Deleted > 0) ClearAfterSuccessfulPush();
         }
         catch (Exception ex)
         {
@@ -514,6 +530,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     // button against a second click landing mid-run.
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(AutoFillToLibraryCommand))]
+    [NotifyCanExecuteChangedFor(nameof(UndoCommand))]   // see CanUndo - undo must not race a sweep
     bool isAutoFilling;
 
     bool CanAutoFill() => !IsBusy && !IsAutoFilling;
@@ -532,6 +549,11 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     async Task AutoFillToLibraryAsync()
     {
         IsAutoFilling = true;
+        // Locks the Local pane's own tree/toolbar for the same span the undo scope below stays
+        // open across - a rename/paste/delete landing mid-sweep would otherwise silently fold
+        // into the sweep's own undo step instead of getting one of its own (see IsInputLocked's
+        // own comment). CanUndo (!IsAutoFilling) covers the Undo button itself.
+        LocalPane.IsInputLocked = true;
         try
         {
             // Once up front so the button repaints as busy before any work starts, then again
@@ -549,7 +571,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
             AppLog.Warn($"[librarian] auto-fill failed: {ex}");
             MergePane.StatusText = AppMessages.Librarian.Shell.OperationFailed(ex.Message);
         }
-        finally { IsAutoFilling = false; }
+        finally { IsAutoFilling = false; LocalPane.IsInputLocked = false; }
     }
 
     // Called after any local edit (rename/move/discard/placement) so the permanent history
@@ -1152,7 +1174,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         var placements = new List<BatchPlacement>();
         for (int i = 0; i < placed.Count; i++)
             placements.Add(new BatchPlacement(null, new ObjLoc(objType, destBank, placed[i].Slot),
-                new ObjectDump(objType, destBank, placed[i].Slot, 0, bodies[i]), placed[i].Entry.Origin.Label()));
+                new ObjectDump(objType, destBank, placed[i].Slot, placed[i].Entry.Version, bodies[i]), placed[i].Entry.Origin.Label()));
 
         var (ok, error, clipboardAdds) = LocalEditOps.BatchPlace(_cache, objType, placements, divertDisplacedToClipboard: true, BankTypeOf, DateTime.UtcNow);
         if (!ok) return (false, error);

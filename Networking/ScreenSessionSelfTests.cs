@@ -26,8 +26,8 @@ static class ScreenSessionSelfTests
             TaskCreationOptions.RunContinuationsAsynchronously);
         int connectionCount = 0, disconnectCount = 0;
 
-        using var session = new ScreenSession(
-            new FakeCtrlClient("MODE=3 EDITCTX=1 BOOT=0"), _ => receivers.Dequeue());
+        var ctrl = new FakeCtrlClient("MODE=3 EDITCTX=1 BOOT=0");
+        using var session = new ScreenSession(ctrl, _ => receivers.Dequeue());
         session.Connected += info =>
         {
             if (Interlocked.Increment(ref connectionCount) == 1) firstConnected.TrySetResult(info);
@@ -41,6 +41,8 @@ static class ScreenSessionSelfTests
         try
         {
             await firstConnected.Task.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            Check("session-change-mode-initial-refresh",
+                ctrl.SentCommands.SequenceEqual(new[] { DaemonCommand.RefreshDisplay }));
             var frame = new byte[4];
             Check("session-frame-access", session.TryCopyLatestFrame(frame) &&
                                           frame.SequenceEqual(new byte[] { 1, 2, 3, 4 }));
@@ -51,6 +53,12 @@ static class ScreenSessionSelfTests
 
             session.Start(connection, _ => Task.FromResult(true));
             await secondConnected.Task.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+            Check("session-change-mode-reconnect-refresh",
+                ctrl.SentCommands.SequenceEqual(new[]
+                {
+                    DaemonCommand.RefreshDisplay,
+                    DaemonCommand.RefreshDisplay,
+                }));
             Check("replaced-receiver-disposed", first.Disposed);
             first.TriggerDisconnected();
             Check("stale-receiver-after-replace", Volatile.Read(ref disconnectCount) == 0);
@@ -94,8 +102,9 @@ static class ScreenSessionSelfTests
 
     sealed class FakeCtrlClient(string response) : ICtrlClient
     {
+        public List<string> SentCommands { get; } = new();
         public event Action<string>? CtrlError { add { } remove { } }
-        public void Send(string cmd) { }
+        public void Send(string cmd) => SentCommands.Add(cmd);
         public void Reset() { }
         public Task<string?> QueryAsync(string cmd, int timeoutMs = 2000) => Task.FromResult<string?>(response);
     }

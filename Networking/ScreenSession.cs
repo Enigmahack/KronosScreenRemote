@@ -124,6 +124,13 @@ internal sealed class ScreenSession : IDisposable
                 return;
             }
 
+            if (!connection.PullMode)
+            {
+                ICtrlClient ctrl;
+                lock (_gate) ctrl = _ctrl;
+                ctrl.Send(DaemonCommand.RefreshDisplay);
+            }
+
             Connected?.Invoke(new ScreenSessionInfo(
                 id, connection, receiver.Width, receiver.Height, receiver.Palette));
             StartPolling(id, receiver);

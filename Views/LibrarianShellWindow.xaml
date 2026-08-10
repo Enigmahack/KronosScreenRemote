@@ -245,6 +245,7 @@
 
                     <TreeView Grid.Row="2" x:Name="TV_Local" ItemsSource="{Binding LocalPane.Roots}"
                               Visibility="{Binding LocalPane.ShowTree, Converter={StaticResource BoolToVis}}"
+                              IsEnabled="{Binding LocalPane.IsReady}"
                               Style="{StaticResource LibraryTreeStyle}"
                               ItemTemplate="{StaticResource LocalNodeTemplate}"
                               ItemContainerStyle="{StaticResource LibraryTreeItemStyle}"

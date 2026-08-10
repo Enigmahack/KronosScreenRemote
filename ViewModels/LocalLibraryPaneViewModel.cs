@@ -83,8 +83,21 @@ partial class LocalLibraryPaneViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ShowEmptyHint))]
     bool isIndexing = true;
 
-    // Binding convenience: the toolbar is enabled only when NOT indexing.
-    public bool IsReady => !IsIndexing;
+    // Binding convenience: the toolbar (and the tree itself, see IsInputLocked) is enabled only
+    // when NOT indexing AND no other action currently owns exclusive access to local state.
+    public bool IsReady => !IsIndexing && !IsInputLocked;
+
+    // True while some OTHER action (currently: LibrarianShellViewModel.AutoFillToLibraryAsync)
+    // holds one undo capture scope open across multiple awaited steps and must not have this
+    // pane's own edits interleave with it. Deliberately distinct from IsIndexing: that one also
+    // drives ShowTree (hiding the tree behind the indexing placeholder), which is wrong here -
+    // an Auto-Fill sweep is exactly when the user wants to WATCH the tree fill in, not have it
+    // replaced by a placeholder. A rename/paste/delete during the sweep would otherwise silently
+    // fold into the sweep's own undo step (nested LibrarianUndoRecorder.Begin returns a no-op
+    // scope), so one Ctrl+Z afterward would revert the user's unrelated edit too.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsReady))]
+    bool isInputLocked;
 
     // The centered placeholder shown in the tree's place while indexing (see AppMessages).
     public string IndexingPlaceholder => AppMessages.Librarian.Local.IndexingPlaceholder;
