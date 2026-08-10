@@ -2,6 +2,9 @@
 
 A Windows desktop application for remotely viewing and controlling a **Korg Kronos** synthesizer over Ethernet. It streams the Kronos display in real time, forwards touch/button input back to the device, and provides supplementary tools for MIDI/SysEx integration, audio monitoring, file management, and display calibration.
 
+*AI DISCLAIMER*
+This application has not been vibe-coded - Some AI was used in the development of this application in terms of comments, notes, and tests, but the majority of this code has had human oversight. 
+
 > **Note:** This application requires the companion daemon running on the Kronos hardware.
 > See [KronosScreenRemoteDaemon](https://github.com/Enigmahack/KronosScreenRemoteDaemon) for setup instructions.
 
