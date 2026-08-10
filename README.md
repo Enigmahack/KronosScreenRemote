@@ -11,15 +11,11 @@ This application has not been vibe-coded - Some AI was used in the development o
 | Repository | Description |
 |---|---|
 | [KronosScreenRemote](https://github.com/Enigmahack/KronosScreenRemote) | This repo - Windows desktop client |
-| [KronosScreenRemoteDaemon](https://github.com/Enigmahack/KronosScreenRemoteDaemon) | Kronos-side daemon (required) |
+| [KronosScreenRemoteDaemon](https://github.com/Enigmahack/KronosScreenRemoteDaemon) | Kronos-side daemon (required - gets installed on the Kronos) |
 
 > **Shared context**: this project is part of a larger Kronos RE/modding
 > ecosystem (this client + [KronosScreenRemotePy](../KronosScreenRemotePy/) +
 > [kronosology](../kronosology/) + [KronosScreenRemoteDaemon](../KronosScreenRemoteDaemon/)).
-> Cross-project architecture, shared dev environments, credentials/access
-> pointers, and agent/tooling policy live in
-> [`/home/share/PROJECT_BRAIN/BRAIN.md`](../PROJECT_BRAIN/BRAIN.md) -
-> check there before duplicating knowledge into this repo.
 
 ---
 
@@ -27,10 +23,19 @@ This application has not been vibe-coded - Some AI was used in the development o
 
 - **Live Screen Streaming** - 800×600 8-bit indexed color at up to 15 FPS via TCP; supports full-frame (pull) and change-only modes for bandwidth efficiency
 - **Value Slider** - Left-panel INC/DEC buttons and draggable 0–127 value slider mirroring the Kronos front-panel VALUE control; double-click to snap to center (64)
-- **Remote Control** - Virtual button panel (mode keys, number pad, data wheel, bank selects) with drag, scroll, and keyboard-shortcut support
+- **Remote Control** - Virtual button panel (mode keys, number pad, data wheel, bank selects) with drag, scroll, keyboard-shortcut support, tap-tempo, direct-save shortcuts, sequencer controls
+<img width="1414" height="513" alt="2026-08-10 14_33_13-Kronos ScreenRemote - 192 168 100 15" src="https://github.com/user-attachments/assets/162a64b4-fbaf-4725-85bd-c8bad1be5a51" />
+
 - **Mode Detection** - The current Kronos operating mode is read from the daemon's STATE command (exact, from Eva's own state via the daemon's `eva_mode` module), with boot-gating so a stray press during boot can't light the wrong button
 - **MIDI / SysEx Integration** - Live MIDI-out monitoring with a SysEx/MIDI traffic window; automatic program-change follow, mode follow, and VALUE-slider mirroring from the hardware. Runs over the daemon's TCP MIDI bridge (port 9875) or a direct USB-MIDI link (selectable in Settings → MIDI/SysEx; Auto prefers USB, with live hot-plug)
+<img width="1191" height="445" alt="2026-08-10 14_31_07-SysEx _ MIDI Monitor" src="https://github.com/user-attachments/assets/73eda485-7b3d-4e39-97c0-72116f87891e" />
+
 - **Librarian** - Full library manager: sync programs/combis/set lists to an on-disk local library, import `.pcg` files, stage objects in a Merge Window, and place them back onto the Kronos with transitive dependency resolution and undo
+<img width="951" height="596" alt="2026-08-10 14_21_27-Librarian" src="https://github.com/user-attachments/assets/3bc298f2-5738-4126-b258-0ece2ccf40af" />
+<img width="951" height="596" alt="2026-08-10 14_22_33-Select File on Kronos" src="https://github.com/user-attachments/assets/b4bced91-238e-4ed8-9eff-637dd0a33c34" />
+<img width="951" height="596" alt="2026-08-10 14_23_21-Librarian" src="https://github.com/user-attachments/assets/f92bc283-3e26-4ace-9f87-6078d15fc67f" />
+<img width="951" height="596" alt="2026-08-10 14_23_43-Set List 01 Properties" src="https://github.com/user-attachments/assets/680d6590-bf2d-4b75-939f-7244225d3a4f" />
+
 - **Set List & Name Tools** - Dump and browse Kronos Set Lists, and sync program/combi names into a per-Kronos cache for flash-free program-change display ("Sync All" collects both)
 - **Audio VU Meter** - WASAPI real-time level monitoring (L/R peak + RMS) with device selection
 <img width="1414" height="508" alt="2026-06-19 17_44_49-Kronos ValueSlider - 192 168 100 15" src="https://github.com/user-attachments/assets/fa7ad681-8056-489f-99e8-32f90af12e98" />
