@@ -20,3 +20,4 @@ codesign.pfx
 publish/
 /Documentation/MIDI implementation
 /Documentation/api.md
+SampleFixtures/

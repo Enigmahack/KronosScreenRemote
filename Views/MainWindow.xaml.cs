@@ -98,6 +98,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     KeyboardInfoWindow?  _kbdInfoWin;
     SysExToolWindow?     _sysExToolWin;
     LibrarianShellWindow? _librarianShellWin;
+    SampleEditorWindow?   _sampleEditorWin;
     LocalLibraryCache    _localLibraryCache = null!;
 
     // ── Misc ──────────────────────────────────────────────────────────────────
@@ -691,6 +692,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         MNU_InputTester.Click  += (sender, e) => new InputTesterWindow(_ctrl).OwnedBy(this).Show();
         MNU_SysExTool.Click    += (sender, e) => OpenSysExToolWindow();
         MNU_Librarian.Click    += (sender, e) => OpenLibrarianShellWindow();
+        MNU_SampleEditor.Click += (sender, e) => OpenSampleEditorWindow();
         MNU_KeyboardInfo.Click += (sender, e) => OpenKeyboardInfoWindow();
         CTX_KeyboardInfo.Click += (sender, e) => OpenKeyboardInfoWindow();
         MNU_KbdWarp.Visibility = Visibility.Collapsed;
@@ -1546,6 +1548,19 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             Dispatcher.BeginInvoke(Activate, DispatcherPriority.ApplicationIdle);
         };
         _librarianShellWin.Show();
+    }
+
+    void OpenSampleEditorWindow()
+    {
+        if (_sampleEditorWin != null && _sampleEditorWin.IsLoaded)
+        {
+            _sampleEditorWin.Activate();
+            _sampleEditorWin.Focus();
+            return;
+        }
+        _sampleEditorWin = new SampleEditorWindow().OwnedBy(this);
+        _sampleEditorWin.Closed += (_, _) => _sampleEditorWin = null;
+        _sampleEditorWin.Show();
     }
 
     void OpenKeyboardInfoWindow()

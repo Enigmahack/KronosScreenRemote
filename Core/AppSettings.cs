@@ -94,6 +94,27 @@ public class AppSettings
 
     public string? VuDeviceId { get; set; } = null;
 
+    // Sample Editor waveform-edit undo (Core/Sample/SampleEditUndo.cs): a bounded
+    // byte-size cap, not a step count - a single crop/tempo/pitch snapshot is a
+    // multi-MB PCM buffer, so "keep the last 50 steps" could mean anywhere from a few
+    // MB to gigabytes depending on sample size. 256 MB is a few dozen steps for a
+    // typical few-hundred-KB sample, fewer for a multi-MB one.
+    public int SampleUndoByteCapMb { get; set; } = 256;
+
+    // Local root for content pulled from the Kronos by the Sample Editor's "Pull from
+    // Kronos" flow - mirrors the remote directory structure underneath it (same
+    // <ksc-basename>/<kmp-basename>/ convention on both sides, see KmpZone.KsfPath).
+    // Empty means "use the default" (SampleWorkspace.ResolveRoot), same lazy-default
+    // pattern as LocalLibraryCache.Open() uses for its own {DataDir}-relative root.
+    public string SampleWorkspaceRoot { get; set; } = "";
+
+    // Sample Editor "Recent Files" - most-recently-opened .KSC/.KMP paths, newest
+    // first, capped at SampleRecentFilesMax entries. Local disk paths only (a Kronos
+    // FTP pull already lands as a local path once PickAndPullAsync finishes, so this
+    // needs no separate remote-path tracking).
+    public List<string> SampleRecentFiles { get; set; } = new();
+    public const int SampleRecentFilesMax = 8;
+
     public static readonly (string Action, string Label, Key DefaultKey)[] Rebindable =
     [
         ("Quit",          "Quit",                   Key.Q),
@@ -172,6 +193,7 @@ public class AppSettings
                 p.SetValue(copy, p.GetValue(this));
 
         copy.RecentHosts = new List<string>(RecentHosts);
+        copy.SampleRecentFiles = new List<string>(SampleRecentFiles);
         copy.Keybinds    = new Dictionary<string, Keybind>(Keybinds);
         copy.Macros      = Macros.Select(m => new MacroDefinition
         {

@@ -91,6 +91,8 @@ static class UiThemeSmokeTest
         Try("HelpWindow",             () => new HelpWindow(settings));
         Try("InputTesterWindow",      () => new InputTesterWindow(fakeCtrl));
         Try("KeyboardInfoWindow",     () => new KeyboardInfoWindow("", 0, null));
+        Try("SampleEditorWindow",    () => new SampleEditorWindow());
+        Try("SampleNormalizationReportWindow", () => new SampleNormalizationReportWindow(new List<SampleNormalizationEntry>()));
         Try("LibrarianShellWindow",   () =>
         {
             var scratch = Path.Combine(Path.GetTempPath(), "kronos_ui_smoketest_local_library");

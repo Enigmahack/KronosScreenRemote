@@ -658,6 +658,19 @@ public static class AppMessages
         public static string DownloadFailed(string detail) => $"Download failed: {detail}";
     }
 
+    /// <summary>Remote sample picker (SampleRemoteBrowserDialog) status line.</summary>
+    public static class RemoteSamplePicker
+    {
+        public const string Connecting = "Connecting...";
+        public static string ConnectFailed(string detail) => $"Connect failed: {detail}";
+        public const string Loading = "Loading...";
+        public static string ItemCount(int count) => $"{count} item(s)";
+        public static string Error(string detail) => $"Error: {detail}";
+        public static string Downloading(string name) => $"Downloading {name}...";
+        public static string PullingClosure(string name) => $"Downloading {name} and its referenced files...";
+        public static string DownloadFailed(string detail) => $"Download failed: {detail}";
+    }
+
     /// <summary>Input tester tool (InputTesterWindow) - field prompts and status feedback.</summary>
     public static class InputTester
     {
