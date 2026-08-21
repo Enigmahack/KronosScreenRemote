@@ -32,6 +32,28 @@
     <SolidColorBrush x:Key="DangerBorderBrush"         Color="#FF883333"/>
     <SolidColorBrush x:Key="DangerTextBrush"           Color="#FFDD6666"/>
 
+    <!-- Sample Editor waveform control (Views/SampleWaveformControl.cs) - deliberately
+         its own brushes, NOT AccentBrush/SelectionHighlightBrush: those two are already
+         the same color as each other on purpose (see SelectionHighlightBrush's own
+         comment below), which is exactly why the waveform trace and its drag-selection
+         fill used to be indistinguishable. Trace is a neutral near-white so it never
+         competes with any colored overlay; the other three are semi-transparent so the
+         trace stays visible underneath them. -->
+    <SolidColorBrush x:Key="WaveformTraceBrush"         Color="#FFD8D8D8"/>
+    <SolidColorBrush x:Key="WaveformSelectionBrush"     Color="#55E0A030"/>
+    <SolidColorBrush x:Key="WaveformLoopRegionBrush"    Color="#332E7FD6"/>
+    <!-- The loop region once clicked/selected (not dragged - see SampleWaveformControl.
+         LoopSelected) - green so it's visually distinct from both the faint blue
+         unselected loop tint and the amber crop-selection fill. -->
+    <SolidColorBrush x:Key="WaveformLoopSelectedBrush"  Color="#5533CC55"/>
+    <SolidColorBrush x:Key="WaveformGridLineBrush"      Color="#1AFFFFFF"/>
+    <!-- Sample Start / Loop Start / Loop End marker LINES - matches the Kronos's own
+         on-screen coloring for these three points exactly (not app palette colors),
+         so the mapping is instantly familiar to anyone who's used the hardware. -->
+    <SolidColorBrush x:Key="WaveformSampleStartBrush"   Color="#FFFF0000"/>
+    <SolidColorBrush x:Key="WaveformLoopStartBrush"     Color="#FF00FF00"/>
+    <SolidColorBrush x:Key="WaveformLoopEndBrush"       Color="#FF0000FF"/>
+
     <!-- ══════════════════════════════════════════════════════════════════
          Window - NOTE: unlike every other implicit style in this file, WPF does
          NOT auto-apply an implicit TargetType="Window" style to the Window element

@@ -30,13 +30,19 @@ static class SampleFtpPullCheck
         await client.Connect();
         Console.WriteLine($"Connected to {host}:{port}.");
 
-        var (localPath, map) = await SampleFtpClosure.PullAsync(client, remotePath, localRoot, Console.WriteLine);
+        var (localPath, map, failures) = await SampleFtpClosure.PullAsync(client, remotePath, localRoot, Console.WriteLine);
 
         try { await client.Disconnect(); } catch { }
 
         Console.WriteLine($"\nPulled {map.Count} file(s) into {localRoot}.");
         foreach (var (local, remote) in map)
             Console.WriteLine($"  {remote}  ->  {local}");
+
+        if (failures.Count > 0)
+        {
+            Console.WriteLine($"\n{failures.Count} file(s) FAILED to download (skipped, not fatal to the pull itself):");
+            foreach (var f in failures) Console.WriteLine($"  {f}");
+        }
 
         int failCount = 0;
         foreach (var local in map.Keys)

@@ -73,6 +73,11 @@ internal partial class SampleRemoteBrowserDialog : ThemedWindow
             var entries = listing
                 .Select(i => new Entry(i.Name, i.FullName, i.Type == FtpObjectType.Directory))
                 .Where(e => e.IsDirectory || e.Name.EndsWith(_extensionFilter, StringComparison.OrdinalIgnoreCase))
+                // _UserBank.KSC is a live shortcut to Kronos SSD library content, not
+                // real sample data (KscCollection.ToBytes already refuses to write one;
+                // this keeps it from being picked in the first place, not just rejected
+                // after the fact - see SampleEditorViewModel.IsUserBank).
+                .Where(e => e.IsDirectory || !e.Name.EndsWith("_UserBank.KSC", StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(e => e.IsDirectory)
                 .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
@@ -112,10 +117,23 @@ internal partial class SampleRemoteBrowserDialog : ThemedWindow
         TXT_Status.Text = AppMessages.RemoteSamplePicker.PullingClosure(entry.Name);
         try
         {
-            var (localPath, map) = await SampleFtpClosure.PullAsync(_client, entry.FullPath, _localRoot,
+            var (localPath, map, failures) = await SampleFtpClosure.PullAsync(_client, entry.FullPath, _localRoot,
                 msg => TXT_Status.Text = msg);
             PickedLocalPath = localPath;
             RemoteMap = map;
+            // Surfaced HERE, before the dialog closes and OpenCollection runs on
+            // whatever DID make it to disk - previously a failed .KMP/.KSF download was
+            // only ever logged (AppLog.Warn), so the very next thing the user saw was
+            // "Loaded 'X.KSC' (N entries)" (the .KSC's own raw entry count, unaffected
+            // by what actually downloaded) with an empty or partial tree and no visible
+            // explanation why.
+            if (failures.Count > 0)
+            {
+                MessageBox.Show(this,
+                    $"{failures.Count} file(s) referenced by '{entry.Name}' could not be downloaded and will be "
+                    + $"missing from the loaded collection:\n\n{string.Join("\n", failures)}",
+                    "Some Files Didn't Download", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
             DialogResult = true;
         }
         catch (Exception ex)

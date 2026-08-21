@@ -13,8 +13,11 @@ partial class SampleTreeNode : ObservableObject
     public string Label { get; }
 
     // Exactly one of these is non-null, identifying what kind of node this is and
-    // what it points at.
-    public KscCollection? Collection { get; }
+    // what it points at. CollectionRef carries its own .KSC path (like MultisampleRef/
+    // ZoneRef already do) so a caller can tell which of possibly SEVERAL open
+    // collections a given root belongs to, now that opening a second .KSC adds another
+    // root instead of replacing the first (see SampleEditorViewModel.RebuildTreeFromCollection).
+    public (KscCollection Collection, string Path)? CollectionRef { get; }
     public (KmpMultisample Multisample, string Path)? MultisampleRef { get; }
     public (KmpZone Zone, string KmpPath)? ZoneRef { get; }
 
@@ -23,8 +26,8 @@ partial class SampleTreeNode : ObservableObject
 
     public ObservableCollection<SampleTreeNode> Children { get; } = [];
 
-    public static SampleTreeNode ForCollection(string label, KscCollection collection) =>
-        new(label, collection: collection);
+    public static SampleTreeNode ForCollection(string label, KscCollection collection, string path) =>
+        new(label, collectionRef: (collection, path));
 
     public static SampleTreeNode ForMultisample(string label, KmpMultisample multisample, string path) =>
         new(label, multisampleRef: (multisample, path));
@@ -32,11 +35,11 @@ partial class SampleTreeNode : ObservableObject
     public static SampleTreeNode ForZone(string label, KmpZone zone, string kmpPath) =>
         new(label, zoneRef: (zone, kmpPath));
 
-    SampleTreeNode(string label, KscCollection? collection = null,
+    SampleTreeNode(string label, (KscCollection, string)? collectionRef = null,
         (KmpMultisample, string)? multisampleRef = null, (KmpZone, string)? zoneRef = null)
     {
         Label = label;
-        Collection = collection;
+        CollectionRef = collectionRef;
         MultisampleRef = multisampleRef;
         ZoneRef = zoneRef;
     }

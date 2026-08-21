@@ -51,15 +51,6 @@ static class SampleDspSelfTests
             Check("gain-normalize-silence-unchanged", stillSilent.All(s => s == 0));
         }
 
-        // ── FadeEffect ──
-        {
-            var pcm = Enumerable.Repeat((short)10000, 100).ToArray();
-            var faded = new FadeEffect(10, 10).Apply(pcm, 44100);
-            Check("fade-in-starts-near-zero", Math.Abs((int)faded[0]) < 1000);
-            Check("fade-in-reaches-full-after-ramp", Math.Abs((int)faded[50]) == 10000);
-            Check("fade-out-ends-near-zero", Math.Abs((int)faded[^1]) < 1000);
-        }
-
         // ── SilenceTrimEffect ──
         {
             short[] pcm = [0, 0, 1, 5000, -5000, 3, 0, 0, 0];
@@ -108,35 +99,64 @@ static class SampleDspSelfTests
 
         // ── SampleEditUndo: byte-cap eviction ──
         {
+            static SampleFieldSnapshot Snap(byte[] pcm) => new(pcm, 0, 0, 0, 0x81);
+
             var undo = new SampleEditUndo(byteCap: 100);
             var a = new byte[40];
             var b = new byte[40];
             var c = new byte[40];
-            undo.RecordBeforeEdit(a);
-            undo.RecordBeforeEdit(b);
+            undo.RecordBeforeEdit(Snap(a));
+            undo.RecordBeforeEdit(Snap(b));
             Check("undo-two-under-cap-no-eviction", undo.UndoCount == 2 && undo.TakeEvictedCount() == 0);
 
-            undo.RecordBeforeEdit(c); // 120 bytes total > 100 cap -> evicts 'a'
+            undo.RecordBeforeEdit(Snap(c)); // 120 bytes total > 100 cap -> evicts 'a'
             Check("undo-eviction-past-cap", undo.UndoCount == 2);
             Check("undo-eviction-counted", undo.TakeEvictedCount() == 1);
             Check("undo-eviction-count-resets-after-take", undo.TakeEvictedCount() == 0);
 
             var current = new byte[40];
-            var restored = undo.Undo(current);
-            Check("undo-restores-most-recent-first", restored != null && restored.SequenceEqual(c));
+            var restored = undo.Undo(Snap(current));
+            Check("undo-restores-most-recent-first", restored != null && restored.Value.Pcm.SequenceEqual(c));
             Check("undo-can-redo-after-undo", undo.CanRedo);
 
-            var redone = undo.Redo(new byte[40]);
-            Check("redo-restores-undone-value", redone != null && redone.SequenceEqual(c));
+            var redone = undo.Redo(Snap(new byte[40]));
+            Check("redo-restores-undone-value", redone != null && redone.Value.Pcm.SequenceEqual(c));
 
             var fresh = new SampleEditUndo(byteCap: 1000);
-            Check("undo-empty-stack-returns-null", fresh.Undo(new byte[10]) == null);
-            Check("redo-empty-stack-returns-null", fresh.Redo(new byte[10]) == null);
+            Check("undo-empty-stack-returns-null", fresh.Undo(Snap(new byte[10])) == null);
+            Check("redo-empty-stack-returns-null", fresh.Redo(Snap(new byte[10])) == null);
 
-            fresh.RecordBeforeEdit(new byte[10]);
-            fresh.Undo(new byte[10]);
-            fresh.RecordBeforeEdit(new byte[10]); // a fresh edit must clear the redo stack
+            fresh.RecordBeforeEdit(Snap(new byte[10]));
+            fresh.Undo(Snap(new byte[10]));
+            fresh.RecordBeforeEdit(Snap(new byte[10])); // a fresh edit must clear the redo stack
             Check("new-edit-clears-redo-stack", !fresh.CanRedo);
+        }
+
+        // ── SampleFieldSnapshot: the offset-24 preserved-loop-duplicate slot must
+        //    survive a field-edit undo, not just SampleStart/LoopStart/LoopEnd/Flags.
+        //    Before this fix, ApplyTo unconditionally called ClearPreservedLoopDuplicate()
+        //    on restore, so undoing an edit on one of the 5 real outlier files (whose
+        //    dup slot does NOT mirror LoopStart) would silently drop the real value -
+        //    the next Save would then write LoopStart into offset 24, changing bytes
+        //    that round-tripped byte-identical before any edit ever happened. ──
+        {
+            var sample = new KsfSample { SampleStart = 100, LoopStart = 200, LoopEnd = 300 };
+            sample.RestorePreservedLoopDuplicate(999); // a distinct, non-mirroring dup value
+
+            var undo = new SampleEditUndo(byteCap: 10_000);
+            undo.RecordBeforeEdit(SampleFieldSnapshot.Of(sample));
+
+            // Simulate a live field edit (e.g. SetMarker dragging LoopStart) - same two
+            // calls the real edit path makes: mutate the field, then re-sync the dup.
+            sample.LoopStart = 500;
+            sample.ClearPreservedLoopDuplicate();
+
+            var restored = undo.Undo(SampleFieldSnapshot.Of(sample));
+            Check("dup-undo-returns-snapshot", restored != null);
+            restored!.Value.ApplyTo(sample);
+
+            Check("dup-undo-restores-loop-start", sample.LoopStart == 200);
+            Check("dup-undo-restores-preserved-duplicate", sample.PreservedLoopDuplicate == 999);
         }
 
         return fails;

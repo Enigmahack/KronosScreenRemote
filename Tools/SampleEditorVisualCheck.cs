@@ -81,10 +81,35 @@ static class SampleEditorVisualCheck
         return parent.ItemContainerGenerator.ContainerFromItem(item) as TreeViewItem;
     }
 
+    static void CopyDirectory(string src, string dst)
+    {
+        Directory.CreateDirectory(dst);
+        foreach (var file in Directory.GetFiles(src))
+            File.Copy(file, Path.Combine(dst, Path.GetFileName(file)));
+        foreach (var dir in Directory.GetDirectories(src))
+            CopyDirectory(dir, Path.Combine(dst, Path.GetFileName(dir)));
+    }
+
     public static void Schedule(string kscPath)
     {
         var outDir = Path.Combine(Path.GetTempPath(), "kronos_sample_editor_visual_check");
         if (Directory.Exists(outDir)) Directory.Delete(outDir, recursive: true);
+
+        // This tool now exercises real button clicks (Add Zone below), which - unlike
+        // the plain tree-selection steps that came before it - actually write to disk.
+        // Copy the fixture into scratch first, same "never mutate the source" discipline
+        // Tools/SampleEditorSmokeTest.cs already applies, so pointing this at a real
+        // fixture can't leave it modified.
+        var scratchRoot = Path.Combine(Path.GetTempPath(), "kronos_sample_editor_visual_check_scratch");
+        if (Directory.Exists(scratchRoot)) Directory.Delete(scratchRoot, recursive: true);
+        Directory.CreateDirectory(scratchRoot);
+        var kscName = Path.GetFileName(kscPath);
+        var contentDirName = Path.GetFileNameWithoutExtension(kscPath);
+        var srcContentDir = Path.Combine(Path.GetDirectoryName(kscPath) ?? "", contentDirName);
+        var scratchKscPath = Path.Combine(scratchRoot, kscName);
+        File.Copy(kscPath, scratchKscPath);
+        if (Directory.Exists(srcContentDir)) CopyDirectory(srcContentDir, Path.Combine(scratchRoot, contentDirName));
+        kscPath = scratchKscPath;
 
         // OpenCollectionPath below writes Recent Files to the REAL settings.json
         // (Storage.SaveSettings has no test-injectable override) - snapshot it now and
@@ -158,6 +183,71 @@ static class SampleEditorVisualCheck
                             realItem.IsSelected = true;
                             await Task.Delay(150);
                             Screenshot(win, "05_real_zone_selected", outDir);
+
+                            // The redesigned detail panel (dual stereo waveform panes,
+                            // piano keymap, VU meter, Edit/Fade/TempoPitch sections) is
+                            // now taller than the window - scroll to the bottom to
+                            // verify everything below the fold actually renders too,
+                            // not just what fits in the initial unscrolled view.
+                            win.DetailScrollViewer.ScrollToEnd();
+                            win.DetailScrollViewer.UpdateLayout();
+                            await Task.Delay(150);
+                            Screenshot(win, "05b_real_zone_selected_scrolled", outDir);
+                            win.DetailScrollViewer.ScrollToTop();
+                            win.DetailScrollViewer.UpdateLayout();
+
+                            // Tab framework (Keymap/Samples/Looping) - confirms each tab
+                            // actually renders its relocated content, not just that the
+                            // TabControl itself constructs.
+                            //
+                            // EVERY tab shot scrolls to the end first. The waveform and
+                            // transport were hoisted above the TabControl, so the tabs now
+                            // sit below the fold at this window size - screenshotting them
+                            // from the top of the scroll produced three IDENTICAL images
+                            // of the waveform with no tab content in frame at all, which
+                            // silently attested to nothing. (A same-size pair of output
+                            // PNGs was the tell.)
+                            if (win.EditorTabs.Items.Count >= 3)
+                            {
+                                async Task ShotTab(int index, string name)
+                                {
+                                    ((TabItem)win.EditorTabs.Items[index]).IsSelected = true;
+                                    await Task.Delay(150);
+                                    win.DetailScrollViewer.ScrollToEnd();
+                                    win.DetailScrollViewer.UpdateLayout();
+                                    await Task.Delay(150);
+                                    Screenshot(win, name, outDir);
+                                }
+
+                                await ShotTab(0, "05c_keymap_tab");
+                                await ShotTab(1, "05e_samples_tab_scrolled");
+
+                                // The one deliberately-unscrolled shot: the hoisted
+                                // waveform/transport block at the top of the pane.
+                                win.DetailScrollViewer.ScrollToTop();
+                                win.DetailScrollViewer.UpdateLayout();
+                                await Task.Delay(150);
+                                Screenshot(win, "05f_samples_tab_top", outDir);
+
+                                await ShotTab(2, "05d_looping_tab");
+
+                                ((TabItem)win.EditorTabs.Items[0]).IsSelected = true; // back to Keymap
+                                await Task.Delay(150);
+                            }
+
+                            // Add Zone (items 4/5) - a real button click through the
+                            // production Click handler, not a direct ViewModel call, so
+                            // this actually exercises the window's own tree-reselection
+                            // glue: the newly added zone should end up selected (visible
+                            // in the tree AND the keymap), not the parent multisample
+                            // node the click used to visually "snap" back to.
+                            win.BtnAddZone.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
+                            await Task.Delay(250);
+                            Console.WriteLine("[visual-check] after Add Zone, selected tree item: "
+                                + ((win.SampleTree.SelectedItem as SampleTreeNode)?.Label ?? "(none)"));
+                            ((TabItem)win.EditorTabs.Items[0]).IsSelected = true; // Keymap - show the new zone's bar/highlight
+                            await Task.Delay(150);
+                            Screenshot(win, "05g_after_add_zone", outDir);
                         }
 
                         if (skippedZone != null && msContainer.ItemContainerGenerator.ContainerFromItem(skippedZone) is TreeViewItem skipItem)

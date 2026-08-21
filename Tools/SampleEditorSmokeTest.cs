@@ -112,6 +112,56 @@ static class SampleEditorSmokeTest
                 vm.SelectNode(zoneNode);
                 Ok("re-selected original zone (post-rebuild) for remaining checks");
 
+                // ── Add Zone (empty placeholder) + Import Sample into it - the two
+                //    halves of the "add a placeholder now, attach real audio later"
+                //    workflow, end to end against a real multisample. ──
+                {
+                    var owningMultisample = FindMultisampleContainingZone(vm.Roots, zoneNode.ZoneRef!.Value.Zone);
+                    if (owningMultisample == null) { Fail("couldn't resolve the owning multisample for the placeholder-zone check"); return; }
+                    int zonesBeforeAdd = owningMultisample.Zones.Count;
+
+                    vm.AddPlaceholderZone();
+                    if (!vm.StatusText.StartsWith("Added an empty zone")) { Fail($"add placeholder zone didn't report success: {vm.StatusText}"); return; }
+                    Ok($"placeholder zone added: {vm.StatusText}");
+
+                    zoneNode = FindZoneByFilename(vm.Roots, originalZoneFilename);
+                    if (zoneNode == null) { Fail("original zone not found after placeholder-zone add"); return; }
+                    owningMultisample = FindMultisampleContainingZone(vm.Roots, zoneNode.ZoneRef!.Value.Zone);
+                    if (owningMultisample == null || owningMultisample.Zones.Count != zonesBeforeAdd + 1)
+                    { Fail($"zone count after add: expected {zonesBeforeAdd + 1}, got {owningMultisample?.Zones.Count}"); return; }
+
+                    var placeholder = owningMultisample.Zones[^1]; // AddPlaceholderZone always appends last
+                    if (!placeholder.IsSkipped) { Fail($"new placeholder zone isn't marked skipped: Filename='{placeholder.Filename}'"); return; }
+                    Ok($"placeholder zone confirmed on disk: key {placeholder.OriginalKey}-{placeholder.TopKey}, Filename='{placeholder.Filename}'");
+
+                    var placeholderNode = FindZoneByKey(vm.Roots, placeholder.OriginalKey);
+                    if (placeholderNode == null) { Fail("placeholder zone not found in the refreshed tree"); return; }
+                    vm.SelectNode(placeholderNode);
+                    if (!vm.ZoneIsSkipped || vm.HasSampleLoaded) { Fail("placeholder zone should be skipped with no sample loaded"); return; }
+
+                    vm.ImportSampleIntoZone(placeholder, exportWavPath);
+                    if (!vm.StatusText.StartsWith("Imported")) { Fail($"import into placeholder didn't report success: {vm.StatusText}"); return; }
+                    Ok($"sample imported into placeholder zone: {vm.StatusText}");
+
+                    zoneNode = FindZoneByFilename(vm.Roots, originalZoneFilename);
+                    if (zoneNode == null) { Fail("original zone not found after placeholder-zone import"); return; }
+                    owningMultisample = FindMultisampleContainingZone(vm.Roots, zoneNode.ZoneRef!.Value.Zone);
+                    var filledZone = owningMultisample?.Zones.FirstOrDefault(z => z.TopKey == placeholder.TopKey);
+                    if (filledZone == null || filledZone.IsSkipped) { Fail("placeholder zone still skipped after ImportSampleIntoZone"); return; }
+                    if (filledZone.OriginalKey != placeholder.OriginalKey || filledZone.TopKey != placeholder.TopKey)
+                    { Fail($"ImportSampleIntoZone changed the zone's key range: was ({placeholder.OriginalKey},{placeholder.TopKey}), now ({filledZone.OriginalKey},{filledZone.TopKey})"); return; }
+
+                    var filledNode = FindZoneByKey(vm.Roots, filledZone.OriginalKey);
+                    vm.SelectNode(filledNode);
+                    if (!vm.HasSampleLoaded || vm.SampleWaveform == null || !vm.SampleWaveform.SequenceEqual(originalWaveform))
+                    { Fail("sample imported into placeholder isn't bit-exact against the source WAV"); return; }
+                    Ok("placeholder zone's imported sample is bit-exact and its key range was preserved");
+
+                    zoneNode = FindZoneByFilename(vm.Roots, originalZoneFilename);
+                    if (zoneNode == null) { Fail("original zone not found after placeholder-zone tree rebuild"); return; }
+                    vm.SelectNode(zoneNode);
+                }
+
                 // ── Phase 3: DSP edits + undo/redo, against the real in-memory PCM ──
 
                 vm.SelectionStartFrame = 0;
@@ -151,9 +201,16 @@ static class SampleEditorSmokeTest
                 Ok("normalize applied without error");
                 vm.Undo();
 
-                vm.ApplyFade(100, 100);
-                Ok("fade applied without error");
+                vm.SelectionStartFrame = 0;
+                vm.SelectionEndFrame = Math.Min(100, vm.SampleFrameCount);
+                vm.ApplyFadeInSelection();
+                Ok("fade in (selection) applied without error");
                 vm.Undo();
+                vm.ApplyFadeOutSelection();
+                Ok("fade out (selection) applied without error");
+                vm.Undo();
+                vm.SelectionStartFrame = 0;
+                vm.SelectionEndFrame = 0;
 
                 vm.ApplySilenceTrim();
                 Ok("silence trim applied without error");
@@ -233,8 +290,22 @@ static class SampleEditorSmokeTest
         }
 
         // Edit + save + reopen round trip on the zone's key fields.
-        int newOrigKey = (zoneNode.ZoneRef!.Value.Zone.OriginalKey + 1) % 128;
-        int newTopKey = (zoneNode.ZoneRef.Value.Zone.TopKey + 1) % 128;
+        //
+        // Top Key is bounded on BOTH sides now: floored at the previous zone's TopKey+1
+        // (added earlier, so this zone can't become inverted) and capped at the NEXT
+        // zone's TopKey-1 (so the next zone can't). That cap is not new behaviour
+        // invented here - it's exactly what SampleKeymapControl.cs:211 already clamped a
+        // boundary DRAG to; the typed field was simply the one path that skipped it.
+        // This test used to bump TopKey by +1 unconditionally and assert it landed
+        // verbatim, which only passed while the typed path was unclamped.
+        var editedZone = zoneNode.ZoneRef!.Value.Zone;
+        var ownerZones = vm.CurrentMultisampleZones;
+        int zoneIdx = ownerZones?.IndexOf(editedZone) ?? -1;
+        int topKeyCeiling = ownerZones != null && zoneIdx >= 0 && zoneIdx < ownerZones.Count - 1
+            ? ownerZones[zoneIdx + 1].TopKey - 1 : 127;
+
+        int newOrigKey = (editedZone.OriginalKey + 1) % 128;
+        int newTopKey = Math.Min(editedZone.TopKey + 1, topKeyCeiling);
         vm.ApplyZoneEdits(newOrigKey, newTopKey);
         vm.SaveSelectedMultisample();
         if (vm.StatusText.StartsWith("Save failed") || vm.StatusText.Contains("Couldn't resolve"))
@@ -249,6 +320,17 @@ static class SampleEditorSmokeTest
         if (matchingZone.OriginalKey != newOrigKey || matchingZone.TopKey != newTopKey)
         { Fail($"key edit not persisted: expected ({newOrigKey},{newTopKey}), got ({matchingZone.OriginalKey},{matchingZone.TopKey})"); return; }
         Ok($"zone key edit persisted: OriginalKey={matchingZone.OriginalKey} TopKey={matchingZone.TopKey}");
+
+        // ...and the cap itself is exercised directly, rather than merely avoided above:
+        // asking for the highest possible Top Key must land on the ceiling, never past
+        // it (which would leave the NEXT zone with an inverted key range).
+        if (zoneIdx >= 0 && ownerZones != null && zoneIdx < ownerZones.Count - 1)
+        {
+            vm.ApplyZoneEdits(newOrigKey, 127);
+            if (editedZone.TopKey != topKeyCeiling)
+            { Fail($"Top Key ceiling not enforced: asked for 127 with next zone at {ownerZones[zoneIdx + 1].TopKey}, expected {topKeyCeiling}, got {editedZone.TopKey}"); return; }
+            Ok($"Top Key ceiling enforced: 127 clamped to {topKeyCeiling} (next zone's TopKey - 1)");
+        }
 
         Console.WriteLine("\nALL SMOKE TESTS PASSED");
         RestoreSettings();
@@ -284,6 +366,17 @@ static class SampleEditorSmokeTest
             if (node.MultisampleRef?.Multisample.Name == name && node.MultisampleRef?.Multisample.Suffix == suffix)
                 return node;
             var found = FindMultisampleByNameSuffix(node.Children, name, suffix);
+            if (found != null) return found;
+        }
+        return null;
+    }
+
+    static KmpMultisample? FindMultisampleContainingZone(IEnumerable<SampleTreeNode> nodes, KmpZone zone)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.MultisampleRef is { } ms && ms.Multisample.Zones.Contains(zone)) return ms.Multisample;
+            var found = FindMultisampleContainingZone(node.Children, zone);
             if (found != null) return found;
         }
         return null;

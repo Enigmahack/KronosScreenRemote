@@ -12,6 +12,12 @@ using System.IO;
 // Suffix, NOT two zones inside one .KMP (RLP1 zones have no channel field).
 static class SampleImportBuilder
 {
+    // Hardware limit (doc §2.1's own zone-list shape - RLP1 has no room past 128
+    // entries) - enforced here, the single place every zone-adding path funnels
+    // through (AddSampleZone itself; AddStereoSampleZonePair calls it twice), so a
+    // caller can't bypass the cap by using one entry point and not another.
+    public const int MaxZonesPerMultisample = 128;
+
     // Inserts the new zone in TopKey order (not appended past a lower-keyed zone that
     // happens to come later in the list) - KmpZone's own doc comment: zone order IS
     // key-range order, each zone owning (previous zone's TopKey+1) through its own
@@ -23,6 +29,9 @@ static class SampleImportBuilder
     public static KmpZone AddSampleZone(KmpMultisample m, string kmpPath, string sampleName,
         short[] pcm, int sampleRate, int originalKey, int topKey, string suffix = "")
     {
+        if (m.Zones.Count >= MaxZonesPerMultisample)
+            throw new InvalidOperationException($"'{m.Name}{m.Suffix}' already has {MaxZonesPerMultisample} zones (the maximum) - remove one before adding another.");
+
         var filename = m.NextKsfFilename();
         var zone = new KmpZone
         {

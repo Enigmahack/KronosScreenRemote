@@ -62,6 +62,14 @@ public partial class App : Application
             fails.AddRange(SampleStereoSelfTests.SelfTest());
             fails.AddRange(SampleTreeSelectionSelfTests.SelfTest());
             fails.AddRange(SamplePhase5SelfTests.SelfTest());
+            fails.AddRange(SamplePhase6SelfTests.SelfTest());
+            fails.AddRange(SamplePhase7SelfTests.SelfTest());
+            fails.AddRange(SamplePhase8SelfTests.SelfTest());
+            fails.AddRange(SamplePhase9SelfTests.SelfTest());
+            fails.AddRange(SamplePhase10SelfTests.SelfTest());
+            fails.AddRange(SamplePhase11SelfTests.SelfTest());
+            fails.AddRange(SamplePhase12SelfTests.SelfTest());
+            fails.AddRange(SamplePhase13SelfTests.SelfTest());
             });
             var outPath = Path.Combine(Path.GetTempPath(), "kronos_librarian_selftest.txt");
             File.WriteAllText(outPath, fails.Count == 0 ? "OK" : "FAIL: " + string.Join(", ", fails));

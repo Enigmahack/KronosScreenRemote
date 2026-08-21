@@ -40,7 +40,15 @@ sealed class KsfSample
     // this as stale and call ClearPreservedLoopDuplicate() to re-sync it.
     uint? _preservedLoopDuplicate;
 
+    // Exposed so undo/redo (SampleFieldSnapshot) can snapshot and restore this alongside
+    // SampleStart/LoopStart/LoopEnd/Flags - without this, undoing a field edit on one of
+    // the 5 outlier files would silently drop its non-mirroring dup value (ClearPreserved-
+    // LoopDuplicate falls back to mirroring LoopStart on next save, a real byte change on
+    // a file that round-tripped byte-identical before any edit).
+    public uint? PreservedLoopDuplicate => _preservedLoopDuplicate;
+
     public void ClearPreservedLoopDuplicate() => _preservedLoopDuplicate = null;
+    public void RestorePreservedLoopDuplicate(uint? value) => _preservedLoopDuplicate = value;
 
     public bool IsLoopEnabled => (Flags & 0x80) == 0;
     public int FrameCount => Pcm.Length / 2;

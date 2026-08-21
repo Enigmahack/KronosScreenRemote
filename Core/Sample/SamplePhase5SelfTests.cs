@@ -155,7 +155,10 @@ static class SamplePhase5SelfTests
         //    degenerate (end <= start) loop points ──
         {
             short[] samples = [10, 20, 30, 40, 50]; // frames 0..4
-            var provider = new LoopingSampleProvider(samples, 44100, loopStartFrame: 1, loopEndFrame: 4);
+            // sampleStartFrame == loopStartFrame skips the "intro" (attack) phase, so
+            // playback jumps straight into the loop - the same immediate-loop behavior
+            // this test exercised before LoopingSampleProvider grew the intro phase.
+            var provider = new LoopingSampleProvider(samples, 44100, channels: 1, sampleStartFrame: 1, loopStartFrame: 1, loopEndFrame: 4, reverse: false);
             var buf = new byte[20]; // 10 frames worth
             int read = provider.Read(buf, 0, buf.Length);
             var frames = new short[10];
@@ -164,7 +167,7 @@ static class SamplePhase5SelfTests
             Check("loop-provider-wraps-correctly",
                 frames.SequenceEqual(new short[] { 20, 30, 40, 20, 30, 40, 20, 30, 40, 20 }));
 
-            var degenerate = new LoopingSampleProvider(samples, 44100, loopStartFrame: 3, loopEndFrame: 1);
+            var degenerate = new LoopingSampleProvider(samples, 44100, channels: 1, sampleStartFrame: 3, loopStartFrame: 3, loopEndFrame: 1, reverse: false);
             var buf2 = new byte[10]; // 5 frames worth - exactly the whole buffer once
             degenerate.Read(buf2, 0, buf2.Length);
             var frames2 = new short[5];
