@@ -299,6 +299,32 @@ public partial class SampleEditorWindow : ThemedWindow
         UpdateStatus();
     }
 
+    // Wheel step = 1 semitone/1 index, always - deliberately NOT WheelStep()'s
+    // percent-of-length scaling (Sample Start/Loop Start/Loop End below): those are
+    // frame positions where a flat step is meaningless across wildly different sample
+    // lengths, but a key number or zone index has a fixed, small, meaningful range
+    // where "one notch = one step" is exactly what's expected (explicit request - no
+    // skipping). Matches ZoneIndexBox's own OnZoneIndexWheel, already flat-1.
+    void OnZoneOrigKeyWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (MidiNoteName.TryParse(ZoneOrigKeyBox.Text) is not { } origKey) return;
+        var topKey = MidiNoteName.TryParse(ZoneTopKeyBox.Text) ?? _vm.ZoneTopKey;
+        _vm.ApplyZoneEdits(origKey + (e.Delta > 0 ? 1 : -1), topKey);
+        RefreshDetailPanels();
+        UpdateStatus();
+        e.Handled = true;
+    }
+
+    void OnZoneTopKeyWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (MidiNoteName.TryParse(ZoneTopKeyBox.Text) is not { } topKey) return;
+        var origKey = MidiNoteName.TryParse(ZoneOrigKeyBox.Text) ?? _vm.ZoneOriginalKey;
+        _vm.ApplyZoneEdits(origKey, topKey + (e.Delta > 0 ? 1 : -1));
+        RefreshDetailPanels();
+        UpdateStatus();
+        e.Handled = true;
+    }
+
     // Shared Enter-key commit for every live-updating field below - PreviewKeyDown so
     // it fires before the TextBox's own default handling, dispatched by sender since
     // each field already has its own (TextChanged-wired) commit method to reuse rather
@@ -994,17 +1020,17 @@ public partial class SampleEditorWindow : ThemedWindow
     }
 
     // Live mirror of the crop-selection highlight onto the sibling stereo pane WHILE
-    // dragging, not just once at mouse-up (OnWaveformPaneSelectionChanged above) - a
-    // direct DP-to-DP copy, deliberately not routed through the ViewModel, so it stays
-    // cheap enough to run on every MouseMove.
+    // dragging, not just once at mouse-up (OnWaveformPaneSelectionChanged above) - goes
+    // through the source/other panes' own preview-only state (SetPreviewSelection),
+    // not their committed DPs, so it stays cheap enough to run on every MouseMove
+    // without writing either pane's real selection until the drag actually commits.
     void OnWaveformLeftSelectionPreview() => MirrorSelectionPreview(WaveformLeft, WaveformRight);
     void OnWaveformRightSelectionPreview() => MirrorSelectionPreview(WaveformRight, WaveformLeft);
 
     void MirrorSelectionPreview(SampleWaveformControl source, SampleWaveformControl other)
     {
         if (!_vm.HasStereoPair || _vm.SplitLR) return;
-        other.SelectionStartFrame = source.SelectionStartFrame;
-        other.SelectionEndFrame = source.SelectionEndFrame;
+        other.SetPreviewSelection(source.EffectiveSelectionStart, source.EffectiveSelectionEnd);
     }
 
     // Live mirror of a Sample Start/Loop Start/Loop End marker drag onto the sibling

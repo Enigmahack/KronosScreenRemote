@@ -32,7 +32,8 @@ public sealed class SampleWaveformControl : FrameworkElement
 
     public static readonly DependencyProperty SelectionStartFrameProperty =
         DependencyProperty.Register(nameof(SelectionStartFrame), typeof(int), typeof(SampleWaveformControl),
-            new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender));
+            new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender,
+                (d, _) => ((SampleWaveformControl)d).ClearPreviewSelection()));
 
     public int SelectionStartFrame
     {
@@ -42,7 +43,8 @@ public sealed class SampleWaveformControl : FrameworkElement
 
     public static readonly DependencyProperty SelectionEndFrameProperty =
         DependencyProperty.Register(nameof(SelectionEndFrame), typeof(int), typeof(SampleWaveformControl),
-            new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender));
+            new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender,
+                (d, _) => ((SampleWaveformControl)d).ClearPreviewSelection()));
 
     public int SelectionEndFrame
     {
@@ -209,7 +211,17 @@ public sealed class SampleWaveformControl : FrameworkElement
     int _dragAnchorFrame = -1;
     int _lastFrameCount = -1;
     bool _dragMoved;
-    int _preClickSelStart, _preClickSelEnd;
+
+    // Live crop-selection drag preview - separate from the committed SelectionStartFrame/
+    // SelectionEndFrame DPs, which are now written ONCE at mouse-up instead of on every
+    // MouseMove (2026-08-23 perf complaint: continuous DP writes - doubled in stereo
+    // Combine mode, which mirrors them onto the sibling pane too - made drag-selecting
+    // feel laggy on a real multi-minute sample). null means "no drag in progress, draw
+    // the committed selection"; OnRender and the mirrored sibling both read through
+    // EffectiveSelectionStart/End rather than caring which one is live. Both DPs' own
+    // registration clears this on ANY write, so a preview can never go stale and shadow
+    // a later real commit made through some other path (e.g. Select All, Zoom, a reload).
+    int? _previewSelStart, _previewSelEnd;
 
     // Loop-region (whole-region) drag state - set when a mouse-down lands inside
     // [LoopStartFrame, LoopEndFrame) but not on either edge - separate from
@@ -366,12 +378,8 @@ public sealed class SampleWaveformControl : FrameworkElement
 
         _dragAnchorFrame = clickFrame;
         _dragMoved = false;
-        _preClickSelStart = SelectionStartFrame;
-        _preClickSelEnd = SelectionEndFrame;
-        SelectionStartFrame = _dragAnchorFrame;
-        SelectionEndFrame = _dragAnchorFrame;
+        SetPreviewSelection(_dragAnchorFrame, _dragAnchorFrame);
         CaptureMouse();
-        InvalidateVisual();
     }
 
     protected override void OnMouseMove(MouseEventArgs e)
@@ -422,11 +430,34 @@ public sealed class SampleWaveformControl : FrameworkElement
 
         int selFrame = PixelToFrame(e.GetPosition(this).X);
         if (selFrame != _dragAnchorFrame) _dragMoved = true;
-        SelectionStartFrame = Math.Min(_dragAnchorFrame, selFrame);
-        SelectionEndFrame = Math.Max(_dragAnchorFrame, selFrame);
-        InvalidateVisual();
+        SetPreviewSelection(Math.Min(_dragAnchorFrame, selFrame), Math.Max(_dragAnchorFrame, selFrame));
         SelectionPreviewChanged?.Invoke();
     }
+
+    // Sets the live drag-preview rectangle without touching the committed
+    // SelectionStartFrame/SelectionEndFrame DPs - see _previewSelStart's own comment for
+    // why. Used both for this control's own drag and (via MirrorSelectionPreview in
+    // SampleEditorWindow) to puppet the sibling stereo pane's rubber band from here,
+    // cheaper than round-tripping through that pane's own DPs.
+    public void SetPreviewSelection(int start, int end)
+    {
+        _previewSelStart = start;
+        _previewSelEnd = end;
+        InvalidateVisual();
+    }
+
+    public void ClearPreviewSelection()
+    {
+        if (_previewSelStart == null) return;
+        _previewSelStart = null;
+        _previewSelEnd = null;
+        InvalidateVisual();
+    }
+
+    // What OnRender and MirrorSelectionPreview should actually draw/mirror right now -
+    // the live preview while a drag is in progress, the committed selection otherwise.
+    public int EffectiveSelectionStart => _previewSelStart ?? SelectionStartFrame;
+    public int EffectiveSelectionEnd => _previewSelEnd ?? SelectionEndFrame;
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
     {
@@ -475,17 +506,26 @@ public sealed class SampleWaveformControl : FrameworkElement
 
         if (!_dragMoved)
         {
-            // A plain click, not a drag - restore whatever selection existed before
-            // this click (a scrub-click previews a spot, it doesn't clear your crop
-            // selection) and treat it as "play from here" instead of a selection change.
-            SelectionStartFrame = _preClickSelStart;
-            SelectionEndFrame = _preClickSelEnd;
+            // A plain click, not a drag - the committed selection was never touched (the
+            // drag preview only ever lived in _previewSelStart/End), so there's nothing
+            // to restore; just drop the preview and treat it as "play from here" instead
+            // of a selection change.
+            ClearPreviewSelection();
             ScrubFrame = clickedFrame;
-            InvalidateVisual();
             ScrubRequested?.Invoke(clickedFrame);
             return;
         }
 
+        // Commit once, at mouse-up - this is the one point the real DPs (and everything
+        // downstream: the VM push on SelectionChanged, the sibling pane's own commit)
+        // change for a crop-selection drag. Snapshot BOTH values before writing either
+        // DP - writing the first one fires its PropertyChangedCallback, which clears
+        // BOTH preview fields (see their own registration), so reading _previewSelEnd
+        // AFTER already having written SelectionStartFrame would see it already nulled.
+        int newStart = _previewSelStart!.Value;
+        int newEnd = _previewSelEnd!.Value;
+        SelectionStartFrame = newStart;
+        SelectionEndFrame = newEnd;
         SelectionChanged?.Invoke();
     }
 
@@ -689,10 +729,11 @@ public sealed class SampleWaveformControl : FrameworkElement
 
         // Selection highlight, under the trace but over the loop region (the active
         // editing selection should read as "on top of" the informational loop tint).
-        if (SelectionEndFrame > SelectionStartFrame)
+        int effSelStart = EffectiveSelectionStart, effSelEnd = EffectiveSelectionEnd;
+        if (effSelEnd > effSelStart)
         {
-            double selX0 = FrameToPixel(Math.Max(SelectionStartFrame, viewStart));
-            double selX1 = FrameToPixel(Math.Min(SelectionEndFrame, viewEnd));
+            double selX0 = FrameToPixel(Math.Max(effSelStart, viewStart));
+            double selX1 = FrameToPixel(Math.Min(effSelEnd, viewEnd));
             if (selX1 > selX0)
                 dc.DrawRectangle((Brush)FindResource("WaveformSelectionBrush"), null,
                     new Rect(selX0, 0, selX1 - selX0, h));

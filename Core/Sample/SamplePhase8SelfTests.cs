@@ -34,7 +34,7 @@ static class SamplePhase8SelfTests
         //    then repeats [loopStart, loopEnd) forward indefinitely ──
         {
             short[] samples = [0, 10, 20, 30, 40, 50]; // frames 0..5
-            var provider = new LoopingSampleProvider(samples, 44100, channels: 1, sampleStartFrame: 0, loopStartFrame: 2, loopEndFrame: 5, reverse: false);
+            var provider = new LoopingSampleProvider(samples, null, 44100, sampleStartFrame: 0, loopStartFrame: 2, loopEndFrame: 5, reverse: false);
             var buf = new byte[22]; // 11 frames: 5-frame intro + two 3-frame loop passes
             provider.Read(buf, 0, buf.Length);
             var frames = new short[11];
@@ -47,7 +47,7 @@ static class SamplePhase8SelfTests
         //    sample plays through normally once), only the LOOP itself reverses ──
         {
             short[] samples = [0, 10, 20, 30, 40, 50];
-            var provider = new LoopingSampleProvider(samples, 44100, channels: 1, sampleStartFrame: 0, loopStartFrame: 2, loopEndFrame: 5, reverse: true);
+            var provider = new LoopingSampleProvider(samples, null, 44100, sampleStartFrame: 0, loopStartFrame: 2, loopEndFrame: 5, reverse: true);
             var buf = new byte[22];
             provider.Read(buf, 0, buf.Length);
             var frames = new short[11];
@@ -66,8 +66,9 @@ static class SamplePhase8SelfTests
         {
             // 4 stereo frames, L/R deliberately far apart so a channel swap is obvious:
             // frame0=(1,-1) [intro only], frame1=(100,-100), frame2=(200,-200), frame3=(300,-300) [loop region].
-            short[] interleaved = [1, -1, 100, -100, 200, -200, 300, -300];
-            var provider = new LoopingSampleProvider(interleaved, 44100, channels: 2, sampleStartFrame: 0, loopStartFrame: 1, loopEndFrame: 4, reverse: true);
+            short[] left = [1, 100, 200, 300];
+            short[] right = [-1, -100, -200, -300];
+            var provider = new LoopingSampleProvider(left, right, 44100, sampleStartFrame: 0, loopStartFrame: 1, loopEndFrame: 4, reverse: true);
             var buf = new byte[28]; // 7 stereo frames: 4-frame intro + one reverse pass over the 3-frame loop
             provider.Read(buf, 0, buf.Length);
             var frames = new short[14];
@@ -86,8 +87,9 @@ static class SamplePhase8SelfTests
         //    and correctly stops (returns 0) once the buffer is exhausted rather than
         //    looping or reading garbage ──
         {
-            short[] interleaved = [1, 2, 3, 4]; // 2 stereo frames: (1,2), (3,4)
-            var provider = new OneShotSampleWaveProvider(interleaved, 44100, channels: 2);
+            short[] left = [1, 3]; // 2 stereo frames: (1,2), (3,4)
+            short[] right = [2, 4];
+            var provider = new OneShotSampleWaveProvider(left, right, 44100);
             var buf = new byte[16]; // room for 4 frames, only 2 exist
             int read = provider.Read(buf, 0, buf.Length);
             Check("oneshot-stereo-reads-only-available-bytes", read == 8);

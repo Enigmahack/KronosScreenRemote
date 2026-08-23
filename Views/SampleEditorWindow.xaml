@@ -394,13 +394,13 @@
                                     <TextBlock Text="Orig.Key:" Style="{StaticResource FieldLabel}"/>
                                     <TextBox x:Name="ZoneOrigKeyBox" Style="{StaticResource KeyFieldBox}" ToolTip="Note name, e.g. C4"
                                              TextChanged="OnZoneOrigKeyBoxChanged" LostFocus="OnZoneOrigKeyBoxChanged"
-                                             PreviewKeyDown="OnFieldPreviewKeyDown"/>
+                                             PreviewKeyDown="OnFieldPreviewKeyDown" PreviewMouseWheel="OnZoneOrigKeyWheel"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="Top Key:" Style="{StaticResource FieldLabel}"/>
                                     <TextBox x:Name="ZoneTopKeyBox" Style="{StaticResource KeyFieldBox}" ToolTip="Note name, e.g. G5"
                                              TextChanged="OnZoneTopKeyBoxChanged" LostFocus="OnZoneTopKeyBoxChanged"
-                                             PreviewKeyDown="OnFieldPreviewKeyDown"/>
+                                             PreviewKeyDown="OnFieldPreviewKeyDown" PreviewMouseWheel="OnZoneTopKeyWheel"/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="Range:" Style="{StaticResource FieldLabel}"/>

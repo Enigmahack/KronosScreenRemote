@@ -1588,6 +1588,7 @@ partial class SampleEditorViewModel : ObservableObject
     public void PlaySelectedSample()
     {
         if (_selectedSample == null || _selectedSample.IsHeaderOnly) return;
+        _playback.BoostEnabled = Sample12dbBoostEnabled;
         bool stereo = HasStereoPair && !SplitLR && _partnerSample is { IsHeaderOnly: false };
         bool loop = SampleLoopEnabled;
         int loopStartFrame = _cursorFrame >= 0 ? _cursorFrame : SampleSampleStart;
@@ -1640,6 +1641,7 @@ partial class SampleEditorViewModel : ObservableObject
     public void PlayFromFrame(int frame)
     {
         if (_selectedSample == null || _selectedSample.IsHeaderOnly) return;
+        _playback.BoostEnabled = Sample12dbBoostEnabled;
         bool stereo = HasStereoPair && !SplitLR && _partnerSample is { IsHeaderOnly: false };
 
         if (stereo) _playback.PlayStereoFrom(LeftSampleWaveform!, RightSampleWaveform!, (int)_selectedSample.SampleRate, frame);
@@ -3078,6 +3080,7 @@ partial class SampleEditorViewModel : ObservableObject
         _sampleDirty = true;
         if (mirror) _partnerSample!.Is12dbBoostEnabled = enabled;
 
+        _playback.BoostEnabled = enabled; // live, so toggling mid-playback is audible for A/B
         LoadSampleDetailState(_selectedSample, reloadWaveform: false);
         RefreshUndoRedoState();
         StatusText = $"+12dB boost {(enabled ? "enabled" : "disabled")}{(mirror ? " (both L/R channels)" : "")}.";

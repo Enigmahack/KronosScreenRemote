@@ -388,31 +388,23 @@ sealed class SampleKeymapControl : FrameworkElement
             }
         }
 
-        // ── Piano: white keys first (full height), black keys drawn on top, narrower
-        //    and centered on the white-key boundary they fall between ──
+        // ── Piano: white keys first (full height), then any WHITE-key highlight, then
+        //    black keys on top (narrower, centered on the white-key boundary they fall
+        //    between), then any BLACK-key highlight. Highlights are interleaved into
+        //    this same layering - not drawn as one final pass over everything - so a
+        //    black key's OPAQUE fill always paints over a neighboring white key's
+        //    highlight tint where their rectangles overlap (black keys are drawn wider
+        //    than their "own" slot, straddling the boundary - see BuildLayout). Without
+        //    that, a single-key highlight bled ~30% into whichever black key sits next
+        //    to it (and vice versa: highlighting a black key bled into its neighbor) -
+        //    the highlight rectangle used to span leftX[LowKey]..rightX[HighKey] as ONE
+        //    shape, inheriting the intentional white/black overlap that makes the keys
+        //    themselves look right but is wrong for "highlight exactly these keys."
         var whiteFill = new SolidColorBrush(Color.FromRgb(0xE8, 0xE8, 0xE8));
         var blackFill = new SolidColorBrush(Color.FromRgb(0x18, 0x18, 0x18));
         var keyBorder = new Pen(Brushes.Black, 0.5);
         whiteFill.Freeze(); blackFill.Freeze(); keyBorder.Freeze();
 
-        for (int key = 0; key <= 127; key++)
-        {
-            if (IsBlackKey(key)) continue;
-            dc.DrawRectangle(whiteFill, keyBorder, new Rect(leftX[key], pianoTop, rightX[key] - leftX[key], pianoHeight));
-        }
-        double blackHeight = pianoHeight * 0.6;
-        for (int key = 0; key <= 127; key++)
-        {
-            if (!IsBlackKey(key)) continue;
-            dc.DrawRectangle(blackFill, null, new Rect(leftX[key], pianoTop, rightX[key] - leftX[key], blackHeight));
-        }
-
-        // Faint greyscale highlight over the SELECTED zone's own key range - replaces
-        // relying on the permanent boundary lines to show "which keys are in this
-        // zone" (those read as clutter running through the whole piano for every
-        // zone boundary; a direct fill over the actual keys is much more legible at a
-        // glance). The zone bar's own selection highlight above is untouched.
-        //
         // Darker/more opaque than the original Color.FromArgb(70, 200, 200, 200) - that
         // combination barely moved a white key's own near-white fill (0xE8E8E8), only
         // about 9 of 255 luminance levels, so it read as basically invisible over white
@@ -420,16 +412,24 @@ sealed class SampleKeymapControl : FrameworkElement
         // which is why the mismatch wasn't obvious everywhere). This alpha/grey pairing
         // shifts a white key noticeably (~35-40 levels) while still reading as a subtle
         // tint rather than a solid block over the darker black keys.
-        if (SelectedZone != null)
+        var keyHighlight = new SolidColorBrush(Color.FromArgb(100, 140, 140, 140));
+        keyHighlight.Freeze();
+        var selectedRange = SelectedZone != null ? ranges.FirstOrDefault(r => ReferenceEquals(r.Zone, SelectedZone)) : default;
+        bool hasSelection = selectedRange.Zone != null;
+        bool InSelection(int key) => hasSelection && key >= selectedRange.LowKey && key <= selectedRange.HighKey;
+
+        for (int key = 0; key <= 127; key++)
         {
-            var selectedRange = ranges.FirstOrDefault(r => ReferenceEquals(r.Zone, SelectedZone));
-            if (selectedRange.Zone != null)
-            {
-                double hx0 = leftX[selectedRange.LowKey], hx1 = rightX[selectedRange.HighKey];
-                var keyHighlight = new SolidColorBrush(Color.FromArgb(100, 140, 140, 140));
-                keyHighlight.Freeze();
-                dc.DrawRectangle(keyHighlight, null, new Rect(hx0, pianoTop, Math.Max(1, hx1 - hx0), pianoHeight));
-            }
+            if (IsBlackKey(key)) continue;
+            dc.DrawRectangle(whiteFill, keyBorder, new Rect(leftX[key], pianoTop, rightX[key] - leftX[key], pianoHeight));
+            if (InSelection(key)) dc.DrawRectangle(keyHighlight, null, new Rect(leftX[key], pianoTop, rightX[key] - leftX[key], pianoHeight));
+        }
+        double blackHeight = pianoHeight * 0.6;
+        for (int key = 0; key <= 127; key++)
+        {
+            if (!IsBlackKey(key)) continue;
+            dc.DrawRectangle(blackFill, null, new Rect(leftX[key], pianoTop, rightX[key] - leftX[key], blackHeight));
+            if (InSelection(key)) dc.DrawRectangle(keyHighlight, null, new Rect(leftX[key], pianoTop, rightX[key] - leftX[key], blackHeight));
         }
 
         // C octave labels along the bottom of the white keys.

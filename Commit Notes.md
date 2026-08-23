@@ -2546,3 +2546,212 @@ only (same one-line `SelectFirstRoot()` addition as the two paths that WERE
 screenshotted), since this sandbox's live network reaches a different test Kronos than
 the user's real hardware (see kronos-sample-editor memory) and pulling isn't exercised by
 any headless test.
+
+**34. +12dB boost not audible in preview, and crop-selection dragging felt laggy
+(2026-08-23).** Two requests plus a requested sweep for other perf/simplification issues.
+
+**+12dB boost (`SamplePlayback.cs`, `SampleEditorViewModel.cs`).** The checkbox already
+persisted `KsfSample.Is12dbBoostEnabled` correctly; playback just never read it, so
+toggling it was silent. New `SamplePlayback.BoostEnabled` (mirrors `Volume`'s own
+pending/live-provider split) applies a software gain via the same `VolumeSampleProvider`
+used for the master Volume slider. **Gain direction is deliberately inverted from the
+flag's name**: boost ON plays at unity, boost OFF is -12dB (10^(-12/20) ≈ 0.2512), not
+the other way around. Reason: the playback chain ends in NAudio's own float→16-bit
+conversion, which clamps to [-1,1] - setting Volume above unity for the "boosted" state
+would hard-clip most real content, actively misinforming the user about what they're
+about to import rather than previewing it honestly. Implementing the requirement as
+literally stated ("unchecking it should drop the volume by 12db") gives the exact same
+12dB delta between the two states without ever multiplying past unity. **Tradeoff to
+flag**: an unboosted sample now previews 12dB quieter than it did before this change (at
+the same Volume slider position) - previously ALL samples played at the same nominal
+level regardless of the flag. `Volume`'s getter also changed from `_volumeProvider?.
+Volume ?? _pendingVolume` to always `_pendingVolume` - it used to read back through the
+live provider, which would have returned an already-attenuated value once boost landed
+and made the master Volume slider appear to move on its own. `BoostEnabled` is set from
+`Sample12dbBoostEnabled` at the top of both `PlaySelectedSample`/`PlayFromFrame` (so a
+newly-selected sample's own flag always applies), and again directly in
+`Set12dbBoostEnabled` (so toggling the checkbox mid-playback is audible immediately, for
+A/B comparison, without needing to stop and restart).
+
+**Crop-selection drag perf (`SampleWaveformControl.cs`, `SampleEditorWindow.xaml.cs`).**
+Reported as "the highlighting is very slow." The trace itself wasn't the cause - its
+min/max bucketing is already cached and keyed off sample/view/size, not selection (a
+separate fix, already in this codebase, for the analogous 25fps-playhead case) - but
+every `MouseMove` during a drag still wrote the real `SelectionStartFrame`/
+`SelectionEndFrame` DPs, and in stereo Combine mode that write was mirrored onto the
+SIBLING pane's own DPs too (`MirrorSelectionPreview`), doubling the DP-write/render-
+invalidate machinery on every pixel of mouse movement. Fixed by splitting "live rubber-
+band feedback" from "committed selection" the same way the code already splits
+`SelectionPreviewChanged` (per-move) from `SelectionChanged` (once, at mouse-up) at the
+VM boundary - now the same split applies to the DPs themselves:
+- New `_previewSelStart`/`_previewSelEnd` (nullable ints) hold the live drag rectangle.
+  `SetPreviewSelection`/`ClearPreviewSelection` are plain field writes (no DP validation/
+  coercion/metadata dispatch), and `EffectiveSelectionStart/End` (`_previewSelStart ??
+  SelectionStartFrame`) is what `OnRender` and the sibling-pane mirror both read - keeping
+  full live visual feedback during the drag (removing it entirely would just trade one bug
+  report for another), just without touching the committed state on every move.
+  `MirrorSelectionPreview` now calls `other.SetPreviewSelection(source.
+  EffectiveSelectionStart, ...)` instead of copying `SelectionStartFrame`/`EndFrame`
+  directly.
+- `SelectionStartFrame`/`SelectionEndFrame` are now written exactly ONCE per drag, at
+  mouse-up, and only when a real drag happened (`_dragMoved`) - a plain click never
+  touched them in the first place, so the old "collapse on mouse-down, restore on
+  no-move mouse-up" dance (`_preClickSelStart`/`_preClickSelEnd`) is gone; there's nothing
+  to restore when nothing was written. This is a genuine simplification, not just a perf
+  change - two fewer fields, one fewer restore branch.
+- **Correctness trap avoided**: since the sibling pane's preview is now set independently
+  of its own committed DPs, it could go stale and silently shadow a later real commit made
+  through some OTHER path (Select All, Zoom-to-selection, a tree reload) if nothing ever
+  cleared it. Fixed at the root instead of chasing every call site: both DPs' own
+  `PropertyChangedCallback` now calls `ClearPreviewSelection()` unconditionally, so ANY
+  write to the real selection - from this control's own commit, from
+  `RefreshDetailPanels` pushing the VM's value onto a pane, from anywhere - makes that
+  pane's preview stop shadowing it.
+
+**Sweep**: reviewed `SampleWaveformControl.OnRender` end-to-end (grid/loop/markers/
+playhead are all O(1) or O(width), same conclusion the earlier playhead-cache fix already
+reached) and `SampleKeymapControl`'s own drag handling (invalidates a small fixed set of
+zone-boundary rects per move, not a full waveform trace - not the same class of problem).
+**One real finding, not yet fixed - flagging for a separate round rather than bundling it
+into this one**: every `SamplePlayback.Play*` call (`OneShotSampleWaveProvider`/
+`LoopingSampleProvider`'s constructors, plus `Interleave` for stereo) copies the ENTIRE
+PCM buffer into a fresh `byte[]` synchronously on the UI thread, on every Play, Rewind,
+Fast-Forward, scrub-click, and Pause-Resume. For a real multi-minute 44.1kHz stereo
+sample that's tens of MB re-copied per transport click - a plausible contributor to
+"things feel slow" beyond just the selection drag reported here, but it's a different
+code path (transport, not highlighting), touches a currently-working and well-tested
+area, and fixing it properly (reading the existing `short[]`/interleaved buffer directly
+instead of a defensive byte-copy) deserves its own round rather than riding along with
+this one.
+
+Verification: clean `dotnet build`, `--librarian-selftest` green, `--ui-theme-smoketest`
+green, `--sample-format-fixture-check` 75/75 byte-identical, `--sample-editor-smoketest`
+fully green (including its stereo-pair/crop/undo/redo checks, which touch the same
+`SelectionStartFrame`/`EndFrame` this round rewrote). `--sample-editor-visual-check`
+re-run end-to-end with no differences from a baseline (pre-change) run - including
+confirming `[visual-check] after Add Zone, selected sample: (none)` reproduces
+IDENTICALLY on baseline, i.e. it's a pre-existing, unrelated quirk in that harness step,
+not a regression from this round. `SampleFixtures/` confirmed clean via `git status`
+throughout (including around the baseline A/B comparison, done via `git stash`/`stash
+pop`, not by hand-editing anything). **Not verified live**: neither change is
+headless-verifiable - the boost is audible-only (no headless audio assertion exists in
+this suite), and the deferred-selection drag behavior lives entirely in control
+code-behind mouse-event handling, which needs a real mouse drag in the running app to
+confirm the rubber band still tracks smoothly and the final commit lands on mouse-up (the
+entry-25 note about needing a genuinely-shown window applies here too, but a self-test
+still couldn't drive real `MouseMove` deltas the way a human drag does).
+
+**35. The `SamplePlayback.Play*` full-buffer-copy sweep finding from entry 34, fixed
+(2026-08-23, follow-up).** Request: address the flagged-but-deferred finding - every
+`Play*` call eagerly copied the whole PCM buffer (and, for stereo, built a fully
+interleaved copy first) synchronously on the UI thread, on every Play/Rewind/Fast-
+Forward/scrub-click/Pause-Resume.
+
+**Fix**: `OneShotSampleWaveProvider`/`LoopingSampleProvider` now hold the CALLER's own
+`short[]` array(s) directly (mono: one array + null; stereo: separate left/right arrays,
+no longer pre-interleaved) instead of a constructor-time `byte[]` copy. Conversion to
+little-endian bytes - and, for stereo, interleaving - now happens per-frame inside
+`Read()`, on NAudio's own playback thread, only for the chunk actually requested each
+callback. `SamplePlayback`'s `Interleave` helper is gone entirely; `PlayStereo(From)`/
+`PlayStereoLooped` pass `left`/`right` straight through, and the empty-buffer guard
+changed from `Interleave(...).Length == 0` to the equivalent `left.Length == 0 &&
+right.Length == 0` (same condition, no behavior change). `LoopingSampleProvider`'s
+intro/loop/reverse state machine is otherwise UNCHANGED, just re-expressed in frame
+units instead of byte offsets into a pre-built array - same branches, same wrap/degenerate-
+loop fallback, same reverse-plays-whole-loop-region-once-then-repeats-backward shape.
+Padding the shorter of two mismatched stereo channels with silence (the old `Interleave`'s
+own documented behavior) is preserved via `_totalFrames = Math.Max(left.Length,
+right.Length)` plus a per-frame bounds check in both providers.
+
+**Six existing self-tests updated for the new constructor shape** (`SamplePhase5SelfTests.
+cs`, `SamplePhase8SelfTests.cs`) - they built pre-interleaved `short[]` buffers and passed
+a `channels:` int, which no longer exists; converted to passing separate `left`/`right`
+arrays (mono cases pass `null` for right), same expected output sequences unchanged
+throughout, including the stereo-reverse-loop test that specifically pins L/R staying
+paired frame-by-frame (still passes - it was checking the OUTPUT byte layout, which is
+unchanged, not the internal storage this round actually changed).
+
+Verification: clean `dotnet build`, `--librarian-selftest` green (this is what actually
+exercises the six updated provider self-tests - all still pass, meaning the frame-based
+rewrite reproduces the byte-based original exactly for intro/loop/reverse/stereo-
+interleave/exhaustion), `--ui-theme-smoketest` green, `--sample-format-fixture-check`
+75/75 byte-identical, `--sample-editor-smoketest` fully green (touches `PlayLooped`/
+`PlayStereoLooped` indirectly via loop-preview state, though the smoketest itself doesn't
+assert on audio output), `--sample-editor-visual-check` re-run with no differences.
+`SampleFixtures/` confirmed clean via `git status`. **Not verified live**: audible
+playback correctness (no clicks/glitches/wrong-channel audio) isn't something any
+headless test in this suite can check - confirmed by code review and by the self-tests'
+byte-for-byte output match against the previous implementation's known-correct behavior,
+not by actually listening to Play/Rewind/Fast-Forward/loop-preview in the running app.
+
+**36. Crash on a real crop-selection drag: "Nullable object must have a value"
+(2026-08-23, regression from entry 34, caught live by the user).** `SampleWaveformControl.
+OnMouseLeftButtonUp`'s commit block wrote `SelectionStartFrame = _previewSelStart!.
+Value;` then, on the very next line, read `_previewSelEnd!.Value` - but writing
+`SelectionStartFrame` fires that DP's own `PropertyChangedCallback` (added in entry 34
+specifically so ANY write to either committed DP clears the preview, so a stale preview
+can never shadow a later real commit), which clears BOTH `_previewSelStart` AND
+`_previewSelEnd` as a side effect. The second line was reading a field the first line had
+just nulled out from under it - a self-inflicted ordering bug in the same commit this
+session already covered in code review, missed because no headless test drives a real
+`MouseMove`-then-`MouseUp` drag sequence (flagged explicitly as such in entry 34's own
+"not verified live" note - this is exactly the gap that note called out). Fixed by
+snapshotting both `_previewSelStart!.Value`/`_previewSelEnd!.Value` into local variables
+BEFORE writing either DP, then writing both DPs from the locals. No other read of
+`_previewSelStart`/`_previewSelEnd` in the file has this shape (checked via grep - the
+only other reads are the null-coalescing ones in `EffectiveSelectionStart`/`End`, which
+are safe by construction).
+
+Verification: clean `dotnet build`, `--librarian-selftest` green, `--ui-theme-smoketest`
+green, `--sample-format-fixture-check` 75/75 byte-identical, `--sample-editor-smoketest`
+fully green. `SampleFixtures/` confirmed clean via `git status`. **Not verified live**:
+same gap as before - this fix specifically addresses a live-only crash, and there's still
+no headless way to drive a real mouse drag through this control, so the fix is confirmed
+by re-reading the corrected code path line-by-line against the crash's own stack trace
+(the user's report pointed at the exact `SelectionEndFrame = _previewSelEnd!.Value;`
+line), not by reproducing and re-testing the crash in the running app.
+
+**37. Piano key-highlight bleed into neighbors, and wheel-scroll on Orig Key/Top Key
+(2026-08-23).** Two requests.
+
+**Key-highlight bleed (`SampleKeymapControl.OnRender`).** Highlighting C2 alone tinted
+part of the neighboring black key (C#2) too, and vice versa. Root cause: the highlight
+was one rectangle spanning `leftX[LowKey]` to `rightX[HighKey]`, drawn as a single final
+pass AFTER both white and black key fills. Black keys are deliberately drawn wider than
+their "own" slot (60% width, CENTERED on the white-key boundary - `BuildLayout`'s own
+documented convention, needed so they look like a real keyboard), so a single spanning
+rectangle for one selected key inherited that intentional white/black pixel overlap,
+bleeding into whichever key sits next to the selection edge. **Fix**: highlights are now
+interleaved into the same white-then-black layering the keys themselves already use,
+one rect per key using that key's own `leftX`/`rightX`/height (matching exactly what
+that key was drawn with) - white highlights drawn right after white fills, black
+highlights right after black fills. Since black fills are opaque and drawn AFTER white
+(same as before), a black key's own fill still paints over any neighboring white
+highlight bleeding into its footprint, so only keys actually IN the selected range end
+up tinted.
+
+**Wheel-scroll on Orig Key/Top Key (`SampleEditorWindow.xaml(.cs)`).** These two fields
+had no `PreviewMouseWheel` at all (Sample Start/Loop Start/Loop End already did, via
+`OnSampleStartWheel`/etc.). New `OnZoneOrigKeyWheel`/`OnZoneTopKeyWheel`, wired the same
+way, reusing the exact same parse-and-apply shape `OnZoneOrigKeyBoxChanged`/
+`OnZoneTopKeyBoxChanged` already use (`MidiNoteName.TryParse` both boxes, fall back to
+the VM's current value for whichever box didn't parse, call `ApplyZoneEdits` - so
+clamping/ordering/Top-Key-ceiling invariants are inherited for free, not reimplemented).
+**Deliberately flat ±1 per notch**, NOT `WheelStep()`'s percent-of-sample-length scaling
+those other three fields use - explicit request ("without the skipping of values...
+just be 1 at a time"), and it wouldn't even make sense here: a key number has a fixed
+0-127 range where one semitone per notch is the obviously correct unit, unlike a frame
+position where percent-of-length is what keeps the step meaningful across wildly
+different sample lengths. **Index already worked this way** - `ZoneIndexBox`'s existing
+`OnZoneIndexWheel` was already flat ±1; nothing needed there, confirmed by reading it
+rather than assumed.
+
+Verification: clean `dotnet build`, `--librarian-selftest` green, `--ui-theme-smoketest`
+green, `--sample-format-fixture-check` 75/75 byte-identical, `--sample-editor-smoketest`
+fully green, `--sample-editor-visual-check` re-run (screenshots show the Multisample
+Editor's keymap piano with a real wide selection rendering correctly; not a
+single-key/black-key case, so it doesn't exercise the specific bleed this fixes).
+`SampleFixtures/` confirmed clean via `git status`. **Not verified live**: neither
+change is headless-verifiable - the highlight fix needs an actual single-key (and
+single-black-key) selection compared by eye against the old behavior, and the wheel
+handlers need a real mouse-wheel notch over each field in the running app.
