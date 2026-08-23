@@ -14,10 +14,58 @@ sealed class KsfSample
     public string Suffix = "";     // "", "-L", or "-R" - stereo channel marker
     public uint Sno1;
     public uint SampleRate = 44100;
-    public byte Flags = 0x81;      // bit 0x80 = one-shot (loop disabled); every real
-                                    // unlooped sample has it set
-    public byte Channels = 1;      // not code-confirmed as read back anywhere; always 1 in practice
+    // SMD1 sub-header offset 4, hardware-confirmed 2026-08-22 (kronosology doc §3.1a):
+    // bit 0x80 = one-shot (loop disabled, every real unlooped sample has it set),
+    // bit 0x40 = Reverse (playback-direction flag - does NOT touch PCM data, unlike
+    // ApplyReverse's destructive in-place Array.Reverse effect below; a totally
+    // different feature that happens to share an English name), bit 0x01 = +12dB
+    // gain boost (default-on, matching every real fresh/unedited sample observed).
+    // Bits 1-5 unobserved in any real sample checked so far.
+    public byte Flags = 0x81;
+    public byte Channels = 1;      // not code-confirmed as read back anywhere; always 1 in practice -
+                                    // and empirically confirmed 2026-08-22: a genuine stereo source's
+                                    // two channels still each land in a separate mono .KSF with this
+                                    // byte = 1, and a 24-bit source still shows Bits = 16 below - the
+                                    // Kronos has no on-disk representation for anything else.
     public byte Bits = 16;         // the only value ever seen
+
+    // SMD1 sub-header offset 5 - hardware-confirmed 2026-08-22 (kronosology doc §3.1a,
+    // corrects its earlier "Unknown, 0x00" placeholder): Loop Tune, a signed byte, raw
+    // tune value written directly (+2 -> 0x02, independently re-confirmed via +99 ->
+    // 0x63). The setter clamps to the front-panel UI's own hard limit (-99..+99) even
+    // though the byte's own range is wider (-128..127) - values outside that clamp were
+    // never producible to test on real hardware, so writing them is not known-safe.
+    // Reading from a file bypasses the clamp (direct field write in Open()) so an
+    // out-of-clamp value already on disk round-trips instead of being silently altered.
+    sbyte _loopTune;
+    public sbyte LoopTune
+    {
+        get => _loopTune;
+        set => _loopTune = (sbyte)Math.Clamp(value, (sbyte)-99, (sbyte)99);
+    }
+
+    // Bypasses the clamp above - same reason RestorePreservedLoopDuplicate exists
+    // (bug fix 2026-08-22, Opus redundancy review): SampleFieldSnapshot.ApplyTo restores
+    // undo/redo state, and until this existed it went through the clamping setter, so
+    // the first Ctrl+Z on one of the rare out-of-clamp-but-on-disk files (see this
+    // field's own comment above) would permanently rewrite a byte that had round-tripped
+    // byte-identical until then.
+    public void RestoreLoopTune(sbyte value) => _loopTune = value;
+
+    // Bit-level helpers for the two Flags bits above - mutate through these rather than
+    // hand-rolling `Flags |= 0x40` at each call site (that pattern already exists for
+    // the one-shot bit across 3 separate call sites in SampleEditorViewModel; adding two
+    // more bits the same inline way risks a copy-paste mistake picking the wrong mask).
+    public bool IsReversed
+    {
+        get => (Flags & 0x40) != 0;
+        set => Flags = value ? (byte)(Flags | 0x40) : (byte)(Flags & ~0x40);
+    }
+    public bool Is12dbBoostEnabled
+    {
+        get => (Flags & 0x01) != 0;
+        set => Flags = value ? (byte)(Flags | 0x01) : (byte)(Flags & ~0x01);
+    }
     public byte[] Pcm = [];        // raw big-endian 16-bit signed samples - route through KsfPcm
     public string? Path;
 
@@ -66,6 +114,16 @@ sealed class KsfSample
     // (every real header-only-corrupted .KSF observed does) stays byte-identical.
     // Never written for a brand-new sample (doc's own recommendation: leave unset).
     byte[]? _smf1;
+
+    // Public read of _smf1, decoded as the filename it holds when present - lets a
+    // caller tell "this .KSF is a stub, its real audio lives in another file named X"
+    // apart from "this is a resident file with its own real audio", without exposing
+    // the raw chunk bytes. Added 2026-08-22 for ImportSampleIntoZone/
+    // AssignExistingKsfToZone's own stub-safety check (see their comments) - overwriting
+    // a stub's target name in place would silently redirect every OTHER zone whose own
+    // stub still names it.
+    public string? StubTargetFilename => _smf1 == null ? null
+        : Encoding.ASCII.GetString(_smf1).TrimEnd('\0', ' ');
 
     // Returns null if `data` isn't a recognizable .KSF (first chunk isn't SMP1, or no
     // SMD1 chunk at all) rather than throwing - mirrors PcgFile.Open's contract for
@@ -117,6 +175,7 @@ sealed class KsfSample
             {
                 s.SampleRate = KorgRiffChunk.ReadU32BE(payload, 0);
                 s.Flags = payload[4];
+                s._loopTune = unchecked((sbyte)payload[5]);
                 s.Channels = payload[6];
                 s.Bits = payload[7];
                 uint frameCount = KorgRiffChunk.ReadU32BE(payload, 8);
@@ -150,7 +209,7 @@ sealed class KsfSample
         var sno1 = new byte[4];
         KorgRiffChunk.WriteU32BE(sno1, 0, Sno1);
         var nameChunk = KorgRiffChunk.EncodeNameField(Name, Suffix, 24);
-        var sub = new byte[] { 0, 0, 0, 0, Flags, 0x00, Channels, Bits };
+        var sub = new byte[] { 0, 0, 0, 0, Flags, unchecked((byte)_loopTune), Channels, Bits };
         KorgRiffChunk.WriteU32BE(sub, 0, SampleRate);
         var frameCountBytes = new byte[4];
         KorgRiffChunk.WriteU32BE(frameCountBytes, 0, frameCountU);

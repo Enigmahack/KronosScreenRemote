@@ -361,6 +361,100 @@ static class SamplePhase13SelfTests
                 vm.SampleFrameCount <= (int)(200 / SampleEditorViewModel.MinTempoRatio) + 64);
         }
 
+        // ── 12. The waveform still shows stereo when the two halves' keymaps DIFFER ──
+        //
+        // Real, hand-edited or hand-pulled content routinely has the two channels split
+        // at different points - still legitimately a stereo pair. The old rule (exact
+        // (OriginalKey, TopKey) match or nothing) silently dropped to a mono view for
+        // any such pair; being part of a -L/-R pair should always be enough to resolve
+        // SOME partner. Zone 0 spans 0-60 on the left but 0-50 on the right - no exact
+        // match exists, so this pins the positional (same-index) fallback.
+        {
+            var dir = Path.Combine(scratchRoot, "Mismatch");
+            Directory.CreateDirectory(dir);
+            var kscPath = Path.Combine(dir, "Mismatch.KSC");
+            var collection = new KscCollection { Path = kscPath };
+            Directory.CreateDirectory(Path.Combine(dir, "Mismatch"));
+            collection.Save(kscPath);
+
+            var (left, leftPath, right, rightPath) = SampleImportBuilder.CreateStereoMultisamplePair(
+                collection, kscPath, "Mismatch", 20);
+            left.Zones.Add(new KmpZone { Filename = "MS020000.KSF", OriginalKey = 0, TopKey = 60 });
+            right.Zones.Add(new KmpZone { Filename = "MS021000.KSF", OriginalKey = 0, TopKey = 50 }); // deliberately different
+            left.Save(leftPath);
+            right.Save(rightPath);
+
+            void WriteKsf(string kmpPath, string ksfFilename)
+            {
+                var ksfDir = Path.Combine(Path.GetDirectoryName(kmpPath) ?? "", Path.GetFileNameWithoutExtension(kmpPath));
+                Directory.CreateDirectory(ksfDir);
+                var ksf = new KsfSample { Name = Path.GetFileNameWithoutExtension(ksfFilename), SampleRate = 44100 };
+                ksf.SetSamples(new short[100]);
+                ksf.Save(Path.Combine(ksfDir, ksfFilename));
+            }
+            WriteKsf(leftPath, "MS020000.KSF");
+            WriteKsf(rightPath, "MS021000.KSF");
+
+            var vm = new SampleEditorViewModel();
+            vm.OpenCollection(kscPath);
+            vm.SelectNode(ZoneNode(vm, leftPath, 0));
+            Check("mismatch-no-exact-key-match-exists",
+                !right.Zones.Any(z => z.OriginalKey == left.Zones[0].OriginalKey && z.TopKey == left.Zones[0].TopKey));
+            Check("mismatch-stereo-still-resolves-by-position", vm.HasStereoPair);
+        }
+
+        // ── 13. Delete Zone on an already-skipped zone REMOVES it, not just re-skips ──
+        //
+        // The button used to disable outright once a zone was skipped - an empty
+        // placeholder could never be cleared back out of the keymap. Second delete now
+        // physically removes it and mirrors onto the stereo sibling at the same index.
+        //
+        // Deliberately NOT Ctrl+Z-able (same precedent as AddPlaceholderZone, which
+        // documents the same reason): removing an entry changes the multisample's child
+        // count, so it goes through RefreshTreeAfterMutation to rebuild the tree, and
+        // that rebuild's SelectNode(null) resets _zoneUndo on the scope change - an undo
+        // step recorded here would be discarded before it could ever be used. Revert KSC
+        // Changes is the available undo path, same as it is for every zone-ADDING method.
+        {
+            var (vm, leftPath, rightPath, _) = MakeStereoFixture("DeleteSkipped");
+            vm.SelectNode(ZoneNode(vm, leftPath, 0));
+            var leftMs = vm.Roots.Single().Children.Single(c => c.MultisampleRef?.Path == leftPath).MultisampleRef!.Value.Multisample;
+            var rightMs = vm.Roots.Single().Children.Single(c => c.MultisampleRef?.Path == rightPath).MultisampleRef!.Value.Multisample;
+            int countBefore = leftMs.Zones.Count;
+
+            // First delete: soft-skip, unchanged behavior.
+            vm.DeleteSelectedZone();
+            Check("deleteskipped-first-delete-skips-not-removes",
+                leftMs.Zones.Count == countBefore && vm.ZoneIsSkipped);
+
+            // Saved and cleared from the pending registry BEFORE the second delete -
+            // without this, the first delete's own registration would still be sitting
+            // in _dirtyMultisamples and could mask a removal that fails to register
+            // itself (that's the exact gap the explicit RegisterDirtyMultisample call in
+            // DeleteSkippedZone closes - see its own comment).
+            vm.SaveSelectedMultisample();
+            Check("deleteskipped-skip-saved-before-removal", !vm.HasUnsavedChanges);
+
+            // Second delete: the zone is already skipped, so this must REMOVE it - from
+            // BOTH the primary and the stereo sibling, which is why leftMs/rightMs
+            // (captured once, up front) must still be the SAME live objects the rebuilt
+            // tree ends up referencing: registering both explicitly with
+            // RegisterDirtyMultisample is what keeps RebuildTreeFromCollection from
+            // silently re-reading a stale disk copy over top of this edit.
+            vm.DeleteSelectedZone();
+            Check("deleteskipped-second-delete-removes-from-primary", leftMs.Zones.Count == countBefore - 1);
+            Check("deleteskipped-second-delete-removes-from-sibling-too", rightMs.Zones.Count == countBefore - 1);
+            Check("deleteskipped-marks-unsaved", vm.HasUnsavedChanges);
+
+            // Persisting it is the actual proof the removal is real, not merely an
+            // in-memory illusion the stale tree/selection happens to still show.
+            vm.SaveSelectedMultisample();
+            var reopenedLeft = KmpMultisample.Open(File.ReadAllBytes(leftPath))!;
+            var reopenedRight = KmpMultisample.Open(File.ReadAllBytes(rightPath))!;
+            Check("deleteskipped-removal-persisted-primary", reopenedLeft.Zones.Count == countBefore - 1);
+            Check("deleteskipped-removal-persisted-sibling", reopenedRight.Zones.Count == countBefore - 1);
+        }
+
         return fails;
     }
 }

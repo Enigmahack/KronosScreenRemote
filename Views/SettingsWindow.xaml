@@ -734,6 +734,43 @@
                 </StackPanel>
             </TabItem>
 
+            <!-- ── Sample Editor ────────────────────────────────────────── -->
+            <TabItem Header="Sample Editor">
+                <StackPanel Margin="0 4 0 0">
+                    <TextBlock Text="Create Zone Preferences" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 0 0 8"/>
+
+                    <TextBlock Text="Position" Foreground="#FF888888" FontSize="11" Margin="0 0 0 4"/>
+                    <StackPanel Orientation="Horizontal" Margin="0 0 0 10">
+                        <RadioButton x:Name="RadZoneCreateRight" Content="Right" GroupName="ZoneCreatePosition" Margin="0 0 16 0"
+                                     ToolTip="A newly created zone takes the higher-key portion of the carved range; the existing last zone shrinks from the top. This was the only behavior before this setting existed."/>
+                        <RadioButton x:Name="RadZoneCreateLeft" Content="Left" GroupName="ZoneCreatePosition"
+                                     ToolTip="A newly created zone takes the lower-key portion of the carved range instead; the existing last zone keeps its own Top Key."/>
+                    </StackPanel>
+
+                    <Grid Margin="0 0 0 10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="110"/>
+                            <ColumnDefinition Width="60"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Zone Range" VerticalAlignment="Center" Foreground="#FF888888" FontSize="11"/>
+                        <TextBox   Grid.Column="1" x:Name="TxtZoneCreateRange" Width="50" HorizontalAlignment="Left"
+                                   ToolTip="How many keys (1-127) a newly created zone claims from the current last zone's range."/>
+                        <TextBlock Grid.Column="2" Text="keys  (1 to 127)" VerticalAlignment="Center" Margin="8 0 0 0"
+                                   Foreground="#FF888888" FontSize="11"/>
+                    </Grid>
+
+                    <TextBlock Text="Original Key Position" Foreground="#FF888888" FontSize="11" Margin="0 0 0 4"/>
+                    <StackPanel Orientation="Horizontal" Margin="0 0 0 10">
+                        <RadioButton x:Name="RadOrigKeyBottom" Content="Bottom" GroupName="ZoneOrigKeyPos" Margin="0 0 16 0"/>
+                        <RadioButton x:Name="RadOrigKeyCenter" Content="Center" GroupName="ZoneOrigKeyPos" Margin="0 0 16 0"/>
+                        <RadioButton x:Name="RadOrigKeyTop"    Content="Top"    GroupName="ZoneOrigKeyPos"/>
+                    </StackPanel>
+                    <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
+                               Text="Where the Original Key (the root/tracking key - independent of the trigger range itself) lands within a newly created zone's key range."/>
+                </StackPanel>
+            </TabItem>
+
         </TabControl>
 
         <!-- Bottom row: Import/Export left, OK/Cancel right -->

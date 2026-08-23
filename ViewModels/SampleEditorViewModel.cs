@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace KronosScreenRemote.ViewModels;
@@ -50,6 +51,17 @@ partial class SampleEditorViewModel : ObservableObject
     [ObservableProperty] int sampleSampleStart;
     [ObservableProperty] int sampleLoopStart;
     [ObservableProperty] int sampleLoopEnd;
+    // Hardware-confirmed 2026-08-22 (kronosology doc §3.1a) - the REAL Kronos Reverse/
+    // +12dB flags (SMD1 flags byte bits 0x40/0x01). Reverse is distinct from the
+    // pre-existing "Reverse" BUTTON (destructive PCM Array.Reverse, ReverseEffect.cs -
+    // a totally different DSP operation that just happens to share the English word),
+    // but it IS what the "Reverse Loop" checkbox drives (SampleEditorWindow.xaml.cs's
+    // OnLoopReverseChanged calls SetReversed) - one flag, one checkbox, both preview
+    // and persist together. SampleLoopTune is SMD1 offset 5, -99..+99 (KsfSample.
+    // LoopTune enforces the clamp).
+    [ObservableProperty] bool sampleReverseEnabled;
+    [ObservableProperty] bool sample12dbBoostEnabled;
+    [ObservableProperty] int sampleLoopTune;
     [ObservableProperty] short[]? sampleWaveform;
 
     // ── Waveform editing (Phase 3) ──────────────────────────────────────────────
@@ -93,13 +105,17 @@ partial class SampleEditorViewModel : ObservableObject
     // line) rather than the raw dragged/typed frame - avoids audible clicks at loop/
     // playback boundaries. "Loop Lock": editing one loop edge shifts the OTHER edge by
     // the same amount, preserving loop length - see SetMarker's own comment for how the
-    // two interact when both are on. "Reverse Loop" is playback-preview only for now
-    // (see SetMarker's neighbor, PlaySelectedSample) - NOT written to the .KSF, since
-    // no real Kronos byte for "play this loop backwards" has been hardware-confirmed
-    // (the format spec's own Phase 0 rule: no speculative fields shipped as fact).
+    // two interact when both are on. There used to be a third, separate
+    // LoopReverseEnabled property here for the "Reverse Loop" checkbox's own preview
+    // playback - removed 2026-08-22 (Opus redundancy review) once the 2026-08-22 UI
+    // merge (see SampleReverseEnabled's own comment) made it a pure, provably-always-
+    // equal alias of SampleReverseEnabled: same value written in the same place
+    // (LoadSampleDetailState), same UI checkbox reading it, no XAML binding on either
+    // (this window has no DataContext - the whole detail panel is driven imperatively
+    // by RefreshDetailPanels). PlaySelectedSample's preview now reads
+    // SampleReverseEnabled directly.
     [ObservableProperty] bool useZeroCrossing;
     [ObservableProperty] bool loopLockEnabled;
-    [ObservableProperty] bool loopReverseEnabled;
 
     // ── Stereo pair view (doc §2.2: same Name, opposite -L/-R Suffix, adjacent MNO1) ──
     //
@@ -118,6 +134,14 @@ partial class SampleEditorViewModel : ObservableObject
     [ObservableProperty] bool hasStereoPair;
     [ObservableProperty] bool isPrimaryLeftChannel;
     [ObservableProperty] short[]? partnerSampleWaveform;
+
+    // The resolved stereo partner's own zone/path - exposed so the window's Split L/R
+    // channel picker (Views/SampleEditorWindow.xaml.cs) can find its tree node
+    // (FindNodeForZone) and select it directly, the same way every other combo-driven
+    // selection in this window already works, instead of requiring the user to go hunt
+    // for the sibling zone in the tree themselves.
+    public (KmpZone Zone, string KmpPath)? PartnerZoneRef =>
+        _partnerZone != null && _partnerKmpPath != null ? (_partnerZone, _partnerKmpPath) : null;
 
     // Combine (false, default) vs Split (true). Combine mode is a single logical
     // stereo view: BOTH waveform panes are always shown (L top / R bottom), sharing one
@@ -316,8 +340,7 @@ partial class SampleEditorViewModel : ObservableObject
         foreach (var entry in collection.Entries)
         {
             if (!entry.EndsWith(".KMP", StringComparison.OrdinalIgnoreCase)) continue;
-            var kmpDir = Path.Combine(Path.GetDirectoryName(kscPath) ?? "",
-                Path.GetFileNameWithoutExtension(kscPath));
+            var kmpDir = KscCollection.ContentDirFor(kscPath);
             var kmpPath = Path.Combine(kmpDir, entry);
             if (!File.Exists(kmpPath))
             {
@@ -601,7 +624,7 @@ partial class SampleEditorViewModel : ObservableObject
                     _selectedSample = pending;
                     _selectedSamplePath = ksfPath;
                     _sampleDirtyField = true;
-                    LoadSampleDetailState(pending);
+                    LoadSampleDetailState(pending, reloadWaveform: true);
                     ResolveStereoPartner(zone, _selectedKmpPath);
                 }
                 else if (File.Exists(ksfPath))
@@ -611,7 +634,7 @@ partial class SampleEditorViewModel : ObservableObject
                     {
                         _selectedSample = s;
                         _selectedSamplePath = ksfPath;
-                        LoadSampleDetailState(s);
+                        LoadSampleDetailState(s, reloadWaveform: true);
                         ResolveStereoPartner(zone, _selectedKmpPath);
                     }
                     else
@@ -647,15 +670,29 @@ partial class SampleEditorViewModel : ObservableObject
         // Prefer the LIVE in-tree sibling over SampleImportBuilder.FindStereoSibling's
         // fresh disk read - otherwise an unsaved key-range edit on either half makes the
         // exact (OriginalKey, TopKey) match below fail against the stale on-disk copy,
-        // and the pair silently drops back to a mono view. Falls back to the disk lookup
-        // for a sibling that genuinely isn't in the tree.
-        var (sibling, siblingPath) = FindLiveStereoSibling(owningMultisample, kmpPath);
-        if (sibling == null || siblingPath == null)
-            (sibling, siblingPath) = SampleImportBuilder.FindStereoSibling(_collection, owningMultisample, kmpPath);
+        // and the pair silently drops back to a mono view.
+        var (sibling, siblingPath) = ResolveStereoSibling(owningMultisample, kmpPath);
         if (sibling == null || siblingPath == null) return;
 
+        // Exact key-range match is the semantically correct correspondence when the two
+        // halves' keymaps agree (immune to reordering, since it's a value match, not a
+        // positional one) - but real, hand-edited or hand-pulled content routinely has
+        // the two channels split at slightly different points, and that's still
+        // legitimately a stereo pair. An exact-match-or-nothing rule silently dropped to
+        // a mono view for any such pair, which is wrong: being part of a -L/-R pair
+        // should always be enough to show both channels. Falls back to the SAME INDEX in
+        // the sibling's own zone list - the same correspondence rule
+        // ResolveSiblingZonesFor already uses for mirroring key-range edits, so "which
+        // zone is this zone's partner" is answered the same way for both editing and
+        // display.
         var matchZone = sibling.Zones.FirstOrDefault(z =>
             !z.IsSkipped && z.OriginalKey == zone.OriginalKey && z.TopKey == zone.TopKey);
+        if (matchZone == null)
+        {
+            int idx = owningMultisample.Zones.IndexOf(zone);
+            if (idx >= 0 && idx < sibling.Zones.Count && !sibling.Zones[idx].IsSkipped)
+                matchZone = sibling.Zones[idx];
+        }
         if (matchZone == null) return;
 
         var partnerKsfPath = matchZone.KsfPath(siblingPath);
@@ -722,6 +759,23 @@ partial class SampleEditorViewModel : ObservableObject
         return (null, null);
     }
 
+    // Live-sibling-first, disk-fallback second - extracted 2026-08-22 (Opus redundancy
+    // review) from four identical copies of this exact two-step lookup. Prefer the LIVE
+    // in-tree sibling over SampleImportBuilder.FindStereoSibling's fresh disk read -
+    // otherwise an unsaved key-range/content edit on either half makes the live object
+    // stale relative to what a caller needs, and mutating a fresh disk copy instead of
+    // the tree's own instance makes the change invisible in the UI and then discards it
+    // when the tree's own instance is saved instead. Falls back to the disk lookup for a
+    // sibling that genuinely isn't in the tree. Returns (null, null) with no collection
+    // open, same as a not-found sibling - callers don't need to null-check _collection
+    // separately.
+    (KmpMultisample? Sibling, string? Path) ResolveStereoSibling(KmpMultisample m, string kmpPath)
+    {
+        var (sibling, siblingPath) = FindLiveStereoSibling(m, kmpPath);
+        if (sibling != null && siblingPath != null) return (sibling, siblingPath);
+        return _collection != null ? SampleImportBuilder.FindStereoSibling(_collection, m, kmpPath) : (null, null);
+    }
+
     static IEnumerable<SampleTreeNode> EnumerateNodes(IEnumerable<SampleTreeNode> nodes)
     {
         foreach (var node in nodes)
@@ -730,6 +784,11 @@ partial class SampleEditorViewModel : ObservableObject
             foreach (var child in EnumerateNodes(node.Children)) yield return child;
         }
     }
+
+    // Flat list of every multisample node across every open collection, for the
+    // Sample Editor's "Multisample (MS)" dropdown (Views/SampleEditorWindow.xaml.cs) -
+    // picking one there is functionally the same as selecting its .KMP in the tree.
+    public IEnumerable<SampleTreeNode> AllMultisampleNodes() => EnumerateNodes(Roots).Where(n => n.MultisampleRef != null);
 
     // The stereo sibling's own zone list, for the three key-range edits that must mirror
     // onto it (ApplyZoneEdits / MoveZoneBoundary / ReorderZone). Returns nothing unless
@@ -746,7 +805,21 @@ partial class SampleEditorViewModel : ObservableObject
         return (sibling.Zones, sibling, sibPath);
     }
 
-    void LoadSampleDetailState(KsfSample s)
+    // reloadWaveform: whether to re-decode SampleWaveform from s.Samples() this call.
+    // Performance fix 2026-08-22 (Opus review): KsfSample.Samples() decodes a BRAND-NEW
+    // array from raw big-endian bytes every time it's called, with no caching - for a
+    // real multi-minute 44.1kHz sample that's millions of iterations plus a large
+    // allocation. Every header-only-field caller of this method (SetMarker,
+    // SetLoopEnabled, SetReversed, Set12dbBoostEnabled, SetLoopTune, MoveLoopRegion) was
+    // paying that cost on EVERY call - including every keystroke, now that those fields
+    // commit live - despite never touching Pcm at all. Worse, a freshly-decoded array is
+    // never reference-equal to the old one, which silently defeated
+    // SampleWaveformControl's own trace-geometry cache too (keyed on array identity),
+    // forcing a full O(sample-length) re-render on every such call as well. Only the
+    // genuine PCM-mutating callers (initial selection, ApplyEffect, fades, tempo/pitch,
+    // Undo/Redo) pass true - everything else leaves SampleWaveform (and therefore the
+    // render cache) untouched, since nothing in the buffer actually changed.
+    void LoadSampleDetailState(KsfSample s, bool reloadWaveform)
     {
         HasSampleLoaded = true;
         SampleName = s.Name + s.Suffix;
@@ -757,7 +830,10 @@ partial class SampleEditorViewModel : ObservableObject
         SampleSampleStart = (int)s.SampleStart;
         SampleLoopStart = (int)s.LoopStart;
         SampleLoopEnd = (int)s.LoopEnd;
-        SampleWaveform = s.IsHeaderOnly ? null : s.Samples();
+        SampleReverseEnabled = s.IsReversed;
+        Sample12dbBoostEnabled = s.Is12dbBoostEnabled;
+        SampleLoopTune = s.LoopTune;
+        if (reloadWaveform) SampleWaveform = s.IsHeaderOnly ? null : s.Samples();
         // Selection past the (possibly now-shorter, post-edit) frame count is invalid -
         // clamp rather than leave a stale out-of-range value from before an edit.
         SelectionStartFrame = Math.Clamp(SelectionStartFrame, 0, s.FrameCount);
@@ -844,13 +920,73 @@ partial class SampleEditorViewModel : ObservableObject
         return found.Multisample != null ? found : (FindMultisampleContaining(Roots, _selectedZone), _selectedKmpPath);
     }
 
+    // Full display name (Name+Suffix) of whichever multisample is in context right now -
+    // same resolution ResolveContextMultisample uses - for the Edit > Rename Multisample
+    // dialog's pre-fill and its enabled state.
+    public string? CurrentMultisampleName
+    {
+        get { var (m, _) = ResolveContextMultisample(); return m == null ? null : $"{m.Name}{m.Suffix}"; }
+    }
+
+    // Same resolution/display as CurrentMultisampleName - separate property so the
+    // Delete Multisample confirm dialog (code-behind) doesn't read a property named for
+    // Rename's own purpose.
+    public string? SelectedMultisampleLabel => CurrentMultisampleName;
+
+    // Renames the in-context multisample's Name field (Suffix - the "-L"/"-R" stereo
+    // marker - is left alone; editing it here would silently break stereo pairing,
+    // which matches by exact Suffix, not something a plain rename box should risk). A
+    // live edit like every other field here: marks the .KMP dirty, doesn't save
+    // immediately - Save Changes/Save Multisample writes it. Mirrored onto a resolved
+    // stereo sibling the same way every other zone/name edit is, since the sibling
+    // match (FindLiveStereoSibling) requires an EXACT Name match - renaming only one
+    // half would silently break the pairing the same way an unmirrored key-range edit
+    // does (see ApplyZoneEdits' own comment).
+    public void RenameSelectedMultisample(string newName)
+    {
+        newName = newName.Trim();
+        if (newName.Length == 0) return;
+        var (m, path) = ResolveContextMultisample();
+        if (m == null || path == null) { StatusText = "Select a multisample (or one of its zones) first."; return; }
+        if (m.Name == newName) return;
+
+        var (sibling, sibPath) = FindLiveStereoSibling(m, path);
+        m.Name = newName;
+        RegisterDirtyMultisample(m, path);
+        if (sibling != null && sibPath != null)
+        {
+            sibling.Name = newName;
+            RegisterDirtyMultisample(sibling, sibPath);
+        }
+        StatusText = $"Renamed multisample to '{newName}{m.Suffix}'"
+            + (sibling != null ? " (mirrored to stereo partner)" : "") + " - not yet saved.";
+    }
+
+    // Same idea for the currently loaded sample's Name (Suffix left alone, mirrored to
+    // the resolved stereo partner sample when one's active) - marks it dirty via the
+    // same _sampleDirty setter every other sample field edit here already uses, so Save
+    // Sample/Save Changes picks it up with no separate code path.
+    public void RenameSelectedSample(string newName)
+    {
+        newName = newName.Trim();
+        if (newName.Length == 0 || _selectedSample == null) return;
+        if (_selectedSample.Name == newName) return;
+
+        _selectedSample.Name = newName;
+        if (ShouldMirrorToPartner && _partnerSample != null) _partnerSample.Name = newName;
+        _sampleDirty = true;
+        SampleName = _selectedSample.Name;
+        StatusText = $"Renamed sample to '{newName}{_selectedSample.Suffix}'"
+            + (ShouldMirrorToPartner && _partnerSample != null ? " (mirrored to stereo partner)" : "") + " - not yet saved.";
+    }
+
     // Drops pending edits belonging to one collection (Unload/Revert KSC) or all of them
     // (Revert ALL). Scoped by path prefix, matching the app's own
     // <kscDir>/<kscBasename>/ folder convention for a collection's .KMP/.KSF content.
     void DiscardPendingEditsUnder(string? kscPath)
     {
         if (kscPath == null) { _dirtySamples.Clear(); _dirtyMultisamples.Clear(); return; }
-        var contentDir = Path.Combine(Path.GetDirectoryName(kscPath) ?? "", Path.GetFileNameWithoutExtension(kscPath));
+        var contentDir = KscCollection.ContentDirFor(kscPath);
         foreach (var key in _dirtySamples.Keys.Where(k => IsUnder(k, contentDir)).ToList()) _dirtySamples.Remove(key);
         foreach (var key in _dirtyMultisamples.Keys.Where(k => IsUnder(k, contentDir)).ToList()) _dirtyMultisamples.Remove(key);
     }
@@ -966,7 +1102,7 @@ partial class SampleEditorViewModel : ObservableObject
         _sampleDirty = true;
         if (mirror) ApplySampleFieldsTo(_partnerSample!, sampleRate, loopEnabled, sampleStart, loopStart, loopEnd);
 
-        LoadSampleDetailState(_selectedSample);
+        LoadSampleDetailState(_selectedSample, reloadWaveform: false);
         RefreshUndoRedoState();
         StatusText = $"Sample fields updated{(mirror ? " (both L/R channels)" : "")} (unsaved - use Save Sample).";
     }
@@ -1027,7 +1163,7 @@ partial class SampleEditorViewModel : ObservableObject
             PartnerSampleWaveform = _partnerSample.IsHeaderOnly ? null : _partnerSample.Samples();
         }
 
-        LoadSampleDetailState(_selectedSample);
+        LoadSampleDetailState(_selectedSample, reloadWaveform: true);
         RefreshUndoRedoState();
         StatusText = $"{description}{(mirror ? " (both L/R channels)" : "")} (unsaved - use Save Sample).";
     }
@@ -1135,7 +1271,7 @@ partial class SampleEditorViewModel : ObservableObject
             PartnerSampleWaveform = _partnerSample!.IsHeaderOnly ? null : _partnerSample.Samples();
         }
 
-        LoadSampleDetailState(_selectedSample);
+        LoadSampleDetailState(_selectedSample, reloadWaveform: true);
         RefreshUndoRedoState();
         StatusText = $"Applied fade {(fadeIn ? "in" : "out")} to the selection{(mirror ? " (both L/R channels)" : "")} (unsaved - use Save Sample).";
     }
@@ -1178,7 +1314,7 @@ partial class SampleEditorViewModel : ObservableObject
         if (mirror)
             ApplySampleFieldsTo(_partnerSample!, (int)_partnerSample!.SampleRate, SampleLoopEnabled, SampleSampleStart, SelectionStartFrame, SelectionEndFrame);
 
-        LoadSampleDetailState(_selectedSample);
+        LoadSampleDetailState(_selectedSample, reloadWaveform: false);
         RefreshUndoRedoState();
         StatusText = $"Loop set to [{SelectionStartFrame}, {SelectionEndFrame}){(mirror ? " (both L/R channels)" : "")} (unsaved - use Save Changes).";
     }
@@ -1329,7 +1465,7 @@ partial class SampleEditorViewModel : ObservableObject
             PartnerSampleWaveform = _partnerSample.IsHeaderOnly ? null : _partnerSample.Samples();
         }
 
-        LoadSampleDetailState(_selectedSample);
+        LoadSampleDetailState(_selectedSample, reloadWaveform: true);
         RefreshUndoRedoState();
         StatusText = $"Applied tempo x{tempoRatio:0.##}, pitch {pitchSemitones:+0.##;-0.##;0} semitones{(mirror ? " (both L/R channels)" : "")} (unsaved - use Save Sample).";
     }
@@ -1380,7 +1516,7 @@ partial class SampleEditorViewModel : ObservableObject
             PartnerSampleWaveform = _partnerSample!.IsHeaderOnly ? null : _partnerSample.Samples();
         }
 
-        LoadSampleDetailState(_selectedSample);
+        LoadSampleDetailState(_selectedSample, reloadWaveform: true);
         _redoDomains.Add(EditDomain.Sample);
         RefreshUndoRedoState();
 
@@ -1423,7 +1559,7 @@ partial class SampleEditorViewModel : ObservableObject
             PartnerSampleWaveform = _partnerSample!.IsHeaderOnly ? null : _partnerSample.Samples();
         }
 
-        LoadSampleDetailState(_selectedSample);
+        LoadSampleDetailState(_selectedSample, reloadWaveform: true);
         _undoDomains.Add(EditDomain.Sample);
         RefreshUndoRedoState();
         StatusText = $"Redid edit{(partnerAlso ? " (both L/R channels)" : "")} (unsaved - use Save Sample).";
@@ -1463,14 +1599,14 @@ partial class SampleEditorViewModel : ObservableObject
             var right = RightSampleWaveform!;
             if (loop)
                 _playback.PlayStereoLooped(left, right, (int)_selectedSample.SampleRate,
-                    loopStartFrame, SampleLoopStart, SampleLoopEnd, LoopReverseEnabled);
+                    loopStartFrame, SampleLoopStart, SampleLoopEnd, SampleReverseEnabled);
             else
                 _playback.PlayStereoFrom(left, right, (int)_selectedSample.SampleRate, oneShotStartFrame);
         }
         else if (loop)
         {
             _playback.PlayLooped(_selectedSample.Samples(), (int)_selectedSample.SampleRate,
-                loopStartFrame, SampleLoopStart, SampleLoopEnd, LoopReverseEnabled);
+                loopStartFrame, SampleLoopStart, SampleLoopEnd, SampleReverseEnabled);
         }
         else
         {
@@ -1594,6 +1730,11 @@ partial class SampleEditorViewModel : ObservableObject
     // Polled by the window's own timer to drive the VU meter - see SamplePlayback.
     // PeakLevel's own comment for why this is a plain poll, not an event/observable.
     public float GetPlaybackLevel() => _playback.PeakLevel;
+    // Per-channel peaks for the stereo VU meter - both fall back to the same combined
+    // PeakLevel for a mono sample (SamplePlayback mirrors Left into Right itself when
+    // there's only one channel, so these two are never silently "half wired").
+    public float GetPlaybackLevelLeft() => _playback.PeakLevelLeft;
+    public float GetPlaybackLevelRight() => _playback.PeakLevelRight;
 
     // Polled the same way, to drive the waveform's playhead line.
     public int GetPlaybackFrame() => _playback.PositionFrame;
@@ -1602,8 +1743,8 @@ partial class SampleEditorViewModel : ObservableObject
 
     public void SaveSelectedMultisample()
     {
-        KmpMultisample? m;
-        string? path;
+        KmpMultisample? m = null;
+        string? path = null;
         if (_selectedNode?.MultisampleRef is { } ms)
         {
             (m, path) = (ms.Multisample, ms.Path);
@@ -1617,15 +1758,15 @@ partial class SampleEditorViewModel : ObservableObject
             m = FindMultisampleContaining(Roots, _selectedZone);
             path = _selectedKmpPath;
         }
-        else
+
+        // Nothing selected is only a hard stop when there's ALSO nothing pending - a
+        // selection-clearing rebuild (DeleteSkippedZone's structural removal goes
+        // through RefreshTreeAfterMutation, which clears selection) must not make
+        // already-registered pending edits unreachable from Save Multisample/Save
+        // Changes just because the tree happens to have nothing selected right now.
+        if (m == null && _dirtyMultisamples.Count == 0)
         {
             StatusText = "No multisample selected.";
-            return;
-        }
-
-        if (m == null || path == null)
-        {
-            StatusText = "Couldn't resolve the owning multisample to save.";
             return;
         }
 
@@ -1634,10 +1775,11 @@ partial class SampleEditorViewModel : ObservableObject
         // away - meaning "the selected multisample" stopped being the same set as
         // "what's actually unsaved" the moment more than one got edited. Saving only the
         // selection while clearing a single global dirty flag is precisely how unsaved
-        // work used to go silently missing. The selected one is included explicitly so
-        // this menu item still means "save this" even when nothing is pending.
+        // work used to go silently missing. The selected one (if any) is included
+        // explicitly so this menu item still means "save this" even when it isn't
+        // independently pending.
         var pending = new Dictionary<string, KmpMultisample>(_dirtyMultisamples, StringComparer.OrdinalIgnoreCase);
-        pending[path] = m;
+        if (m != null && path != null) pending[path] = m;
 
         var saved = new List<string>();
         foreach (var (msPath, multisample) in pending)
@@ -1811,9 +1953,14 @@ partial class SampleEditorViewModel : ObservableObject
     //
     // Returns the target multisample's .KMP path on success (so the caller - the
     // window's code-behind - can re-select the newly added zone) or null if nothing was
-    // added.
+    // added. LastAddedZoneIndex is set alongside it (see its own comment) since the
+    // rebuild this triggers replaces every KmpZone with a fresh instance - a reference
+    // can't survive that, only a position can.
+    public int LastAddedZoneIndex { get; private set; } = -1;
+
     public string? AddPlaceholderZone()
     {
+        LastAddedZoneIndex = -1;
         KmpMultisample? m;
         string? kmpPath;
         if (_selectedNode?.MultisampleRef is { } ms) { m = ms.Multisample; kmpPath = ms.Path; }
@@ -1825,7 +1972,15 @@ partial class SampleEditorViewModel : ObservableObject
 
         try
         {
+            // Settings > Sample Editor > "Create Zone Preferences" - Position and Zone
+            // Range shape the carve below; Original Key Position picks where OriginalKey
+            // (the root/tracking key - independent of the trigger range TopKey defines)
+            // lands within the new zone once its range is known.
+            var prefs = Storage.LoadSettings();
+            int rangeSetting = Math.Clamp(prefs.SampleZoneCreateRange, 1, 127);
+
             int newLow, newTop;
+            int insertIndex = m.Zones.Count; // default: append at the end
             byte? shrunkPrevTopKey = null; // the previous last zone's post-shrink TopKey, if one was shrunk
             if (m.Zones.Count == 0)
             {
@@ -1836,15 +1991,37 @@ partial class SampleEditorViewModel : ObservableObject
                 var last = m.Zones[^1];
                 int lastLow = m.Zones.Count > 1 ? m.Zones[^2].TopKey + 1 : 0;
                 int available = last.TopKey - lastLow + 1;
-                int width = Math.Max(1, Math.Min(12, available - 1)); // leave >=1 key for the shrunk last zone
-                newLow = last.TopKey - width + 1;
-                newTop = last.TopKey;
-                last.TopKey = (byte)Math.Max(lastLow, newLow - 1);
-                shrunkPrevTopKey = last.TopKey;
+                int width = Math.Max(1, Math.Min(rangeSetting, available - 1)); // leave >=1 key for the existing zone
+
+                if (prefs.SampleZoneCreatePosition == SampleZoneCreatePosition.Left)
+                {
+                    // New zone takes the BOTTOM `width` keys of the current last zone's
+                    // range; that zone keeps its own TopKey (only its EFFECTIVE low end,
+                    // derived from whatever precedes it, moves up) and stays last in the
+                    // list - the new zone is inserted just before it so list order still
+                    // matches the ascending-key-order the TopKey range convention assumes.
+                    newLow = lastLow;
+                    newTop = lastLow + width - 1;
+                    insertIndex = m.Zones.Count - 1;
+                }
+                else
+                {
+                    newLow = last.TopKey - width + 1;
+                    newTop = last.TopKey;
+                    last.TopKey = (byte)Math.Max(lastLow, newLow - 1);
+                    shrunkPrevTopKey = last.TopKey;
+                }
             }
 
-            var zone = new KmpZone { Filename = "SKIPPEDSAMPLE", OriginalKey = (byte)newLow, TopKey = (byte)newTop };
-            m.Zones.Add(zone);
+            byte origKey = prefs.SampleZoneOriginalKeyPosition switch
+            {
+                SampleZoneOriginalKeyPosition.Top => (byte)newTop,
+                SampleZoneOriginalKeyPosition.Center => (byte)((newLow + newTop) / 2),
+                _ => (byte)newLow,
+            };
+
+            var zone = new KmpZone { Filename = "SKIPPEDSAMPLE", OriginalKey = origKey, TopKey = (byte)newTop };
+            m.Zones.Insert(insertIndex, zone);
             SaveMultisampleNow(m, kmpPath);
 
             // Mirror the SAME key-range change onto a resolved stereo sibling (Suffix
@@ -1872,20 +2049,19 @@ partial class SampleEditorViewModel : ObservableObject
                 // pending object WITHOUT the new zone - the two halves out of parity,
                 // the stereo match broken, and a later Save writing the pending object
                 // back over the zone this just added.
-                var (sibling, sibPath) = FindLiveStereoSibling(m, kmpPath);
-                if (sibling == null || sibPath == null)
-                    (sibling, sibPath) = SampleImportBuilder.FindStereoSibling(_collection, m, kmpPath);
+                var (sibling, sibPath) = ResolveStereoSibling(m, kmpPath);
 
                 if (sibling != null && sibPath != null && sibling.Zones.Count == m.Zones.Count - 1)
                 {
                     if (shrunkPrevTopKey is { } shrunk && sibling.Zones.Count > 0)
                         sibling.Zones[^1].TopKey = shrunk;
-                    sibling.Zones.Add(new KmpZone { Filename = "SKIPPEDSAMPLE", OriginalKey = (byte)newLow, TopKey = (byte)newTop });
+                    sibling.Zones.Insert(insertIndex, new KmpZone { Filename = "SKIPPEDSAMPLE", OriginalKey = origKey, TopKey = (byte)newTop });
                     SaveMultisampleNow(sibling, sibPath);
                     siblingPath = sibPath;
                 }
             }
 
+            LastAddedZoneIndex = insertIndex;
             RefreshTreeAfterMutation(m, kmpPath);
             StatusText = $"Added an empty zone ({MidiNoteName.ToName(newLow)}-{MidiNoteName.ToName(newTop)})"
                 + (siblingPath != null ? " to both stereo channels" : "") + " - "
@@ -1905,32 +2081,92 @@ partial class SampleEditorViewModel : ObservableObject
     // sample) - generates a fresh .KSF filename and writes the decoded audio, WITHOUT
     // touching the zone's own OriginalKey/TopKey. This is "give this slot audio," not
     // "add a new slot" (that's ImportAudioAsNewZone, right above).
-    public void ImportSampleIntoZone(KmpZone zone, string audioPath)
-    {
-        var (m, kmpPath) = FindMultisampleAndPathContaining(Roots, zone);
-        if (m == null || kmpPath == null) { StatusText = "Couldn't resolve this zone's multisample."; return; }
+    //
+    // Returns the target multisample's .KMP path on success (null on failure) and sets
+    // LastImportedZoneIndex alongside it (bug fix 2026-08-22, same pattern
+    // AddPlaceholderZone already uses) - RefreshTreeAfterMutation's rebuild replaces
+    // every KmpZone with a fresh instance and clears selection, so the caller (the
+    // window's code-behind) can't re-select by holding onto the original `zone`
+    // reference; only a position survives the rebuild. Without this, the editor view
+    // appeared to "close" after every import - not actually broken, just left with
+    // nothing selected, so every section gated on "a zone/multisample is selected"
+    // collapsed.
+    public int LastImportedZoneIndex { get; private set; } = -1;
 
+    // Decides whether `zone` can safely be given new audio by overwriting its OWN
+    // current .KSF file in place, or needs a fresh, collision-free filename instead
+    // (bug fix 2026-08-22, shared by ImportSampleIntoZone and AssignExistingKsfToZone -
+    // both replace an EXISTING zone's audio, so both need the identical safety check).
+    // A placeholder has no real file to overwrite - obviously needs a fresh name. Less
+    // obvious: overwriting a REAL existing filename in place is only safe if nothing
+    // else depends on that exact name meaning what it currently means. Two ways it
+    // could: (a) the zone's own current .KSF is itself a stub (SMF1-referencing another
+    // file) - overwriting it with fresh full audio is harmless to THIS zone, but taking
+    // the fresh-name path anyway is simpler/safer than reasoning about whether some
+    // OTHER zone also stub-references this stub's name (unobserved in practice, but
+    // untested); (b) some OTHER zone in the SAME multisample carries an SMF1 chunk
+    // naming THIS zone's filename as ITS OWN audio source (the real sharing mechanism
+    // - see kronosology doc §3.2/kronos_bytemap round 2) - overwriting in place would
+    // silently change that sibling zone's sound too, with no warning. Cross-multisample
+    // stub references are out of scope here (AddZoneFromExistingKsf's own established
+    // precedent already duplicates rather than relying on that unproven case, doc
+    // §2.2/§3.2's own open item).
+    bool NeedsFreshFilename(KmpMultisample m, string kmpPath, KmpZone zone)
+    {
+        if (zone.IsSkipped) return true;
+
+        var ownPath = zone.KsfPath(kmpPath);
         try
         {
-            var pcm = AudioImport.ImportToMono44100(audioPath);
-            var sampleName = Path.GetFileNameWithoutExtension(audioPath);
-            zone.Filename = m.NextKsfFilename();
-
-            var ksf = new KsfSample { Name = sampleName, SampleRate = (uint)AudioImport.TargetSampleRate, Flags = 0x81 };
-            ksf.SetSamples(pcm);
-            var ksfPath = zone.KsfPath(kmpPath);
-            Directory.CreateDirectory(Path.GetDirectoryName(ksfPath)!);
-            ksf.Save(ksfPath);
-
-            SaveMultisampleNow(m, kmpPath);
-            RefreshTreeAfterMutation(m, kmpPath);
-            StatusText = $"Imported '{Path.GetFileName(audioPath)}' into zone '{zone.Filename}'.";
+            if (File.Exists(ownPath) && KsfSample.Open(File.ReadAllBytes(ownPath)) is { } own
+                && own.StubTargetFilename != null)
+                return true; // (a) this zone's own file is a stub
         }
-        catch (Exception ex)
+        catch { /* unreadable existing file - fall through, treat as needing a fresh name below */ return true; }
+
+        foreach (var sibling in m.Zones)
         {
-            AppLog.Error($"Sample Editor: import sample into zone failed: {ex}");
-            StatusText = $"Import failed: {ex.Message}";
+            if (ReferenceEquals(sibling, zone) || sibling.IsSkipped) continue;
+            try
+            {
+                var siblingPath = sibling.KsfPath(kmpPath);
+                if (File.Exists(siblingPath) && KsfSample.Open(File.ReadAllBytes(siblingPath)) is { } sib
+                    && string.Equals(sib.StubTargetFilename, zone.Filename, StringComparison.OrdinalIgnoreCase))
+                    return true; // (b) a sibling zone's stub depends on this exact filename
+            }
+            catch { /* an unreadable sibling can't be depending on anything - keep checking others */ }
         }
+        return false;
+    }
+
+    // Import Sample - redesigned 2026-08-22 per explicit feedback: every import now
+    // ALSO populates the repository (bare .KSF entries, "Un-referenced Samples"), not
+    // just the one zone it's assigned to - "importing a sample (or multiple) should
+    // generate .KSF for them, and make them available to multisamples within that
+    // session," with the separate "Import to Repository..." button/flow folded in here
+    // as redundant. Multiple files: ALL of them are written to the repository, but only
+    // the FIRST is assigned to `zone` (a single zone can only play one sample at a
+    // time) - the rest sit in the repository ready to be picked for other zones via the
+    // Sample combo. Delegates entirely to ImportSamplesToCollection (repo write) +
+    // AssignExistingKsfToZone (the actual zone assignment, including the stub-safety/
+    // collision-free-filename logic - see NeedsFreshFilename) rather than duplicating
+    // that logic a third time.
+    public string? ImportSampleIntoZone(KmpZone zone, IReadOnlyList<string> audioPaths)
+    {
+        LastImportedZoneIndex = -1;
+        if (audioPaths.Count == 0) return null;
+
+        var written = ImportSamplesToCollection(audioPaths);
+        if (written.Count == 0) return null; // ImportSamplesToCollection already set a failure StatusText
+
+        var kmpPath = AssignExistingKsfToZone(zone, written[0]);
+        if (kmpPath != null)
+        {
+            StatusText = written.Count == 1
+                ? $"Imported '{Path.GetFileName(written[0])}' and assigned it to zone '{zone.Filename}'."
+                : $"Imported {written.Count} sample(s) to the repository; assigned '{Path.GetFileName(written[0])}' to zone '{zone.Filename}'.";
+        }
+        return kmpPath;
     }
 
     // Adds a new zone at a given key range to the currently-selected multisample, using
@@ -1963,6 +2199,266 @@ partial class SampleEditorViewModel : ObservableObject
         {
             AppLog.Error($"Sample Editor: new zone from '{sourceKsfPath}' failed: {ex}");
             StatusText = $"Failed to add zone: {ex.Message}";
+        }
+    }
+
+    // ── Sample repository (bare, un-referenced .KSF entries) ────────────────────
+    //
+    // A real Kronos .KSC can list a bare .KSF filename (not wrapped in any .KMP) - shown
+    // in the real Disk-page browser as "Un-referenced Samples" (kronosology doc §1.2).
+    // That's the format's OWN native "sample imported but not yet assigned to any
+    // keymap" concept - reused here rather than inventing a new one, so importing many
+    // files at once doesn't force an immediate key-range/zone decision per file, and a
+    // later "assign this existing sample to a zone" (AssignExistingKsfToZone/
+    // AddZoneFromExistingKsf) has something real to pick from. Deliberately NOT modeled
+    // as tree nodes (SampleTreeNode's three existing ref kinds - Collection/Multisample/
+    // Zone - are load-bearing across SelectNode/ResolveStereoPartner/IsDescendant/the
+    // dirty-tracking registration paths; a fourth kind would need auditing every one of
+    // those match sites) - just a plain path list read straight off the collection's own
+    // Entries, same "list, not tree" scope RebuildTreeFromCollection already keeps by
+    // filtering to ".KMP only".
+    //
+    // Written to <collection-dir>/<collection-basename>/ - the SAME folder .KMP files
+    // live in, not a nested subfolder - confirmed against a real Kronos-authored
+    // collection (SampleFixtures/ANDRE_K2_73/samplesfeb28_25.KSC's own bare
+    // ONE_0005.KSF/AROU0008.KSF/... entries sit right there, not in any zone subfolder).
+
+    // Every bare (non-.KMP) entry in the active collection that still exists on disk -
+    // the repository picker's own data source. Full path, not just filename, so the
+    // caller can pass it straight to KsfSample.Open/AssignExistingKsfToZone/
+    // AddZoneFromExistingKsf without re-deriving the folder convention itself.
+    public IEnumerable<string> BareSampleEntries()
+    {
+        if (_collection == null || _collectionPath == null) return [];
+        var kmpDir = KscCollection.ContentDirFor(_collectionPath);
+        return _collection.Entries
+            .Where(e => !e.EndsWith(".KMP", StringComparison.OrdinalIgnoreCase))
+            .Select(e => Path.Combine(kmpDir, e))
+            .Where(File.Exists);
+    }
+
+    // Decodes each audio file and writes it as a standalone resident .KSF directly into
+    // the collection's own content folder, adding each as a bare entry - does NOT touch
+    // any multisample/zone by itself. This is the repository-populating half of Import
+    // Sample (see ImportSampleIntoZone below, which calls this then assigns the first
+    // result) - every import makes its file(s) available for ANY multisample's zones
+    // for the rest of the session, not just the one currently selected. One collection
+    // Save at the end, not per file - a multi-file import is one user action, not N.
+    //
+    // Returns the full path of each successfully-written bare .KSF, in the SAME order
+    // as audioPaths (failures are skipped, not padded with null) - so a caller doing
+    // "import then assign the first one" knows exactly which file that is.
+    public List<string> ImportSamplesToCollection(IEnumerable<string> audioPaths)
+    {
+        var written = new List<string>();
+        if (_collection == null || _collectionPath == null) { StatusText = "Open or create a collection first."; return written; }
+
+        var kmpDir = KscCollection.ContentDirFor(_collectionPath);
+        Directory.CreateDirectory(kmpDir);
+
+        var failures = new List<string>();
+        foreach (var audioPath in audioPaths)
+        {
+            try
+            {
+                var sampleName = Path.GetFileNameWithoutExtension(audioPath);
+
+                // Genuinely stereo source (2026-08-22, per explicit feedback): preserve
+                // both channels as a matched -L/-R bare pair (same Name, opposite
+                // Suffix - the doc §2.2 convention every OTHER stereo pair in this app
+                // already uses), rather than always downmixing to mono. This is what
+                // lets AssignExistingKsfToZone auto-detect "this repository sample is
+                // stereo" later and assign both channels at once. A mono source keeps
+                // the single-file path unchanged.
+                if (AudioImport.GetSourceChannelCount(audioPath) >= 2)
+                {
+                    var (left, right) = AudioImport.ImportStereoToLR44100(audioPath);
+                    var leftFileName = UniqueBareKsfFileName($"{sampleName}-L");
+                    var rightFileName = UniqueBareKsfFileName($"{sampleName}-R");
+                    var leftKsf = new KsfSample { Name = sampleName, Suffix = "-L", SampleRate = (uint)AudioImport.TargetSampleRate, Flags = 0x81 };
+                    leftKsf.SetSamples(left);
+                    var rightKsf = new KsfSample { Name = sampleName, Suffix = "-R", SampleRate = (uint)AudioImport.TargetSampleRate, Flags = 0x81 };
+                    rightKsf.SetSamples(right);
+                    var leftPath = Path.Combine(kmpDir, leftFileName);
+                    var rightPath = Path.Combine(kmpDir, rightFileName);
+                    leftKsf.Save(leftPath);
+                    rightKsf.Save(rightPath);
+
+                    _collection.Entries.Add(leftFileName);
+                    _collection.Entries.Add(rightFileName);
+                    written.Add(leftPath);
+                    written.Add(rightPath);
+                }
+                else
+                {
+                    var pcm = AudioImport.ImportToMono44100(audioPath);
+                    var ksfFileName = UniqueBareKsfFileName(sampleName);
+                    var ksf = new KsfSample { Name = sampleName, SampleRate = (uint)AudioImport.TargetSampleRate, Flags = 0x81 };
+                    ksf.SetSamples(pcm);
+                    var ksfPath = Path.Combine(kmpDir, ksfFileName);
+                    ksf.Save(ksfPath);
+
+                    _collection.Entries.Add(ksfFileName);
+                    written.Add(ksfPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                AppLog.Error($"Sample Editor: import to repository '{audioPath}' failed: {ex}");
+                failures.Add(Path.GetFileName(audioPath));
+            }
+        }
+
+        if (written.Count > 0) _collection.Save(_collectionPath);
+        StatusText = failures.Count == 0
+            ? $"Imported {written.Count} sample(s) to the repository (Un-referenced Samples)."
+            : $"Imported {written.Count} sample(s), {failures.Count} failed: {string.Join(", ", failures)}";
+        return written;
+    }
+
+    // Bare-.KSF-entry filenames don't need the MS<multisample><zone> convention (they
+    // belong to no multisample) - a filesystem-safe form of the source name, de-duped
+    // against every entry already in the collection (bare or not - a bare entry and a
+    // multisample's own zone file share the same directory and must not collide).
+    string UniqueBareKsfFileName(string sampleName)
+    {
+        var safe = new string(sampleName.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
+        if (safe.Length == 0) safe = "Sample";
+        var existing = new HashSet<string>(_collection!.Entries, StringComparer.OrdinalIgnoreCase);
+        var candidate = $"{safe}.KSF";
+        for (int n = 1; existing.Contains(candidate); n++)
+            candidate = $"{safe}_{n}.KSF";
+        return candidate;
+    }
+
+    // Writes `src`'s audio into `zone` (NeedsFreshFilename decides whether that means
+    // overwriting the zone's own current file in place or picking a fresh, collision-
+    // free name first) - the shared "commit one zone's assignment" step used by both
+    // the single-channel and stereo-dual-assign paths below, split out so the stereo
+    // path can do two of these writes before ONE save+rebuild rather than two.
+    void WriteAssignedSample(KmpMultisample m, string kmpPath, KmpZone zone, string name, string suffix, uint sampleRate, short[] pcm)
+    {
+        if (NeedsFreshFilename(m, kmpPath, zone)) zone.Filename = m.NextFreeZoneFileName();
+        var ksf = new KsfSample { Name = name, Suffix = suffix, SampleRate = sampleRate, Flags = 0x81 };
+        ksf.SetSamples(pcm);
+        var ksfPath = zone.KsfPath(kmpPath);
+        Directory.CreateDirectory(Path.GetDirectoryName(ksfPath)!);
+        ksf.Save(ksfPath);
+    }
+
+    // Repository stereo pairing (2026-08-22): a bare .KSF whose Suffix is -L/-R with a
+    // same-Name, opposite-Suffix sibling ALSO sitting bare in the repository (both
+    // written together by ImportSamplesToCollection's own stereo path) is one stereo
+    // sample, not two unrelated mono ones - same Name+opposite-Suffix matching
+    // SampleImportBuilder.FindStereoSibling already uses for multisample pairs.
+    bool TryFindRepositoryStereoPartner(KsfSample src, out string? partnerPath, out KsfSample? partnerSrc)
+    {
+        partnerPath = null; partnerSrc = null;
+        if (src.Suffix is not ("-L" or "-R")) return false;
+        var wantSuffix = src.Suffix == "-L" ? "-R" : "-L";
+        foreach (var path in BareSampleEntries())
+        {
+            try
+            {
+                if (KsfSample.Open(File.ReadAllBytes(path)) is { } candidate
+                    && candidate.Name == src.Name && candidate.Suffix == wantSuffix)
+                { partnerPath = path; partnerSrc = candidate; return true; }
+            }
+            catch { /* an unreadable candidate can't be this sample's partner */ }
+        }
+        return false;
+    }
+
+    // Which of `sibling`'s zones corresponds to `zone` (owned by `m`) - same
+    // correspondence rule ResolveStereoPartner/ApplyZoneEdits already use (exact key
+    // range first, same list position as fallback), EXCEPT without ResolveStereoPartner's
+    // own `!IsSkipped` restriction: that restriction is right for "resolve an ALREADY-
+    // populated partner to display," wrong here ("find where to WRITE a new
+    // assignment" - a placeholder sibling zone, e.g. a freshly-created multisample
+    // pair's own default first zone, is exactly the normal, expected target).
+    static KmpZone? ResolveCorrespondingZone(KmpMultisample m, KmpZone zone, KmpMultisample sibling)
+    {
+        var matchZone = sibling.Zones.FirstOrDefault(z => z.OriginalKey == zone.OriginalKey && z.TopKey == zone.TopKey);
+        if (matchZone != null) return matchZone;
+        int idx = m.Zones.IndexOf(zone);
+        return idx >= 0 && idx < sibling.Zones.Count ? sibling.Zones[idx] : null;
+    }
+
+    // Assigns an already-imported repository sample (or any other readable .KSF -
+    // doesn't strictly require it came from BareSampleEntries) to the CURRENTLY
+    // SELECTED zone, replacing whatever that zone had. Mirrors ImportSampleIntoZone's
+    // own stub-safety logic exactly (NeedsFreshFilename) since this replaces an
+    // existing zone's audio the same way.
+    //
+    // Auto stereo dual-assign (2026-08-22, explicit feedback): if `sourceKsfPath` is
+    // one half of a repository stereo pair AND `zone`'s own multisample resolves a
+    // real stereo sibling (doc §2.2), both channels are assigned at once - the L half
+    // to whichever multisample is "-L", the R half to whichever is "-R" - revealing
+    // the stereo waveform view immediately instead of leaving the pair looking mono
+    // until the user manually repeats the assignment on the other side. Falls back to
+    // single-channel assignment (this zone only) when there's no stereo context to
+    // dual-assign into - a mono multisample, or no resolvable sibling.
+    public string? AssignExistingKsfToZone(KmpZone zone, string sourceKsfPath)
+    {
+        LastImportedZoneIndex = -1;
+        var (m, kmpPath) = FindMultisampleAndPathContaining(Roots, zone);
+        if (m == null || kmpPath == null) { StatusText = "Couldn't resolve this zone's multisample."; return null; }
+
+        try
+        {
+            var src = KsfSample.Open(File.ReadAllBytes(sourceKsfPath));
+            if (src == null || src.IsHeaderOnly)
+            { StatusText = "That file isn't a readable .KSF with audio data."; return null; }
+
+            if (m.Suffix is "-L" or "-R" && TryFindRepositoryStereoPartner(src, out var partnerPath, out var partnerSrc) && partnerSrc != null)
+            {
+                var (sibling, siblingPath) = ResolveStereoSibling(m, kmpPath);
+
+                var siblingZone = sibling != null && siblingPath != null ? ResolveCorrespondingZone(m, zone, sibling) : null;
+                if (sibling != null && siblingPath != null && siblingZone != null)
+                {
+                    // BUG FIX 2026-08-22 (Opus redundancy review): this used to pick
+                    // BOTH the target multisamples AND the source samples off the SAME
+                    // discriminator (m.Suffix) - but m.Suffix says which multisample the
+                    // CLICKED zone belongs to, not which channel `src` (the repository
+                    // file the user actually picked) is. Whenever `src` was the "-R"
+                    // half and `m` was the "-L" multisample (a real, reachable case -
+                    // RefreshIndexAndSampleCombo groups a stereo pair by whichever half
+                    // BareSampleEntries() happens to list first, which isn't always -L),
+                    // the R audio got written into the L multisample's zone (and vice
+                    // versa) - a silent, audible L/R inversion with no structural
+                    // corruption to make it obvious. Sources and targets are two
+                    // independent choices; keep them that way.
+                    var (leftSrc, rightSrc) = src.Suffix == "-L" ? (src, partnerSrc) : (partnerSrc, src);
+                    var (leftM, leftPath, leftZone, rightM, rightPath, rightZone) = m.Suffix == "-L"
+                        ? (m, kmpPath, zone, sibling, siblingPath, siblingZone)
+                        : (sibling, siblingPath, siblingZone, m, kmpPath, zone);
+
+                    WriteAssignedSample(leftM, leftPath, leftZone, leftSrc.Name, "-L", leftSrc.SampleRate, leftSrc.Samples());
+                    WriteAssignedSample(rightM, rightPath, rightZone, rightSrc.Name, "-R", rightSrc.SampleRate, rightSrc.Samples());
+
+                    LastImportedZoneIndex = m.Zones.IndexOf(zone);
+                    SaveMultisampleNow(leftM, leftPath);
+                    if (!string.Equals(leftPath, rightPath, StringComparison.OrdinalIgnoreCase)) SaveMultisampleNow(rightM, rightPath);
+                    RefreshTreeAfterMutation(m, kmpPath);
+                    StatusText = $"Assigned stereo sample '{src.Name}' to both channels.";
+                    return kmpPath;
+                }
+            }
+
+            WriteAssignedSample(m, kmpPath, zone, src.Name, src.Suffix, src.SampleRate, src.Samples());
+
+            LastImportedZoneIndex = m.Zones.IndexOf(zone);
+            SaveMultisampleNow(m, kmpPath);
+            RefreshTreeAfterMutation(m, kmpPath);
+            StatusText = $"Assigned '{Path.GetFileName(sourceKsfPath)}' to zone '{zone.Filename}'.";
+            return kmpPath;
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error($"Sample Editor: assign existing .KSF '{sourceKsfPath}' to zone failed: {ex}");
+            StatusText = $"Assign failed: {ex.Message}";
+            return null;
         }
     }
 
@@ -2027,8 +2523,22 @@ partial class SampleEditorViewModel : ObservableObject
         if (_collection == null || _collectionPath == null) { StatusText = "Open or create a collection first."; return; }
         try
         {
-            var (_, leftPath, _, rightPath) = SampleImportBuilder.CreateStereoMultisamplePair(
+            var (left, leftPath, right, rightPath) = SampleImportBuilder.CreateStereoMultisamplePair(
                 _collection, _collectionPath, baseName, mno1Left);
+
+            // Auto-create the default first zone on BOTH halves (identical key range,
+            // required for stereo parity, doc §2.2) - user-specified 2026-08-22, so a
+            // freshly created multisample already has something the editor can show/
+            // import into, without a separate manual Add Zone step. Deliberately NOT
+            // inside CreateStereoMultisamplePair itself (Core builder primitive) -
+            // several existing self-tests call that method directly expecting a
+            // genuinely empty pair to build their own specific zone layout on top of;
+            // this is purely the "Create Multisample" UI action's own default.
+            left.Zones.Add(SampleImportBuilder.MakeDefaultFirstZone());
+            right.Zones.Add(SampleImportBuilder.MakeDefaultFirstZone());
+            left.Save(leftPath);
+            right.Save(rightPath);
+
             RebuildTreeFromCollection(_collectionPath, _collection);
             StatusText = $"Created stereo multisample pair '{baseName}' "
                 + $"('{Path.GetFileName(leftPath)}' + '{Path.GetFileName(rightPath)}').";
@@ -2056,12 +2566,7 @@ partial class SampleEditorViewModel : ObservableObject
         if (_collection == null || _collectionPath == null)
         { StatusText = "Open a collection first - stereo pairing needs to search its other multisamples."; return; }
 
-        // Live sibling first, disk lookup as fallback - same reasoning as
-        // AddPlaceholderZone's own comment (a pending sibling must be mutated in place,
-        // not shadowed by a fresh disk copy that the tree will then discard).
-        var (sibling, siblingPath) = FindLiveStereoSibling(m, kmpPath);
-        if (sibling == null || siblingPath == null)
-            (sibling, siblingPath) = SampleImportBuilder.FindStereoSibling(_collection, m, kmpPath);
+        var (sibling, siblingPath) = ResolveStereoSibling(m, kmpPath);
         if (sibling == null || siblingPath == null)
         {
             StatusText = $"'{m.Name}{m.Suffix}' has no matching stereo sibling in this collection "
@@ -2099,8 +2604,7 @@ partial class SampleEditorViewModel : ObservableObject
         try
         {
             var collection = new KscCollection { Path = kscPath };
-            Directory.CreateDirectory(Path.Combine(
-                Path.GetDirectoryName(kscPath) ?? "", Path.GetFileNameWithoutExtension(kscPath)));
+            Directory.CreateDirectory(KscCollection.ContentDirFor(kscPath));
             collection.Save(kscPath);
             _collection = collection;
             _collectionPath = kscPath;
@@ -2115,6 +2619,25 @@ partial class SampleEditorViewModel : ObservableObject
         }
     }
 
+    // Smallest non-negative MNO1 not currently used by any multisample in the LIVE tree
+    // (not a disk rescan - a just-created-but-not-yet-saved multisample must count too,
+    // same "live state over disk" preference every other lookup here already uses).
+    // slotsNeeded=2 for a stereo pair - both the candidate and candidate+1 must be free,
+    // matching NewStereoMultisamplePairInCollection's own mno1/mno1+1 adjacency
+    // convention (doc §2.2). Reuses freed slots (a deleted multisample's old MNO1 is
+    // eligible again), matching what real Kronos content shows after slots are freed.
+    public uint NextFreeMno1(int slotsNeeded = 1)
+    {
+        var used = new HashSet<uint>(AllMultisampleNodes().Select(n => n.MultisampleRef!.Value.Multisample.Mno1));
+        for (uint candidate = 0; ; candidate++)
+        {
+            bool allFree = true;
+            for (int i = 0; i < slotsNeeded; i++)
+                if (used.Contains(candidate + (uint)i)) { allFree = false; break; }
+            if (allFree) return candidate;
+        }
+    }
+
     public void NewMultisampleInCollection(string name, uint mno1)
     {
         if (_collection == null || _collectionPath == null)
@@ -2124,12 +2647,12 @@ partial class SampleEditorViewModel : ObservableObject
         }
         try
         {
-            var kmpDir = Path.Combine(Path.GetDirectoryName(_collectionPath) ?? "",
-                Path.GetFileNameWithoutExtension(_collectionPath));
+            var kmpDir = KscCollection.ContentDirFor(_collectionPath);
             Directory.CreateDirectory(kmpDir);
             var kmpFileName = $"{name}.KMP";
             var kmpPath = Path.Combine(kmpDir, kmpFileName);
             var m = new KmpMultisample { Name = name, Mno1 = mno1 };
+            m.Zones.Add(SampleImportBuilder.MakeDefaultFirstZone());
             SaveMultisampleNow(m, kmpPath);
 
             _collection.Entries.Add(kmpFileName);
@@ -2141,6 +2664,47 @@ partial class SampleEditorViewModel : ObservableObject
         {
             AppLog.Error($"Sample Editor: new multisample failed: {ex}");
             StatusText = $"Failed to create multisample: {ex.Message}";
+        }
+    }
+
+    // Deletes the currently-selected multisample (.KMP) entirely: removes its filename
+    // from the collection manifest, deletes the .KMP file, and deletes its own zone
+    // subfolder (every .KSF the app itself ever wrote there lives ONLY under
+    // <kmp-dir>/<kmp-basename>/ per KmpZone.KsfPath - never shared with another
+    // multisample's own subfolder, so this can't orphan or break a sibling multisample's
+    // audio). Deliberately does NOT cascade to a stereo sibling - "Delete" removes
+    // exactly the one selected half, same one-thing-at-a-time granularity as zone
+    // delete; a user wanting both halves gone deletes each separately. Not undoable
+    // (real files leave disk) - the caller (code-behind) is expected to confirm with the
+    // user before calling this, same as every other hard-delete in this app.
+    public void DeleteSelectedMultisample()
+    {
+        var (m, kmpPathResolved) = ResolveContextMultisample();
+        if (m == null || kmpPathResolved == null) { StatusText = "Select a multisample first."; return; }
+        if (_collection == null || _collectionPath == null) { StatusText = "No collection is open."; return; }
+
+        var kmpPath = kmpPathResolved;
+        var label = m.Name + m.Suffix;
+        try
+        {
+            var kmpFileName = Path.GetFileName(kmpPath);
+            var kmpDir = Path.GetDirectoryName(kmpPath) ?? "";
+            var zoneDir = Path.Combine(kmpDir, Path.GetFileNameWithoutExtension(kmpPath));
+
+            _collection.Entries.RemoveAll(e => string.Equals(e, kmpFileName, StringComparison.OrdinalIgnoreCase));
+            _collection.Save(_collectionPath);
+
+            if (Directory.Exists(zoneDir)) Directory.Delete(zoneDir, recursive: true);
+            if (File.Exists(kmpPath)) File.Delete(kmpPath);
+
+            SelectNode(null);
+            RebuildTreeFromCollection(_collectionPath, _collection);
+            StatusText = $"Deleted multisample '{label}' ('{kmpFileName}').";
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error($"Sample Editor: delete multisample '{kmpPath}' failed: {ex}");
+            StatusText = $"Failed to delete multisample: {ex.Message}";
         }
     }
 
@@ -2157,10 +2721,18 @@ partial class SampleEditorViewModel : ObservableObject
     // edit with no undo at all, and deleting one half of a stereo pair left the other
     // half still sounding - the pair's key ranges stayed in parity, so it kept resolving
     // as stereo while only one channel had audio.
+    // Two stages, both reachable through the same "Delete Zone" action. First delete on
+    // a real zone soft-skips it (below) - the underlying .KSF stays on disk and the key
+    // range stays reserved, so nothing about a neighboring zone changes as a side effect
+    // of what looks like "just marking this unused." Second delete - on a zone that's
+    // ALREADY skipped - actually REMOVES it from the keymap (see DeleteSkippedZone
+    // below). Without this second stage, an already-skipped placeholder could never be
+    // cleared out again: the button was disabled outright once IsSkipped was true, so a
+    // zone marked skipped was permanent clutter with no way back.
     public void DeleteSelectedZone()
     {
         if (_selectedZone == null) { StatusText = "No zone selected."; return; }
-        if (_selectedZone.IsSkipped) { StatusText = "This zone is already marked as skipped."; return; }
+        if (_selectedZone.IsSkipped) { DeleteSkippedZone(); return; }
 
         List<KmpZone>? siblingZones = null;
         KmpMultisample? siblingM = null;
@@ -2190,7 +2762,56 @@ partial class SampleEditorViewModel : ObservableObject
         if (siblingM != null && siblingPath != null) RegisterDirtyMultisample(siblingM, siblingPath);
         RefreshUndoRedoState();
         StatusText = $"Zone marked as skipped{(siblingZones != null ? " on both L/R channels" : "")} "
-            + "(unsaved - use Save Multisample). The underlying .KSF file was left on disk, not deleted.";
+            + "(unsaved - use Save Multisample). The underlying .KSF file was left on disk, not deleted. "
+            + "Delete again to remove this empty zone from the keymap entirely.";
+    }
+
+    // Physically removes an already-skipped (empty) zone from its multisample's Zones
+    // list. Each zone's trigger range is implicit - it runs from the PREVIOUS zone's own
+    // TopKey + 1 through its own TopKey - so there is no explicit range math to do here:
+    // once the entry is gone, whatever now follows it automatically absorbs the vacated
+    // range down to its new predecessor, the same way it always has. That absorption is
+    // exactly the side effect the soft-skip in DeleteSelectedZone exists to avoid on a
+    // zone that might still matter; deliberate here, since there's nothing left in an
+    // already-empty zone worth reserving a placeholder for.
+    //
+    // Deliberately NOT wired into zone-list undo (Ctrl+Z) - same reasoning
+    // AddPlaceholderZone's own comment gives: removing an entry changes the
+    // multisample's CHILD COUNT, so the tree has to be rebuilt via the same
+    // RefreshTreeAfterMutation every zone-ADDING method already uses (a boundary drag/
+    // reorder/key edit never changes count, which is the actual reason THOSE stay
+    // undoable). RefreshTreeAfterMutation's rebuild calls SelectNode(null), which resets
+    // _zoneUndo on the resulting scope change - recording an undo step here would be
+    // immediately erased by that same call, not preserved. Revert KSC Changes remains
+    // the available undo path for this specific edit, same as it is for every other
+    // zone-ADDING method.
+    void DeleteSkippedZone()
+    {
+        if (_selectedZone == null) return;
+        var (m, kmpPath) = ResolveContextMultisample();
+        if (m == null || kmpPath == null) { StatusText = "Couldn't resolve the owning multisample."; return; }
+
+        int idx = m.Zones.IndexOf(_selectedZone);
+        if (idx < 0) { StatusText = "This zone is no longer in the keymap."; return; }
+
+        var (siblingZones, siblingM, siblingPath) = ResolveSiblingZonesFor(m.Zones);
+        m.Zones.RemoveAt(idx);
+        bool removedSiblingToo = siblingZones != null && idx < siblingZones.Count;
+        if (removedSiblingToo) siblingZones!.RemoveAt(idx);
+
+        // Bypasses the _zoneDirty property setter's usual auto-registration: that setter
+        // calls RegisterDirtyMultisample(), which re-resolves the owning multisample by
+        // walking Zones.Contains(_selectedZone) - but _selectedZone was JUST removed
+        // from m.Zones above, so that lookup would now fail and silently skip
+        // registering `m` at all. `m`/`kmpPath` are already known here, so register them
+        // directly instead of asking the property setter to re-derive what's no longer
+        // derivable.
+        _zoneDirtyField = true;
+        RegisterDirtyMultisample(m, kmpPath);
+        if (siblingM != null && siblingPath != null) RegisterDirtyMultisample(siblingM, siblingPath);
+        StatusText = $"Removed the empty zone from the keymap{(removedSiblingToo ? " on both L/R channels" : "")} "
+            + "(unsaved - use Save Multisample).";
+        RefreshTreeAfterMutation(m, kmpPath); // rebuilds the tree for the new child count - see this method's own comment for why that also means no Ctrl+Z here
     }
 
     // Dragging a boundary in the piano keymap (Views/SampleKeymapControl.cs) changes
@@ -2226,8 +2847,7 @@ partial class SampleEditorViewModel : ObservableObject
         if (ReferenceEquals(zone, _selectedZone)) ZoneTopKey = zone.TopKey;
         _zoneDirty = true;
         if (siblingM != null && siblingPath != null) RegisterDirtyMultisample(siblingM, siblingPath);
-        CanUndo = _undoDomains.Count > 0;
-        CanRedo = _redoDomains.Count > 0;
+        RefreshUndoRedoState();
         StatusText = $"Zone '{(zone.IsSkipped ? "(skipped)" : zone.Filename)}' now extends to "
             + $"{MidiNoteName.ToName(zone.TopKey)}{(siblingZones != null ? " (both L/R channels)" : "")} "
             + "(unsaved - use Save Multisample).";
@@ -2289,8 +2909,7 @@ partial class SampleEditorViewModel : ObservableObject
         if (_selectedZone != null) { ZoneOriginalKey = _selectedZone.OriginalKey; ZoneTopKey = _selectedZone.TopKey; }
         _zoneDirty = true;
         if (siblingM != null && siblingPath != null) RegisterDirtyMultisample(siblingM, siblingPath);
-        CanUndo = _undoDomains.Count > 0;
-        CanRedo = _redoDomains.Count > 0;
+        RefreshUndoRedoState();
         StatusText = $"Reordered zone '{(dragged.IsSkipped ? "(skipped)" : dragged.Filename)}'"
             + $"{(siblingZones != null ? " (both L/R channels)" : "")} (unsaved - use Save Multisample).";
     }
@@ -2324,7 +2943,7 @@ partial class SampleEditorViewModel : ObservableObject
         if (mirror)
             ApplySampleFieldsTo(_partnerSample!, (int)_partnerSample!.SampleRate, SampleLoopEnabled, SampleSampleStart, start, end);
 
-        LoadSampleDetailState(_selectedSample);
+        LoadSampleDetailState(_selectedSample, reloadWaveform: false);
         RefreshUndoRedoState();
         StatusText = $"Loop moved to [{start}, {end}){(mirror ? " (both L/R channels)" : "")} (unsaved - use Save Changes).";
     }
@@ -2341,9 +2960,15 @@ partial class SampleEditorViewModel : ObservableObject
     // an accepted trade-off, not a bug) -> commit through ApplySampleFieldsTo, which
     // applies the final "Loop Start can never precede Sample Start" clamp regardless of
     // what Loop Lock computed.
-    public void SetMarker(SampleMarkerKind kind, int proposedFrame)
+    // Returns whether anything was actually committed (added 2026-08-22, Opus
+    // redundancy review) - the code-behind's EnsureLoopVisible was firing even on a
+    // genuine no-op (e.g. LostFocus with nothing typed), which could yank a manually-
+    // zoomed view back to the loop region despite that method's own documented
+    // "never fights a manual zoom/pan for an unrelated reason" contract. Callers that
+    // don't need to know can still ignore the return value.
+    public bool SetMarker(SampleMarkerKind kind, int proposedFrame)
     {
-        if (_selectedSample == null) return;
+        if (_selectedSample == null) return false;
         proposedFrame = Math.Clamp(proposedFrame, 0, SampleFrameCount);
         if (UseZeroCrossing) proposedFrame = SnapToNearestZeroCrossing(proposedFrame);
 
@@ -2375,7 +3000,7 @@ partial class SampleEditorViewModel : ObservableObject
         sampleStart = Math.Max(0, sampleStart);
         loopStart = Math.Max(loopStart, sampleStart);
         loopEnd = Math.Max(loopEnd, loopStart);
-        if (sampleStart == SampleSampleStart && loopStart == SampleLoopStart && loopEnd == SampleLoopEnd) return;
+        if (sampleStart == SampleSampleStart && loopStart == SampleLoopStart && loopEnd == SampleLoopEnd) return false;
 
         bool mirror = ShouldMirrorToPartner;
         _sampleUndo.RecordBeforeEdit(SampleFieldSnapshot.Of(_selectedSample));
@@ -2388,15 +3013,17 @@ partial class SampleEditorViewModel : ObservableObject
         if (mirror)
             ApplySampleFieldsTo(_partnerSample!, (int)_partnerSample!.SampleRate, SampleLoopEnabled, sampleStart, loopStart, loopEnd);
 
-        LoadSampleDetailState(_selectedSample);
+        LoadSampleDetailState(_selectedSample, reloadWaveform: false);
         RefreshUndoRedoState();
         StatusText = $"{kind} set to {proposedFrame}{(mirror ? " (both L/R channels)" : "")}.";
+        return true;
     }
 
-    public void SetLoopEnabled(bool enabled)
+    // Same "did it actually commit" return as SetMarker, same reason.
+    public bool SetLoopEnabled(bool enabled)
     {
-        if (_selectedSample == null) return;
-        if (SampleLoopEnabled == enabled) return; // re-asserting the current state isn't an edit
+        if (_selectedSample == null) return false;
+        if (SampleLoopEnabled == enabled) return false; // re-asserting the current state isn't an edit
         bool mirror = ShouldMirrorToPartner;
 
         _sampleUndo.RecordBeforeEdit(SampleFieldSnapshot.Of(_selectedSample));
@@ -2410,9 +3037,73 @@ partial class SampleEditorViewModel : ObservableObject
         if (mirror)
             _partnerSample!.Flags = enabled ? (byte)(_partnerSample.Flags & ~0x80) : (byte)(_partnerSample.Flags | 0x80);
 
-        LoadSampleDetailState(_selectedSample);
+        LoadSampleDetailState(_selectedSample, reloadWaveform: false);
         RefreshUndoRedoState();
         StatusText = $"Loop {(enabled ? "enabled" : "disabled")}{(mirror ? " (both L/R channels)" : "")}.";
+        return true;
+    }
+
+    public void SetReversed(bool enabled)
+    {
+        if (_selectedSample == null) return;
+        if (SampleReverseEnabled == enabled) return;
+        bool mirror = ShouldMirrorToPartner;
+
+        _sampleUndo.RecordBeforeEdit(SampleFieldSnapshot.Of(_selectedSample));
+        _undoDomains.Add(EditDomain.Sample);
+        _redoDomains.Clear();
+        if (mirror) _partnerUndo.RecordBeforeEdit(SampleFieldSnapshot.Of(_partnerSample!));
+
+        _selectedSample.IsReversed = enabled;
+        _sampleDirty = true;
+        if (mirror) _partnerSample!.IsReversed = enabled;
+
+        LoadSampleDetailState(_selectedSample, reloadWaveform: false);
+        RefreshUndoRedoState();
+        StatusText = $"Reverse {(enabled ? "enabled" : "disabled")}{(mirror ? " (both L/R channels)" : "")}.";
+    }
+
+    public void Set12dbBoostEnabled(bool enabled)
+    {
+        if (_selectedSample == null) return;
+        if (Sample12dbBoostEnabled == enabled) return;
+        bool mirror = ShouldMirrorToPartner;
+
+        _sampleUndo.RecordBeforeEdit(SampleFieldSnapshot.Of(_selectedSample));
+        _undoDomains.Add(EditDomain.Sample);
+        _redoDomains.Clear();
+        if (mirror) _partnerUndo.RecordBeforeEdit(SampleFieldSnapshot.Of(_partnerSample!));
+
+        _selectedSample.Is12dbBoostEnabled = enabled;
+        _sampleDirty = true;
+        if (mirror) _partnerSample!.Is12dbBoostEnabled = enabled;
+
+        LoadSampleDetailState(_selectedSample, reloadWaveform: false);
+        RefreshUndoRedoState();
+        StatusText = $"+12dB boost {(enabled ? "enabled" : "disabled")}{(mirror ? " (both L/R channels)" : "")}.";
+    }
+
+    // Clamped to -99..+99 by KsfSample.LoopTune's own setter, matching the front-panel
+    // UI's hard limit (doc §3.1a / kronosology round 13's own hardware-observed bound).
+    public void SetLoopTune(int value)
+    {
+        if (_selectedSample == null) return;
+        int clamped = Math.Clamp(value, -99, 99);
+        if (SampleLoopTune == clamped) return;
+        bool mirror = ShouldMirrorToPartner;
+
+        _sampleUndo.RecordBeforeEdit(SampleFieldSnapshot.Of(_selectedSample));
+        _undoDomains.Add(EditDomain.Sample);
+        _redoDomains.Clear();
+        if (mirror) _partnerUndo.RecordBeforeEdit(SampleFieldSnapshot.Of(_partnerSample!));
+
+        _selectedSample.LoopTune = (sbyte)clamped;
+        _sampleDirty = true;
+        if (mirror) _partnerSample!.LoopTune = (sbyte)clamped;
+
+        LoadSampleDetailState(_selectedSample, reloadWaveform: false);
+        RefreshUndoRedoState();
+        StatusText = $"Loop Tune set to {clamped}{(mirror ? " (both L/R channels)" : "")}.";
     }
 
     // Use Zero searches BOTH channels of a resolved stereo pair (Combine mode) - either
@@ -2425,12 +3116,19 @@ partial class SampleEditorViewModel : ObservableObject
     // same way as "found exactly at the target" (distance 0), a channel with no
     // crossing whatsoever would falsely WIN every distance comparison against a real
     // crossing on the other channel, no matter how close that real crossing was.
+    // Reuses SampleWaveform/PartnerSampleWaveform (already-decoded, cached by
+    // LoadSampleDetailState) instead of calling KsfSample.Samples() again - this runs
+    // on every marker drag/typed-field commit that has Use Zero on, so a fresh decode
+    // here was a second full-buffer re-decode on top of LoadSampleDetailState's own
+    // (Opus performance review, 2026-08-22). Falls back to a real decode only if the
+    // cache is somehow unpopulated, so this can never regress to "wrong snap point".
     int SnapToNearestZeroCrossing(int proposedFrame)
     {
         if (_selectedSample == null) return proposedFrame;
-        int? primary = _selectedSample.IsHeaderOnly ? null : NearestZeroCrossing(_selectedSample.Samples(), proposedFrame);
+        int? primary = _selectedSample.IsHeaderOnly ? null
+            : NearestZeroCrossing(SampleWaveform ?? _selectedSample.Samples(), proposedFrame);
         int? partner = ShouldMirrorToPartner && _partnerSample is { IsHeaderOnly: false }
-            ? NearestZeroCrossing(_partnerSample!.Samples(), proposedFrame) : null;
+            ? NearestZeroCrossing(PartnerSampleWaveform ?? _partnerSample!.Samples(), proposedFrame) : null;
 
         if (primary == null && partner == null) return proposedFrame;
         if (primary == null) return partner!.Value;

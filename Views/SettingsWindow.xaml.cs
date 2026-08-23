@@ -93,6 +93,16 @@ public partial class SettingsWindow : ThemedWindow
         // Debug
         ChkDebugLogging.IsChecked = Result.DebugLogging;
 
+        // Sample Editor - Create Zone Preferences
+        (Result.SampleZoneCreatePosition == SampleZoneCreatePosition.Left ? RadZoneCreateLeft : RadZoneCreateRight).IsChecked = true;
+        TxtZoneCreateRange.Text = Result.SampleZoneCreateRange.ToString();
+        (Result.SampleZoneOriginalKeyPosition switch
+        {
+            SampleZoneOriginalKeyPosition.Center => RadOrigKeyCenter,
+            SampleZoneOriginalKeyPosition.Top => RadOrigKeyTop,
+            _ => RadOrigKeyBottom,
+        }).IsChecked = true;
+
         // MIDI / SysEx
         CMB_MidiTransport.SelectedIndex = Result.MidiTransport switch
         {
@@ -336,6 +346,15 @@ public partial class SettingsWindow : ThemedWindow
 
         // Debug
         Result.DebugLogging = ChkDebugLogging.IsChecked == true;
+
+        // Sample Editor - Create Zone Preferences
+        Result.SampleZoneCreatePosition = RadZoneCreateLeft.IsChecked == true
+            ? SampleZoneCreatePosition.Left : SampleZoneCreatePosition.Right;
+        if (int.TryParse(TxtZoneCreateRange.Text, out int zr))
+            Result.SampleZoneCreateRange = Math.Clamp(zr, 1, 127);
+        Result.SampleZoneOriginalKeyPosition = RadOrigKeyCenter.IsChecked == true ? SampleZoneOriginalKeyPosition.Center
+            : RadOrigKeyTop.IsChecked == true ? SampleZoneOriginalKeyPosition.Top
+            : SampleZoneOriginalKeyPosition.Bottom;
 
         // MIDI / SysEx
         Result.MidiTransport = CMB_MidiTransport.SelectedIndex switch

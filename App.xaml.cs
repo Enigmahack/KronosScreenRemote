@@ -70,6 +70,7 @@ public partial class App : Application
             fails.AddRange(SamplePhase11SelfTests.SelfTest());
             fails.AddRange(SamplePhase12SelfTests.SelfTest());
             fails.AddRange(SamplePhase13SelfTests.SelfTest());
+            fails.AddRange(SamplePhase14SelfTests.SelfTest());
             });
             var outPath = Path.Combine(Path.GetTempPath(), "kronos_librarian_selftest.txt");
             File.WriteAllText(outPath, fails.Count == 0 ? "OK" : "FAIL: " + string.Join(", ", fails));

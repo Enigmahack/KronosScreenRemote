@@ -43,6 +43,11 @@ static class SampleImportBuilder
         int insertAt = m.Zones.FindIndex(z => z.TopKey > zone.TopKey);
         if (insertAt < 0) m.Zones.Add(zone); else m.Zones.Insert(insertAt, zone);
 
+        // Flags = 0x81 deliberately, not inherited from anywhere: one-shot + +12dB boost
+        // on, Reverse off, LoopTune 0 (field default) - the correct state for brand-new
+        // imported audio, same as a real Kronos sampling a fresh WAV. NOT a copy of any
+        // existing sample's state, so this can never accidentally carry over a Reverse/
+        // boost/tune setting from whatever was previously loaded.
         var ksf = new KsfSample { Name = sampleName, Suffix = suffix, SampleRate = (uint)sampleRate, Flags = 0x81 };
         ksf.SetSamples(pcm);
         var ksfPath = zone.KsfPath(kmpPath);
@@ -64,6 +69,21 @@ static class SampleImportBuilder
         return (l, r);
     }
 
+    // Default key range for a brand-new multisample's very first, auto-created zone -
+    // C-1 (MIDI 0) to C2 (MIDI 36), user-specified 2026-08-22 (matching what they've
+    // observed on real hardware) - deliberately NOT the same "full 0-127 keyboard"
+    // default AddPlaceholderZone gives a manually-added first zone; this is specifically
+    // what Create Multisample (mono or stereo) auto-populates so the multisample editor
+    // has something to select/import into immediately, without a separate "Add Zone"
+    // step. Placeholder filename ("SKIPPEDSAMPLE") - same convention as
+    // AddPlaceholderZone - real audio is attached afterward via Import Sample/Assign.
+    public static KmpZone MakeDefaultFirstZone() => new()
+    {
+        Filename = "SKIPPEDSAMPLE",
+        OriginalKey = 0,  // C-1
+        TopKey = 36,      // C2
+    };
+
     // Creates a brand-new stereo pair: two multisamples with identical Name, Suffix
     // "-L"/"-R", and MNO1 = mno1Left / mno1Left+1 (doc §2.2 - MNO1 adjacency matches
     // every real Kronos-authored pair examined, though nothing reads it as load-
@@ -74,8 +94,7 @@ static class SampleImportBuilder
     public static (KmpMultisample left, string leftPath, KmpMultisample right, string rightPath)
         CreateStereoMultisamplePair(KscCollection collection, string collectionPath, string baseName, uint mno1Left)
     {
-        var kmpDir = Path.Combine(Path.GetDirectoryName(collectionPath) ?? "",
-            Path.GetFileNameWithoutExtension(collectionPath));
+        var kmpDir = KscCollection.ContentDirFor(collectionPath);
         Directory.CreateDirectory(kmpDir);
 
         var left = new KmpMultisample { Name = baseName, Suffix = "-L", Mno1 = mno1Left };

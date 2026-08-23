@@ -23,6 +23,18 @@ static class AudioImport
         return ConvertToMono44100(reader);
     }
 
+    // Cheap peek at the source's own channel count (opens the container/header only, no
+    // decode) - lets a caller decide mono vs. stereo import BEFORE committing to either
+    // decode path, rather than always downmixing (added 2026-08-22 for the repository's
+    // auto stereo L/R handling).
+    public static int GetSourceChannelCount(string path)
+    {
+        using WaveStream reader = Path.GetExtension(path).Equals(".wav", StringComparison.OrdinalIgnoreCase)
+            ? new WaveFileReader(path)
+            : new MediaFoundationReader(path);
+        return reader.WaveFormat.Channels;
+    }
+
     // Split out from ImportToMono44100 so self-tests can feed a synthetic in-memory
     // WaveStream (a real MP3/MP4 needs an actual file + Windows Media Foundation, so
     // only the WAV path is exercised off-hardware - see SampleTranscodeSelfTests's own

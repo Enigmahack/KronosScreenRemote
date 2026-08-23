@@ -93,6 +93,20 @@ static class UiThemeSmokeTest
         Try("KeyboardInfoWindow",     () => new KeyboardInfoWindow("", 0, null));
         Try("SampleEditorWindow",    () => new SampleEditorWindow());
         Try("SampleNormalizationReportWindow", () => new SampleNormalizationReportWindow(new List<SampleNormalizationEntry>()));
+
+        // The "Keymap tab recovers after zone delete" regression check that used to live
+        // here is gone, not just passing now: it existed to pin a bug in RefreshDetail-
+        // Panels' TabControl reselect-fallback (SelectedItem getting stuck null after a
+        // zone delete transiently collapsed every tab). The Samples/Looping TabControl
+        // itself was removed from SampleEditorWindow (every tab's content became a flat,
+        // always-visible row inside the editing frame instead - Playback Format/DSP
+        // Edit/Repair/Loop, per an explicit "no more tabs" request) - there is no
+        // TabControl/SelectedItem left for that bug class to occur in at all. This test
+        // had been failing on every run since a still-uninvestigated regression
+        // reintroduced it sometime after it was first fixed (see this file's own history
+        // for the original fix and later re-break); removed along with the code path it
+        // was pinning rather than carried forward as permanently-red or rewritten to test
+        // something that no longer exists.
         Try("LibrarianShellWindow",   () =>
         {
             var scratch = Path.Combine(Path.GetTempPath(), "kronos_ui_smoketest_local_library");
@@ -211,6 +225,59 @@ static class UiThemeSmokeTest
         }
         Try("LoginDialog",            () => new LoginDialog("", 0));
         Try("PromptDialog",           () => new PromptDialog("test"));
+        Try("InsertSilenceDialog",    () => new InsertSilenceDialog(44100, 11025));
+        Try("CreateMultisampleDialog", () => new CreateMultisampleDialog(0));
+        // Loaded never fires for a constructed-but-unshown window (see Try's own body -
+        // it never calls Show/ShowDialog), so this never actually reaches out over the
+        // network despite taking connection args.
+        Try("SampleRemoteBrowserDialog", () => new SampleRemoteBrowserDialog("dummy-host", 21, "user", "pass", ".KSC", Path.GetTempPath()));
+        Try("RemoteFilePickerDialog",    () => new RemoteFilePickerDialog("dummy-host", 21, "user", "pass", ".PCG"));
+
+        // Behavioral: both dialogs used to truncate their status line
+        // (TextTrimming="CharacterEllipsis", no wrap), which silently cut off exactly
+        // the detail (host/path/errno) that makes a long connect/download failure
+        // message actionable. Pins the fix at the property level, not just "constructs
+        // without throwing".
+        {
+            var browser = new SampleRemoteBrowserDialog("dummy-host", 21, "user", "pass", ".KSC", Path.GetTempPath());
+            var browserWraps = ((System.Windows.Controls.TextBlock)browser.FindName("TXT_Status")).TextWrapping == TextWrapping.Wrap;
+            browser.Close();
+            results.Add(("  SampleRemoteBrowserDialog status wraps long errors", browserWraps,
+                browserWraps ? null : "TXT_Status.TextWrapping is not Wrap"));
+
+            var picker = new RemoteFilePickerDialog("dummy-host", 21, "user", "pass", ".PCG");
+            var pickerWraps = ((System.Windows.Controls.TextBlock)picker.FindName("TXT_Status")).TextWrapping == TextWrapping.Wrap;
+            picker.Close();
+            results.Add(("  RemoteFilePickerDialog status wraps long errors", pickerWraps,
+                pickerWraps ? null : "TXT_Status.TextWrapping is not Wrap"));
+        }
+
+        // Behavioral, not just XamlParseException-free: confirms the Frames/Seconds
+        // boxes actually stay linked both directions, not merely that the dialog
+        // constructs. Setting TextBox.Text raises TextChanged synchronously even on an
+        // unshown Window, so this needs no visible/modal window.
+        try
+        {
+            var dlg = new InsertSilenceDialog(44100, 11025); // seeded 0.25s @ 44100Hz
+            var framesBox = (System.Windows.Controls.TextBox)dlg.FindName("FramesBox");
+            var secondsBox = (System.Windows.Controls.TextBox)dlg.FindName("SecondsBox");
+            bool seededSecondsCorrect = secondsBox.Text == "0.25";
+
+            framesBox.Text = "22050";
+            bool framesToSeconds = secondsBox.Text == "0.5";
+
+            secondsBox.Text = "2";
+            bool secondsToFrames = framesBox.Text == "88200";
+
+            dlg.Close();
+            bool ok = seededSecondsCorrect && framesToSeconds && secondsToFrames;
+            results.Add(("  InsertSilenceDialog Frames<->Seconds link", ok,
+                ok ? null : $"seeded={seededSecondsCorrect} frames->seconds={framesToSeconds} seconds->frames={secondsToFrames}"));
+        }
+        catch (Exception ex)
+        {
+            results.Add(("  InsertSilenceDialog Frames<->Seconds link", false, ex.GetType().Name + ": " + ex.Message));
+        }
         Try("PropertiesDialog (Program/Combi)", () => PropertiesDialog.ForProgramOrCombi("Test Properties", "Test Name", 0, 0));
         Try("PropertiesDialog (Set List)",      () => PropertiesDialog.ForSetList("Test Properties", "Test Name", new SetListData(0, "Test", Array.Empty<SetListSlot>())));
         Try("UnresolvedDependenciesDialog",     () => UnresolvedDependenciesDialog.For(new[]

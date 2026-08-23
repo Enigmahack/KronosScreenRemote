@@ -1848,3 +1848,701 @@ re-run and re-read. Both new self-test blocks were negative-controlled: revertin
 `pendingsibling-key-ranges-still-in-parity`, `pendingsibling-earlier-edit-survived` and
 `pendingsibling-partner-still-resolves`, confirming the blocker was real and the test
 actually detects it.
+
+**22. Insert Silence dialog: linked Frames/Seconds fields (2026-08-21, follow-up
+to entry 21).** User request: the Insert Silence prompt should also accept a duration
+in seconds, with the two fields kept in sync live - only frames are actually applied,
+seconds is a second entry point onto the same value.
+
+- New `Views/InsertSilenceDialog.xaml(.cs)` (replaces the generic `PromptDialog` call
+  entry 21 used) - same `LoginDialog`-style two-field layout, not bolted onto
+  `PromptDialog` itself since that's a single-field dialog reused in ~8 unrelated call
+  sites. `Frames` is the only value exposed to the caller
+  (`SampleEditorWindow.OnInsertSilence`); `ApplyInsertSilence` never sees seconds.
+- Both `TextBox`es' `TextChanged` recompute the other, guarded by a `_syncing` flag so
+  writing one box's `Text` (which fires `TextChanged` synchronously even unshown) doesn't
+  loop back into itself. Seconds→frames rounds (`Math.Round`), not truncates, so
+  "0.5s @ 44100Hz" round-trips back to exactly "0.5" rather than drifting a hair short.
+  Parsed/formatted with `InvariantCulture` throughout - same reasoning as entry 21's
+  Tempo/Pitch fix (seeded "0.25" must not read as a different number on a comma-decimal
+  locale).
+- Wired into `Tools/UiThemeSmokeTest.cs` twice: once via the existing `Try()` (construct
+  cleanly), and once as a dedicated behavioral check that actually drives the two boxes
+  (seed 11025 frames @ 44100Hz → "0.25"; set frames to 22050 → seconds becomes "0.5"; set
+  seconds to "2" → frames becomes "88200") - `Try()` alone only proves XAML/resources
+  resolve, not that the linking logic works. **Negative-controlled**: temporarily
+  breaking the frames→seconds direction made this check fail with exactly that
+  direction's assertion false and the other two true, confirming it actually exercises
+  the link rather than passing by construction.
+
+Verification: clean `dotnet build`, `--ui-theme-smoketest` green (including the new
+behavioral check, confirmed via negative control), `--librarian-selftest` green,
+`--sample-editor-smoketest` green, `--sample-format-fixture-check` still 75/75
+byte-identical. **Not yet visually confirmed in a running window** - the smoketest proves
+construction and the sync logic, not what it looks like; owed a real click-through
+(type into each box, confirm the other updates, confirm OK still only accepts a positive
+whole frame count).
+
+**23. Field label / field vertical alignment fix (2026-08-21, follow-up to entry 21).**
+User report: "Filename:", "Original Key:", "Sample Rate:" and most other field labels
+sit visibly lower than the box/value they describe.
+
+- **Root cause**: the `FieldLabel` style (used by all 11 field labels in this window) had
+  `Margin="0 0 6 0"` - no bottom margin - while every sibling control in the same row
+  (`FieldBox`, the value `TextBlock`s like `ZoneFilenameText`/`SampleNameText`, and every
+  button) had a 6px bottom margin. Everything in these rows is `VerticalAlignment="Bottom"`
+  and, since entry 21's WrapPanel change, stretched to a shared row height - so a 0
+  bottom margin against a 6px one sits the label 6px lower than its own field, which is
+  exactly the offset reported. One `SampleWarningText` was independently inconsistent the
+  same way (no bottom margin against its row-mate `SampleFramesText`'s 6px).
+- **Fix**: `FieldLabel`'s bottom margin changed to 6, matching everything else in the
+  window; `SampleWarningText` given the same. A single style-level fix rather than
+  touching each of the 11 label instances, since they all shared one style. Verified by
+  grep that every `VerticalAlignment="Bottom"` element in the file now carries a 6px
+  bottom margin - no remaining outliers.
+
+Verification: clean `dotnet build`, `--ui-theme-smoketest` green,
+`--librarian-selftest` green, `--sample-editor-smoketest` green,
+`--sample-format-fixture-check` still 75/75 byte-identical, and
+`--sample-editor-visual-check` screenshots read back directly - confirms "Filename:",
+"Original Key:", "Top Key:", "Name:", "Frames:", "Sample Rate:", "Tempo x:",
+"Pitch (semitones):", "Sample Start:", "Loop Start:" and "Loop End:" all now sit flush
+with their fields across the Zone panel, the waveform info row, and both the Samples and
+Looping tabs.
+
+**24. Three follow-up bugs (2026-08-21): stereo view too strict, FTP dialogs truncate
+errors, Delete Zone permanently disables.**
+
+**1. Stereo waveform view required an exact key-range match, and shouldn't.**
+`ResolveStereoPartner` only resolved a stereo partner via an EXACT `(OriginalKey,
+TopKey)` match against the sibling's zones. Real, hand-edited or hand-pulled content
+routinely has the two channels split at different points - still legitimately a stereo
+pair, but the exact-match-or-nothing rule silently dropped it to a mono view. Now falls
+back to the SAME INDEX in the sibling's own zone list when no exact match exists - the
+same correspondence `ResolveSiblingZonesFor` already uses for mirroring key-range edits,
+so display and editing now answer "which zone is this zone's partner" the same way.
+Pinned by a new self-test fixture with deliberately mismatched L/R key ranges (0-60 vs
+0-50); negative-controlled (reverting the fallback fails `mismatch-stereo-still-resolves-by-position`).
+
+**2. FTP "From Kronos" dialogs truncated long error messages.** Both `SampleRemoteBrowserDialog`
+(Sample Editor's browser) and `RemoteFilePickerDialog` (a byte-for-byte duplicate used by
+the PCG source) had `TXT_Status` set to `TextTrimming="CharacterEllipsis"` with no wrap -
+a `ConnectFailed`/`DownloadFailed` message (which interpolates the raw exception text)
+routinely ran longer than the window's width, silently cutting off exactly the host/
+path/errno detail that makes the error actionable. Switched both to `TextWrapping="Wrap"`;
+the containing Grid already has the ListBox as its only flexible (`*`) row, so a taller
+wrapped message just shrinks the list rather than clipping or resizing the window. Both
+dialogs are now also wired into `--ui-theme-smoketest` (previously neither was - added a
+behavioral check reading `TXT_Status.TextWrapping` directly, not just "constructs without
+throwing"; negative-controlled). Since `Loaded` (where the real FTP connection kicks off)
+never fires for a constructed-but-unshown window, adding them to the smoketest reaches
+out over the network to nothing.
+
+**3. Delete Zone permanently disabled once a zone was already skipped.** An empty
+"(skipped) up to X" placeholder could never be cleared back out of the keymap - the
+button just greyed out. `DeleteSelectedZone` is now two-stage: first delete on a real
+zone soft-skips it (unchanged - the underlying .KSF stays on disk, the key range stays
+reserved, no side effect on neighbors); second delete on an ALREADY-skipped zone
+physically removes it from the multisample's `Zones` list via new `DeleteSkippedZone`,
+mirrored onto the stereo sibling at the same index. No explicit range math needed - each
+zone's low bound is derived from its predecessor's own TopKey + 1, so the following zone
+automatically absorbs the vacated range once the entry is gone (the exact side effect the
+soft-skip stage exists to avoid on a zone that might still matter; deliberate here since
+there's nothing left worth reserving a placeholder for). `BtnDeleteZone`/`MNU_DeleteZone`
+are enabled for ANY selected zone now (were `!ZoneIsSkipped`), with the button's own
+content/tooltip switching between "Delete Zone" and "Remove Zone" so the state-dependent
+action is visible rather than silently different.
+
+- **Deliberately NOT Ctrl+Z-able**, matching `AddPlaceholderZone`'s own documented
+  precedent: removing an entry changes the multisample's child count, which needs the
+  SAME `RefreshTreeAfterMutation` rebuild every zone-ADDING method already uses (a
+  boundary drag/reorder/key edit never changes count, which is the actual reason those
+  three stay undoable) - and that rebuild's `SelectNode(null)` resets `_zoneUndo` on the
+  resulting scope change, so an undo step recorded before the rebuild would be discarded
+  before it could ever be used. Revert KSC Changes remains the available undo path, same
+  as for every zone-adding method. My first draft DID try to wire this into `_zoneUndo`
+  anyway; the new self-test caught the wipe immediately (`CanUndo` false right after the
+  call), which is what led to matching the established precedent instead.
+- **Found and fixed while building this**: `_zoneDirty = true`'s usual auto-registration
+  (`RegisterDirtyMultisample()`, called via the property setter) resolves the owning
+  multisample by walking `Zones.Contains(_selectedZone)` - but by the time that setter
+  runs in `DeleteSkippedZone`, `_selectedZone` has ALREADY been removed from `m.Zones`,
+  so that lookup fails and silently skips registering `m` at all. Fixed by bypassing the
+  property setter (`_zoneDirtyField = true` directly) and calling
+  `RegisterDirtyMultisample(m, kmpPath)` with the already-known reference instead.
+- **Second bug found in the same area**: `SaveSelectedMultisample`'s own entry guard
+  required an active tree selection ("No multisample selected") even though its BODY
+  (per entry 21) writes every pending entry in `_dirtyMultisamples` regardless of
+  selection - so after `RefreshTreeAfterMutation`'s rebuild clears selection, Save
+  Multisample/Save Changes could no longer reach ANY pending edit, not just the one just
+  removed. Widened the guard to only refuse when NOTHING is selected AND NOTHING is
+  pending.
+- Both fixes are independently negative-controlled: reverting either one in isolation
+  fails `delete-zone-second-delete-persisted-removal` (`SamplePhase5SelfTests`, updated
+  from its old "refuses a double-delete" assertion to the new remove-and-persist one)
+  and/or the new `deleteskipped-removal-persisted-*` checks (`SamplePhase13SelfTests`
+  block 13, which now saves-and-clears between its two deletes specifically so it doesn't
+  rely on the FIRST delete's own registration accidentally covering the second - an
+  earlier draft of this test passed even with the registration bug present, for exactly
+  that masking reason, before this adjustment).
+
+Verification: clean `dotnet build`, `--librarian-selftest` green (13 self-test blocks in
+`SamplePhase13SelfTests.cs` now, plus `SamplePhase5SelfTests`'s updated delete-zone
+block), `--ui-theme-smoketest` green (4 new checks: two dialog constructions, two status-
+wrap behavioral checks), `--sample-editor-smoketest` green,
+`--sample-format-fixture-check` still 75/75 byte-identical, `SampleFixtures/` confirmed
+clean via `git status`. `--sample-editor-visual-check` re-run and read back directly -
+confirms a freshly-added skipped placeholder zone shows an ENABLED "Remove Zone" button
+(previously would have shown a greyed-out "Delete Zone").
+
+**Not yet visually confirmed**: the stereo-view positional fallback (no real mismatched-
+keymap fixture exists among the checked-in `SampleFixtures/`) and the FTP dialogs' wrapped
+error text (needs an actual long connect-failure message against a real or deliberately-
+wrong host, which the self-test's dummy-args construction doesn't exercise - it only
+proves the DP is set correctly, not what a real multi-line error looks like on screen).
+
+**25. Keymap piano doesn't render until the tab is manually clicked (2026-08-21,
+follow-up to entry 24) - `EditorTabs.SelectedItem` could get permanently stuck at
+`null`.**
+
+**Root cause**: `RefreshDetailPanels`'s reselect-fallback (entry 21, added to stop a
+collapsed tab showing blank content) pattern-matched `EditorTabs.SelectedItem is TabItem
+{ Visibility: not Visibility.Visible }`. That match silently FAILS when `SelectedItem`
+is already `null` - `null` doesn't match `TabItem {...}` at all, visible or not.
+
+`SelectedItem` reaches `null` whenever a zone add/delete transiently collapses EVERY tab
+at once: right after a tree-rebuild's own `SelectNode(null)`,
+`HasZoneSelected`/`HasSampleLoaded`/`CurrentMultisampleZones` are ALL false/empty
+simultaneously, so `TabKeymap`/`TabSamples`/`TabLooping` all go `Collapsed` in the SAME
+`RefreshDetailPanels` call - the fallback's OWN `FirstOrDefault(t => t.Visibility ==
+Visible)` then correctly finds nothing and sets `SelectedItem = null`. On the NEXT call,
+once a tab becomes visible again (e.g. `AddPlaceholderZone`'s own re-select, or the user
+picking a different tree node afterward), the SAME broken pattern match can never
+recover from `null` - the pane stayed permanently blank until a manual tab click, which
+is the ONLY other code path that ever sets `SelectedItem` directly.
+
+This explains BOTH halves of the report: "especially when adding or deleting a zone"
+(directly triggers the null-out) and "occasionally when selecting a KMP" (really
+observing corruption LEFT OVER from an earlier add/delete in the same session -
+`DeleteSkippedZone`'s TRUE removal is the more reliable repro of the two, since nothing
+re-selects anything afterward at all, unlike Add Zone, which usually - but not always -
+papers over it within the same call by re-selecting the new zone).
+
+**Fix**: one-line - inverted the condition to `is not TabItem { Visibility:
+Visibility.Visible }`, which catches both "collapsed TabItem" and "null" the same way.
+
+**Confirming clue found while writing the regression test**: `Tools/
+SampleEditorVisualCheck.cs`'s own Add Zone screenshot step had `((TabItem)win.EditorTabs.
+Items[0]).IsSelected = true; // Keymap - show the new zone's bar/highlight` immediately
+after the Add Zone click - a MANUAL workaround for exactly this bug, needed because the
+app's own reselect logic couldn't recover on its own. Replaced with a log line reporting
+what the app lands on unassisted (`EditorTabs.SelectedItem: Keymap`, confirmed via a
+fresh screenshot) rather than continuing to paper over it.
+
+**New regression check in `--ui-theme-smoketest`**: constructs a real, off-screen-but-
+shown `SampleEditorWindow` (same technique the existing Librarian block already uses -
+`Opacity=0`, moved off-screen, `ShowInTaskbar=false`) against a synthetic two-zone
+fixture, selects zone 0, clicks Delete Zone TWICE (soft-skip then true-remove, driven via
+real `ButtonBase.ClickEvent` RaiseEvent calls - not direct ViewModel calls) to force the
+all-tabs-collapsed transient, then RE-SELECTS the surviving zone (simulating "selecting a
+KMP" after the corruption) and asserts `EditorTabs.SelectedItem is TabItem { Visibility:
+Visible }`. Negative-controlled: reverting the fix reproduces the exact reported failure
+mode (`EditorTabs.SelectedItem is null after re-selecting a zone post-delete`).
+
+**Real hang found and fixed while building the test itself, not a bug in the app**: the
+test's own `editor.Close()` call blocked forever, because the two deletes left real
+unsaved changes and `OnWindowClosing`'s "discard unsaved changes?" `MessageBox.Show` is
+genuinely modal - with no user present in a headless test run, it waits for input that
+never comes. Every checkpoint up through `recovered=True` printed instantly; only
+`Close()` itself never returned. Fixed by clicking `BtnSaveChanges` (another real
+`RaiseEvent`, not a VM shortcut) before closing - which also happens to exercise entry
+24's `SaveSelectedMultisample` guard-widening fix for real, since nothing is selected at
+that point either.
+
+Verification: clean `dotnet build`, `--ui-theme-smoketest` green (29 checks, 0 failures,
+including the new one), `--librarian-selftest` green, `--sample-editor-smoketest` green,
+`--sample-format-fixture-check` still 75/75 byte-identical, `SampleFixtures/` confirmed
+clean via `git status`. `--sample-editor-visual-check` re-run with the tab-forcing
+workaround removed - screenshot confirms the Keymap tab (piano + zone bar) renders
+correctly immediately after Add Zone with no manual tab click, and the console log
+confirms `EditorTabs.SelectedItem: Keymap` was reached unassisted.
+
+**26. First pass at a Kronos-hardware-like layout for the Multisample Editor pane
+(2026-08-21).** Request: move the piano keymap out of the tab strip to a static spot
+above the waveform, rename the "Zone" header to "Multisample Editor", and give it the
+Kronos's own two-section shape - an MS (multisample) picker, then an Index/Sample/
+Orig.Key/Top Key/Range row with Create/Delete. Explicitly a starting point ("adjust as
+we go"), not a final layout.
+
+- **Keymap is now static**, pulled out of the removed `TabKeymap` `TabItem` into its own
+  `KeymapSection` `Border` at the very top of the scrollable pane (above the "Multisample
+  Editor" header) - visible whenever the selected multisample has any zones, regardless
+  of which of the two remaining tabs (Samples/Looping) is active. `EditorTabs.Visibility`
+  no longer factors in Keymap visibility (there's nothing left in the tab strip to hide
+  for that reason); it now tracks `HasSampleLoaded` alone, same as `TabSamples`/`TabLooping`
+  already did.
+- **New "MULTISAMPLE (MS)" section**: a `ComboBox` (`MultisampleCombo`) listing every
+  multisample node across every open collection
+  (`SampleEditorViewModel.AllMultisampleNodes()`, a thin `EnumerateNodes(Roots).Where
+  (MultisampleRef != null)`). Picking one is routed through the SAME `SelectTreeNode`
+  helper `OnKeymapZoneClicked` already used for the keymap - drives the real
+  `TreeViewItem.IsSelected`, so it's genuinely "the same as selecting the .KMP in the
+  tree," not a parallel code path. Synced to the tree's current selection by reference
+  equality between `CurrentMultisampleZones` and a candidate node's
+  `MultisampleRef.Multisample.Zones` (`SelectNode` hands out that exact list reference).
+- **Zone panel reworked**: `Filename:` (plain text) replaced by `Sample:` (a `ComboBox`,
+  `ZoneSampleCombo`, listing every zone's filename in the current multisample -
+  `"(skipped)"` for a skipped one - same select-via-`SelectTreeNode` pattern as MS).
+  Added `Index:` (editable `TextBox`, 1-based, LostFocus-commits, clamps to
+  `[1, zone count]` same as every other field in this window) and a read-only `Range:`
+  computed the same way `KmpZone.TopKey`'s own doc comment defines a zone's range -
+  `(previous zone's TopKey + 1)` through `this zone's own TopKey`, `0` (not the previous
+  zone) for index 0. `Add Zone`/`Delete Zone` renamed `Create`/`Delete` (both the static
+  XAML label and the two-stage skip-then-remove dynamic Content, entry 24's
+  `"Remove Zone"` shortened to `"Remove"` to match) - the two-stage behavior itself and
+  its ToolTip switching are UNCHANGED. `Import Sample...` kept.
+- **Follow-up (same day, same round)**: header moved to the very top of the pane (above
+  the keymap, not below it as first placed) since "at the top" meant the pane's own top,
+  not just above the waveform; `KEYBOARD` section label dropped (a piano keyboard doesn't
+  need one); `Create`/`Delete`/`Import Sample...` moved onto their own `WrapPanel` row
+  below the Index/Sample/Orig.Key/Top Key/Range row, inside the same `ZonePanel` Border
+  (was previously one WrapPanel that could wrap the buttons onto that row's tail
+  end depending on window width - now two, so the action row is fixed regardless of
+  width).
+- Both combos guard against feedback loops with a single `_suppressComboEvents` bool set
+  around `RefreshDetailPanels`' own `ItemsSource`/`SelectedItem` writes - same shape as
+  every other re-entrancy guard already in this file, not a new pattern.
+- **Placement call made without asking**: "move...up to the top" was read as literally
+  the top of the whole pane (above the MS/Index sections too), matching the Kronos's own
+  Sample/Multisample Edit page, where the keyboard graphic is a permanent fixture above
+  everything else. Flagged here in case that reads wrong once seen live - trivial to
+  reorder.
+
+**Pre-existing test failure found during verification, NOT caused by this round**:
+`--ui-theme-smoketest`'s entry-25 regression check ("SampleEditorWindow Keymap tab
+recovers after zone delete") now fails (`EditorTabs.SelectedItem is null after
+re-selecting a zone post-delete`) even with every file from this round's own edit set
+(`Views/SampleEditorWindow.xaml`, `.xaml.cs`, `ViewModels/SampleEditorViewModel.cs`)
+stashed back out via `git stash push -- <those 3 files>` and the test re-run against the
+untouched baseline. Confirmed via `--sample-editor-visual-check`'s Add Zone step too
+(`EditorTabs.SelectedItem: (none - regression)`), independent of the smoketest. Given
+entry 25's own log claimed this exact check green, something in the working tree since
+then (the InsertSilenceDialog/FTP-dialog-wrap work also sitting uncommitted alongside
+this round - see this file's own entries above 26 - is the likeliest culprit, but wasn't
+investigated) reintroduced it. Left alone rather than guessed at, per this repo's own
+standing rule against fixing something not actually understood yet.
+
+Verification: clean `dotnet build`, `--librarian-selftest` green, `--sample-format-
+fixture-check` 75/75 byte-identical, `--sample-editor-smoketest` (VM-level, no window)
+fully green, `--sample-editor-visual-check` screenshots confirm the new layout (Keyboard
+section, Multisample Editor header, MS dropdown, Index/Sample/Orig.Key/Top Key/Range/
+Create/Delete/Import row) renders correctly both with and without a zone selected,
+`SampleFixtures/` confirmed clean via `git status`. `--ui-theme-smoketest` has the ONE
+pre-existing failure above; every other check in it (29 total) still passes. Owed:
+real click-through in the live app - this was verified only via the headless visual-
+check screenshots and self-tests, not by running the app interactively.
+
+**27. Second, larger pass on the Multisample Editor pane (2026-08-21) - empty state,
+reorder, auto-drill-in, sample names, rename, stereo VU, and a new Settings tab.**
+
+- **Empty state**: `EmptyStateText` ("Import a .KSC file...") is now the ONLY thing the
+  pane shows when `Roots.Count == 0` - everything else (header, MS picker, keymap, zone
+  detail, waveform/tabs) moved under one new `EditorContent` `StackPanel`, collapsed as a
+  whole rather than each section separately gating itself on "is anything loaded."
+  `RefreshDetailPanels` now returns right after that toggle when nothing's loaded -
+  nothing below it has a meaningful state to set anyway.
+- **MS section moved above the keymap** (was below it) - it answers "which multisample"
+  before "which key range within it."
+- **Index/Sample panel no longer needs a zone specifically selected** - `ZonePanel`'s
+  gate changed from `HasZoneSelected` to the same `CurrentMultisampleZones is {Count:>0}`
+  condition the keymap already used, AND `OnTreeSelectionChanged` now auto-drills into
+  `node.Children[0]` whenever the newly selected node is a multisample with any zones -
+  selecting a multisample (tree, MS dropdown, or keymap - all three ultimately select a
+  tree node) lands on zone 1 immediately, matching the Kronos's own behavior, so the
+  panel is populated, not just visible-but-blank, the instant a .KMP is picked. A
+  multisample with zero zones still shows the (now-blank) panel rather than hiding it.
+- **Sample dropdown shows the sample's real Name (from inside its .KSF), not its
+  filename** - the filename stays in the tree on the left, unchanged. Reading a Name
+  means opening the .KSF, which is too expensive to redo on every `RefreshDetailPanels`
+  call (fires on nearly every edit), so it's cached per session in a new
+  `_sampleNameCache` (ksfPath → name) rather than re-read every time; cleared wherever a
+  zone's .KSF content could actually change (Import Sample into Zone, Rename Sample).
+  **Not fully addressed**: a multisample with a large zone count could still pay a real
+  one-time disk-read cost the first time it's selected (one small file read per zone);
+  left as-is given typical zone counts, flagged rather than built out further (async
+  loading, etc.) without being asked for it.
+- **Edit > Rename Multisample.../Rename Sample...** (`SampleEditorViewModel.
+  RenameSelectedMultisample`/`RenameSelectedSample`, new `PromptDialog`-driven handlers)
+  - renames only the `Name` field stored inside the .KMP/.KSF (Suffix, the "-L"/"-R"
+  stereo marker, is left alone - editing it here would silently break stereo pairing,
+  which matches by exact Suffix). Mirrored onto a resolved stereo sibling/partner the
+  same way every other zone/name edit here already is (`FindLiveStereoSibling` for the
+  multisample, `ShouldMirrorToPartner`/`_partnerSample` for the sample) - renaming only
+  one half would otherwise silently break the pairing, the same bug class entry 19 fixed
+  for Add Zone. A live edit like every other field in this window: marks the file dirty
+  via the existing `RegisterDirtyMultisample`/`_sampleDirty` mechanisms, doesn't save
+  immediately - Save Changes/Save Multisample/Save Sample writes it. Menu items enabled
+  via `CurrentMultisampleName`/`HasSampleLoaded`.
+- **VU meter is stereo now**: `SamplePlayback` exposes `PeakLevelLeft`/`PeakLevelRight`
+  alongside the existing combined `PeakLevel` - `MeteringSampleProvider.MaxSampleValues`
+  was ALREADY per-channel (index 0/1), the old code just collapsed it with `.Max()`.
+  `SampleVuMeterControl` gained a `ShowLabels` DP (default true) so two can sit side by
+  side in the same horizontal space the old single meter used - the left one
+  (`VuMeterLeft`, `ShowLabels="False"`) is a bare bar, the right one
+  (`VuMeterRight`) keeps the dB tick labels both used to draw independently. `VuMeterLeft`
+  is collapsed for a mono sample (`HasStereoPair`-gated, same pattern as `SplitLRBox`);
+  the outer column widened 70→92px to fit the extra bar.
+- **New Settings > Sample Editor tab**: "Create Zone Preferences" - Position
+  (Right/Left), Zone Range (1-127, replaces the old hardcoded 12-key cap), Original Key
+  Position (Bottom/Center/Top). Persisted as three new `AppSettings` properties (`Clone()`
+  picks them up automatically via its existing reflection loop, no change needed there).
+  **Wired into `AddPlaceholderZone`, not just stored**: Position Right is the ORIGINAL
+  behavior unchanged (new zone takes the top of the carved range, existing last zone
+  shrinks); Position Left is new - new zone takes the BOTTOM of the carved range instead,
+  the existing last zone keeps its own Top Key unchanged, and the new zone is `Insert`ed
+  just before it (not `Add`ed at the end) so list order still matches the ascending-key-
+  order the TopKey range convention assumes (KmpZone.TopKey's own doc comment). Original
+  Key Position picks where OriginalKey (independent of the trigger range TopKey defines)
+  lands in the new zone: Bottom = the range's low end (old default), Center = midpoint,
+  Top = the range's high end. Mirrored onto a resolved stereo sibling with the same
+  `Insert`-at-the-same-index logic. **Design call made without being asked to justify
+  it**: "Position" and "Original Key Position" are both genuinely ambiguous specs with no
+  single obvious reading - this is A reasonable, symmetric interpretation (literal
+  left/right on the piano, literal low/mid/high within the new range), not verified
+  against any specific expected Kronos behavior. Flag if it doesn't match what was
+  actually wanted; the settings themselves and their persistence are solid regardless of
+  whether the algorithm they drive needs adjusting.
+- **`AddPlaceholderZone`'s return-value plumbing changed to survive the Left position**:
+  the old code assumed the new zone was always the target multisample's LAST child after
+  the rebuild (`Children[^1]`) - true only for Position Right. New zone position is now
+  tracked via `LastAddedZoneIndex` (a side-channel property set right before the rebuild,
+  since the rebuild replaces every `KmpZone` with a fresh instance - no reference survives
+  it, only a position can) rather than changing `AddPlaceholderZone`'s own return type,
+  which would have broken several existing call sites
+  (`SamplePhase12SelfTests`/`SamplePhase13SelfTests`/`SampleEditorSmokeTest`) that treat
+  it as a plain `string?`.
+
+Verification: clean `dotnet build`, `--librarian-selftest` green (including the
+Phase12/13 self-tests that call `AddPlaceholderZone` - confirms the Position-Right default
+path still behaves identically), `--sample-format-fixture-check` 75/75 byte-identical,
+`--sample-editor-smoketest` fully green (placeholder-zone add still reports the same
+"C#4-C5" range as before - Right-position/default-Range-12 output unchanged),
+`--sample-editor-visual-check` screenshots confirm: empty state shows only the import
+prompt; selecting a multisample shows MS-above-keyboard with the zone panel already
+populated (Sample combo showing "around_the_world_vox", not "MS000000.KSF"); Create Zone
+still produces the same key range as before. `SampleFixtures/` confirmed clean via `git
+status`. `--ui-theme-smoketest` has the same ONE pre-existing failure documented under
+entry 26 (confirmed unrelated to this round too - it already reproduced on a clean
+baseline before entry 26's edits, and nothing this round touches the code path involved);
+every other check still passes. **Not verified**: Rename Multisample/Rename Sample and
+the new Settings tab's actual save/reload round-trip - no automated coverage was added
+for either (would mean extending `Tools/SampleEditorSmokeTest.cs` and/or
+`UiThemeSmokeTest.cs`, out of scope for this pass), and neither was click-tested in the
+live app. Stereo VU similarly unverified beyond "it compiles and the layout renders" -
+confirming real L/R needle movement needs actual stereo playback, which the headless
+visual-check doesn't exercise.
+
+**28. VU meter clarity fix, Split L/R channel picker, editing frame restructure, icon
+buttons (2026-08-21, follow-up to entry 27).**
+
+- **Stereo VU wasn't actually broken, just illegible as stereo.** Root cause: the two
+  meters were sized/styled asymmetrically (`VuMeterLeft` 14px bare bar, `VuMeterRight`
+  ~26px WITH dB tick labels) plus a separate `VolumeControl` fader further right - three
+  elements, but visually read as "one narrow accent stripe + one real meter + a slider,"
+  not "a matched L/R pair." **Fix**: both bars are now equal width, neither draws its own
+  dB tick numbers any more (`ShowLabels="False"` on both - there was never room for tick
+  text on a sidebar this narrow once split two ways), and each gets a small "L"/"R"
+  caption directly underneath. `VolumeControl` (the actual playback-volume fader) is
+  unchanged and is the genuinely "tiny bar" - confirmed correctly separate via the
+  `05b_real_zone_selected_scrolled.png` visual-check screenshot, which shows both
+  captioned bars plus the volume fader as three distinct elements.
+- **Split L/R channel picker** (`SplitChannelCombo`, next to `SplitLRBox`, shown only
+  when both `HasStereoPair` and `SplitLR`): Split mode's own code comment used to say
+  outright "select the OTHER channel's zone in the tree to edit it" - there was no
+  in-window way to reach the R channel at all once split, exactly the gap reported.
+  Picking L/R now selects that side's zone the same way the MS/Sample dropdowns already
+  do - `SelectTreeNode` via a real `TreeViewItem`, so `OnTreeSelectionChanged` fires
+  normally. Needed one new public VM surface: `SampleEditorViewModel.PartnerZoneRef`
+  (the resolved stereo partner's own zone+path, previously private-only) so the window
+  can locate its tree node via the existing `FindNodeForZone` helper.
+- **Editing frame**: the waveform/transport area is now wrapped in a `Border`
+  (`EditingFrame`, same `FieldSection` style every other section already uses) instead of
+  floating with no visual boundary. Transport (Locate/Rewind/Play/Pause/FF/Locate)+Zoom+
+  Undo/Redo moved from BELOW the waveform to ABOVE it, inside the same frame - a static
+  toolbar, unchanged by which tab is active. The `Samples`/`Looping` `TabControl` moved
+  to live INSIDE this same frame too (was a sibling section below it before), and the DSP
+  editing buttons (Crop to Selection/Normalize/Trim Silence/Fade In/Fade Out/Reverse/
+  Silence) moved OUT of the static toolbar and INTO a new "EDIT" section inside the
+  `Samples` tab, alongside the existing PLAYBACK FORMAT/REPAIR sections - swapping tabs
+  now genuinely changes which editing buttons are available (Looping's own fields were
+  already tab-scoped; DSP editing wasn't, until now). The waveform/ruler/scrollbar/VU
+  itself stays exactly where it was, static, unaffected by either tab - confirmed via the
+  same scrolled screenshot showing the waveform sitting above an intact tab strip whose
+  content (PLAYBACK FORMAT/EDIT/REPAIR) is fully visible below it, all inside one
+  unbroken border.
+- **Zoom In/Out are icon-only now** (a magnifying glass with a +/- inside, built from
+  `Ellipse`+`Line` primitives at a small fixed size rather than a single Path - simpler to
+  get right without a rendering preview than freehand arc geometry) - Zoom to
+  Selection/Fit keep their text labels, since the request was specifically about In/Out.
+- **Undo/Redo are icon-only circular arrows** (CCW for Undo, CW for Redo, tooltip carries
+  the word since the icon alone can't distinguish direction at this size) - `Redo`'s path
+  data is a literal horizontal mirror of `Undo`'s (same arc radius/center, mirrored
+  x-coordinates, sweep flag flipped) rather than independently derived, so the pair is
+  guaranteed to read as a matched set even though the exact arc angles were hand-derived
+  without a rendering preview and are approximate, not pixel-verified against a reference
+  icon.
+- All four new icon buttons reuse the existing `SampleTransportBtn` style (same
+  hover/press/disabled chrome as the transport row) rather than inventing a new button
+  look, matching this window's own established "reuse, don't redraw" precedent
+  (`SampleTransportBtn`'s own comment, entry-19-era) for the transport icons themselves.
+
+Verification: clean `dotnet build`, `--librarian-selftest` green, `--sample-format-
+fixture-check` 75/75 byte-identical, `--sample-editor-smoketest` fully green,
+`--sample-editor-visual-check` screenshots confirm the bordered editing frame, the
+toolbar-above-waveform reorder, the tab-scoped EDIT section, and the captioned stereo VU
+bars all render as intended. `SampleFixtures/` confirmed clean via `git status`.
+`--ui-theme-smoketest` has the same ONE pre-existing failure from entry 26 (still
+unrelated - nothing this round touches `RefreshDetailPanels`' tab-reselect fallback);
+every other check still passes. **Not verified**: the Zoom In/Out and Undo/Redo icons'
+exact visual quality at real screen DPI/scaling - confirmed only via a screenshot at the
+visual-check's fixed window size, not click-tested or inspected at native resolution in
+the live app. Split L/R channel picker confirmed by code/pattern review (identical to the
+already-working MS/Sample combo pattern) but not click-tested live either - the
+visual-check fixture's default view is Combine mode, not Split, so it never exercises
+this specific control.
+
+**29. Tabs removed entirely - Samples/Looping flattened into rows (2026-08-21, follow-up
+to entry 28).** Request: fold Playback Format into the toolbar/Name row, turn EDIT and
+REPAIR into their own rows between the toolbar and the Name/Frames row, move Loop Enabled
++ its detail fields (shown only once enabled) between Name/Frames/Sample Rate and the
+waveform, rename "Loop = Selection" to "Loop Selected". Once every tab's content had
+somewhere else to live, nothing was left to put IN a tab - so the `Samples`/`Looping`
+`TabControl` itself is gone, not just reorganized. Final row order inside `EditingFrame`,
+top to bottom: transport/zoom/undo-redo/**Tempo x/Pitch/Apply Tempo-Pitch** toolbar → EDIT
+row (Crop/Normalize/Trim Silence/Fade In/Fade Out/Reverse/Silence) → REPAIR row (Remove DC
+Offset/Insert Silence) → Name/Frames/**Sample Rate** row → Loop row (Enabled toggle,
+same-row detail fields) → waveform (unchanged, static, last).
+
+- **Sample Rate** moved from the old PLAYBACK FORMAT section into the Name/Frames row,
+  same `ReadOnlyFieldBox` control (already styled flat/non-interactive, no conversion to
+  a plain `TextBlock` needed - it already reads as "information," not an editable field).
+- **Loop detail fields collapse as one group** (`LoopFieldsRow`, a `WrapPanel` nested
+  inside the outer Loop row's `WrapPanel`) until `LoopEnabledBox` is checked - new
+  behavior, these used to be always-visible in the Looping tab regardless of the toggle.
+  `RefreshDetailPanels` sets `LoopFieldsRow.Visibility` from `_vm.SampleLoopEnabled`
+  alongside where it already sets `LoopEnabledBox.IsChecked`, no VM change needed.
+- **`BtnLoopFromSelection` renamed** "Loop = Selection" → "Loop Selected" (`Content` only,
+  handler/behavior unchanged).
+- **`RefreshDetailPanels` lost the entire TabControl chrome-management block**: the
+  `TabSamples`/`TabLooping`/`SamplePanel`/`LoopingPanel`/`EditorTabs` visibility lines, and
+  the reselect-fallback (`if (EditorTabs.SelectedItem is not TabItem {...})`) that entries
+  21/25/26/28 each touched in turn chasing the same recurring regression - all deleted
+  together with the `TabControl` itself, since there's no `SelectedItem` left to manage.
+- **The entry-26/27/28 pre-existing `--ui-theme-smoketest` failure ("Keymap tab recovers
+  after zone delete") is GONE, not just still-unrelated** - it was pinning exactly the
+  `TabControl` reselect-fallback bug class the paragraph above describes, and that code
+  path no longer exists for the bug to occur in. Removed the whole test block (not
+  rewritten to test something else) rather than leaving it permanently red or deleting it
+  silently - see the removal's own comment in `Tools/UiThemeSmokeTest.cs` for why.
+  `Tools/SampleEditorVisualCheck.cs`'s three-tab screenshot block (`05c_keymap_tab`/
+  `05e_samples_tab_scrolled`/`05f_samples_tab_top`/`05d_looping_tab`) and its
+  `EditorTabs.SelectedItem` logging line after Add Zone were removed the same way, for the
+  same reason - `win.EditorTabs` no longer exists to reference.
+- The `Border` wrapping `WaveformPanel` (`EditingFrame`) needed one structural fix along
+  the way: it used to wrap an extra `StackPanel` that held `WaveformPanel` and
+  `EditorTabs` as two siblings (a `Border` can only ever have ONE child) - with
+  `EditorTabs` gone, that wrapper was redundant and came out too, so `EditingFrame`'s
+  only child is `WaveformPanel` directly again.
+
+Verification: clean `dotnet build`. `--ui-theme-smoketest` is fully green now - **28
+checks, 0 failures**, the entry-26 pre-existing failure is gone along with the code it
+was pinning, not papered over. `--librarian-selftest` green, `--sample-format-fixture-
+check` 75/75 byte-identical, `--sample-editor-smoketest` fully green (Add Zone/stereo
+pair/tempo-pitch/etc. all still report identical results to every prior entry - nothing
+about the underlying edit operations changed, only where their buttons live).
+`--sample-editor-visual-check` screenshots confirm the exact requested row order end to
+end (toolbar-with-Tempo/Pitch, EDIT row, REPAIR row, Name/Frames/Sample Rate, unchecked
+Loop Enabled with its detail fields correctly hidden, waveform last) and that the whole
+frame is still visibly bordered. `SampleFixtures/` confirmed clean via `git status`.
+**Not verified**: Loop Enabled actually checked (the detail-fields-appear behavior) -
+the visual-check fixture never checks the box, so `LoopFieldsRow` going from Collapsed to
+Visible was confirmed by code review (mirrors the exact same pattern `ZonePanel`/
+`KeymapSection`/`SplitChannelCombo` already use successfully) and the Collapsed/hidden
+half of the behavior, not screenshotted in its Visible state.
+
+**30. Can't crop-select when the loop spans the whole sample (2026-08-21).** Reported:
+"when the entire waveform is looped, there's no ability to click-drag-highlight."
+
+**Root cause** (`Views/SampleWaveformControl.cs`, `OnMouseLeftButtonDown`): a click
+starting inside `[LoopStartFrame, LoopEndFrame)` (but not on either edge) always grabbed
+the whole region for a MOVE drag instead of starting a new crop selection there - by
+design, so you can drag the loop region around. But `OnMouseMove`'s move-drag clamps the
+new start to `[0, FrameCount - len]`; once the loop's own length (`len`) reaches the full
+`FrameCount`, that range collapses to exactly `[0, 0]` - the region can never actually
+move. With a whole-sample loop, EVERY click anywhere in the waveform falls inside it, so
+every click was being swallowed by a drag that could never do anything, leaving no way to
+crop-select at all.
+
+**Fix**: the loop-region-grab branch now also requires `LoopEndFrame - LoopStartFrame <
+FrameCount` - once the loop already spans the entire sample, a click/drag there falls
+through to the normal crop-selection path instead, matching what dragging already does
+everywhere else in the waveform. Same condition added to the hover-cursor logic (no more
+misleading grab-hand cursor over a region that can't be dragged). Partial-length loops are
+completely unaffected - drag-to-move-the-loop still works exactly as before there, and the
+loop edges themselves (drag one boundary independently) were never affected either way,
+since those are separate `NearPixel` checks earlier in the same method.
+
+Verification: clean `dotnet build`, `--librarian-selftest` green, `--sample-format-
+fixture-check` 75/75 byte-identical, `--sample-editor-smoketest` fully green,
+`--ui-theme-smoketest` fully green (28/28, still - this fix doesn't touch any window
+construction path). **Not verified live**: this is a pure mouse-drag interaction fix with
+no layout change to screenshot - confirmed by code/logic review (the clamp math above)
+and by the fact every existing self-test/smoketest still passes unchanged, but not
+click-tested by actually dragging inside a whole-sample loop in the running app.
+
+**31. Whole-region loop drag gated on Loop Lock; click-to-select-green removed
+(2026-08-21, follow-up to entry 30).** Request: dragging the loop region as a whole
+should require Loop Lock to be on (off otherwise falls through to plain crop-selection,
+loop region included); the single-click "turns the region green" toggle is no longer
+needed now that crop-selection highlighting works everywhere.
+
+- **New `SampleWaveformControl.LoopLockEnabled` DP**, mirrored from `_vm.LoopLockEnabled`
+  in `RefreshDetailPanels` at all three places `LoopEnabled` was already being set
+  (Combine's `foreach` over both panes, Split, mono) - the same plumbing pattern, nothing
+  new invented.
+- **`OnMouseLeftButtonDown`'s loop-region-grab now requires `LoopLockEnabled`** (on top of
+  entry 30's own "loop doesn't already span the whole sample" condition) - with Loop Lock
+  off, a click/drag starting inside the loop body falls straight through to the normal
+  crop-selection path, exactly like clicking anywhere else on the waveform. The hover
+  cursor (grab hand vs none) picked up the same condition, so it stops promising a drag
+  that Loop Lock being off no longer allows.
+- **`LoopSelected` removed entirely** (DP, `LoopSelectedChanged` event, every set/clear
+  site, the stereo-pane mirroring handler in `SampleEditorWindow.xaml.cs`, the XAML
+  wiring) rather than merely disconnecting the click that used to set it - once the click
+  toggle is gone, nothing else ever sets it true, so it was fully dead weight, not code
+  worth leaving dormant "in case." Its two former jobs were re-homed onto the same
+  `LoopLockEnabled` gate the drag now uses, rather than dropped outright:
+  - **Loop region fill color**: green while `LoopLockEnabled` (draggable as a whole right
+    now), faint blue otherwise - was green while `LoopSelected` (clicked), faint blue
+    otherwise. Same visual language, now tied to an actual mode toggle instead of a
+    per-click state that had no persistent meaning.
+  - **Arrow-key nudge** (`OnKeyDown`, Left/Right moves the whole region by one frame):
+    gated on `LoopLockEnabled && HasLoop` instead of `LoopSelected && HasLoop` - dragging
+    and nudging are the same underlying action (reposition the loop), so they now share
+    one gate instead of two different ones.
+  - **Plain click with no movement inside a Loop-Locked region** (`_draggingLoop` true,
+    `_loopDragMoved` false in `OnMouseLeftButtonUp`): used to toggle `LoopSelected`; now
+    falls back to the same "play from here" scrub-click every other plain click on the
+    waveform already produces (`ScrubFrame`/`ScrubRequested`), rather than doing something
+    loop-region-specific.
+- `Themes/Dark.xaml`'s `WaveformLoopSelectedBrush` comment updated to describe what it
+  now actually means (Loop Lock on, not "clicked") - the brush itself (and its key name)
+  is unchanged, only the color's meaning shifted.
+
+Verification: clean `dotnet build`, `--librarian-selftest` green, `--sample-format-
+fixture-check` 75/75 byte-identical, `--sample-editor-smoketest` fully green,
+`--ui-theme-smoketest` fully green (28/28). Confirmed no `LoopSelected` references survive
+anywhere in the repo (`grep -rl` across `.cs`/`.xaml`, excluding the unrelated "Loop
+Selected" BUTTON text/handler, which is a different feature - setting the loop from the
+current waveform selection - untouched by this entry). **Not verified live**: same
+category as entry 30 - a mouse/keyboard interaction change with nothing new to
+screenshot; confirmed by code review and the full self-test suite staying green, not by
+actually toggling Loop Lock and dragging in the running app.
+
+**32. Tree simplified to just the loaded library; Loop Lock's own 1-click UI delay fixed
+(2026-08-22).**
+
+**Loop Lock delay**: `OnLoopLockChanged` set `_vm.LoopLockEnabled` but never called
+`RefreshDetailPanels()` (unlike its sibling `OnLoopEnabledChanged`), and pushing
+`LoopLockEnabled` down onto `WaveformLeft`/`WaveformRight` (the drag-gate DP entry 31
+added) only happens inside that method - so checking the box left the waveform running
+on the STALE value for one more click, until whatever that next click happened to do
+called `RefreshDetailPanels` anyway. Fixed by adding the same `RefreshDetailPanels()`/
+`UpdateStatus()` pair every other checkbox handler here already has.
+
+**Tree simplified to root-only** ("now that the majority of the control is handled by
+the sample editor... we don't need to show everything, just the parent"): `SampleTree`
+gained an explicit `ItemTemplate` (a plain `DataTemplate`, no `ItemsSource`) that
+overrides the `HierarchicalDataTemplate` in `Window.Resources` at the top level only -
+multisample/zone nodes never get a `TreeViewItem` any more, so the tree is just a flat
+list of loaded libraries (`.KSC` roots). `SampleTreeNode.Children` and the rest of the
+data model are UNCHANGED - `AllMultisampleNodes`, `FindMultisampleContaining`, etc. all
+still walk the full hierarchy in memory; only the TREE UI stopped rendering it.
+
+- **`SelectTreeNode` rewritten** (still the one function every combo/keymap/Add-Zone
+  reselect path calls, same signature, same call sites - zero changes needed at any of
+  the six call sites): no more `BuildPath` + per-level `IsExpanded`/`ContainerFromItem`
+  walk down to the target. It now just calls `_vm.SelectNode(target)` +
+  `RefreshDetailPanels()`/`UpdateStatus()` directly, and separately looks up ONLY the
+  owning ROOT's container (via `BuildPath`, `path[0]`) to keep it highlighted in the
+  tree - there's nothing deeper left to expand or reveal.
+  - **Re-entrancy trap avoided**: setting the root's `TreeViewItem.IsSelected = true`
+    still fires `TreeView.SelectedItemChanged` (→ `OnTreeSelectionChanged` →
+    `_vm.SelectNode(root)`), which would clobber the real zone/multisample selection
+    `SelectTreeNode` had just made, the instant navigation actually crosses into a
+    DIFFERENT library. New `_suppressTreeSelectionEvent` guard (same shape as the
+    existing `_suppressComboEvents`) wraps that one write.
+- **`OnTreeSelectionChanged` lost its auto-drill-into-first-zone branch** - dead code
+  now, since a genuine user tree click can only ever land on a root (no MultisampleRef
+  node is reachable through the tree UI any more); the same drill-in logic still lives
+  in `SelectTreeNode` itself, for the one path that CAN select a multisample (the MS
+  dropdown).
+- **`Tools/SampleEditorVisualCheck.cs` updated to navigate the same way a real user
+  now does** - drives `MultisampleCombo`/`ZoneSampleCombo` `SelectedIndex` instead of
+  drilling into now-nonexistent multisample/zone `TreeViewItem` containers (which would
+  silently return null everywhere past the root and leave every later screenshot showing
+  nothing selected). `Tools/UiThemeSmokeTest.cs`'s own `ExpandAll` helper is unrelated -
+  its only call site is the Librarian's local-library tree, a completely different
+  `TreeView`.
+
+Verification: clean `dotnet build`, `--librarian-selftest` green, `--sample-format-
+fixture-check` 75/75 byte-identical, `--sample-editor-smoketest` fully green,
+`--ui-theme-smoketest` fully green (28/28). `--sample-editor-visual-check` re-run
+end-to-end: the tree screenshots now show a single flat "samplesfeb28_25.KSC" row with
+no children at any zoom level, the MS dropdown/Index/Sample fields populate correctly
+after selecting it, Add Zone still ends with the new (skipped) zone showing selected in
+the Sample dropdown (confirmed via the tool's own console log, adapted from reading
+`EditorTabs.SelectedItem`/tree state to reading `ZoneSampleCombo.SelectedItem`).
+`SampleFixtures/` confirmed clean via `git status`. **Not verified live**: the Loop Lock
+delay fix specifically - confirmed by code review (the missing call is now present,
+matching the working sibling handler exactly) and the self-test suite staying green, not
+by actually checking the box and dragging in the running app.
+
+**33. Loading a library left nothing selected until a manual tree click (2026-08-22,
+follow-up to entry 32).** Request: the first tree entry should become active as soon as a
+new library loads. Root cause: `OpenCollectionPath`/`OpenKmpPath` (and the FTP pull
+handlers, `OnPullCollectionFromKronos`/`OnPullMultisampleFromKronos`) never selected
+anything after loading - `RefreshDetailPanels` only ever ran off a real selection change,
+and nothing here ever produced one, so the MS dropdown/keymap/zone panel all stayed blank
+until the user clicked the new entry by hand. Sharper now that entry 32 made the tree
+root-only: with nothing ever auto-selected, that one root wasn't even highlighted after
+loading, despite being the ONLY thing left to click.
+
+**Fix**: new `SelectFirstRoot()` helper (`if (_vm.Roots.Count > 0) SelectTreeNode
+(_vm.Roots[0]);`) called after every "bring a library into the tree" entry point -
+`OpenCollectionPath`, `OpenKmpPath`, `OnPullCollectionFromKronos`,
+`OnPullMultisampleFromKronos`. Reuses `SelectTreeNode` itself rather than a separate
+mechanism, so it gets the exact same selection/highlight/refresh path (and entry 32's
+`_suppressTreeSelectionEvent` re-entrancy guard) every other selection in this window
+already goes through - no new code path to keep in sync. Deliberately `Roots[0]`
+specifically, matching the request's own wording ("the first entry in the tree list") -
+opening a SECOND collection while one's already loaded still selects index 0, not
+necessarily the one just added (Roots is append-only, per RebuildTreeFromCollection's own
+doc comment), which is fine for the common single-collection-at-a-time case this was
+actually reported against. Deliberately NOT touched: `OnNewCollection`/`OnNewMultisample`
+(creating a fresh EMPTY collection/multisample) - "loading" a library and "creating" one
+from scratch are different actions, and an empty new collection has nothing for
+auto-selection to usefully populate anyway.
+
+Verification: clean `dotnet build`, `--librarian-selftest` green, `--sample-format-
+fixture-check` 75/75 byte-identical, `--sample-editor-smoketest` fully green,
+`--ui-theme-smoketest` fully green (28/28). `--sample-editor-visual-check`'s own
+`02_collection_loaded` screenshot - taken immediately after `OpenCollectionPath`, before
+any other interaction - now shows "samplesfeb28_25.KSC" already highlighted in the tree
+(previously nothing was selected at that point at all). `SampleFixtures/` confirmed clean
+via `git status`. **Not verified live**: the FTP-pull entry points
+(`OnPullCollectionFromKronos`/`OnPullMultisampleFromKronos`) - confirmed by code review
+only (same one-line `SelectFirstRoot()` addition as the two paths that WERE
+screenshotted), since this sandbox's live network reaches a different test Kronos than
+the user's real hardware (see kronos-sample-editor memory) and pulling isn't exercised by
+any headless test.

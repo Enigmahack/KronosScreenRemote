@@ -1,3 +1,5 @@
+using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
@@ -13,6 +15,44 @@ public partial class SampleEditorWindow : ThemedWindow
 {
     readonly SampleEditorViewModel _vm = new();
     readonly DispatcherTimer _vuTimer;
+
+    // Guards MultisampleCombo/ZoneSampleCombo against re-entering their own
+    // SelectionChanged handlers while RefreshDetailPanels is programmatically
+    // repopulating ItemsSource/SelectedItem to mirror the tree's real selection.
+    bool _suppressComboEvents;
+
+    // Sample dropdown shows each zone's real .KSF Name, not its filename - reading that
+    // means opening every zone's .KSF, which is too expensive to redo on every
+    // RefreshDetailPanels call (fires on nearly every edit, not just navigation).
+    // Cached per session, keyed by ksfPath; cleared wherever a zone's .KSF content or
+    // Name could actually change (Import Sample, Rename Sample) rather than re-derived
+    // from scratch on every refresh. Also backs the repository (bare .KSF) scan
+    // RefreshIndexAndSampleCombo does - added 2026-08-22 per the Opus performance
+    // review, which found that scan was reading and fully re-parsing (KsfSample.Open,
+    // including its PCM body) EVERY bare .KSF in the whole collection on every single
+    // RefreshDetailPanels call, unbounded in collection size and independent of the
+    // currently-loaded sample. Only Name/Suffix are ever needed from either a zone's own
+    // sample or a repository entry, so this caches just that pair rather than the full
+    // decoded KsfSample. (A separate _sampleNameCache existed here briefly during that
+    // same performance pass, storing only Name for the zone-only case - removed
+    // 2026-08-22, Opus redundancy review, once this cache's own Name/Suffix pair made
+    // it redundant: its one remaining caller was a fallback branch that could never
+    // actually be reached differently from this cache's own miss path.)
+    readonly Dictionary<string, (string Name, string Suffix)> _repositorySampleCache = new(StringComparer.OrdinalIgnoreCase);
+
+    // Returns null for anything unreadable rather than throwing - a bad/missing file is
+    // expected repository-scan state, not a bug, same contract as KsfSample.Open itself.
+    (string Name, string Suffix)? GetRepositorySampleInfo(string ksfPath)
+    {
+        if (_repositorySampleCache.TryGetValue(ksfPath, out var cached)) return cached;
+        KsfSample? s;
+        try { s = File.Exists(ksfPath) ? KsfSample.Open(File.ReadAllBytes(ksfPath)) : null; }
+        catch { s = null; }
+        if (s == null) return null;
+        var info = (s.Name, s.Suffix);
+        _repositorySampleCache[ksfPath] = info;
+        return info;
+    }
 
     public SampleEditorWindow()
     {
@@ -69,8 +109,20 @@ public partial class SampleEditorWindow : ThemedWindow
         if (result != MessageBoxResult.Yes) e.Cancel = true;
     }
 
-    public void OpenCollectionPath(string path) { _vm.OpenCollection(path); UpdateStatus(); }
-    public void OpenKmpPath(string path) { _vm.OpenMultisampleDirect(path); UpdateStatus(); }
+    public void OpenCollectionPath(string path) { _vm.OpenCollection(path); SelectFirstRoot(); UpdateStatus(); }
+    public void OpenKmpPath(string path) { _vm.OpenMultisampleDirect(path); SelectFirstRoot(); UpdateStatus(); }
+
+    // Loading a library used to leave the tree/MS dropdown/detail panels entirely blank
+    // until the user manually clicked the new entry - RefreshDetailPanels only ever ran
+    // off a real selection change, and nothing here ever made one. The tree is just a
+    // flat list of loaded libraries now (see SampleTree's own XAML comment), so "select
+    // the first entry" unambiguously means Roots[0] - reuses SelectTreeNode (same
+    // _vm.SelectNode + RefreshDetailPanels/UpdateStatus + tree-highlight path every
+    // other selection in this window already goes through), not a separate mechanism.
+    void SelectFirstRoot()
+    {
+        if (_vm.Roots.Count > 0) SelectTreeNode(_vm.Roots[0]);
+    }
 
     void OnOpenCollection(object sender, RoutedEventArgs e)
     {
@@ -87,7 +139,10 @@ public partial class SampleEditorWindow : ThemedWindow
     void OnNewCollection(object sender, RoutedEventArgs e)
     {
         var dlg = new SaveFileDialog { Title = "New Collection", Filter = "Korg KSC Files|*.KSC|All Files|*.*" };
-        if (dlg.ShowDialog(this) == true) { _vm.NewCollection(dlg.FileName); UpdateStatus(); }
+        // SelectFirstRoot (same as OpenCollectionPath already does) - without it the
+        // freshly-created collection's own root node sat there unselected, requiring an
+        // extra click before anything showed.
+        if (dlg.ShowDialog(this) == true) { _vm.NewCollection(dlg.FileName); SelectFirstRoot(); UpdateStatus(); }
     }
 
     void OnNewMultisample(object sender, RoutedEventArgs e)
@@ -116,6 +171,75 @@ public partial class SampleEditorWindow : ThemedWindow
         UpdateStatus();
     }
 
+    // "Create" button on the MS panel itself - the next free slot is computed and shown
+    // in the dialog's own title before the user decides anything, rather than asked for
+    // (contrast OnNewMultisample/OnNewStereoMultisamplePair above, the older File-menu
+    // flow that prompts for a name AND a manually-typed slot number). Name defaults to
+    // "NEWMS<slot>", matching the real Kronos's own auto-generated name for a fresh
+    // multisample (kronosology doc §2.2's NEWMS000/001 examples) - rename afterward via
+    // Edit > Rename Multisample if wanted.
+    void OnCreateMultisample(object sender, RoutedEventArgs e)
+    {
+        if (!_vm.HasActiveCollection) { StatusBar.Text = "Open or create a collection first."; return; }
+
+        // Preview slot assumes mono (1 slot) - the common case, and the dialog's own
+        // title needs SOME number before it can ask mono-or-stereo. Recomputed below
+        // with the REAL slot count once the answer is known.
+        uint previewSlot = _vm.NextFreeMno1();
+        var dlg = new CreateMultisampleDialog(previewSlot) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+
+        // BUG FIX 2026-08-22 (Opus redundancy review): a stereo pair needs 2
+        // CONTIGUOUS slots (MNO1 and MNO1+1 - NewStereoMultisamplePairInCollection's own
+        // convention), but this always computed `previewSlot` with the default
+        // slotsNeeded=1. If a lower slot had freed up (e.g. a multisample was deleted)
+        // while a HIGHER one stayed taken, previewSlot could take a 2-slot range that
+        // collides with that still-existing multisample - exactly the false-positive
+        // SampleImportBuilder.FindStereoSibling's own comment says "shouldn't happen for
+        // app-created pairs". Recomputing with the real slotsNeeded closes that gap; the
+        // previewed slot number can differ from the final one in that same rare case
+        // (dialog title showed the mono-case slot) - accepted, not worth blocking Create
+        // Multisample on a second round-trip through the dialog for.
+        uint slot = dlg.Stereo ? _vm.NextFreeMno1(2) : previewSlot;
+        var baseName = $"NEWMS{slot:D3}";
+        if (dlg.Stereo) _vm.NewStereoMultisamplePairInCollection(baseName, slot);
+        else _vm.NewMultisampleInCollection(baseName, slot);
+        RefreshDetailPanels();
+        UpdateStatus();
+
+        // Select the new multisample right away (same courtesy OnAddPlaceholderZone
+        // gives a new zone) - without this the collection/tree/combo rebuild these two
+        // calls trigger leaves nothing selected, so the user has to go find and click
+        // it themselves before the editor panel (fixed above) has anything to show.
+        // Both New*InCollection methods write "<baseName>.KMP" (mono) or
+        // "<baseName>-L.KMP"/"-R.KMP" (stereo, left half selected by default) under
+        // "<collection-dir>/<collection-basename>/" - reconstructing that path here
+        // rather than threading a return value through both VM methods, since it's
+        // already exactly this window's own established KMP-path convention.
+        if (_vm.ActiveCollectionPath is { } kscPath)
+        {
+            var kmpDir = KscCollection.ContentDirFor(kscPath);
+            var kmpFileName = dlg.Stereo ? $"{baseName}-L.KMP" : $"{baseName}.KMP";
+            var kmpPath = System.IO.Path.Combine(kmpDir, kmpFileName);
+            var msNode = FindMultisampleNode(_vm.Roots, kmpPath);
+            if (msNode != null) SelectTreeNode(msNode);
+        }
+    }
+
+    void OnDeleteMultisample(object sender, RoutedEventArgs e)
+    {
+        if (_vm.SelectedMultisampleLabel is not { } label) { StatusBar.Text = "Select a multisample first."; return; }
+
+        var result = MessageBox.Show(this,
+            $"Permanently delete '{label}' and all of its samples from disk?\nThis cannot be undone.",
+            "Delete Multisample", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+        if (result != MessageBoxResult.Yes) return;
+
+        _vm.DeleteSelectedMultisample();
+        RefreshDetailPanels();
+        UpdateStatus();
+    }
+
     // RefreshDetailPanels (not just UpdateStatus) because saving changes HasUnsavedChanges,
     // which drives the title bar's dirty marker and the Save Changes button's enabled
     // state - without it both stayed stale after a successful save until some unrelated
@@ -123,22 +247,312 @@ public partial class SampleEditorWindow : ThemedWindow
     void OnSaveMultisample(object sender, RoutedEventArgs e) { _vm.SaveSelectedMultisample(); RefreshDetailPanels(); UpdateStatus(); }
     void OnSaveSample(object sender, RoutedEventArgs e) { _vm.SaveSelectedSample(); RefreshDetailPanels(); UpdateStatus(); }
 
+    // The tree only shows root (loaded-library) nodes now - see SampleTree's own XAML
+    // comment - so a genuine user click here can only ever select one of those; the old
+    // auto-drill-into-first-zone logic that used to live here for a directly-clicked
+    // multisample node moved into SelectTreeNode, the one remaining path that can select
+    // a multisample (the MS dropdown). _suppressTreeSelectionEvent guards against
+    // SelectTreeNode's own IsSelected write below re-entering this handler and
+    // clobbering the zone/multisample it just selected with the owning ROOT instead -
+    // see SelectTreeNode's own comment.
+    bool _suppressTreeSelectionEvent;
+
     void OnTreeSelectionChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
+        if (_suppressTreeSelectionEvent) return;
         _vm.SelectNode(e.NewValue as SampleTreeNode);
         RefreshDetailPanels();
         UpdateStatus();
     }
 
-    // Live editing session - no Apply button, fields commit on LostFocus (Save Changes,
-    // bottom-right, is what actually writes to disk). Zone key range lives in the .KMP.
-    void OnZoneKeyChanged(object sender, RoutedEventArgs e)
+    // Live editing session - fields now commit as you type (TextChanged), not just on
+    // LostFocus/tab-away (explicit feedback: "even pressing enter isn't affecting
+    // them" - Enter did nothing at all before, since only LostFocus committed). Each
+    // handler below is wired to BOTH TextChanged and LostFocus (same method), guarded
+    // to bail out BEFORE calling RefreshDetailPanels whenever ITS OWN box's text
+    // doesn't currently parse - RefreshDetailPanels resets every field's Text from the
+    // model, so committing on a half-typed value (e.g. an empty box mid-retype, or
+    // "C" before the octave digit is typed) would immediately stomp the user's own
+    // in-progress keystrokes back to the last valid value. Save Changes (bottom-right)
+    // is still what actually writes to disk - this only affects the live in-memory
+    // model + undo, same as it always did.
+    //
+    // Split into two handlers (was one shared OnZoneKeyChanged) so each box's own
+    // guard is independent - typing into Top Key must not be blocked by Orig.Key
+    // being mid-edit, and vice versa. The OTHER box's value still falls back to its
+    // last committed value exactly like the original shared handler did.
+    void OnZoneOrigKeyBoxChanged(object sender, RoutedEventArgs e)
     {
-        var origKey = MidiNoteName.TryParse(ZoneOrigKeyBox.Text) ?? _vm.ZoneOriginalKey;
+        if (MidiNoteName.TryParse(ZoneOrigKeyBox.Text) is not { } origKey) return;
         var topKey = MidiNoteName.TryParse(ZoneTopKeyBox.Text) ?? _vm.ZoneTopKey;
         _vm.ApplyZoneEdits(origKey, topKey);
         RefreshDetailPanels();
         UpdateStatus();
+    }
+
+    void OnZoneTopKeyBoxChanged(object sender, RoutedEventArgs e)
+    {
+        if (MidiNoteName.TryParse(ZoneTopKeyBox.Text) is not { } topKey) return;
+        var origKey = MidiNoteName.TryParse(ZoneOrigKeyBox.Text) ?? _vm.ZoneOriginalKey;
+        _vm.ApplyZoneEdits(origKey, topKey);
+        RefreshDetailPanels();
+        UpdateStatus();
+    }
+
+    // Shared Enter-key commit for every live-updating field below - PreviewKeyDown so
+    // it fires before the TextBox's own default handling, dispatched by sender since
+    // each field already has its own (TextChanged-wired) commit method to reuse rather
+    // than duplicating the parse/apply logic a second time.
+    void OnFieldPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Enter) return;
+        e.Handled = true;
+        if (sender == ZoneOrigKeyBox) OnZoneOrigKeyBoxChanged(sender, e);
+        else if (sender == ZoneTopKeyBox) OnZoneTopKeyBoxChanged(sender, e);
+        else if (sender == SampleStartBox) OnSampleStartBoxChanged(sender, e);
+        else if (sender == LoopStartBox) OnLoopStartBoxChanged(sender, e);
+        else if (sender == LoopEndBox) OnLoopEndBoxChanged(sender, e);
+        else if (sender == LoopTuneBox) OnLoopTuneBoxChanged(sender, e);
+    }
+
+    // Index box (1-based position of the selected zone within CurrentMultisampleZones) -
+    // out-of-range values snap to the nearest valid index rather than being rejected.
+    // Committing selects the target zone the same way clicking it in the tree/keymap
+    // does (SelectTreeNode), so everything downstream of a real selection change (undo
+    // scope reset, stereo partner resolution, ...) happens exactly once, the normal way.
+    void OnZoneIndexChanged(object sender, RoutedEventArgs e)
+    {
+        if (int.TryParse(ZoneIndexBox.Text, out var idx)) CommitZoneIndex(idx);
+        else { RefreshDetailPanels(); UpdateStatus(); }
+    }
+
+    // Shared by LostFocus, Enter, the wheel, and Up/Down - clamps to the valid range
+    // and selects that zone's tree node, same as the original LostFocus-only behavior.
+    void CommitZoneIndex(int idx)
+    {
+        if (_vm.CurrentMultisampleZones is { Count: > 0 } zones)
+        {
+            idx = Math.Clamp(idx, 1, zones.Count);
+            var target = FindNodeForZone(_vm.Roots, zones[idx - 1]);
+            if (target != null) SelectTreeNode(target);
+        }
+        RefreshDetailPanels();
+        UpdateStatus();
+    }
+
+    // Enter commits immediately (previously did nothing at all - only LostFocus/tabbing
+    // away committed, which read as "the field doesn't work" per explicit feedback).
+    // Up/Down arrow steps the index by one without needing to type - the "quick way of
+    // changing the index" asked for, without the complexity/risk of swapping this out
+    // for a whole new dropdown-style control.
+    void OnZoneIndexPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            if (int.TryParse(ZoneIndexBox.Text, out var idx)) CommitZoneIndex(idx);
+            e.Handled = true;
+            return;
+        }
+        if (e.Key is not (Key.Up or Key.Down)) return;
+        int current = CurrentZoneIndexOrDefault();
+        CommitZoneIndex(current + (e.Key == Key.Up ? 1 : -1));
+        e.Handled = true;
+    }
+
+    // Mouse-wheel steps the index by one per notch - the same "quick way of changing
+    // the index" as the arrow keys, for a mouse-first workflow.
+    void OnZoneIndexWheel(object sender, MouseWheelEventArgs e)
+    {
+        int current = CurrentZoneIndexOrDefault();
+        CommitZoneIndex(current + (e.Delta > 0 ? 1 : -1));
+        e.Handled = true;
+    }
+
+    int CurrentZoneIndexOrDefault() =>
+        _vm.CurrentMultisampleZones is { } zones && _vm.SelectedZoneObject is { } sel && zones.IndexOf(sel) >= 0
+            ? zones.IndexOf(sel) + 1 : 1;
+
+    // Sample dropdown - redesigned 2026-08-22 per explicit feedback: this used to
+    // navigate to a different zone by its sample name; it's now the ASSIGNMENT control
+    // instead ("the repository listing should be available immediately when the user
+    // clicks the dropdown for the sample selection", replacing the separate "Assign
+    // from Repository..." button/dialog entirely). Zone navigation is still available
+    // via the Index box, the tree, and the Keymap piano - this dropdown now answers
+    // "what does the CURRENT zone play", same as typing into Orig.Key/Top Key answers
+    // "what key range does it own".
+    void OnZoneSampleComboChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressComboEvents) return;
+        if (_vm.SelectedZoneObject is not { } zone) return;
+        if (ZoneSampleCombo.SelectedItem is not ZoneSampleOption option) return;
+
+        var kmpPath = _vm.AssignExistingKsfToZone(zone, option.Path);
+        var zoneIndex = _vm.LastImportedZoneIndex;
+        _repositorySampleCache.Clear(); // this zone's own path may now hold different content
+        RefreshDetailPanels();
+        UpdateStatus();
+        if (kmpPath == null) return;
+
+        // Same re-select-by-position treatment as every other action that triggers
+        // RefreshTreeAfterMutation (AddPlaceholderZone/ImportSampleIntoZone) - the
+        // rebuild replaces every KmpZone instance, only a position survives it.
+        var msNode = FindMultisampleNode(_vm.Roots, kmpPath);
+        if (msNode != null && zoneIndex >= 0 && zoneIndex < msNode.Children.Count) SelectTreeNode(msNode.Children[zoneIndex]);
+    }
+
+    // One entry in the (redesigned) Sample combo: either the CURRENTLY assigned sample
+    // (first entry, whether or not it happens to also be a bare repository file) or a
+    // repository sample not yet assigned to this zone. ToString() override is
+    // deliberate, not decorative - WPF's SelectionBoxItem/closed-combo display fell
+    // back to the record's own default ToString() ("ZoneSampleOption { Path = ... }")
+    // for the currently-selected item even with DisplayMemberPath set on the ComboBox
+    // in XAML (bug found 2026-08-22); overriding ToString() directly is a guaranteed
+    // fix regardless of which internal WPF path was actually consulting it.
+    sealed record ZoneSampleOption(string Path, string DisplayName)
+    {
+        public override string ToString() => DisplayName;
+    }
+
+    // MS dropdown - picking a different multisample is functionally the same as
+    // selecting its .KMP node in the tree.
+    void OnMultisampleComboChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressComboEvents) return;
+        if (MultisampleCombo.SelectedItem is SampleTreeNode node) SelectTreeNode(node);
+    }
+
+    // Whichever multisample node owns CurrentMultisampleZones - matched by reference
+    // (SelectNode hands CurrentMultisampleZones the multisample's OWN Zones list, same
+    // identity AllMultisampleNodes' MultisampleRef.Multisample.Zones exposes). Shared by
+    // both combo refreshers below rather than each re-deriving it separately - the
+    // Sample combo needs the multisample's .KMP path too (to resolve each zone's .KSF),
+    // not just the MS combo.
+    //
+    // Takes the already-enumerated node list rather than calling AllMultisampleNodes()
+    // itself - that walks the WHOLE tree (every multisample AND every zone under it),
+    // and RefreshDetailPanels used to call it here AND again inside
+    // RefreshMultisampleCombo, i.e. twice per keystroke (Opus performance review,
+    // 2026-08-22). One walk, shared.
+    static SampleTreeNode? FindCurrentMultisampleNode(List<SampleTreeNode> allMsNodes, List<KmpZone>? zones)
+    {
+        if (zones == null) return null;
+        return allMsNodes.FirstOrDefault(n => ReferenceEquals(n.MultisampleRef!.Value.Multisample.Zones, zones));
+    }
+
+    // Index/"of N"/Range fields and the Sample dropdown all describe the SAME selected
+    // zone's position within CurrentMultisampleZones - refreshed together so Range (which
+    // depends on the PREVIOUS zone's Top Key, doc §2.1 - see KmpZone.TopKey's own comment)
+    // stays consistent with whatever Index/Sample now show.
+    void RefreshIndexAndSampleCombo(string? kmpPath)
+    {
+        var zones = _vm.CurrentMultisampleZones;
+        var selected = _vm.SelectedZoneObject;
+        int zoneIndex = zones != null && selected != null ? zones.IndexOf(selected) : -1;
+
+        _suppressComboEvents = true;
+        if (kmpPath != null && selected != null)
+        {
+            // First entry is always whatever this zone currently plays (even a skipped
+            // placeholder, which has no real path - "own" is null in that case, so
+            // nothing in the repository list below can collide with it) - selecting it
+            // again is a harmless no-op assignment (OnZoneSampleComboChanged just
+            // re-writes the same content). Every OTHER entry is a repository sample that
+            // ISN'T already what "own" represents (by Name/Suffix identity, not by path -
+            // see the repository loop's own comment for why path alone isn't enough).
+            string? ownPath = selected.IsSkipped ? null : selected.KsfPath(kmpPath);
+            var options = new List<ZoneSampleOption>();
+            // Hoisted out of the `if` below so the repository loop further down can also
+            // exclude by identity, not just by ownPath - see its own comment.
+            (string Name, string Suffix)? ownInfo = ownPath != null ? GetRepositorySampleInfo(ownPath) : null;
+            if (ownPath != null)
+            {
+                // Falls back to the raw filename if the .KSF can't be read - same
+                // "unreadable file, not a bug" contract GetRepositorySampleInfo itself
+                // documents; there's no separate name source to fall back to here since
+                // ownPath != null already implies !selected.IsSkipped (checked above).
+                string ownName = ownInfo?.Name ?? selected.Filename;
+                options.Add(new ZoneSampleOption(ownPath, $"{ownName} {StereoTag(ownInfo?.Suffix)}"));
+            }
+
+            // Group repository stereo pairs (same Name, opposite -L/-R Suffix - written
+            // together by ImportSamplesToCollection's own stereo path, 2026-08-22) into
+            // ONE entry - picking either half auto-assigns both channels
+            // (AssignExistingKsfToZone), so listing them as two separate rows would just
+            // be two confusing routes to the identical result. "(S)"/"(M)" tag (not
+            // "(Stereo)") per explicit feedback. Routed through GetRepositorySampleInfo's
+            // cache (not a fresh KsfSample.Open per entry per refresh) - see that
+            // cache's own comment (Opus performance review, 2026-08-22).
+            var repoInfo = _vm.BareSampleEntries()
+                .Select(p => (Path: p, Info: GetRepositorySampleInfo(p)))
+                .Where(t => t.Info != null)
+                .ToList();
+            var alreadyGrouped = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var (path, info) in repoInfo)
+            {
+                if (alreadyGrouped.Contains(path)) continue;
+                // Excludes by IDENTITY (Name, and Suffix for a mono sample; Name alone
+                // for a stereo pair, since assigning EITHER repository half reassigns
+                // BOTH channels anyway) - NOT by path. Bug fix 2026-08-22: assigning a
+                // repository sample copies its audio into the zone's own file rather
+                // than referencing the repository file directly (AssignExistingKsfToZone/
+                // WriteAssignedSample), so "this zone's own file" and "the repository
+                // entry it came from" are two different paths with identical content -
+                // an exact-path check let the exact same sample show up TWICE (once as
+                // "own", once as a still-present, now-redundant repository entry),
+                // reported as "shows both samples for L and R".
+                if (ownInfo != null && info!.Value.Name == ownInfo.Value.Name
+                    && (info.Value.Suffix == ownInfo.Value.Suffix
+                        || (ownInfo.Value.Suffix is "-L" or "-R" && info.Value.Suffix is "-L" or "-R")))
+                    continue;
+
+                options.Add(new ZoneSampleOption(path, $"{info!.Value.Name} {StereoTag(info.Value.Suffix)}"));
+
+                if (info.Value.Suffix is "-L" or "-R")
+                {
+                    var wantSuffix = info.Value.Suffix == "-L" ? "-R" : "-L";
+                    var partner = repoInfo.FirstOrDefault(t => t.Info!.Value.Name == info.Value.Name && t.Info.Value.Suffix == wantSuffix);
+                    if (partner.Path != null) alreadyGrouped.Add(partner.Path);
+                }
+            }
+            ZoneSampleCombo.ItemsSource = options;
+            ZoneSampleCombo.SelectedIndex = options.Count > 0 && ownPath != null ? 0 : -1;
+        }
+        else
+        {
+            ZoneSampleCombo.ItemsSource = null;
+        }
+        _suppressComboEvents = false;
+
+        ZoneIndexBox.Text = zoneIndex >= 0 ? (zoneIndex + 1).ToString() : "";
+        ZoneIndexTotalText.Text = zones != null ? $"/ {zones.Count}" : "";
+
+        if (zoneIndex >= 0 && zones != null)
+        {
+            int low = zoneIndex == 0 ? 0 : zones[zoneIndex - 1].TopKey + 1;
+            ZoneRangeText.Text = $"({MidiNoteName.ToName(low)} - {MidiNoteName.ToName(selected!.TopKey)})";
+        }
+        else ZoneRangeText.Text = "";
+    }
+
+    // GetSampleDisplayName / TryOpenRepositoryKsf removed 2026-08-22 (Opus redundancy
+    // review): GetSampleDisplayName's only remaining caller was a fallback that could
+    // never actually diverge from GetRepositorySampleInfo's own miss path, and
+    // TryOpenRepositoryKsf had exactly one caller (that same method) once the
+    // performance pass's repository cache subsumed it - both are now inlined there.
+
+    // "(S)" for one half of a stereo pair (Suffix -L/-R), "(M)" otherwise - explicit
+    // feedback's exact requested tag, replacing the earlier "(Stereo)"/plain-name
+    // labeling. A null suffix (couldn't read the file) reads as mono, the safer default.
+    static string StereoTag(string? suffix) => suffix is "-L" or "-R" ? "(S)" : "(M)";
+
+    // MS dropdown - same node resolution FindCurrentMultisampleNode already does, and
+    // now the same already-enumerated list (see its own comment).
+    void RefreshMultisampleCombo(SampleTreeNode? currentMsNode, List<SampleTreeNode> allMsNodes)
+    {
+        _suppressComboEvents = true;
+        MultisampleCombo.ItemsSource = allMsNodes;
+        MultisampleCombo.SelectedItem = currentMsNode;
+        _suppressComboEvents = false;
     }
 
     // Sample Start/Loop Start/Loop End each commit independently through SetMarker (the
@@ -147,37 +561,143 @@ public partial class SampleEditorWindow : ThemedWindow
     // same way they do for a drag. Sample Rate stays read-only/informational - retyping
     // the declared number alone would desync it from the real PCM data without actually
     // resampling anything; an actual rate change only ever happens via a real resample.
+    // Guarded (bail out before RefreshDetailPanels on unparseable text) so this is safe
+    // to fire on every keystroke (TextChanged), not just LostFocus - see the block
+    // comment above OnZoneOrigKeyBoxChanged for why that guard matters.
     void OnSampleStartBoxChanged(object sender, RoutedEventArgs e)
     {
-        if (int.TryParse(SampleStartBox.Text, out var v)) _vm.SetMarker(SampleMarkerKind.SampleStart, v);
+        if (!int.TryParse(SampleStartBox.Text, out var v)) return;
+        _vm.SetMarker(SampleMarkerKind.SampleStart, v);
         RefreshDetailPanels();
         UpdateStatus();
+    }
+
+    // Wheel step = ~1% of the sample's total length, not a flat 1 frame - explicit
+    // feedback: a fixed step is meaningless once sample length varies by orders of
+    // magnitude (1 frame per notch is imperceptible on a multi-minute sample, or a
+    // huge jump on a one-second one). Percent-of-length scales with it automatically:
+    // 1000 frames -> step 10, 100000 frames -> step 1000, always ~1% either way.
+    int WheelStep() => Math.Max(1, _vm.SampleFrameCount / 100);
+
+    void OnSampleStartWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (!int.TryParse(SampleStartBox.Text, out var v)) return;
+        _vm.SetMarker(SampleMarkerKind.SampleStart, v + (e.Delta > 0 ? WheelStep() : -WheelStep()));
+        RefreshDetailPanels();
+        UpdateStatus();
+        e.Handled = true;
+    }
+
+    void OnLoopStartWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (!int.TryParse(LoopStartBox.Text, out var v)) return;
+        bool committed = _vm.SetMarker(SampleMarkerKind.LoopStart, v + (e.Delta > 0 ? WheelStep() : -WheelStep()));
+        RefreshDetailPanels();
+        UpdateStatus();
+        if (committed) EnsureLoopVisible();
+        e.Handled = true;
+    }
+
+    void OnLoopEndWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (!int.TryParse(LoopEndBox.Text, out var v)) return;
+        bool committed = _vm.SetMarker(SampleMarkerKind.LoopEnd, v + (e.Delta > 0 ? WheelStep() : -WheelStep()));
+        RefreshDetailPanels();
+        UpdateStatus();
+        if (committed) EnsureLoopVisible();
+        e.Handled = true;
     }
 
     void OnLoopStartBoxChanged(object sender, RoutedEventArgs e)
     {
-        if (int.TryParse(LoopStartBox.Text, out var v)) _vm.SetMarker(SampleMarkerKind.LoopStart, v);
+        if (!int.TryParse(LoopStartBox.Text, out var v)) return;
+        bool committed = _vm.SetMarker(SampleMarkerKind.LoopStart, v);
         RefreshDetailPanels();
         UpdateStatus();
+        // Only on an actual commit (bug fix 2026-08-22, Opus redundancy review: this
+        // used to fire on every LostFocus regardless of whether SetMarker changed
+        // anything, so tabbing through the field with nothing typed could yank a
+        // manually-zoomed view back to the loop region) and only on LostFocus/Enter,
+        // not every live TextChanged keystroke (panning the view on every digit typed
+        // would be far more disruptive than helpful mid-edit).
+        if (committed && e is not TextChangedEventArgs) EnsureLoopVisible();
     }
 
     void OnLoopEndBoxChanged(object sender, RoutedEventArgs e)
     {
-        if (int.TryParse(LoopEndBox.Text, out var v)) _vm.SetMarker(SampleMarkerKind.LoopEnd, v);
+        if (!int.TryParse(LoopEndBox.Text, out var v)) return;
+        bool committed = _vm.SetMarker(SampleMarkerKind.LoopEnd, v);
         RefreshDetailPanels();
         UpdateStatus();
+        if (committed && e is not TextChangedEventArgs) EnsureLoopVisible();
     }
 
     void OnLoopEnabledChanged(object sender, RoutedEventArgs e)
     {
-        _vm.SetLoopEnabled(LoopEnabledBox.IsChecked == true);
+        bool committed = _vm.SetLoopEnabled(LoopEnabledBox.IsChecked == true);
+        RefreshDetailPanels();
+        UpdateStatus();
+        if (committed) EnsureLoopVisible();
+    }
+
+    // Pans/zooms the waveform so the WHOLE current loop region is visible, when it
+    // isn't already - explicit feedback: enabling Loop (or typing a new Loop Start/End)
+    // showed nothing until the user manually zoomed or dragged a selection there
+    // themselves ("Loop Selected" only worked because the selection they'd just
+    // dragged was, by construction, already inside the current view - LoopEnd itself
+    // wasn't being scrolled to, the user's own workaround just happened to already be
+    // looking at the right place). Never fights a manual zoom/pan done for an
+    // unrelated reason - only called right after an action that actually changes
+    // whether Loop is on or where its points are.
+    void EnsureLoopVisible()
+    {
+        if (!_vm.SampleLoopEnabled) return;
+        int start = _vm.SampleLoopStart, end = _vm.SampleLoopEnd;
+        if (end <= start) return;
+        if (start >= WaveformLeft.ViewStartFrame && end <= WaveformLeft.ViewEndFrame) return; // already fully visible
+        WaveformLeft.SetView(start, end); // ViewChanged mirrors to the ruler/scrollbar/right pane
+    }
+
+    void OnUseZeroChanged(object sender, RoutedEventArgs e) => _vm.UseZeroCrossing = UseZeroBox.IsChecked == true;
+
+    // Unlike UseZeroCrossing (pure VM-side state with no immediate visual feedback),
+    // LoopLockEnabled also drives WaveformLeft/Right directly (the whole-region-drag
+    // gate and its green/blue fill - see SampleWaveformControl's own comments) - that
+    // only happens inside RefreshDetailPanels, so skipping it here left the waveform
+    // showing stale drag-gate behavior for one extra click after checking the box,
+    // until whatever that next click did happened to call RefreshDetailPanels anyway.
+    void OnLoopLockChanged(object sender, RoutedEventArgs e)
+    {
+        _vm.LoopLockEnabled = LoopLockBox.IsChecked == true;
         RefreshDetailPanels();
         UpdateStatus();
     }
 
-    void OnUseZeroChanged(object sender, RoutedEventArgs e) => _vm.UseZeroCrossing = UseZeroBox.IsChecked == true;
-    void OnLoopLockChanged(object sender, RoutedEventArgs e) => _vm.LoopLockEnabled = LoopLockBox.IsChecked == true;
-    void OnLoopReverseChanged(object sender, RoutedEventArgs e) => _vm.LoopReverseEnabled = LoopReverseBox.IsChecked == true;
+    // Drives the real, persisted Kronos Reverse flag (SetReversed) - checking this box
+    // previews reversed playback immediately (PlaySelectedSample reads the same
+    // SampleReverseEnabled SetReversed just set) AND persists it for when the Kronos
+    // itself plays the sample back after Save. One flag, one checkbox.
+    void OnLoopReverseChanged(object sender, RoutedEventArgs e)
+    {
+        _vm.SetReversed(LoopReverseBox.IsChecked == true);
+        RefreshDetailPanels();
+        UpdateStatus();
+    }
+
+    void OnSample12dbBoostChanged(object sender, RoutedEventArgs e)
+    {
+        _vm.Set12dbBoostEnabled(Sample12dbBoostBox.IsChecked == true);
+        RefreshDetailPanels();
+        UpdateStatus();
+    }
+
+    void OnLoopTuneBoxChanged(object sender, RoutedEventArgs e)
+    {
+        if (!int.TryParse(LoopTuneBox.Text, out var v)) return;
+        _vm.SetLoopTune(v);
+        RefreshDetailPanels();
+        UpdateStatus();
+    }
 
     // Ctrl+S deliberately fires ahead of this window's focus-in-a-TextBox guard, so a
     // value typed into a field but not yet committed by LostFocus wouldn't be included.
@@ -201,22 +721,9 @@ public partial class SampleEditorWindow : ThemedWindow
         UpdateStatus();
     }
 
-    // LoopSelected (the loop region's click-to-select green highlight) is per-control
-    // state, not VM state - in Combine mode, clicking to select it on ONE pane must show
-    // green on BOTH (it's the same shared loop), which plain per-pane DPs alone don't
-    // give you. The `!=` guard means setting a pane to a value it already has is a
-    // no-op (WPF skips the DP-changed callback for an unchanged value), so this can't
-    // recurse forever even though both panes point back at this same handler.
-    void OnWaveformLoopSelectedChanged(bool selected)
-    {
-        if (!_vm.HasStereoPair || _vm.SplitLR) return;
-        if (WaveformLeft.LoopSelected != selected) WaveformLeft.LoopSelected = selected;
-        if (WaveformRight.LoopSelected != selected) WaveformRight.LoopSelected = selected;
-    }
-
     // Scrub-click "select a playback starting point" - a plain click on the waveform
-    // sets the grey cursor line (mirrored onto the sibling stereo pane, same convention
-    // as LoopSelected above) WITHOUT starting playback. The next Play (button, Space,
+    // sets the grey cursor line (mirrored onto the sibling stereo pane) WITHOUT starting
+    // playback. The next Play (button, Space,
     // or Pause's Resume) starts from here - see SampleEditorViewModel.SetCursorFrame/
     // PlaySelectedSample.
     void OnWaveformScrubRequested(int frame)
@@ -229,38 +736,62 @@ public partial class SampleEditorWindow : ThemedWindow
 
     void RefreshDetailPanels()
     {
-        ZonePanel.Visibility = _vm.HasZoneSelected ? Visibility.Visible : Visibility.Collapsed;
-        // The TAB ITEMS are collapsed, not just the StackPanels inside them. Collapsing
-        // only the content left three clickable but completely blank tabs sitting above
-        // the "Select a zone..." hint whenever nothing was loaded.
+        // Nothing loaded at all - the pane shows ONLY the empty-state message; every
+        // other section (header, MS picker, keymap, zone detail, waveform/tabs) lives
+        // under EditorContent, collapsed as one unit rather than piece by piece.
+        bool anythingLoaded = _vm.Roots.Count > 0;
+        EmptyStateText.Visibility = anythingLoaded ? Visibility.Collapsed : Visibility.Visible;
+        EditorContent.Visibility = anythingLoaded ? Visibility.Visible : Visibility.Collapsed;
+        if (!anythingLoaded) return; // nothing else below has anything meaningful to set
+
+        // The Index/Sample/Orig.Key/Top Key panel is available as soon as a multisample
+        // is in context (same condition as the keymap below), not only once a specific
+        // zone is selected within it - OnTreeSelectionChanged already auto-selects the
+        // first zone the instant a multisample is picked, so in practice this is almost
+        // always populated; this gate just also covers a multisample with zero zones
+        // gracefully (panel shows, fields blank, nothing to select).
+        //
+        // MUST be "!= null" (a multisample is in context), NOT "is { Count: > 0 }" (has
+        // at least one zone) - the two conditions differ EXACTLY for a brand-new,
+        // just-created multisample (Create Multisample button), which has a real
+        // CurrentMultisampleZones list that's simply empty. The Count>0 form (bug, fixed
+        // 2026-08-22) collapsed this whole panel - and the keymap below - for that one
+        // case, with no way to reach "Create Zone"/"Import Sample..." to populate it;
+        // the comment above already documented the INTENDED "!= null" behavior, the
+        // code just didn't match it.
+        ZonePanel.Visibility = _vm.CurrentMultisampleZones != null ? Visibility.Visible : Visibility.Collapsed;
         var sampleTabs = _vm.HasSampleLoaded ? Visibility.Visible : Visibility.Collapsed;
+        EditingFrame.Visibility = sampleTabs;
         WaveformPanel.Visibility = sampleTabs;
-        TabSamples.Visibility = sampleTabs;
-        TabLooping.Visibility = sampleTabs;
-        SamplePanel.Visibility = sampleTabs;
-        LoopingPanel.Visibility = sampleTabs;
-        TabKeymap.Visibility = _vm.CurrentMultisampleZones is { Count: > 0 } ? Visibility.Visible : Visibility.Collapsed;
-        // A TabControl whose every item is collapsed still draws its own chrome (an
-        // empty header strip and border), so hide the whole thing rather than leave a
-        // stray box under the hint text.
-        EditorTabs.Visibility = TabKeymap.Visibility == Visibility.Visible || sampleTabs == Visibility.Visible
-            ? Visibility.Visible : Visibility.Collapsed;
-        // Selecting a collapsed tab leaves the control showing blank content, which is
-        // reachable by navigating away from a sample while the Samples tab was active.
-        if (EditorTabs.SelectedItem is TabItem { Visibility: not Visibility.Visible })
-            EditorTabs.SelectedItem = EditorTabs.Items.OfType<TabItem>().FirstOrDefault(t => t.Visibility == Visibility.Visible);
+        // Keymap is static (outside this frame entirely - see KeymapSection's own XAML
+        // comment). Same "!= null" fix as ZonePanel above, same reason.
+        KeymapSection.Visibility = _vm.CurrentMultisampleZones != null ? Visibility.Visible : Visibility.Collapsed;
         NoSelectionText.Visibility = _vm.HasZoneSelected ? Visibility.Collapsed : Visibility.Visible;
         UpdateWindowTitle();
         MNU_UnloadCollection.IsEnabled = _vm.HasActiveCollection;
         MNU_RevertKsc.IsEnabled = _vm.HasActiveCollection;
         MNU_RevertAll.IsEnabled = _vm.Roots.Count > 0;
+        MNU_RenameMultisample.IsEnabled = _vm.CurrentMultisampleName != null;
+        MNU_RenameSample.IsEnabled = _vm.HasSampleLoaded;
 
         if (_vm.HasZoneSelected)
         {
-            ZoneFilenameText.Text = _vm.ZoneIsSkipped ? "(skipped - no sample)" : _vm.ZoneFilename;
             ZoneOrigKeyBox.Text = MidiNoteName.ToName(_vm.ZoneOriginalKey);
             ZoneTopKeyBox.Text = MidiNoteName.ToName(_vm.ZoneTopKey);
         }
+        else
+        {
+            // The panel can now be visible with no zone selected yet (a multisample
+            // with zero zones) - blank rather than showing a stale key from whatever
+            // was selected before.
+            ZoneOrigKeyBox.Text = "";
+            ZoneTopKeyBox.Text = "";
+        }
+
+        var allMsNodes = _vm.AllMultisampleNodes().ToList();
+        var currentMsNode = FindCurrentMultisampleNode(allMsNodes, _vm.CurrentMultisampleZones);
+        RefreshIndexAndSampleCombo(currentMsNode?.MultisampleRef?.Path);
+        RefreshMultisampleCombo(currentMsNode, allMsNodes);
 
         Keymap.Zones = _vm.CurrentMultisampleZones;
         Keymap.SelectedZone = _vm.SelectedZoneObject;
@@ -272,6 +803,12 @@ public partial class SampleEditorWindow : ThemedWindow
 
         SplitLRBox.Visibility = _vm.HasStereoPair ? Visibility.Visible : Visibility.Collapsed;
         SplitLRBox.IsChecked = _vm.SplitLR;
+        VuMeterLeft.Visibility = _vm.HasStereoPair ? Visibility.Visible : Visibility.Collapsed;
+
+        SplitChannelCombo.Visibility = _vm.HasStereoPair && _vm.SplitLR ? Visibility.Visible : Visibility.Collapsed;
+        _suppressComboEvents = true;
+        SplitChannelCombo.SelectedIndex = _vm.IsPrimaryLeftChannel ? 0 : 1;
+        _suppressComboEvents = false;
 
         if (_vm.HasSampleLoaded)
         {
@@ -281,12 +818,18 @@ public partial class SampleEditorWindow : ThemedWindow
                 ? "No audio data (header-only save - see doc §3.3)" : "";
             SampleRateBox.Text = _vm.SampleRate.ToString();
             LoopEnabledBox.IsChecked = _vm.SampleLoopEnabled;
+            // Sample Start/Loop Start/Loop End/Use Zero/Loop Lock/Reverse Loop/Loop
+            // Selected only show up once Loop Enabled is actually checked - collapsed
+            // as one group rather than each field gating itself separately.
+            LoopFieldsRow.Visibility = _vm.SampleLoopEnabled ? Visibility.Visible : Visibility.Collapsed;
             SampleStartBox.Text = _vm.SampleSampleStart.ToString();
             LoopStartBox.Text = _vm.SampleLoopStart.ToString();
             LoopEndBox.Text = _vm.SampleLoopEnd.ToString();
             UseZeroBox.IsChecked = _vm.UseZeroCrossing;
             LoopLockBox.IsChecked = _vm.LoopLockEnabled;
-            LoopReverseBox.IsChecked = _vm.LoopReverseEnabled;
+            LoopReverseBox.IsChecked = _vm.SampleReverseEnabled;
+            Sample12dbBoostBox.IsChecked = _vm.Sample12dbBoostEnabled;
+            LoopTuneBox.Text = _vm.SampleLoopTune.ToString();
 
             if (_vm.HasStereoPair && !_vm.SplitLR)
             {
@@ -311,11 +854,7 @@ public partial class SampleEditorWindow : ThemedWindow
                     pane.LoopStartFrame = _vm.SampleLoopStart;
                     pane.LoopEndFrame = _vm.SampleLoopEnd;
                     pane.LoopEnabled = _vm.SampleLoopEnabled;
-                    // HasLoop already gates rendering/interaction off when disabled, but
-                    // LoopSelected itself is sticky DP state - without clearing it here,
-                    // re-checking Loop Enabled makes the green highlight reappear with no
-                    // click, since the toggle in OnMouseLeftButtonUp never ran meanwhile.
-                    if (!_vm.SampleLoopEnabled) pane.LoopSelected = false;
+                    pane.LoopLockEnabled = _vm.LoopLockEnabled;
                 }
             }
             else if (_vm.HasStereoPair && _vm.SplitLR)
@@ -335,7 +874,7 @@ public partial class SampleEditorWindow : ThemedWindow
                 WaveformLeft.LoopStartFrame = _vm.SampleLoopStart;
                 WaveformLeft.LoopEndFrame = _vm.SampleLoopEnd;
                 WaveformLeft.LoopEnabled = _vm.SampleLoopEnabled;
-                if (!_vm.SampleLoopEnabled) WaveformLeft.LoopSelected = false;
+                WaveformLeft.LoopLockEnabled = _vm.LoopLockEnabled;
             }
             else
             {
@@ -350,7 +889,7 @@ public partial class SampleEditorWindow : ThemedWindow
                 WaveformLeft.LoopStartFrame = _vm.SampleLoopStart;
                 WaveformLeft.LoopEndFrame = _vm.SampleLoopEnd;
                 WaveformLeft.LoopEnabled = _vm.SampleLoopEnabled;
-                if (!_vm.SampleLoopEnabled) WaveformLeft.LoopSelected = false;
+                WaveformLeft.LoopLockEnabled = _vm.LoopLockEnabled;
             }
             // WaveformLeft.Samples above already reset ITS view (OnSamplesChanged fires
             // ViewChanged), which syncs the ruler/scrollbar/right pane via
@@ -385,9 +924,20 @@ public partial class SampleEditorWindow : ThemedWindow
         // A held/lit look while actually paused (waiting to be resumed), same "active
         // background" language IsPressed/IsMouseOver already use in the button's style.
         PauseIcon.Fill = _vm.IsPaused ? (Brush)FindResource("SuccessBrush") : new SolidColorBrush(Color.FromRgb(0xB4, 0xB4, 0xB4));
-        BtnDeleteZone.IsEnabled = _vm.HasZoneSelected && !_vm.ZoneIsSkipped;
+        // Delete Zone is a two-stage action now (SampleEditorViewModel.DeleteSelectedZone):
+        // enabled for ANY selected zone, not just an un-skipped one - the first delete
+        // soft-skips, the second (on an already-skipped zone) actually removes it from
+        // the keymap. It used to disable outright once a zone was skipped, which meant an
+        // empty placeholder could never be cleared back out. Label/tooltip switch to make
+        // the state-dependent action visible rather than silently different.
+        BtnDeleteZone.IsEnabled = _vm.HasZoneSelected;
+        BtnDeleteZone.Content = _vm.ZoneIsSkipped ? "Remove" : "Delete";
+        BtnDeleteZone.ToolTip = _vm.ZoneIsSkipped
+            ? "Removes this empty zone from the keymap entirely - the neighboring zone's key range expands to fill the gap. Undo with Ctrl+Z if that's not what you want."
+            : "Marks this zone as empty (no sample) - the underlying .KSF is left on disk. Delete again on an empty zone to remove it from the keymap entirely.";
         BtnImportSampleIntoZone.IsEnabled = _vm.HasZoneSelected;
-        MNU_DeleteZone.IsEnabled = _vm.HasZoneSelected && !_vm.ZoneIsSkipped;
+        MNU_DeleteZone.IsEnabled = _vm.HasZoneSelected;
+        MNU_DeleteZone.Header = _vm.ZoneIsSkipped ? "_Remove Zone" : "_Delete Zone";
         BtnZoomSelection.IsEnabled = _vm.SelectionEndFrame > _vm.SelectionStartFrame;
         // Duration alongside the raw frame count - frames alone say nothing about how
         // long the selection actually is, and the sample rate is right there to convert
@@ -504,7 +1054,15 @@ public partial class SampleEditorWindow : ThemedWindow
             WaveformHScroll.Maximum = Math.Max(0, frameCount - viewLen);
             WaveformHScroll.ViewportSize = viewLen;
             WaveformHScroll.Value = source.ViewStartFrame;
-            WaveformHScroll.IsEnabled = frameCount > viewLen;
+            // Collapsed (not just disabled) until the user actually zooms in - same
+            // "Collapsed child + zeroed RowDefinition" treatment WaveformDividerRow/
+            // WaveformRightRowDef already use for the mono/stereo row, for the same
+            // reason: a merely-disabled-but-still-visible scrollbar sat there doing
+            // nothing at full view, permanently occupying its row's space and (per
+            // user report) visually overlapping the ruler's text right above it.
+            bool zoomed = frameCount > viewLen;
+            WaveformHScroll.Visibility = zoomed ? Visibility.Visible : Visibility.Collapsed;
+            WaveformHScrollRow.Height = new GridLength(zoomed ? 14 : 0);
         }
         finally { _syncingWaveformViews = false; }
     }
@@ -536,7 +1094,8 @@ public partial class SampleEditorWindow : ThemedWindow
 
     void UpdateVuMeter()
     {
-        VuMeter.Level = _vm.GetPlaybackLevel();
+        VuMeterLeft.Level = _vm.GetPlaybackLevelLeft();
+        VuMeterRight.Level = _vm.GetPlaybackLevelRight();
         int frame = _vm.IsPlaying ? _vm.GetPlaybackFrame() : -1;
         WaveformLeft.PlayheadFrame = frame;
         WaveformRight.PlayheadFrame = frame;
@@ -607,18 +1166,19 @@ public partial class SampleEditorWindow : ThemedWindow
     void OnSilenceSelection(object sender, RoutedEventArgs e) { _vm.ApplySilenceSelection(); RefreshDetailPanels(); UpdateStatus(); }
     void OnRemoveDcOffset(object sender, RoutedEventArgs e) { _vm.ApplyDcOffsetRemoval(); RefreshDetailPanels(); UpdateStatus(); }
 
-    // Prompted in frames rather than seconds to match every other position field in this
-    // window (Sample Start / Loop Start / Loop End are all frames), and seeded with a
-    // quarter-second at the sample's own rate so the common case is one Enter press.
+    // Frames is what actually gets applied (InsertSilenceEffect, matching every other
+    // position field in this window); the dialog's Seconds box is a linked, live-updating
+    // convenience that computes frames rather than a value this method ever sees
+    // directly - see InsertSilenceDialog. Seeded with a quarter-second at the sample's
+    // own rate so the common case is one Enter press.
     void OnInsertSilence(object sender, RoutedEventArgs e)
     {
         if (!_vm.HasSampleLoaded) { StatusBar.Text = "No sample loaded."; return; }
         int suggested = Math.Max(1, _vm.SampleRate / 4);
-        var dlg = new PromptDialog("Frames of silence to insert:", suggested.ToString()) { Owner = this };
+        var dlg = new InsertSilenceDialog(_vm.SampleRate, suggested) { Owner = this };
         if (dlg.ShowDialog() != true) return;
-        if (!int.TryParse(dlg.Result, out var frames)) { StatusBar.Text = "That isn't a whole number of frames."; return; }
 
-        _vm.ApplyInsertSilence(frames);
+        _vm.ApplyInsertSilence(dlg.Frames);
         RefreshDetailPanels();
         UpdateStatus();
     }
@@ -726,6 +1286,22 @@ public partial class SampleEditorWindow : ThemedWindow
         UpdateStatus();
     }
 
+    // Split mode used to have no way to reach the OTHER channel except hunting for its
+    // zone in the tree by hand (SplitLR's own XAML comment used to document this as the
+    // only way) - picking a channel here instead selects that side's zone the same way
+    // the MS/Sample dropdowns already do (SelectTreeNode via a real TreeViewItem, so
+    // OnTreeSelectionChanged fires normally). A no-op if the requested channel is
+    // already the one showing.
+    void OnSplitChannelComboChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressComboEvents) return;
+        bool wantLeft = SplitChannelCombo.SelectedIndex == 0;
+        if (wantLeft == _vm.IsPrimaryLeftChannel) return;
+        if (_vm.PartnerZoneRef is not { } partner) return;
+        var target = FindNodeForZone(_vm.Roots, partner.Zone);
+        if (target != null) SelectTreeNode(target);
+    }
+
     static SampleTreeNode? FindNodeForZone(IEnumerable<SampleTreeNode> nodes, KmpZone zone)
     {
         foreach (var node in nodes)
@@ -737,23 +1313,38 @@ public partial class SampleEditorWindow : ThemedWindow
         return null;
     }
 
+    // The tree only shows root (loaded-library) nodes now - selecting a zone/
+    // multisample deep in the actual data (MS dropdown, Sample dropdown, keymap click,
+    // Split L/R channel picker, Add Zone's own reselect) has nothing to expand/reveal in
+    // the tree any more; it just drives the ViewModel + detail panels directly, and
+    // makes sure whichever library the target belongs to is the one highlighted in the
+    // tree, matching whatever SelectNode just made "active" for collection-scoped menu
+    // actions (Export Collection, Unload, ...). The IsSelected write is wrapped in
+    // _suppressTreeSelectionEvent because it would otherwise re-enter
+    // OnTreeSelectionChanged and call _vm.SelectNode(root) right after this method's own
+    // _vm.SelectNode(target) - clobbering the real (zone/multisample) selection with the
+    // root the instant a genuinely different library needs highlighting.
     void SelectTreeNode(SampleTreeNode target)
     {
         var path = new List<SampleTreeNode>();
-        if (!BuildPath(_vm.Roots, target, path)) return;
-
-        ItemsControl parent = SampleTree;
-        TreeViewItem? container = null;
-        foreach (var node in path)
+        if (BuildPath(_vm.Roots, target, path) && path.Count > 0
+            && SampleTree.ItemContainerGenerator.ContainerFromItem(path[0]) is TreeViewItem container)
         {
-            parent.UpdateLayout();
-            container = parent.ItemContainerGenerator.ContainerFromItem(node) as TreeViewItem;
-            if (container == null) return;
-            if (!ReferenceEquals(node, target)) container.IsExpanded = true;
-            parent = container;
+            _suppressTreeSelectionEvent = true;
+            container.IsSelected = true;
+            _suppressTreeSelectionEvent = false;
         }
-        container?.BringIntoView();
-        if (container != null) container.IsSelected = true;
+
+        _vm.SelectNode(target);
+        RefreshDetailPanels();
+        UpdateStatus();
+
+        // Selecting a multisample directly drops straight into its first zone, so the
+        // Index/Sample/Orig.Key/Top Key panel is available right away rather than
+        // needing an extra step - matches the Kronos's own behavior (picking a
+        // multisample shows zone 1).
+        if (target.MultisampleRef != null && target.Children.Count > 0)
+            SelectTreeNode(target.Children[0]);
     }
 
     static bool BuildPath(IEnumerable<SampleTreeNode> nodes, SampleTreeNode target, List<SampleTreeNode> path)
@@ -1021,6 +1612,7 @@ public partial class SampleEditorWindow : ThemedWindow
     {
         if (MakeRemoteSampleSource() is not { } source) return;
         await _vm.PullCollectionFromKronosAsync(source);
+        SelectFirstRoot();
         RefreshDetailPanels();
         UpdateStatus();
     }
@@ -1029,6 +1621,7 @@ public partial class SampleEditorWindow : ThemedWindow
     {
         if (MakeRemoteSampleSource() is not { } source) return;
         await _vm.PullMultisampleFromKronosAsync(source);
+        SelectFirstRoot();
         RefreshDetailPanels();
         UpdateStatus();
     }
@@ -1090,20 +1683,22 @@ public partial class SampleEditorWindow : ThemedWindow
     // parent multisample node with nothing usable selected, and (b) makes the new
     // zone's own boundary immediately draggable in the keymap (Zones only repaints for
     // whichever multisample is currently in context - see CurrentMultisampleZones).
-    // AddPlaceholderZone always appends the new zone LAST, and the tree rebuild it
-    // triggers preserves each multisample's zone order, so the newly-added zone is
-    // reliably the target multisample node's last child after the rebuild - reference
-    // identity can't be used here since the rebuild re-reads the .KMP from disk into
-    // brand-new KmpZone objects.
+    // The tree rebuild this triggers preserves each multisample's zone order, so
+    // LastAddedZoneIndex (set by AddPlaceholderZone right before the rebuild) still
+    // names the right position afterward - reference identity can't be used here since
+    // the rebuild re-reads the .KMP from disk into brand-new KmpZone objects, and with
+    // the Create Zone "Position: Left" preference the new zone isn't necessarily last
+    // any more (see AddPlaceholderZone's own comment).
     void OnAddPlaceholderZone(object sender, RoutedEventArgs e)
     {
         var kmpPath = _vm.AddPlaceholderZone();
+        var zoneIndex = _vm.LastAddedZoneIndex;
         RefreshDetailPanels();
         UpdateStatus();
         if (kmpPath == null) return;
 
         var msNode = FindMultisampleNode(_vm.Roots, kmpPath);
-        if (msNode != null && msNode.Children.Count > 0) SelectTreeNode(msNode.Children[^1]);
+        if (msNode != null && zoneIndex >= 0 && zoneIndex < msNode.Children.Count) SelectTreeNode(msNode.Children[zoneIndex]);
     }
 
     static SampleTreeNode? FindMultisampleNode(IEnumerable<SampleTreeNode> nodes, string kmpPath)
@@ -1117,17 +1712,62 @@ public partial class SampleEditorWindow : ThemedWindow
         return null;
     }
 
+    // Redesigned 2026-08-22 per explicit feedback: this now ALWAYS populates the
+    // repository (Un-referenced Samples) too, not just the selected zone - folding in
+    // what the separate "Import to Repository..."/"Assign from Repository..." buttons
+    // used to do (removed as redundant - the whole point was "importing a sample
+    // should already make it available to be used as an assignable sample"). Multi-
+    // select: every chosen file joins the repository, the first is assigned to the
+    // selected zone (the rest are pickable afterward via the Sample combo).
     void OnImportSampleIntoZone(object sender, RoutedEventArgs e)
     {
         if (_vm.SelectedZoneObject is not { } zone) { UpdateStatus(); return; }
         var fileDlg = new OpenFileDialog
         {
-            Title = "Import Sample into Zone",
+            Title = "Import Sample(s)",
             Filter = "Audio Files|*.wav;*.mp3;*.mp4;*.m4a;*.wma|WAV Files|*.wav|All Files|*.*",
+            Multiselect = true,
         };
         if (fileDlg.ShowDialog(this) != true) return;
 
-        _vm.ImportSampleIntoZone(zone, fileDlg.FileName);
+        var kmpPath = _vm.ImportSampleIntoZone(zone, fileDlg.FileNames);
+        var zoneIndex = _vm.LastImportedZoneIndex;
+        _repositorySampleCache.Clear(); // this zone's content changed and the repository just gained new entries
+        RefreshDetailPanels();
+        UpdateStatus();
+        if (kmpPath == null) return;
+
+        // Re-select the zone just imported into - same reasoning/pattern as
+        // OnAddPlaceholderZone (the rebuild this triggers replaces every KmpZone
+        // instance, so only a position, not the original `zone` reference, survives
+        // it). Without this the editor appeared to reset/close after every import.
+        var msNode = FindMultisampleNode(_vm.Roots, kmpPath);
+        if (msNode != null && zoneIndex >= 0 && zoneIndex < msNode.Children.Count) SelectTreeNode(msNode.Children[zoneIndex]);
+    }
+
+    // Edit > Rename Multisample/Rename Sample - a plain rename of the Name field stored
+    // inside the .KMP/.KSF (Suffix left alone; see SampleEditorViewModel.
+    // RenameSelectedMultisample/RenameSelectedSample's own comments for why), meant to
+    // give content a real name before importing it into the Kronos. A live edit like
+    // every other field in this window - marks the file dirty, doesn't save immediately.
+    void OnRenameMultisample(object sender, RoutedEventArgs e)
+    {
+        var current = _vm.CurrentMultisampleName;
+        if (current == null) return;
+        var dlg = new PromptDialog("New multisample name:", current) { Owner = this };
+        if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.Result)) return;
+        _vm.RenameSelectedMultisample(dlg.Result);
+        RefreshDetailPanels();
+        UpdateStatus();
+    }
+
+    void OnRenameSample(object sender, RoutedEventArgs e)
+    {
+        if (!_vm.HasSampleLoaded) return;
+        var dlg = new PromptDialog("New sample name:", _vm.SampleName) { Owner = this };
+        if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.Result)) return;
+        _vm.RenameSelectedSample(dlg.Result);
+        _repositorySampleCache.Clear(); // the Sample dropdown's cached name for this .KSF is now stale
         RefreshDetailPanels();
         UpdateStatus();
     }

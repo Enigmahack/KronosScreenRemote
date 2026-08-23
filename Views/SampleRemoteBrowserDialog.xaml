@@ -28,7 +28,14 @@
             </ListBox.ItemTemplate>
         </ListBox>
 
-        <TextBlock Grid.Row="2" x:Name="TXT_Status" Margin="0 6 0 0" Foreground="{StaticResource AccentBrush}" TextTrimming="CharacterEllipsis"/>
+        <!-- Wraps rather than truncates - a connection/download failure message
+             (ConnectFailed/DownloadFailed, which interpolate the raw exception message)
+             routinely runs longer than this window's width, and CharacterEllipsis was
+             silently cutting off exactly the specific detail (a host/path/errno) that
+             makes the error actionable. Row 2 is Auto-height in a Grid whose ListBox row
+             is the only "*" (flexible) row, so a taller wrapped message just shrinks the
+             list a little rather than clipping or resizing the window. -->
+        <TextBlock Grid.Row="2" x:Name="TXT_Status" Margin="0 6 0 0" Foreground="{StaticResource AccentBrush}" TextWrapping="Wrap"/>
 
         <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0 8 0 0">
             <Button x:Name="BTN_Cancel" Content="Cancel" IsCancel="True" Click="OnCancel" Margin="0 0 8 0" Style="{StaticResource DialogButtonStyle}"/>

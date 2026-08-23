@@ -133,22 +133,14 @@ static class SampleEditorVisualCheck
             win.OpenCollectionPath(kscPath);
             await Task.Delay(200);
             win.SampleTree.UpdateLayout();
+            Screenshot(win, "02_collection_loaded", outDir);
 
-            void ExpandAll(ItemsControl parent)
-            {
-                parent.UpdateLayout();
-                foreach (var item in parent.Items)
-                {
-                    if (parent.ItemContainerGenerator.ContainerFromItem(item) is not TreeViewItem child) continue;
-                    child.IsExpanded = true;
-                    child.UpdateLayout();
-                    ExpandAll(child);
-                }
-            }
-            ExpandAll(win.SampleTree);
-            await Task.Delay(200);
-            Screenshot(win, "02_collection_loaded_expanded", outDir);
-
+            // The tree only shows root (loaded-library) nodes now - multisample/zone
+            // navigation happens through the MS/Sample dropdowns in the right pane
+            // instead (SampleEditorWindow.SelectTreeNode no longer expands/drills into
+            // TreeViewItem containers below the root - see its own comment), so this
+            // exercises those same controls a real user would, rather than reaching
+            // into the tree's now-nonexistent deeper containers directly.
             var roots = (System.Collections.ObjectModel.ObservableCollection<SampleTreeNode>)win.SampleTree.ItemsSource;
             if (roots.Count > 0)
             {
@@ -163,11 +155,10 @@ static class SampleEditorVisualCheck
                 if (collectionNode.Children.Count > 0)
                 {
                     var msNode = collectionNode.Children[0];
-                    var msContainer = FindContainer(win.SampleTree, collectionNode) is { } ci
-                        ? ci.ItemContainerGenerator.ContainerFromItem(msNode) as TreeViewItem : null;
-                    if (msContainer != null)
+                    var msIndex = win.MultisampleCombo.Items.IndexOf(msNode);
+                    if (msIndex >= 0)
                     {
-                        msContainer.IsSelected = true;
+                        win.MultisampleCombo.SelectedIndex = msIndex;
                         await Task.Delay(150);
                         Screenshot(win, "04_multisample_node_selected", outDir);
 
@@ -178,9 +169,11 @@ static class SampleEditorVisualCheck
                             else realZone ??= z;
                         }
 
-                        if (realZone != null && msContainer.ItemContainerGenerator.ContainerFromItem(realZone) is TreeViewItem realItem)
+                        int ZoneComboIndex(SampleTreeNode zoneNode) => msNode.Children.IndexOf(zoneNode);
+
+                        if (realZone != null)
                         {
-                            realItem.IsSelected = true;
+                            win.ZoneSampleCombo.SelectedIndex = ZoneComboIndex(realZone);
                             await Task.Delay(150);
                             Screenshot(win, "05_real_zone_selected", outDir);
 
@@ -196,63 +189,22 @@ static class SampleEditorVisualCheck
                             win.DetailScrollViewer.ScrollToTop();
                             win.DetailScrollViewer.UpdateLayout();
 
-                            // Tab framework (Keymap/Samples/Looping) - confirms each tab
-                            // actually renders its relocated content, not just that the
-                            // TabControl itself constructs.
-                            //
-                            // EVERY tab shot scrolls to the end first. The waveform and
-                            // transport were hoisted above the TabControl, so the tabs now
-                            // sit below the fold at this window size - screenshotting them
-                            // from the top of the scroll produced three IDENTICAL images
-                            // of the waveform with no tab content in frame at all, which
-                            // silently attested to nothing. (A same-size pair of output
-                            // PNGs was the tell.)
-                            if (win.EditorTabs.Items.Count >= 3)
-                            {
-                                async Task ShotTab(int index, string name)
-                                {
-                                    ((TabItem)win.EditorTabs.Items[index]).IsSelected = true;
-                                    await Task.Delay(150);
-                                    win.DetailScrollViewer.ScrollToEnd();
-                                    win.DetailScrollViewer.UpdateLayout();
-                                    await Task.Delay(150);
-                                    Screenshot(win, name, outDir);
-                                }
-
-                                await ShotTab(0, "05c_keymap_tab");
-                                await ShotTab(1, "05e_samples_tab_scrolled");
-
-                                // The one deliberately-unscrolled shot: the hoisted
-                                // waveform/transport block at the top of the pane.
-                                win.DetailScrollViewer.ScrollToTop();
-                                win.DetailScrollViewer.UpdateLayout();
-                                await Task.Delay(150);
-                                Screenshot(win, "05f_samples_tab_top", outDir);
-
-                                await ShotTab(2, "05d_looping_tab");
-
-                                ((TabItem)win.EditorTabs.Items[0]).IsSelected = true; // back to Keymap
-                                await Task.Delay(150);
-                            }
-
                             // Add Zone (items 4/5) - a real button click through the
                             // production Click handler, not a direct ViewModel call, so
-                            // this actually exercises the window's own tree-reselection
-                            // glue: the newly added zone should end up selected (visible
-                            // in the tree AND the keymap), not the parent multisample
-                            // node the click used to visually "snap" back to.
+                            // this actually exercises the window's own reselection glue:
+                            // the newly added zone should end up selected (visible in
+                            // the Sample dropdown AND the keymap).
                             win.BtnAddZone.RaiseEvent(new RoutedEventArgs(System.Windows.Controls.Primitives.ButtonBase.ClickEvent));
                             await Task.Delay(250);
-                            Console.WriteLine("[visual-check] after Add Zone, selected tree item: "
-                                + ((win.SampleTree.SelectedItem as SampleTreeNode)?.Label ?? "(none)"));
-                            ((TabItem)win.EditorTabs.Items[0]).IsSelected = true; // Keymap - show the new zone's bar/highlight
+                            Console.WriteLine("[visual-check] after Add Zone, selected sample: "
+                                + (win.ZoneSampleCombo.SelectedItem?.ToString() ?? "(none)"));
                             await Task.Delay(150);
                             Screenshot(win, "05g_after_add_zone", outDir);
                         }
 
-                        if (skippedZone != null && msContainer.ItemContainerGenerator.ContainerFromItem(skippedZone) is TreeViewItem skipItem)
+                        if (skippedZone != null)
                         {
-                            skipItem.IsSelected = true;
+                            win.ZoneSampleCombo.SelectedIndex = ZoneComboIndex(skippedZone);
                             await Task.Delay(150);
                             Screenshot(win, "06_skipped_zone_selected", outDir);
                         }

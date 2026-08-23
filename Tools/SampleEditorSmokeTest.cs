@@ -139,7 +139,7 @@ static class SampleEditorSmokeTest
                     vm.SelectNode(placeholderNode);
                     if (!vm.ZoneIsSkipped || vm.HasSampleLoaded) { Fail("placeholder zone should be skipped with no sample loaded"); return; }
 
-                    vm.ImportSampleIntoZone(placeholder, exportWavPath);
+                    vm.ImportSampleIntoZone(placeholder, [exportWavPath]);
                     if (!vm.StatusText.StartsWith("Imported")) { Fail($"import into placeholder didn't report success: {vm.StatusText}"); return; }
                     Ok($"sample imported into placeholder zone: {vm.StatusText}");
 

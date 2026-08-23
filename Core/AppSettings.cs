@@ -115,6 +115,13 @@ public class AppSettings
     public List<string> SampleRecentFiles { get; set; } = new();
     public const int SampleRecentFilesMax = 8;
 
+    // Settings > Sample Editor > "Create Zone Preferences" - see
+    // Core/Sample/SampleZoneCreatePreferences.cs and AddPlaceholderZone's own comment
+    // for what each one actually does to a newly created zone's key range.
+    public SampleZoneCreatePosition SampleZoneCreatePosition { get; set; } = SampleZoneCreatePosition.Right;
+    public int SampleZoneCreateRange { get; set; } = 12; // 1..127, matches the old hardcoded cap
+    public SampleZoneOriginalKeyPosition SampleZoneOriginalKeyPosition { get; set; } = SampleZoneOriginalKeyPosition.Bottom;
+
     public static readonly (string Action, string Label, Key DefaultKey)[] Rebindable =
     [
         ("Quit",          "Quit",                   Key.Q),

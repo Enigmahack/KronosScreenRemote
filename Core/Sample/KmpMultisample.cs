@@ -134,6 +134,36 @@ sealed class KmpMultisample
     }
 
     // MS<multisample:03d><zone:03d>.KSF - the real naming convention, used when
-    // adding a brand-new zone.
+    // adding a brand-new zone. ONLY valid for that case (appending) - Zones.Count is
+    // "the new zone's own future index" exactly because the new zone hasn't been
+    // inserted yet. Do NOT reuse this for "replace an EXISTING zone's sample": Count
+    // doesn't change across that operation, so calling this for two different existing
+    // zones in the same session returns the SAME string both times, and the second
+    // Save silently overwrites the first zone's own file - see NextFreeZoneFileName
+    // below for that case instead (fixed 2026-08-22, this was a real bug in
+    // KsfSample.ImportSampleIntoZone).
     public string NextKsfFilename() => $"MS{Mno1:D3}{Zones.Count:D3}.KSF";
+
+    // Collision-free filename for "give an EXISTING zone new/different audio" - scans
+    // every OTHER zone's own current Filename for the numeric suffix already in use
+    // (rather than trusting Zones.Count, which says nothing about what's actually
+    // referenced once zones have been replaced/reordered/soft-deleted) and returns the
+    // smallest index not currently claimed by any zone in this multisample.
+    public string NextFreeZoneFileName()
+    {
+        var prefix = $"MS{Mno1:D3}";
+        var used = new HashSet<int>();
+        foreach (var z in Zones)
+        {
+            if (z.Filename.Length == prefix.Length + 7 // "MS###" + "###" + ".KSF"
+                && z.Filename.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                && z.Filename.EndsWith(".KSF", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(z.Filename.AsSpan(prefix.Length, 3), out int idx))
+            {
+                used.Add(idx);
+            }
+        }
+        for (int i = 0; ; i++)
+            if (!used.Contains(i)) return $"{prefix}{i:D3}.KSF";
+    }
 }

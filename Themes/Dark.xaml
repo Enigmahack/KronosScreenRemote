@@ -42,9 +42,10 @@
     <SolidColorBrush x:Key="WaveformTraceBrush"         Color="#FFD8D8D8"/>
     <SolidColorBrush x:Key="WaveformSelectionBrush"     Color="#55E0A030"/>
     <SolidColorBrush x:Key="WaveformLoopRegionBrush"    Color="#332E7FD6"/>
-    <!-- The loop region once clicked/selected (not dragged - see SampleWaveformControl.
-         LoopSelected) - green so it's visually distinct from both the faint blue
-         unselected loop tint and the amber crop-selection fill. -->
+    <!-- The loop region while Loop Lock is on (see SampleWaveformControl.
+         LoopLockEnabled) - draggable as a whole right now, so green to distinguish it
+         from both the faint blue informational-only loop tint and the amber
+         crop-selection fill. -->
     <SolidColorBrush x:Key="WaveformLoopSelectedBrush"  Color="#5533CC55"/>
     <SolidColorBrush x:Key="WaveformGridLineBrush"      Color="#1AFFFFFF"/>
     <!-- Sample Start / Loop Start / Loop End marker LINES - matches the Kronos's own

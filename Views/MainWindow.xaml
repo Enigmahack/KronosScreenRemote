@@ -34,8 +34,6 @@
                     <MenuItem x:Name="MNU_NoRecentHosts" Header="(none)" IsEnabled="False"/>
                 </MenuItem>
                 <MenuItem x:Name="MNU_CopyIP" Header="Copy _IP Address"/>
-                <Separator/>
-                <MenuItem x:Name="MNU_FileManager" Header="File _Manager..." InputGestureText="M"/>
             </MenuItem>
             <MenuItem x:Name="MENU_View" Header="_View">
                 <MenuItem x:Name="MNU_Zoom"          Header="_Zoom Window"      IsCheckable="True" InputGestureText="Z"/>
@@ -84,11 +82,12 @@
                 </MenuItem>
                 <Separator/>
                 <!-- MIDI / SysEx -->
-                <MenuItem x:Name="MNU_SysExTool"    Header="Open _MIDI Monitor" InputGestureText="M"/>
+                <MenuItem x:Name="MNU_SysExTool"    Header="_MIDI Monitor..." InputGestureText="M"/>
                 <MenuItem x:Name="MNU_Librarian"    Header="_Librarian..." InputGestureText="L"
                           ToolTip="Local editable library copy - Sync/Commit with the Kronos, load a .pcg file to compare and drag objects in, edit names/categories/Set List slots."/>
-                <MenuItem x:Name="MNU_SampleEditor" Header="_Sample Editor..."
+                <MenuItem x:Name="MNU_SampleEditor" Header="Sample _Editor..." InputGestureText="E"
                           ToolTip="View/edit .KSC/.KMP/.KSF sample content on disk - key range, loop points, sample rate."/>
+                <MenuItem x:Name="MNU_FileManager" Header="_File Manager..." InputGestureText="F"/>
                 <Separator/>
                 <!-- Diagnostics -->
                 <MenuItem x:Name="MNU_KeyboardInfo" Header="_Keyboard Info..."/>

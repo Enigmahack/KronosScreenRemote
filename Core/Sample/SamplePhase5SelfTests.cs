@@ -39,7 +39,10 @@ static class SamplePhase5SelfTests
         }
 
         // ── DeleteSelectedZone: marks SKIPPEDSAMPLE, leaves the .KSF file on disk,
-        //    clears the sample-detail panel, and refuses a double-delete ──
+        //    clears the sample-detail panel, and REMOVES the zone entirely on a second
+        //    delete (an already-skipped zone used to disable the button outright, so an
+        //    empty placeholder could never be cleared back out - see
+        //    SamplePhase13SelfTests block 13 for the fuller stereo-mirroring coverage) ──
         {
             var vm = new SampleEditorViewModel();
             vm.OpenCollection(kscPath);
@@ -59,8 +62,14 @@ static class SamplePhase5SelfTests
             Check("delete-zone-persisted-as-skipped",
                 reopened != null && reopened.Zones.Any(z => z.IsSkipped));
 
+            int zoneCountBeforeSecondDelete = reopened!.Zones.Count;
             vm.DeleteSelectedZone();
-            Check("delete-zone-refuses-double-delete", vm.StatusText.Contains("already marked as skipped"));
+            Check("delete-zone-second-delete-removes-not-refuses",
+                vm.StatusText.Contains("Removed the empty zone"));
+            vm.SaveSelectedMultisample();
+            var reopenedAfterRemove = KmpMultisample.Open(File.ReadAllBytes(kmpPath));
+            Check("delete-zone-second-delete-persisted-removal",
+                reopenedAfterRemove != null && reopenedAfterRemove.Zones.Count == zoneCountBeforeSecondDelete - 1);
         }
 
         // ── Recent Files: newest first, capped, dedup-on-reopen, clearable ──

@@ -121,11 +121,11 @@ public sealed class SampleWaveformControl : FrameworkElement
     public event Action? ViewChanged;
 
     // Fires once, after the loop region is actually MOVED as a whole (a real drag
-    // starting INSIDE the region, or an arrow-key nudge while LoopSelected) -
-    // (newLoopStart, newLoopEnd), both shifted by the same delta. A plain click with no
-    // movement does NOT fire this; it only sets LoopSelected, see
-    // OnMouseLeftButtonDown/Up's own comments. Dragging one EDGE independently (not the
-    // body) fires MarkerDragged instead - see below.
+    // starting INSIDE the region while Loop Lock is on, or an arrow-key nudge while
+    // Loop Lock is on) - (newLoopStart, newLoopEnd), both shifted by the same delta. A
+    // plain click with no movement does NOT fire this - see OnMouseLeftButtonDown/Up's
+    // own comments. Dragging one EDGE independently (not the body) fires MarkerDragged
+    // instead - see below.
     public event Action<int, int>? LoopRegionChanged;
 
     // Fires once, on mouse-up, after dragging the Sample Start line or either loop edge
@@ -163,25 +163,22 @@ public sealed class SampleWaveformControl : FrameworkElement
         set => SetValue(LoopEnabledProperty, value);
     }
 
-    public static readonly DependencyProperty LoopSelectedProperty =
-        DependencyProperty.Register(nameof(LoopSelected), typeof(bool), typeof(SampleWaveformControl),
-            new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.AffectsRender,
-                (d, e) => ((SampleWaveformControl)d).LoopSelectedChanged?.Invoke((bool)e.NewValue)));
+    public static readonly DependencyProperty LoopLockEnabledProperty =
+        DependencyProperty.Register(nameof(LoopLockEnabled), typeof(bool), typeof(SampleWaveformControl),
+            new FrameworkPropertyMetadata(false));
 
-    // True once the loop region has been clicked (without being dragged) - renders it
-    // in green instead of the normal faint blue, and enables Left/Right arrow nudging.
-    // Cleared by clicking anywhere else on the waveform, loading new samples, resetting
-    // the zoom, or starting a marker-edge drag. A real settable DP (not private-set) so
-    // the window can mirror it onto the sibling pane in Combine mode - see
-    // LoopSelectedChanged; without that mirroring, a click-select on one pane never
-    // showed green on the other, since this was previously local, unsynced state.
-    public bool LoopSelected
+    // Mirrors the sample's own "Loop Lock" checkbox. Whole-region drag (click inside the
+    // loop body, not on an edge, to move BOTH Loop Start and Loop End together) is gated
+    // on this being true - with Loop Lock off, a click/drag starting inside the loop
+    // falls straight through to a normal crop-selection drag instead, same as clicking
+    // anywhere else on the waveform. Not needed for dragging a single edge independently
+    // (SampleMarkerKind.LoopStart/LoopEnd) - those stay available either way.
+    public bool LoopLockEnabled
     {
-        get => (bool)GetValue(LoopSelectedProperty);
-        set => SetValue(LoopSelectedProperty, value);
+        get => (bool)GetValue(LoopLockEnabledProperty);
+        set => SetValue(LoopLockEnabledProperty, value);
     }
 
-    public event Action<bool>? LoopSelectedChanged;
 
     public static readonly DependencyProperty ScrubFrameProperty =
         DependencyProperty.Register(nameof(ScrubFrame), typeof(int), typeof(SampleWaveformControl),
@@ -250,7 +247,6 @@ public sealed class SampleWaveformControl : FrameworkElement
         {
             _viewStart = 0;
             _viewEnd = newCount;
-            LoopSelected = false;
             ScrubFrame = -1;
         }
         else
@@ -325,13 +321,8 @@ public sealed class SampleWaveformControl : FrameworkElement
         // Marker edges take priority over the loop-region body / crop-selection -
         // checked in the same visual order they're drawn (Sample Start on top, then the
         // loop edges), so overlapping hits resolve the same way the eye reads them.
-        // Clears LoopSelected the same way starting a new crop-selection drag already
-        // does - otherwise dragging an edge while the region was previously
-        // click-selected (green) left it stuck selected, so arrow-key nudging would
-        // still move the WHOLE region even though the user just repositioned one edge.
         if (NearPixel(x, SampleStartFrame))
         {
-            LoopSelected = false;
             _draggingMarker = SampleMarkerKind.SampleStart;
             CaptureMouse();
             InvalidateVisual();
@@ -339,7 +330,6 @@ public sealed class SampleWaveformControl : FrameworkElement
         }
         if (HasLoop && NearPixel(x, LoopStartFrame))
         {
-            LoopSelected = false;
             _draggingMarker = SampleMarkerKind.LoopStart;
             CaptureMouse();
             InvalidateVisual();
@@ -347,18 +337,23 @@ public sealed class SampleWaveformControl : FrameworkElement
         }
         if (HasLoop && NearPixel(x, LoopEndFrame))
         {
-            LoopSelected = false;
             _draggingMarker = SampleMarkerKind.LoopEnd;
             CaptureMouse();
             InvalidateVisual();
             return;
         }
 
-        // A click starting INSIDE the current loop region (but not on either edge)
-        // grabs the WHOLE region for dragging instead of starting a new crop selection
-        // there - see OnMouseMove/Up for how a plain click (no movement) turns into
-        // "select" rather than "move."
-        if (InLoopRegion(clickFrame))
+        // A click starting INSIDE the current loop region (but not on either edge) grabs
+        // the WHOLE region for dragging instead of starting a new crop selection there -
+        // but ONLY when Loop Lock is on. With Loop Lock off, click-drag-to-highlight
+        // needs to work everywhere, loop region included - it no longer needs a separate
+        // "move the loop" gesture competing for the same click. Also excluded when the
+        // loop already spans the entire sample (LoopEndFrame - LoopStartFrame >=
+        // FrameCount): the drag-to-move below clamps newStart to [0, FrameCount - len],
+        // which is always exactly 0 in that case - the region can never actually move,
+        // so a click there could never do anything useful anyway. Either way, falling
+        // through to the normal crop-selection start below.
+        if (LoopLockEnabled && InLoopRegion(clickFrame) && LoopEndFrame - LoopStartFrame < FrameCount)
         {
             _draggingLoop = true;
             _loopDragMoved = false;
@@ -369,7 +364,6 @@ public sealed class SampleWaveformControl : FrameworkElement
             return;
         }
 
-        LoopSelected = false;
         _dragAnchorFrame = clickFrame;
         _dragMoved = false;
         _preClickSelStart = SelectionStartFrame;
@@ -416,12 +410,13 @@ public sealed class SampleWaveformControl : FrameworkElement
         {
             // Hover-only: a resize cursor over any marker line, a grab hand over the
             // loop region body, matching whichever drag interaction is actually
-            // available at that point.
+            // available at that point (see OnMouseLeftButtonDown's own comment for the
+            // same LoopLockEnabled/whole-sample-loop conditions).
             double xx = e.GetPosition(this).X;
             if (NearPixel(xx, SampleStartFrame) || (HasLoop && (NearPixel(xx, LoopStartFrame) || NearPixel(xx, LoopEndFrame))))
                 Cursor = Cursors.SizeWE;
             else
-                Cursor = InLoopRegion(PixelToFrame(xx)) ? Cursors.Hand : null;
+                Cursor = LoopLockEnabled && InLoopRegion(PixelToFrame(xx)) && LoopEndFrame - LoopStartFrame < FrameCount ? Cursors.Hand : null;
             return;
         }
 
@@ -455,12 +450,20 @@ public sealed class SampleWaveformControl : FrameworkElement
         {
             _draggingLoop = false;
             ReleaseMouseCapture();
-            if (_loopDragMoved) LoopRegionChanged?.Invoke(LoopStartFrame, LoopEndFrame);
-            // A plain click (no movement) toggles the selection rather than always
-            // turning it on - without this, once a loop spans most/all of the buffer
-            // (the common default), there's no "outside the loop" left to click to
-            // clear it, and every subsequent click just re-affirms green forever.
-            else LoopSelected = !LoopSelected;
+            if (_loopDragMoved)
+            {
+                LoopRegionChanged?.Invoke(LoopStartFrame, LoopEndFrame);
+            }
+            else
+            {
+                // A plain click (no movement) inside a Loop-Locked region used to toggle
+                // a separate green "selected" highlight - removed as unnecessary now
+                // that plain crop-selection dragging works everywhere, loop region
+                // included (see OnMouseLeftButtonDown). Falls back to the same "play
+                // from here" scrub-click every other plain click on the waveform does.
+                ScrubFrame = _loopDragAnchorFrame;
+                ScrubRequested?.Invoke(_loopDragAnchorFrame);
+            }
             InvalidateVisual();
             return;
         }
@@ -486,9 +489,9 @@ public sealed class SampleWaveformControl : FrameworkElement
         SelectionChanged?.Invoke();
     }
 
-    // Left/Right nudge the loop region by one frame while it's selected - only makes
-    // sense once something's actually been clicked (LoopSelected), same gate the mouse
-    // drag itself uses implicitly (you can't drag a region that isn't there).
+    // Left/Right nudge the loop region by one frame - gated on LoopLockEnabled, same
+    // condition the mouse whole-region drag itself uses (nudging and dragging are the
+    // same underlying action - repositioning the loop - so they share one gate).
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
@@ -499,7 +502,7 @@ public sealed class SampleWaveformControl : FrameworkElement
         // was anywhere else (a button, the tree, ...) when Ctrl+A was pressed, exactly
         // like Ctrl+Z/Ctrl+Y already needed to be window-level rather than per-control.
 
-        if (!LoopSelected || !HasLoop) return;
+        if (!LoopLockEnabled || !HasLoop) return;
         if (e.Key != Key.Left && e.Key != Key.Right) return;
 
         int delta = e.Key == Key.Right ? 1 : -1;
@@ -569,62 +572,31 @@ public sealed class SampleWaveformControl : FrameworkElement
         return Math.Max(1, (int)(niceResidual * magnitude));
     }
 
-    protected override void OnRender(DrawingContext dc)
+    // Cache for the trace's min/max-per-pixel-column geometry - the one genuinely
+    // O(viewLen) piece of OnRender (every other draw call here is O(width) or O(1)).
+    // Added 2026-08-22 (real perf complaint): PlayheadFrame updates 25x/sec during
+    // playback (the VU-meter timer, SampleEditorWindow.xaml.cs) via a DP with
+    // AffectsRender, so OnRender was re-running this full bucketing pass over the
+    // ENTIRE visible sample on every tick even though only the playhead line itself
+    // moved - for a real multi-minute 44.1kHz sample (millions of frames) at 25fps,
+    // that's tens of millions of redundant array reads per second. Rebuilt only when
+    // the inputs that actually change the trace's SHAPE change (sample content
+    // reference, view window, or control size) - a pure marker/playhead move reuses
+    // the cached geometry untouched.
+    short[]? _cachedTraceSamples;
+    int _cachedTraceViewStart = -1, _cachedTraceViewEnd = -1;
+    double _cachedTraceWidth = -1, _cachedTraceHeight = -1;
+    StreamGeometry? _cachedTraceGeometry;
+
+    StreamGeometry GetOrBuildTraceGeometry(short[] samples, int viewStart, int viewEnd, int viewLen, double w, double h)
     {
-        var w = ActualWidth;
-        var h = ActualHeight;
-        if (w <= 0 || h <= 0) return;
-
-        dc.DrawRectangle((Brush)FindResource("PanelBackgroundBrush"), null, new Rect(0, 0, w, h));
-
-        var samples = Samples;
-        if (samples == null || samples.Length == 0)
+        if (_cachedTraceGeometry != null && ReferenceEquals(_cachedTraceSamples, samples)
+            && _cachedTraceViewStart == viewStart && _cachedTraceViewEnd == viewEnd
+            && _cachedTraceWidth == w && _cachedTraceHeight == h)
         {
-            var text = new FormattedText("No audio data in this file",
-                System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
-                new Typeface("Segoe UI"), 12, (Brush)FindResource("MutedTextBrush"),
-                VisualTreeHelper.GetDpi(this).PixelsPerDip);
-            dc.DrawText(text, new Point((w - text.Width) / 2, (h - text.Height) / 2));
-            return;
+            return _cachedTraceGeometry;
         }
 
-        int viewStart = Math.Clamp(_viewStart, 0, samples.Length);
-        int viewEnd = Math.Clamp(ViewEndFrame, viewStart + 1, samples.Length);
-        int viewLen = viewEnd - viewStart;
-
-        // Vertical zoom grid, under everything else.
-        var gridPen = new Pen((Brush)FindResource("WaveformGridLineBrush"), 1);
-        int interval = NiceInterval((double)viewLen / w, 90);
-        int firstGridFrame = ((viewStart + interval - 1) / interval) * interval;
-        for (int f = firstGridFrame; f < viewEnd; f += interval)
-        {
-            double x = FrameToPixel(f);
-            dc.DrawLine(gridPen, new Point(x, 0), new Point(x, h));
-        }
-
-        // Loop region fill, under the trace and the selection - green once LoopSelected
-        // (a plain click landed on it), faint blue otherwise.
-        if (HasLoop)
-        {
-            double loopX0 = FrameToPixel(Math.Max(LoopStartFrame, viewStart));
-            double loopX1 = FrameToPixel(Math.Min(LoopEndFrame, viewEnd));
-            if (loopX1 > loopX0)
-                dc.DrawRectangle((Brush)FindResource(LoopSelected ? "WaveformLoopSelectedBrush" : "WaveformLoopRegionBrush"), null,
-                    new Rect(loopX0, 0, loopX1 - loopX0, h));
-        }
-
-        // Selection highlight, under the trace but over the loop region (the active
-        // editing selection should read as "on top of" the informational loop tint).
-        if (SelectionEndFrame > SelectionStartFrame)
-        {
-            double selX0 = FrameToPixel(Math.Max(SelectionStartFrame, viewStart));
-            double selX1 = FrameToPixel(Math.Min(SelectionEndFrame, viewEnd));
-            if (selX1 > selX0)
-                dc.DrawRectangle((Brush)FindResource("WaveformSelectionBrush"), null,
-                    new Rect(selX0, 0, selX1 - selX0, h));
-        }
-
-        var pen = new Pen((Brush)FindResource("WaveformTraceBrush"), 1);
         double midY = h / 2;
         double yScale = h / 2 / 32768.0;
         // One min/max bucket PER PIXEL COLUMN, mapped with the exact same
@@ -660,49 +632,110 @@ public sealed class SampleWaveformControl : FrameworkElement
             }
         }
         geometry.Freeze();
-        dc.DrawGeometry(null, pen, geometry);
+
+        _cachedTraceSamples = samples;
+        _cachedTraceViewStart = viewStart;
+        _cachedTraceViewEnd = viewEnd;
+        _cachedTraceWidth = w;
+        _cachedTraceHeight = h;
+        _cachedTraceGeometry = geometry;
+        return geometry;
+    }
+
+    protected override void OnRender(DrawingContext dc)
+    {
+        var w = ActualWidth;
+        var h = ActualHeight;
+        if (w <= 0 || h <= 0) return;
+
+        dc.DrawRectangle((Brush)FindResource("PanelBackgroundBrush"), null, new Rect(0, 0, w, h));
+
+        var samples = Samples;
+        if (samples == null || samples.Length == 0)
+        {
+            var text = new FormattedText("No audio data in this file",
+                System.Globalization.CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+                new Typeface("Segoe UI"), 12, (Brush)FindResource("MutedTextBrush"),
+                VisualTreeHelper.GetDpi(this).PixelsPerDip);
+            dc.DrawText(text, new Point((w - text.Width) / 2, (h - text.Height) / 2));
+            return;
+        }
+
+        int viewStart = Math.Clamp(_viewStart, 0, samples.Length);
+        int viewEnd = Math.Clamp(ViewEndFrame, viewStart + 1, samples.Length);
+        int viewLen = viewEnd - viewStart;
+
+        // Vertical zoom grid, under everything else.
+        var gridPen = new Pen((Brush)FindResource("WaveformGridLineBrush"), 1);
+        int interval = NiceInterval((double)viewLen / w, 90);
+        int firstGridFrame = ((viewStart + interval - 1) / interval) * interval;
+        for (int f = firstGridFrame; f < viewEnd; f += interval)
+        {
+            double x = FrameToPixel(f);
+            dc.DrawLine(gridPen, new Point(x, 0), new Point(x, h));
+        }
+
+        // Loop region fill, under the trace and the selection - green while Loop Lock is
+        // on (meaning the region is draggable as a whole right now), faint blue
+        // otherwise informational-only.
+        if (HasLoop)
+        {
+            double loopX0 = FrameToPixel(Math.Max(LoopStartFrame, viewStart));
+            double loopX1 = FrameToPixel(Math.Min(LoopEndFrame, viewEnd));
+            if (loopX1 > loopX0)
+                dc.DrawRectangle((Brush)FindResource(LoopLockEnabled ? "WaveformLoopSelectedBrush" : "WaveformLoopRegionBrush"), null,
+                    new Rect(loopX0, 0, loopX1 - loopX0, h));
+        }
+
+        // Selection highlight, under the trace but over the loop region (the active
+        // editing selection should read as "on top of" the informational loop tint).
+        if (SelectionEndFrame > SelectionStartFrame)
+        {
+            double selX0 = FrameToPixel(Math.Max(SelectionStartFrame, viewStart));
+            double selX1 = FrameToPixel(Math.Min(SelectionEndFrame, viewEnd));
+            if (selX1 > selX0)
+                dc.DrawRectangle((Brush)FindResource("WaveformSelectionBrush"), null,
+                    new Rect(selX0, 0, selX1 - selX0, h));
+        }
+
+        var pen = new Pen((Brush)FindResource("WaveformTraceBrush"), 1);
+        dc.DrawGeometry(null, pen, GetOrBuildTraceGeometry(samples, viewStart, viewEnd, viewLen, w, h));
 
         // Loop Start/End edge lines - Kronos's own coloring (green/blue), drawn over
         // the trace so they're always legible against it.
         if (HasLoop)
         {
-            if (LoopStartFrame >= viewStart && LoopStartFrame < viewEnd)
-            {
-                double x = FrameToPixel(LoopStartFrame);
-                dc.DrawLine(new Pen((Brush)FindResource("WaveformLoopStartBrush"), 1.5), new Point(x, 0), new Point(x, h));
-            }
-            if (LoopEndFrame >= viewStart && LoopEndFrame < viewEnd)
-            {
-                double x = FrameToPixel(LoopEndFrame);
-                dc.DrawLine(new Pen((Brush)FindResource("WaveformLoopEndBrush"), 1.5), new Point(x, 0), new Point(x, h));
-            }
+            if (LoopStartFrame >= viewStart && LoopStartFrame <= viewEnd)
+                dc.DrawLine(new Pen((Brush)FindResource("WaveformLoopStartBrush"), 1.5), new Point(MarkerX(LoopStartFrame, w), 0), new Point(MarkerX(LoopStartFrame, w), h));
+            if (LoopEndFrame >= viewStart && LoopEndFrame <= viewEnd)
+                dc.DrawLine(new Pen((Brush)FindResource("WaveformLoopEndBrush"), 1.5), new Point(MarkerX(LoopEndFrame, w), 0), new Point(MarkerX(LoopEndFrame, w), h));
         }
 
         // Sample Start marker - Kronos's own coloring (red), on top of the loop edges
         // so it's never obscured when the two happen to coincide. >= viewStart (not >)
         // so a marker sitting exactly at frame 0/the left edge of the view still renders
         // - it was previously invisible whenever it coincided with the view's own start.
-        if (SampleStartFrame >= viewStart && SampleStartFrame < viewEnd)
-        {
-            double x = FrameToPixel(SampleStartFrame);
-            dc.DrawLine(new Pen((Brush)FindResource("WaveformSampleStartBrush"), 1.5), new Point(x, 0), new Point(x, h));
-        }
+        if (SampleStartFrame >= viewStart && SampleStartFrame <= viewEnd)
+            dc.DrawLine(new Pen((Brush)FindResource("WaveformSampleStartBrush"), 1.5), new Point(MarkerX(SampleStartFrame, w), 0), new Point(MarkerX(SampleStartFrame, w), h));
 
         // Scrub line - grey, under the playhead (drawn just before it) so once playback
         // actually starts and the white line begins moving, the grey "started here"
         // marker stays visible underneath rather than being erased.
-        if (ScrubFrame >= viewStart && ScrubFrame < viewEnd)
-        {
-            double x = FrameToPixel(ScrubFrame);
-            dc.DrawLine(new Pen(Brushes.Gray, 1), new Point(x, 0), new Point(x, h));
-        }
+        if (ScrubFrame >= viewStart && ScrubFrame <= viewEnd)
+            dc.DrawLine(new Pen(Brushes.Gray, 1), new Point(MarkerX(ScrubFrame, w), 0), new Point(MarkerX(ScrubFrame, w), h));
 
         // Playhead, always on top - a thin white line so it reads clearly against any
         // of the above.
-        if (PlayheadFrame >= viewStart && PlayheadFrame < viewEnd)
-        {
-            double x = FrameToPixel(PlayheadFrame);
-            dc.DrawLine(new Pen(Brushes.White, 1), new Point(x, 0), new Point(x, h));
-        }
+        if (PlayheadFrame >= viewStart && PlayheadFrame <= viewEnd)
+            dc.DrawLine(new Pen(Brushes.White, 1), new Point(MarkerX(PlayheadFrame, w), 0), new Point(MarkerX(PlayheadFrame, w), h));
     }
+
+    // FrameToPixel, clamped half a pen-width in from each edge so a marker sitting
+    // exactly at the view's own boundary (e.g. LoopEnd == FrameCount == viewEnd, a
+    // completely normal "loop runs to the end of the sample" state, not an edge case)
+    // draws as a fully visible line instead of being clipped away by ClipToBounds -
+    // bug fix 2026-08-22: every marker check below used to require frame < viewEnd
+    // (strict), which is false exactly when a marker sits AT the view's right edge -
+    // the reported "Loop End line is invisible" was this, not a z-order/covering issue.
+    double MarkerX(int frame, double w) => Math.Clamp(FrameToPixel(frame), 0.75, w - 0.75);
 }

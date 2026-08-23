@@ -54,6 +54,13 @@ sealed class SamplePlayback : IDisposable
     // speakers, not the raw pre-volume signal.
     public volatile float PeakLevel;
 
+    // Per-channel peaks for the stereo VU meter - MeteringSampleProvider's own
+    // MaxSampleValues is already per-channel (index 0 = left, 1 = right for a
+    // 2-channel stream); PeakLevel above just collapsed it with .Max(). Right mirrors
+    // Left for a mono stream so a caller never has to branch on channel count.
+    public volatile float PeakLevelLeft;
+    public volatile float PeakLevelRight;
+
     // Current playhead position, in frames relative to the loaded buffer - drives the
     // waveform's playhead line. Same polling discipline as PeakLevel (read from the UI
     // thread's timer, written from the provider's own Read() on the audio thread) -
@@ -160,7 +167,13 @@ sealed class SamplePlayback : IDisposable
         _volumeProvider = new VolumeSampleProvider(source) { Volume = _pendingVolume };
 
         var meter = new MeteringSampleProvider(_volumeProvider, Math.Max(1, source.WaveFormat.SampleRate / 20));
-        meter.StreamVolume += (_, e) => PeakLevel = e.MaxSampleValues.Length > 0 ? e.MaxSampleValues.Max() : 0f;
+        meter.StreamVolume += (_, e) =>
+        {
+            var vals = e.MaxSampleValues;
+            PeakLevel = vals.Length > 0 ? vals.Max() : 0f;
+            PeakLevelLeft = vals.Length > 0 ? vals[0] : 0f;
+            PeakLevelRight = vals.Length > 1 ? vals[1] : PeakLevelLeft;
+        };
 
         // Latency (ms) is how much audio WASAPI keeps pre-buffered - Stop() doesn't
         // flush it, so whatever's already queued keeps playing out for up to this long
@@ -174,6 +187,8 @@ sealed class SamplePlayback : IDisposable
         _output.PlaybackStopped += (_, _) =>
         {
             PeakLevel = 0f;
+            PeakLevelLeft = 0f;
+            PeakLevelRight = 0f;
             if (generation == _generation) PlaybackStopped?.Invoke();
         };
         _output.Play();
@@ -188,6 +203,8 @@ sealed class SamplePlayback : IDisposable
         _volumeProvider = null;
         _positionGetter = null;
         PeakLevel = 0f;
+        PeakLevelLeft = 0f;
+        PeakLevelRight = 0f;
     }
 
     public void Dispose() => Stop();

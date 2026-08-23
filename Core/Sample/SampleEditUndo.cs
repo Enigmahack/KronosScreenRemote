@@ -14,6 +14,11 @@ readonly struct SampleFieldSnapshot
     public uint LoopStart { get; }
     public uint LoopEnd { get; }
     public byte Flags { get; }
+    // SMD1 offset 5 (KsfSample.LoopTune, added 2026-08-22) - a persisted, independently
+    // mutable field same as Flags; must join this snapshot for the same reason
+    // PreservedLoopDuplicate does (below): otherwise undoing a Loop Tune edit restores
+    // the old Flags/loop points but leaves the just-set tune value in place.
+    public sbyte LoopTune { get; }
     // The offset-24 duplicate slot (KsfSample.PreservedLoopDuplicate) - null on 73/75
     // real files (mirrors LoopStart on save), a distinct stale value on 5 outliers.
     // Must round-trip through undo/redo same as the other four fields, or restoring
@@ -21,7 +26,7 @@ readonly struct SampleFieldSnapshot
     // byte-identical (ApplyTo would otherwise always re-clear it to null).
     public uint? PreservedLoopDuplicate { get; }
 
-    public SampleFieldSnapshot(byte[] pcm, uint sampleStart, uint loopStart, uint loopEnd, byte flags, uint? preservedLoopDuplicate = null)
+    public SampleFieldSnapshot(byte[] pcm, uint sampleStart, uint loopStart, uint loopEnd, byte flags, uint? preservedLoopDuplicate = null, sbyte loopTune = 0)
     {
         Pcm = pcm;
         SampleStart = sampleStart;
@@ -29,6 +34,7 @@ readonly struct SampleFieldSnapshot
         LoopEnd = loopEnd;
         Flags = flags;
         PreservedLoopDuplicate = preservedLoopDuplicate;
+        LoopTune = loopTune;
     }
 
     // Not a defensive .Clone() of Pcm - every PCM-mutating call site in
@@ -37,7 +43,7 @@ readonly struct SampleFieldSnapshot
     // reference captured here stays valid/unchanged for as long as this snapshot lives,
     // the same assumption the pre-existing (PCM-only) version of this type always made.
     public static SampleFieldSnapshot Of(KsfSample s) =>
-        new(s.Pcm, s.SampleStart, s.LoopStart, s.LoopEnd, s.Flags, s.PreservedLoopDuplicate);
+        new(s.Pcm, s.SampleStart, s.LoopStart, s.LoopEnd, s.Flags, s.PreservedLoopDuplicate, s.LoopTune);
 
     public void ApplyTo(KsfSample s)
     {
@@ -47,6 +53,7 @@ readonly struct SampleFieldSnapshot
         s.LoopEnd = LoopEnd;
         s.Flags = Flags;
         s.RestorePreservedLoopDuplicate(PreservedLoopDuplicate);
+        s.RestoreLoopTune(LoopTune);
     }
 }
 

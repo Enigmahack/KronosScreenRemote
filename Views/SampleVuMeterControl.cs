@@ -22,6 +22,20 @@ sealed class SampleVuMeterControl : FrameworkElement
         set => SetValue(LevelProperty, value);
     }
 
+    public static readonly DependencyProperty ShowLabelsProperty =
+        DependencyProperty.Register(nameof(ShowLabels), typeof(bool), typeof(SampleVuMeterControl),
+            new FrameworkPropertyMetadata(true, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    // Two side-by-side meters (stereo VU) only need ONE set of dB tick labels between
+    // them - false gives this instance its whole width back for just the bar, so a
+    // narrow L/R pair still fits the same horizontal space the old single mono meter
+    // used.
+    public bool ShowLabels
+    {
+        get => (bool)GetValue(ShowLabelsProperty);
+        set => SetValue(ShowLabelsProperty, value);
+    }
+
     static readonly double[] TickDb = [0, -6, -12, -20, -40, -60, -90];
     const double MinDb = -90.0;
 
@@ -33,7 +47,7 @@ sealed class SampleVuMeterControl : FrameworkElement
         var h = ActualHeight;
         if (w <= 0 || h <= 0) return;
 
-        double trackWidth = Math.Max(4, w - 20);
+        double trackWidth = ShowLabels ? Math.Max(4, w - 20) : Math.Max(4, w);
         var trackRect = new Rect(0, 0, trackWidth, h);
         dc.DrawRectangle((Brush)FindResource("ConsoleBackgroundBrush"), null, trackRect);
 
@@ -43,6 +57,8 @@ sealed class SampleVuMeterControl : FrameworkElement
         var fillBrush = (Brush)FindResource(db > -6 ? "DangerTextBrush" : db > -20 ? "AccentBrush" : "SuccessBrush");
         if (fillHeight > 0)
             dc.DrawRectangle(fillBrush, null, new Rect(0, h - fillHeight, trackWidth, fillHeight));
+
+        if (!ShowLabels) return;
 
         var textBrush = (Brush)FindResource("MutedTextBrush");
         var tickPen = new Pen(textBrush, 1);

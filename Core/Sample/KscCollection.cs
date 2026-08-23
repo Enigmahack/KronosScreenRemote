@@ -84,12 +84,20 @@ sealed class KscCollection
         return new Guid(b).ToString();
     }
 
+    // <ksc-dir>/<ksc-basename>/ - the collection's own content folder, holding every
+    // .KMP/.KSF this .KSC's plain filename entries reference (confirmed by
+    // CKorgResourceFile::GetPathInSubdirectoryFromFileName, kronosology doc §1.5).
+    // Extracted 2026-08-22 (Opus redundancy review) from nine independent copies of this
+    // exact two-call expression spread across this file, SampleEditorViewModel, and
+    // SampleImportBuilder - one place to get the convention right.
+    public static string ContentDirFor(string kscPath) =>
+        System.IO.Path.Combine(System.IO.Path.GetDirectoryName(kscPath) ?? "", System.IO.Path.GetFileNameWithoutExtension(kscPath));
+
     // Build a fresh manifest by scanning <ksc-dir>/<ksc-basename>/ for .KMP/.KSF files
     // - the "generate .KSC for this folder" operation.
     public static KscCollection ForFolder(string kscPath)
     {
-        var baseName = System.IO.Path.GetFileNameWithoutExtension(kscPath);
-        var contentDir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(kscPath) ?? "", baseName);
+        var contentDir = ContentDirFor(kscPath);
         var entries = new List<string>();
         if (Directory.Exists(contentDir))
         {
