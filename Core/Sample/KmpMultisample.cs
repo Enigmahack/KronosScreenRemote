@@ -15,11 +15,6 @@ sealed class KmpMultisample
     public List<KmpZone> Zones = [];
     public string? Path;
 
-    // MSP1's 2 trailing bytes (payload offset 16-17): present and non-zero in every
-    // real file seen (e.g. "03 00"), meaning still unconfirmed. Preserved raw on load
-    // rather than guessed at.
-    byte[] _msp1Tail = [0x00, 0x00];
-
     // Returns null if `data` isn't a recognizable .KMP (first chunk isn't MSP1) rather
     // than throwing - mirrors PcgFile.Open's contract.
     public static KmpMultisample? Open(byte[] data)
@@ -39,7 +34,9 @@ sealed class KmpMultisample
                 // Name/Suffix come from the 24-byte NAME chunk below, not this 16-byte
                 // short field - see KsfSample.Open for why (they're not simple
                 // re-truncations of each other on a name longer than 14 base chars).
-                m._msp1Tail = payload[16..18];
+                // The trailing 2 bytes (payload offset 16-17) are NOT preserved from the
+                // source file - see ToBytes(), which always recomputes them from
+                // Zones.Count.
             }
             else if (tag == "MNO1" && payload.Length >= 4)
             {
@@ -87,7 +84,21 @@ sealed class KmpMultisample
 
     public byte[] ToBytes()
     {
-        var msp1 = KorgRiffChunk.Concat(KorgRiffChunk.EncodeNameField(Name, Suffix, 16), _msp1Tail);
+        // MSP1's trailing 2 bytes (payload offset 16-17): the multisample's own zone
+        // count, little-endian u16 - hardware-confirmed 2026-08-24 by cross-referencing
+        // 4 independent real fixture pairs (8/8, 9/9, 2/2, 1/1 zones) and by a live
+        // re-save test: a KMP uploaded with this field left 0 (this class's old
+        // behavior) registered on a real Kronos as a zero-zone multisample - the
+        // underlying .KSF sample loaded fine as a standalone resource, but tapping the
+        // multisample itself triggered a "Create New Sample" prompt instead of
+        // selecting it. Korg's own Eva always recomputes this on save (confirmed: a
+        // re-saved file had it corrected from 0 to the real count with no other change),
+        // so this always derives it from Zones.Count rather than round-tripping
+        // whatever was read - never trust a stale/loaded value here.
+        var msp1Tail = new byte[2];
+        msp1Tail[0] = (byte)Zones.Count;
+        msp1Tail[1] = (byte)(Zones.Count >> 8);
+        var msp1 = KorgRiffChunk.Concat(KorgRiffChunk.EncodeNameField(Name, Suffix, 16), msp1Tail);
         var mno1 = new byte[4];
         KorgRiffChunk.WriteU32BE(mno1, 0, Mno1);
         var nameChunk = KorgRiffChunk.EncodeNameField(Name, Suffix, 24);
@@ -131,6 +142,27 @@ sealed class KmpMultisample
         if (path is null) throw new InvalidOperationException("no path given and none stored");
         File.WriteAllBytes(path, ToBytes());
         Path = path;
+    }
+
+    // <first 5 chars of the multisample's own Name, sanitized+uppercased,
+    // underscore-padded><MNO1:03d>.KMP - the real Kronos auto-naming convention for a
+    // .KMP's own FILENAME, confirmed against 2 independent real fixture pairs: a
+    // multisample named "NewMS______________000" auto-files as "NEWMS000.KMP"/
+    // "NEWMS001.KMP", one named "GAGA LEAD" auto-files as "GAGA_000.KMP"/
+    // "GAGA_001.KMP" (space -> underscore, uppercased, truncated to 5 chars) - the file
+    // name derives from Name, NOT from Suffix. Hardware-confirmed 2026-08-24 this is
+    // NOT cosmetic: a stereo pair saved as "<Name>-L.KMP"/"<Name>-R.KMP" (this app's own
+    // prior behavior) registered its multisample entries correctly (once the MSP1 tail
+    // fix above landed) but still failed to actually load its audio on a real Kronos,
+    // while byte-identical content saved under this exact naming pattern loaded and
+    // played correctly - the L/R distinction belongs ONLY in the internal Suffix field
+    // (MSP1/NAME, doc §2.2), never baked into the .KMP's own filename.
+    public static string AutoFileName(string name, uint mno1)
+    {
+        var sanitized = new string(name.ToUpperInvariant()
+            .Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray());
+        var prefix = sanitized.Length >= 5 ? sanitized[..5] : sanitized.PadRight(5, '_');
+        return $"{prefix}{mno1:D3}.KMP";
     }
 
     // MS<multisample:03d><zone:03d>.KSF - the real naming convention, used when

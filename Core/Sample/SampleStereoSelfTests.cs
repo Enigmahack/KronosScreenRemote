@@ -61,6 +61,16 @@ static class SampleStereoSelfTests
             Check("stereo-pair-suffixes", left.Suffix == "-L" && right.Suffix == "-R");
             Check("stereo-pair-mno1-adjacent", left.Mno1 == 10 && right.Mno1 == 11);
             Check("stereo-pair-kmp-files-written", File.Exists(leftPath) && File.Exists(rightPath));
+
+            // Hardware-confirmed 2026-08-24: the .KMP filename must NOT bake -L/-R into
+            // itself (real Kronos silently fails to load the audio behind such a pair,
+            // even though every other byte is correct) - it must be <first 5 chars of
+            // Name, sanitized+uppercased><MNO1:03d>.KMP, matching real fixtures
+            // (NEWMS000/001, GAGA_000/001). "MyStereoKit" -> "MYSTE".
+            Check("stereo-pair-filename-no-suffix",
+                !Path.GetFileName(leftPath).Contains('-') && !Path.GetFileName(rightPath).Contains('-'));
+            Check("stereo-pair-filename-convention",
+                Path.GetFileName(leftPath) == "MYSTE010.KMP" && Path.GetFileName(rightPath) == "MYSTE011.KMP");
             Check("stereo-pair-added-to-collection-entries",
                 collection.Entries.Contains(Path.GetFileName(leftPath)) &&
                 collection.Entries.Contains(Path.GetFileName(rightPath)));
@@ -115,6 +125,24 @@ static class SampleStereoSelfTests
             Check("stereo-zone-right-name-suffix", rightKsf != null && rightKsf.Name == "Snare Hit" && rightKsf.Suffix == "-R");
             Check("stereo-zone-left-pcm", leftKsf != null && leftKsf.Samples().SequenceEqual(leftPcm));
             Check("stereo-zone-right-pcm", rightKsf != null && rightKsf.Samples().SequenceEqual(rightPcm));
+
+            // Sno1 must be collection-unique (hardware-confirmed 2026-08-24): every
+            // sample this app wrote used to leave it at the field's default (0), which
+            // real hardware silently treats as a collision - a .KSC bulk load dropped 2
+            // of 3 identically-Sno1'd zones' audio while the multisample entries
+            // themselves still registered fine. Fixed live against a real Kronos before
+            // landing this check.
+            Check("stereo-zone-sno1-distinct", leftKsf != null && rightKsf != null && leftKsf.Sno1 != rightKsf.Sno1);
+
+            // MSP1's trailing 2 bytes = zone count as LE u16 (doc §2, hardware-confirmed
+            // 2026-08-24) - a real regression here silently produces a multisample real
+            // Kronos hardware registers as zero-zone: its .KSF loads fine standalone, but
+            // tapping the multisample itself prompts "Create New Sample" instead of
+            // selecting it. Both halves have exactly 1 zone at this point.
+            var leftBytes = left.ToBytes();
+            var rightBytes = right.ToBytes();
+            Check("stereo-msp1-tail-is-zone-count-left", leftBytes[24] == 1 && leftBytes[25] == 0);
+            Check("stereo-msp1-tail-is-zone-count-right", rightBytes[24] == 1 && rightBytes[25] == 0);
         }
 
         return fails;

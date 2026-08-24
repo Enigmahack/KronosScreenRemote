@@ -136,6 +136,25 @@ public partial class App : Application
             SampleFtpPullCheck.Run(s.KronosHost, s.FtpPort, s.FtpUsername, s.FtpPassword, e.Args[sampleFtpPullIdx + 1]);
         }
 
+        // One-off diagnostic, NOT a shipped feature: `--sample-userbank-probe-build
+        // <outputDir>` (see Tools/SampleUserBankProbeBuild.cs) - builds a minimal mono
+        // multisample + its .KSC + _UserBank.KSC sibling via the real production writer
+        // path, for uploading to a real Kronos to test the doc's open "can a
+        // hand-authored _UserBank.KSC work at all" question.
+        int userBankProbeIdx = Array.IndexOf(e.Args, "--sample-userbank-probe-build");
+        if (userBankProbeIdx >= 0 && userBankProbeIdx + 1 < e.Args.Length)
+        {
+            SampleUserBankProbeBuild.Run(e.Args[userBankProbeIdx + 1]);
+        }
+
+        // `--sample-userbank-probe-build-multizone <outputDir>` - the second probe:
+        // one multisample, 32 zones spanning the full keyboard, 4 keys each.
+        int userBankProbeMultiIdx = Array.IndexOf(e.Args, "--sample-userbank-probe-build-multizone");
+        if (userBankProbeMultiIdx >= 0 && userBankProbeMultiIdx + 1 < e.Args.Length)
+        {
+            SampleUserBankProbeBuild.RunMultiZone(e.Args[userBankProbeMultiIdx + 1]);
+        }
+
         // One-off reconnaissance, NOT a shipped feature: `--sample-stereo-scan <folder>`
         // (see Tools/SampleStereoScan.cs) - grounds Phase 5's stereo-pair-creation work
         // in what real Kronos-authored .KMP/.KSF fixtures actually do with -L/-R.

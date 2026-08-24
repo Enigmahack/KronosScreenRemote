@@ -173,7 +173,7 @@ public static class AppMessages
         public static string FailedItem(string name, string detail) => $"Failed {name}: {detail}";
 
         // ── Upload ──
-        public const string SelectLocalFilesToUpload = "Select one or more local files to upload.";
+        public const string SelectLocalFilesToUpload = "Select one or more local files or folders to upload.";
         public static string Uploading(int count) => $"Uploading {count} file(s)...";
         public static string UploadIncomplete(string name, object status) =>
             $"Upload of {name} did not complete ({status}) - source kept";
@@ -183,7 +183,7 @@ public static class AppMessages
         public static string FolderSomeFailedUpload(string name) => $"{name}: some files failed to upload - source kept";
 
         // ── Download ──
-        public const string SelectKronosFilesToDownload = "Select one or more Kronos files to download.";
+        public const string SelectKronosFilesToDownload = "Select one or more Kronos files or folders to download.";
         public static string Downloading(int count) => $"Downloading {count} file(s)...";
         public static string DownloadIncomplete(string name, object status) =>
             $"Download of {name} did not complete ({status}) - source kept";

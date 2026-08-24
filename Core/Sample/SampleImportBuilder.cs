@@ -48,7 +48,15 @@ static class SampleImportBuilder
         // imported audio, same as a real Kronos sampling a fresh WAV. NOT a copy of any
         // existing sample's state, so this can never accidentally carry over a Reverse/
         // boost/tune setting from whatever was previously loaded.
-        var ksf = new KsfSample { Name = sampleName, Suffix = suffix, SampleRate = (uint)sampleRate, Flags = 0x81 };
+        // Sno1 must be unique across the collection (hardware-confirmed 2026-08-24, see
+        // KscCollection.NextFreeSno1's own comment) - never leave it at the field's
+        // default, which silently breaks .KSC bulk loading for any zone that collides.
+        var contentDir = Path.GetDirectoryName(kmpPath) is { Length: > 0 } d ? d : ".";
+        var ksf = new KsfSample
+        {
+            Name = sampleName, Suffix = suffix, SampleRate = (uint)sampleRate, Flags = 0x81,
+            Sno1 = KscCollection.NextFreeSno1(contentDir),
+        };
         ksf.SetSamples(pcm);
         var ksfPath = zone.KsfPath(kmpPath);
         Directory.CreateDirectory(Path.GetDirectoryName(ksfPath)!);
@@ -100,8 +108,13 @@ static class SampleImportBuilder
         var left = new KmpMultisample { Name = baseName, Suffix = "-L", Mno1 = mno1Left };
         var right = new KmpMultisample { Name = baseName, Suffix = "-R", Mno1 = mno1Left + 1 };
 
-        var leftFileName = $"{baseName}-L.KMP";
-        var rightFileName = $"{baseName}-R.KMP";
+        // Hardware-confirmed 2026-08-24 (KmpMultisample.AutoFileName's own comment):
+        // the .KMP's own filename must follow Kronos's auto-naming convention (Name
+        // prefix + MNO1), NOT bake -L/-R into the filename - a real Kronos silently
+        // fails to load the audio behind a "<Name>-L.KMP"/"-R.KMP" pair even though
+        // every other byte is correct.
+        var leftFileName = KmpMultisample.AutoFileName(baseName, mno1Left);
+        var rightFileName = KmpMultisample.AutoFileName(baseName, mno1Left + 1);
         var leftPath = Path.Combine(kmpDir, leftFileName);
         var rightPath = Path.Combine(kmpDir, rightFileName);
         left.Save(leftPath);

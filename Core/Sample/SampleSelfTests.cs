@@ -1,5 +1,7 @@
 namespace KronosScreenRemote;
 
+using System.IO;
+
 // Off-hardware round-trip checks for the Core/Sample/* format layer (Open -> ToBytes
 // byte-identical, plus the specific hardware-confirmed behaviors from
 // kronosology/docs/interfaces/ksc_kmp_ksf_file_format.md this port must not silently
@@ -160,7 +162,8 @@ static class SampleSelfTests
             Check("ksc-round-trip-uuid", reopened.BankUuid == "abc-123");
         }
 
-        // ── KscCollection: refuses to write a _UserBank.KSC (hardware-confirmed non-goal) ──
+        // ── KscCollection: normal-mode ToBytes()/Save() refuse a _UserBank.KSC-suffixed
+        //    target - that write mode's own format is real Kronos-generated output only ──
         {
             var k = new KscCollection { Entries = ["Foo.KMP"] };
             bool threw = false;
@@ -177,6 +180,57 @@ static class SampleSelfTests
             try { k.ToBytes(); }
             catch (InvalidOperationException) { threw = true; }
             Check("ksc-refuses-userbank-write-bare-tobytes", threw);
+        }
+
+        // ── KscCollection.ToUserBankBytes: the dedicated _UserBank.KSC writer (doc §1.3
+        //    own-bank case) - synthetic-only, no real fixture dependency (this file's own
+        //    design boundary, see header comment). Two multisamples with a deliberate gap
+        //    in Mno1 (0 and 5) plus one bare-.KSF entry, so the test actually exercises the
+        //    "MS<n>/DS<n> is positional emission order, not Mno1/Sno1" finding rather than
+        //    passing by coincidence the way a gapless fixture would. Format/name-encoding
+        //    themselves were cross-checked by hand against real _UserBank.KSC fixtures
+        //    (Test2-kronos, SMPTEST/LOOP, SMPTEST/NOLOOP) during this feature's development -
+        //    not re-asserted here since SampleFixtures/ is local-only and gitignored.
+        {
+            var scratchRoot = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "kronos_userbank_selftest");
+            if (Directory.Exists(scratchRoot)) Directory.Delete(scratchRoot, recursive: true);
+            var contentDir = System.IO.Path.Combine(scratchRoot, "UBTEST");
+            Directory.CreateDirectory(contentDir);
+
+            var m0 = new KmpMultisample { Name = "First One", Suffix = "", Mno1 = 0 };
+            m0.Zones.Add(new KmpZone { OriginalKey = 60, TopKey = 72, Filename = "MS000000.KSF" });
+            File.WriteAllBytes(System.IO.Path.Combine(contentDir, "MS000000.KMP"), m0.ToBytes());
+
+            var m1 = new KmpMultisample { Name = "Second One", Suffix = "-L", Mno1 = 5 }; // gap vs m0
+            m1.Zones.Add(new KmpZone { OriginalKey = 60, TopKey = 72, Filename = "MS005000.KSF" });
+            File.WriteAllBytes(System.IO.Path.Combine(contentDir, "MS005000.KMP"), m1.ToBytes());
+
+            var ksf = new KsfSample { Name = "A Drum Hit", Suffix = "", Sno1 = 9 };
+            ksf.SetSamples([1, -1, 2, -2]);
+            File.WriteAllBytes(System.IO.Path.Combine(contentDir, "Hit.KSF"), ksf.ToBytes());
+
+            var kscPath = System.IO.Path.Combine(scratchRoot, "UBTEST.KSC");
+            var k = new KscCollection
+            {
+                Path = kscPath,
+                BankUuid = "dead1234-0000-4000-8000-000000000000",
+                Entries = ["MS000000.KMP", "MS005000.KMP", "Hit.KSF"],
+            };
+
+            var text = System.Text.Encoding.ASCII.GetString(k.ToUserBankBytes());
+            var expectedM0Name = System.Text.Encoding.ASCII.GetString(KorgRiffChunk.EncodeNameField("First One", "", 24));
+            var expectedM1Name = System.Text.Encoding.ASCII.GetString(KorgRiffChunk.EncodeNameField("Second One", "-L", 24));
+            var expectedDsName = System.Text.Encoding.ASCII.GetString(KorgRiffChunk.EncodeNameField("A Drum Hit", "", 24));
+
+            Check("userbank-header", text.StartsWith("#KORG Script Version 1.0\r\n#v2\r\n"));
+            Check("userbank-no-plain-uuid-line", !text.Contains("\r\n#uuid:dead1234"));
+            Check("userbank-ms0-positional-not-mno1", text.Contains($"#>>uuid:dead1234-0000-4000-8000-000000000000.MS0.1.0.{expectedM0Name}\r\n"));
+            Check("userbank-ms1-positional-not-mno1-5", text.Contains($"#>>uuid:dead1234-0000-4000-8000-000000000000.MS1.1.0.{expectedM1Name}\r\n"));
+            Check("userbank-ds0", text.Contains($"#>>uuid:dead1234-0000-4000-8000-000000000000.DS0.1.0.{expectedDsName}\r\n"));
+            Check("userbank-summary-line", text.Contains("#>uuid:dead1234-0000-4000-8000-000000000000.2.1.UBTEST\r\n"));
+            Check("userbank-ends-with-summary", text.TrimEnd('\r', '\n').EndsWith(".2.1.UBTEST"));
+
+            Directory.Delete(scratchRoot, recursive: true);
         }
 
         return fails;

@@ -102,11 +102,18 @@ public partial class SampleEditorWindow : ThemedWindow
 
     void OnWindowClosing(object? sender, System.ComponentModel.CancelEventArgs e)
     {
-        if (!_vm.HasUnsavedChanges) return;
-        var result = MessageBox.Show(this,
-            "There are unsaved changes in the Sample Editor. Close anyway and discard them?",
-            "Unsaved Changes", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-        if (result != MessageBoxResult.Yes) e.Cancel = true;
+        if (_vm.HasUnsavedChanges)
+        {
+            var result = MessageBox.Show(this,
+                "There are unsaved changes in the Sample Editor. Close anyway and discard them?",
+                "Unsaved Changes", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            if (result != MessageBoxResult.Yes) { e.Cancel = true; return; }
+        }
+
+        // Break the Owner link before closing so WPF doesn't minimize the parent when
+        // this window had focus (known WPF owner-activation bug) - same one-line fix
+        // FileManagerWindow.OnClosing and LibrarianShellWindow already use.
+        Owner = null;
     }
 
     public void OpenCollectionPath(string path) { _vm.OpenCollection(path); SelectFirstRoot(); UpdateStatus(); }

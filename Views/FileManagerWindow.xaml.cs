@@ -412,9 +412,15 @@ public partial class FileManagerWindow : ThemedWindow
     // ── Upload (local → Kronos) ───────────────────────────────────────────────
     async void OnUpload(object s, RoutedEventArgs e)
     {
-        var items = LocalList.SelectedItems.Cast<FileEntry>().Where(f => !f.IsDirectory).ToList();
+        var items = LocalList.SelectedItems.Cast<FileEntry>().ToList();
         if (items.Count == 0) { SetStatus(AppMessages.FileManager.SelectLocalFilesToUpload); return; }
-        await RunExclusive(() => UploadItemsAsync(items));
+        var files = items.Where(f => !f.IsDirectory).ToList();
+        var dirs  = items.Where(f =>  f.IsDirectory).ToList();
+        await RunExclusive(async () =>
+        {
+            if (files.Count > 0) await UploadItemsAsync(files);
+            if (dirs.Count  > 0) await UploadFoldersAsync(dirs);
+        });
     }
 
     // Returns the items whose upload verifiably succeeded, so a cut/move can delete only those
@@ -464,9 +470,15 @@ public partial class FileManagerWindow : ThemedWindow
     // ── Download (Kronos → local) ─────────────────────────────────────────────
     async void OnDownload(object s, RoutedEventArgs e)
     {
-        var items = RemoteList.SelectedItems.Cast<FileEntry>().Where(f => !f.IsDirectory).ToList();
+        var items = RemoteList.SelectedItems.Cast<FileEntry>().ToList();
         if (items.Count == 0) { SetStatus(AppMessages.FileManager.SelectKronosFilesToDownload); return; }
-        await RunExclusive(() => DownloadItemsAsync(items));
+        var files = items.Where(f => !f.IsDirectory).ToList();
+        var dirs  = items.Where(f =>  f.IsDirectory).ToList();
+        await RunExclusive(async () =>
+        {
+            if (files.Count > 0) await DownloadItemsAsync(files);
+            if (dirs.Count  > 0) await DownloadFoldersAsync(dirs);
+        });
     }
 
     // Returns the items whose download verifiably succeeded (FtpStatus.Success only), so a
@@ -505,6 +517,55 @@ public partial class FileManagerWindow : ThemedWindow
         }
         RefreshLocal();
         SetStatus(AppMessages.FileManager.Downloaded(done, items.Count, _local.Dir));
+        SetBusy(false);
+        return moved;
+    }
+
+    // ── Folder transfer (local ↔ Kronos, recursive) ───────────────────────────
+    // FluentFTP's UploadDirectory/DownloadDirectory walk the tree, create subfolders,
+    // and transfer every file themselves - no need to hand-roll recursion here.
+    // Returns the folders whose transfer verifiably succeeded (no failed files), so a
+    // cut/move can delete only those sources - same contract as UploadItemsAsync.
+    async Task<List<FileEntry>> UploadFoldersAsync(IList<FileEntry> dirs)
+    {
+        var moved = new List<FileEntry>();
+        if (dirs.Count == 0 || !await EnsureConnectedAsync()) return moved;
+        SetBusy(true, AppMessages.FileManager.Uploading(dirs.Count));
+        foreach (var dir in dirs)
+        {
+            SetStatus(AppMessages.FileManager.UploadingFolder(dir.Name));
+            try
+            {
+                var dest = $"{_remote.Dir.TrimEnd('/')}/{dir.Name}";
+                var res  = await _ftp!.UploadDirectory(dir.FullPath, dest, FtpFolderSyncMode.Update);
+                if (res.All(r => r.IsSuccess || r.IsSkipped)) moved.Add(dir);
+                else SetStatus(AppMessages.FileManager.FolderSomeFailedUpload(dir.Name));
+            }
+            catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(dir.Name, ex.Message)); }
+        }
+        await RefreshRemoteAsync();
+        SetBusy(false);
+        return moved;
+    }
+
+    async Task<List<FileEntry>> DownloadFoldersAsync(IList<FileEntry> dirs)
+    {
+        var moved = new List<FileEntry>();
+        if (dirs.Count == 0 || !await EnsureConnectedAsync()) return moved;
+        SetBusy(true, AppMessages.FileManager.Downloading(dirs.Count));
+        foreach (var dir in dirs)
+        {
+            SetStatus(AppMessages.FileManager.DownloadingFolder(dir.Name));
+            try
+            {
+                var dest = Path.Combine(_local.Dir, dir.Name);
+                var res  = await _ftp!.DownloadDirectory(dest, dir.FullPath, FtpFolderSyncMode.Update);
+                if (res.All(r => r.IsSuccess || r.IsSkipped)) moved.Add(dir);
+                else SetStatus(AppMessages.FileManager.FolderSomeFailedDownload(dir.Name));
+            }
+            catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(dir.Name, ex.Message)); }
+        }
+        RefreshLocal();
         SetBusy(false);
         return moved;
     }
@@ -826,7 +887,7 @@ public partial class FileManagerWindow : ThemedWindow
     // ── Drag+drop (file transfer) ─────────────────────────────────────────────
     void InitiateFileDrag(ListView lv)
     {
-        var items = lv.SelectedItems.Cast<FileEntry>().Where(f => !f.IsDirectory).ToList();
+        var items = lv.SelectedItems.Cast<FileEntry>().ToList();
         if (items.Count == 0) return;
         var payload = new DragPayload(lv == RemoteList, items);
         var data    = new DataObject(DragDataFormat, payload);
@@ -1000,7 +1061,13 @@ public partial class FileManagerWindow : ThemedWindow
             return;
         }
 
-        await RunExclusive(() => DownloadItemsAsync(items));
+        var files = items.Where(f => !f.IsDirectory).ToList();
+        var dirs  = items.Where(f =>  f.IsDirectory).ToList();
+        await RunExclusive(async () =>
+        {
+            if (files.Count > 0) await DownloadItemsAsync(files);
+            if (dirs.Count  > 0) await DownloadFoldersAsync(dirs);
+        });
     }
 
     async void OnRemoteDrop(object s, DragEventArgs e)
@@ -1026,7 +1093,13 @@ public partial class FileManagerWindow : ThemedWindow
             return;
         }
 
-        await RunExclusive(() => UploadItemsAsync(items));
+        var files = items.Where(f => !f.IsDirectory).ToList();
+        var dirs  = items.Where(f =>  f.IsDirectory).ToList();
+        await RunExclusive(async () =>
+        {
+            if (files.Count > 0) await UploadItemsAsync(files);
+            if (dirs.Count  > 0) await UploadFoldersAsync(dirs);
+        });
     }
 
     async Task MoveLocalItemsAsync(IList<FileEntry> items, string destFolder)
@@ -1166,7 +1239,6 @@ public partial class FileManagerWindow : ThemedWindow
     ContextMenu BuildContextMenu(ListView lv, bool isRemote, FileEntry? entry)
     {
         bool onFolder     = entry is { IsDirectory: true };
-        bool hasFiles     = lv.SelectedItems.Cast<FileEntry>().Any(f => !f.IsDirectory);
         bool hasSelection = lv.SelectedItems.Count > 0;
         bool isSingle     = lv.SelectedItems.Count == 1;
 
@@ -1185,7 +1257,7 @@ public partial class FileManagerWindow : ThemedWindow
         {
             cm.Items.Add(MakeItem(
                 isRemote ? "← Send to PC" : "→ Send to Kronos",
-                hasFiles,
+                hasSelection,
                 isRemote ? (RoutedEventHandler)OnDownload : OnUpload));
         }
 
@@ -1257,22 +1329,7 @@ public partial class FileManagerWindow : ThemedWindow
             var files = items.Where(f => !f.IsDirectory).ToList();
             var dirs  = items.Where(f =>  f.IsDirectory).ToList();
             var movedFiles = files.Count > 0 ? await UploadItemsAsync(files) : new List<FileEntry>();
-            var movedDirs  = new List<FileEntry>();
-            if (dirs.Count  > 0 && await EnsureConnectedAsync())
-            {
-                foreach (var dir in dirs)
-                {
-                    SetStatus(AppMessages.FileManager.UploadingFolder(dir.Name));
-                    try
-                    {
-                        var res = await _ftp!.UploadDirectory(dir.FullPath, $"{_remote.Dir.TrimEnd('/')}/{dir.Name}", FtpFolderSyncMode.Update);
-                        if (res.All(r => r.IsSuccess || r.IsSkipped)) movedDirs.Add(dir);
-                        else SetStatus(AppMessages.FileManager.FolderSomeFailedUpload(dir.Name));
-                    }
-                    catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(dir.Name, ex.Message)); }
-                }
-                await RefreshRemoteAsync();
-            }
+            var movedDirs  = dirs.Count  > 0 ? await UploadFoldersAsync(dirs) : new List<FileEntry>();
             if (cb.IsCut)
             {
                 // Move semantics: delete only sources whose transfer verifiably succeeded.
@@ -1288,22 +1345,7 @@ public partial class FileManagerWindow : ThemedWindow
             var files = items.Where(f => !f.IsDirectory).ToList();
             var dirs  = items.Where(f =>  f.IsDirectory).ToList();
             var movedFiles = files.Count > 0 ? await DownloadItemsAsync(files) : new List<FileEntry>();
-            var movedDirs  = new List<FileEntry>();
-            if (dirs.Count  > 0 && await EnsureConnectedAsync())
-            {
-                foreach (var dir in dirs)
-                {
-                    SetStatus(AppMessages.FileManager.DownloadingFolder(dir.Name));
-                    try
-                    {
-                        var res = await _ftp!.DownloadDirectory(Path.Combine(_local.Dir, dir.Name), dir.FullPath, FtpFolderSyncMode.Update);
-                        if (res.All(r => r.IsSuccess || r.IsSkipped)) movedDirs.Add(dir);
-                        else SetStatus(AppMessages.FileManager.FolderSomeFailedDownload(dir.Name));
-                    }
-                    catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(dir.Name, ex.Message)); }
-                }
-                RefreshLocal();
-            }
+            var movedDirs  = dirs.Count  > 0 ? await DownloadFoldersAsync(dirs) : new List<FileEntry>();
             if (cb.IsCut)
             {
                 // Move semantics: delete only remote sources whose download verifiably succeeded.

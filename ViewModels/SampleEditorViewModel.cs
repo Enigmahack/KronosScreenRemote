@@ -1865,6 +1865,7 @@ partial class SampleEditorViewModel : ObservableObject
         var messages = new List<string>();
         if (hadSamples) { SaveSelectedSample(); messages.Add(StatusText); }
         if (hadZones) { SaveSelectedMultisample(); messages.Add(StatusText); }
+        SweepOrphanedRepositoryFiles();
         StatusText = string.Join("  ", messages);
     }
 
@@ -2225,18 +2226,26 @@ partial class SampleEditorViewModel : ObservableObject
     // collection (SampleFixtures/ANDRE_K2_73/samplesfeb28_25.KSC's own bare
     // ONE_0005.KSF/AROU0008.KSF/... entries sit right there, not in any zone subfolder).
 
-    // Every bare (non-.KMP) entry in the active collection that still exists on disk -
-    // the repository picker's own data source. Full path, not just filename, so the
+    // Every bare .KSF sitting directly in the collection's own content folder - the
+    // repository picker's own data source. Full path, not just filename, so the
     // caller can pass it straight to KsfSample.Open/AssignExistingKsfToZone/
     // AddZoneFromExistingKsf without re-deriving the folder convention itself.
+    //
+    // Reads the FOLDER, not `_collection.Entries` (2026-08-23 fix): once a repository
+    // sample has been assigned into a real zone, AssignExistingKsfToZone retires its
+    // Entries line (RetireConsumedRepositoryEntry) so the SAVED .KSC matches real
+    // Kronos output - but the picker still needs to offer that same audio for reuse
+    // into ANOTHER zone. A zone's own .KSF always lives one level deeper (`<kmp-dir>/
+    // <kmp-basename>/`, KmpZone.KsfPath) than a bare repository import (written
+    // straight into `kmpDir`, ImportSamplesToCollection) - the two never collide, so a
+    // non-recursive folder scan is exactly "every sample available to reuse",
+    // independent of whether it's currently listed as unreferenced.
     public IEnumerable<string> BareSampleEntries()
     {
         if (_collection == null || _collectionPath == null) return [];
         var kmpDir = KscCollection.ContentDirFor(_collectionPath);
-        return _collection.Entries
-            .Where(e => !e.EndsWith(".KMP", StringComparison.OrdinalIgnoreCase))
-            .Select(e => Path.Combine(kmpDir, e))
-            .Where(File.Exists);
+        if (!Directory.Exists(kmpDir)) return [];
+        return Directory.GetFiles(kmpDir, "*.KSF").OrderBy(f => f, StringComparer.OrdinalIgnoreCase);
     }
 
     // Decodes each audio file and writes it as a standalone resident .KSF directly into
@@ -2277,13 +2286,17 @@ partial class SampleEditorViewModel : ObservableObject
                     var (left, right) = AudioImport.ImportStereoToLR44100(audioPath);
                     var leftFileName = UniqueBareKsfFileName($"{sampleName}-L");
                     var rightFileName = UniqueBareKsfFileName($"{sampleName}-R");
-                    var leftKsf = new KsfSample { Name = sampleName, Suffix = "-L", SampleRate = (uint)AudioImport.TargetSampleRate, Flags = 0x81 };
+                    // Sno1 must be collection-unique (hardware-confirmed 2026-08-24, see
+                    // KscCollection.NextFreeSno1) - re-derived AFTER saving the left half
+                    // so the right half's scan sees it and can't collide with it.
+                    var leftKsf = new KsfSample { Name = sampleName, Suffix = "-L", SampleRate = (uint)AudioImport.TargetSampleRate, Flags = 0x81, Sno1 = KscCollection.NextFreeSno1(kmpDir) };
                     leftKsf.SetSamples(left);
-                    var rightKsf = new KsfSample { Name = sampleName, Suffix = "-R", SampleRate = (uint)AudioImport.TargetSampleRate, Flags = 0x81 };
-                    rightKsf.SetSamples(right);
                     var leftPath = Path.Combine(kmpDir, leftFileName);
-                    var rightPath = Path.Combine(kmpDir, rightFileName);
                     leftKsf.Save(leftPath);
+
+                    var rightKsf = new KsfSample { Name = sampleName, Suffix = "-R", SampleRate = (uint)AudioImport.TargetSampleRate, Flags = 0x81, Sno1 = KscCollection.NextFreeSno1(kmpDir) };
+                    rightKsf.SetSamples(right);
+                    var rightPath = Path.Combine(kmpDir, rightFileName);
                     rightKsf.Save(rightPath);
 
                     _collection.Entries.Add(leftFileName);
@@ -2295,7 +2308,7 @@ partial class SampleEditorViewModel : ObservableObject
                 {
                     var pcm = AudioImport.ImportToMono44100(audioPath);
                     var ksfFileName = UniqueBareKsfFileName(sampleName);
-                    var ksf = new KsfSample { Name = sampleName, SampleRate = (uint)AudioImport.TargetSampleRate, Flags = 0x81 };
+                    var ksf = new KsfSample { Name = sampleName, SampleRate = (uint)AudioImport.TargetSampleRate, Flags = 0x81, Sno1 = KscCollection.NextFreeSno1(kmpDir) };
                     ksf.SetSamples(pcm);
                     var ksfPath = Path.Combine(kmpDir, ksfFileName);
                     ksf.Save(ksfPath);
@@ -2320,15 +2333,17 @@ partial class SampleEditorViewModel : ObservableObject
 
     // Bare-.KSF-entry filenames don't need the MS<multisample><zone> convention (they
     // belong to no multisample) - a filesystem-safe form of the source name, de-duped
-    // against every entry already in the collection (bare or not - a bare entry and a
-    // multisample's own zone file share the same directory and must not collide).
+    // against whatever's actually already sitting in the content folder (checking the
+    // folder rather than `_collection.Entries` - 2026-08-23 - so a name doesn't collide
+    // with a retired-but-still-on-disk repository file, per BareSampleEntries's own
+    // fix, or with an existing .KMP).
     string UniqueBareKsfFileName(string sampleName)
     {
         var safe = new string(sampleName.Select(c => Path.GetInvalidFileNameChars().Contains(c) ? '_' : c).ToArray());
         if (safe.Length == 0) safe = "Sample";
-        var existing = new HashSet<string>(_collection!.Entries, StringComparer.OrdinalIgnoreCase);
+        var kmpDir = KscCollection.ContentDirFor(_collectionPath!);
         var candidate = $"{safe}.KSF";
-        for (int n = 1; existing.Contains(candidate); n++)
+        for (int n = 1; File.Exists(Path.Combine(kmpDir, candidate)); n++)
             candidate = $"{safe}_{n}.KSF";
         return candidate;
     }
@@ -2341,7 +2356,10 @@ partial class SampleEditorViewModel : ObservableObject
     void WriteAssignedSample(KmpMultisample m, string kmpPath, KmpZone zone, string name, string suffix, uint sampleRate, short[] pcm)
     {
         if (NeedsFreshFilename(m, kmpPath, zone)) zone.Filename = m.NextFreeZoneFileName();
-        var ksf = new KsfSample { Name = name, Suffix = suffix, SampleRate = sampleRate, Flags = 0x81 };
+        // Sno1 must be collection-unique (hardware-confirmed 2026-08-24, see
+        // KscCollection.NextFreeSno1) - never leave it at the field's default.
+        var contentDir = Path.GetDirectoryName(kmpPath) is { Length: > 0 } d ? d : ".";
+        var ksf = new KsfSample { Name = name, Suffix = suffix, SampleRate = sampleRate, Flags = 0x81, Sno1 = KscCollection.NextFreeSno1(contentDir) };
         ksf.SetSamples(pcm);
         var ksfPath = zone.KsfPath(kmpPath);
         Directory.CreateDirectory(Path.GetDirectoryName(ksfPath)!);
@@ -2442,6 +2460,8 @@ partial class SampleEditorViewModel : ObservableObject
                     LastImportedZoneIndex = m.Zones.IndexOf(zone);
                     SaveMultisampleNow(leftM, leftPath);
                     if (!string.Equals(leftPath, rightPath, StringComparison.OrdinalIgnoreCase)) SaveMultisampleNow(rightM, rightPath);
+                    RetireConsumedRepositoryEntry(sourceKsfPath);
+                    if (partnerPath != null) RetireConsumedRepositoryEntry(partnerPath);
                     RefreshTreeAfterMutation(m, kmpPath);
                     StatusText = $"Assigned stereo sample '{src.Name}' to both channels.";
                     return kmpPath;
@@ -2452,6 +2472,7 @@ partial class SampleEditorViewModel : ObservableObject
 
             LastImportedZoneIndex = m.Zones.IndexOf(zone);
             SaveMultisampleNow(m, kmpPath);
+            RetireConsumedRepositoryEntry(sourceKsfPath);
             RefreshTreeAfterMutation(m, kmpPath);
             StatusText = $"Assigned '{Path.GetFileName(sourceKsfPath)}' to zone '{zone.Filename}'.";
             return kmpPath;
@@ -2461,6 +2482,68 @@ partial class SampleEditorViewModel : ObservableObject
             AppLog.Error($"Sample Editor: assign existing .KSF '{sourceKsfPath}' to zone failed: {ex}");
             StatusText = $"Assign failed: {ex.Message}";
             return null;
+        }
+    }
+
+    // Once a repository (bare) entry's audio has been copied into a real zone, it no
+    // longer belongs in the SAVED .KSC's unreferenced-sample list (doc §1.2, "#>User."
+    // companion lines) - a real Kronos-authored collection never carries a bare line
+    // for audio a keymap already owns (confirmed 2026-08-23 against a real Kronos-
+    // authored .KSC pulled over FTP: it listed only its .KMP files, never the bare
+    // .KSF names an equivalent editor-built collection was leaving behind). The extra
+    // bare lines this produced are suspected to confuse OA.ko's own array-sizing
+    // pre-scan on import (kronosology doc §1.5) - a real repro showed exactly this
+    // shape (3 .KMP + 3 bare .KSF lines) on a collection where only the mono
+    // multisample came in correctly on real hardware.
+    //
+    // The underlying .KSF file is left untouched on disk (not deleted) - only the
+    // manifest line is retired - so BareSampleEntries()/the Sample combo (now folder-
+    // driven, see its own comment) can still offer the same audio for reuse into
+    // another zone this session, matching this app's own repository convenience
+    // feature without diverging from real Kronos output.
+    void RetireConsumedRepositoryEntry(string ksfPath)
+    {
+        if (_collection == null || _collectionPath == null) return;
+        var fileName = Path.GetFileName(ksfPath);
+        if (_collection.Entries.RemoveAll(e => string.Equals(e, fileName, StringComparison.OrdinalIgnoreCase)) > 0)
+            _collection.Save(_collectionPath);
+    }
+
+    // Deletes every bare .KSF sitting directly in the collection's own content folder
+    // (KscCollection.ContentDirFor) that is BOTH no longer a listed repository entry
+    // (RetireConsumedRepositoryEntry already removed its manifest line once its audio
+    // was copied into a real zone) AND not referenced by any zone anywhere in the
+    // currently-loaded tree - i.e. genuinely dead weight, not a legitimate
+    // "Un-referenced Sample" (those stay listed in Entries and are left alone).
+    //
+    // Hardware-confirmed 2026-08-24 this is a real bug, not cosmetic: a collection
+    // built entirely through Import Sample (never touching the bare-repository picker
+    // for reuse) still left these retired originals on disk - RetireConsumedRepository
+    // Entry only ever removed the .KSC manifest line, by design, so the audio stays
+    // available to assign into ANOTHER zone later this session. But nothing ever swept
+    // them back out afterward, so a real Kronos-authored equivalent collection (built by
+    // loading each .KMP by hand, verified via a live diff against this exact scenario)
+    // has NONE of these files, while this app's own output did. Called from
+    // SaveAllChanges so the on-disk state matches real Kronos output by the time a bulk
+    // folder push (File Manager) or FTP push picks it up - not from RetireConsumed
+    // RepositoryEntry itself, which would break same-session reuse into a second zone.
+    void SweepOrphanedRepositoryFiles()
+    {
+        if (_collection == null || _collectionPath == null) return;
+        var contentDir = KscCollection.ContentDirFor(_collectionPath);
+        if (!Directory.Exists(contentDir)) return;
+
+        var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var e in _collection.Entries) referenced.Add(e);
+        foreach (var node in AllMultisampleNodes())
+            foreach (var zone in node.MultisampleRef!.Value.Multisample.Zones)
+                if (!zone.IsSkipped) referenced.Add(zone.Filename);
+
+        foreach (var path in Directory.GetFiles(contentDir, "*.KSF"))
+        {
+            if (referenced.Contains(Path.GetFileName(path))) continue;
+            try { File.Delete(path); }
+            catch (Exception ex) { AppLog.Warn($"Sample Editor: couldn't remove orphaned repository file '{path}': {ex.Message}"); }
         }
     }
 
@@ -3038,6 +3121,19 @@ partial class SampleEditorViewModel : ObservableObject
         _sampleDirty = true;
         if (mirror)
             _partnerSample!.Flags = enabled ? (byte)(_partnerSample.Flags & ~0x80) : (byte)(_partnerSample.Flags | 0x80);
+
+        // Hardware-confirmed 2026-08-24: checking "Loop" alone, with no loop markers
+        // ever dragged, flips this flag correctly but leaves LoopStart==LoopEnd (both 0
+        // on a fresh import) - a zero-length loop region, which plays as silent/no
+        // audible loop on real hardware even though the flag itself is right. Default
+        // to the whole sample (LoopStart unchanged, LoopEnd -> last frame) exactly the
+        // one time enabling finds no real region already set, so the checkbox alone
+        // produces audible looping - an explicit Loop Start/End drag afterward still
+        // overrides this the normal way.
+        if (enabled && _selectedSample.LoopEnd <= _selectedSample.LoopStart && _selectedSample.FrameCount > 0)
+            _selectedSample.LoopEnd = (uint)(_selectedSample.FrameCount - 1);
+        if (mirror && enabled && _partnerSample!.LoopEnd <= _partnerSample.LoopStart && _partnerSample.FrameCount > 0)
+            _partnerSample.LoopEnd = (uint)(_partnerSample.FrameCount - 1);
 
         LoadSampleDetailState(_selectedSample, reloadWaveform: false);
         RefreshUndoRedoState();
