@@ -88,7 +88,7 @@ static class SampleImportBuilder
     public static KmpZone MakeDefaultFirstZone() => new()
     {
         Filename = "SKIPPEDSAMPLE",
-        OriginalKey = 0,  // C-1
+        OriginalKey = 36, // C2 - explicit request 2026-08-25, was C-1
         TopKey = 36,      // C2
     };
 

@@ -29,14 +29,32 @@ static class SamplePhase15SelfTests
         vm.NewCollection(oldKscPath);
         vm.NewMultisampleInCollection("Kick", 0);
 
-        var oldKmpPath = Path.Combine(KscCollection.ContentDirFor(oldKscPath), "Kick.KMP");
-        var originalBytes = File.ReadAllBytes(oldKmpPath);
+        // NewMultisampleInCollection now names a fresh .KMP via AutoFileName too (fixed
+        // 2026-08-25, same round as the rename cascade) - "Kick" (4 chars) pads to
+        // "KICK_" (AutoFileName's own underscore-padding for short names), not a bare
+        // "Kick.KMP" - computed here rather than hardcoded so this test can't silently
+        // go vacuous (checking a file that was never created either way) the next time
+        // that naming rule changes.
+        var initialKmpPath = Path.Combine(KscCollection.ContentDirFor(oldKscPath), KmpMultisample.AutoFileName("Kick", 0));
 
-        // A pending, unsaved edit - made BEFORE Save As runs.
+        // A pending, unsaved edit - made BEFORE Save As runs. Renaming now moves the
+        // .KMP file/folder IMMEDIATELY (2026-08-25, not deferred like the Name field
+        // itself) - "Kick" (Mno1=0) becomes KICKR000.KMP right away, matching the
+        // Kronos naming scheme (SampleEditorViewModel.ComputeKmpBaseName). Only the
+        // .KMP's own CONTENT (the Name bytes) stays a pending edit, same as before.
         var msNode = vm.Roots.Single().Children.Single();
         vm.SelectNode(msNode);
         vm.RenameSelectedMultisample("KickRenamed");
         Check("rename-is-pending-before-save-as", vm.HasUnsavedChanges);
+
+        var oldKmpPath = Path.Combine(KscCollection.ContentDirFor(oldKscPath), "KICKR000.KMP");
+        Check("rename-moved-file-immediately", File.Exists(oldKmpPath) && !File.Exists(initialKmpPath));
+        // Everything below depends on the move above having actually happened - bail
+        // gracefully (rather than crashing the whole --librarian-selftest run out from
+        // under every OTHER phase) if it didn't, same reasoning as SamplePhase18SelfTests'
+        // own File.Exists guards.
+        if (!File.Exists(oldKmpPath)) { fails.Add("rest-of-phase15-skipped (rename didn't move the file)"); return fails; }
+        var originalBytes = File.ReadAllBytes(oldKmpPath); // as it sits right before Save As - old Name content (deferred), new filename (immediate)
 
         vm.SaveCollectionAs(newKscPath);
 
@@ -62,7 +80,9 @@ static class SamplePhase15SelfTests
         // Right after Save As, the NEW .KMP on disk is still the OLD (unrenamed) content -
         // Save As copies clean disk state, it does not flush pending edits into the copy
         // either. Only an explicit Save writes them out, and only to the new location.
-        var newKmpPath = Path.Combine(KscCollection.ContentDirFor(newKscPath), "Kick.KMP");
+        // Filename is already KICKR000.KMP (Save As copies whatever the collection's
+        // Entries list says NOW, and the immediate rename already updated it).
+        var newKmpPath = Path.Combine(KscCollection.ContentDirFor(newKscPath), "KICKR000.KMP");
         var newKmpBeforeSave = KmpMultisample.Open(File.ReadAllBytes(newKmpPath));
         Check("new-kmp-not-renamed-on-disk-until-saved", newKmpBeforeSave?.Name == "Kick");
 

@@ -21,6 +21,12 @@ namespace KronosScreenRemote;
 // boundary, etc.) - a uniform per-semitone grid gets this visibly wrong (black keys
 // evenly spaced under every key instead of clustered in their real 2-and-3 groups).
 // BuildLayout() computes both, once per render/hit-test pass (128 keys - trivial cost).
+//
+// Vertical layout, top to bottom: a RAISED LABEL strip (only painted when a zone is
+// selected - the full, unclipped sample name for that one zone), the zone-assignment
+// bar (every zone's own compact label, now clipped to its own segment), the piano, and
+// three thin keyboard-range indicator strips (88/73/61-key). See RaisedLabelHeight/
+// ZoneBarHeight/RangeBarHeight below.
 sealed class SampleKeymapControl : FrameworkElement
 {
     public static readonly DependencyProperty ZonesProperty =
@@ -46,6 +52,32 @@ sealed class SampleKeymapControl : FrameworkElement
 
     public event Action<KmpZone>? ZoneClicked;
 
+    // Fires ALONGSIDE ZoneClicked, but only for a genuine piano-key click (never a
+    // zone-bar click/drag) and carries the specific MIDI key that was clicked, not just
+    // the owning zone - the caller (SampleEditorViewModel.PlayZoneAtKey) needs the exact
+    // key to compute how far it sits from the zone's own Original Key. A skipped zone or
+    // a click outside every zone's range never reaches here at all: ZoneAt returns null
+    // for the latter (OnMouseLeftButtonDown already bails out), and IsSkipped is left
+    // for the caller to check (this control doesn't know what "no sample assigned"
+    // should do, only which zone/key was hit).
+    public event Action<KmpZone, int>? PianoKeyClicked;
+
+    // Fires on mouse-up OR loss of mouse capture (window deactivated, capture stolen)
+    // after a PianoKeyClicked - "play only while the key is held" (explicit request):
+    // the caller (SampleEditorViewModel.ReleasePianoKey) stops playback immediately,
+    // unless something else (the transport Play button, another key) has already taken
+    // over the single playback slot since. Never fires for a boundary/zone-bar drag -
+    // those have their own mouse-up handling and never set _pianoKeyDown.
+    public event Action? PianoKeyReleased;
+    bool _pianoKeyDown;
+
+    // Ctrl+Click anywhere over the piano (never the zone bar) - carries just the raw
+    // MIDI key, no zone, since this assigns a key VALUE into whichever Orig./Top Key
+    // field currently has focus, independent of any zone's own range. See
+    // OnMouseLeftButtonDown's own comment for why this is checked before everything
+    // else in that method, including this control's own Focus() call.
+    public event Action<int>? PianoKeyCtrlClicked;
+
     // Fires once, on mouse-up, after a boundary drag - (leftZone, newTopKey). The
     // control doesn't mutate the zone itself; the caller (SampleEditorViewModel) owns
     // deciding what a TopKey change means for dirty-tracking/persistence.
@@ -60,8 +92,22 @@ sealed class SampleKeymapControl : FrameworkElement
     // the sequence changes" rule.
     public event Action<KmpZone, KmpZone>? ZoneReordered;
 
+    const double RaisedLabelHeight = 14;
     const double ZoneBarHeight = 16;
+    const double RangeBarHeight = 4;
+    const double RangeBarsTotalHeight = RangeBarHeight * 3;
     const double HitTestPixels = 5;
+
+    // Standard hardware keyboard spans, hardware-confirmed via kronosology's own
+    // MidiNoteName convention (C4=60) rather than hardcoded MIDI numbers, so these can't
+    // silently drift from the app's display convention: 88-key = A0..C8, 73-key =
+    // E1..E7, 61-key = C2..C7.
+    static readonly int Key88Low = MidiNoteName.TryParse("A0")!.Value;
+    static readonly int Key88High = MidiNoteName.TryParse("C8")!.Value;
+    static readonly int Key73Low = MidiNoteName.TryParse("E1")!.Value;
+    static readonly int Key73High = MidiNoteName.TryParse("E7")!.Value;
+    static readonly int Key61Low = MidiNoteName.TryParse("C2")!.Value;
+    static readonly int Key61High = MidiNoteName.TryParse("C7")!.Value;
 
     int _hoverBoundary = -1;
     int _dragBoundary = -1;
@@ -197,6 +243,11 @@ sealed class SampleKeymapControl : FrameworkElement
         return null;
     }
 
+    // The zone bar sits between the raised-label strip and the piano - shared by
+    // OnMouseMove/OnMouseLeftButtonDown (which decide whether a click starts a boundary
+    // drag) and OnRender (which paints it at the same offset).
+    static bool InZoneBarStrip(double y) => y >= RaisedLabelHeight && y < RaisedLabelHeight + ZoneBarHeight;
+
     protected override void OnMouseMove(MouseEventArgs e)
     {
         base.OnMouseMove(e);
@@ -239,7 +290,7 @@ sealed class SampleKeymapControl : FrameworkElement
         // click start a boundary drag instead of selecting the zone, was exactly the
         // "awkward" selection behavior this fixes: the cursor now only ever changes
         // while actually over the header, and a piano-key click always selects.
-        int hover2 = pos.Y < ZoneBarHeight ? HitTestBoundary(rightX, ranges, x) : -1;
+        int hover2 = InZoneBarStrip(pos.Y) ? HitTestBoundary(rightX, ranges, x) : -1;
         if (hover2 != _hoverBoundary)
         {
             _hoverBoundary = hover2;
@@ -251,6 +302,22 @@ sealed class SampleKeymapControl : FrameworkElement
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonDown(e);
+
+        // Ctrl+Click over the piano assigns a key value (Orig./Top Key field) rather
+        // than selecting/reordering a zone or triggering playback - a completely
+        // separate gesture from everything below, checked first and BEFORE this
+        // control's own Focus() call further down, so whichever field the caller
+        // clicked into first (to "arm" it) is still the focused element when
+        // PianoKeyCtrlClicked fires - the window resolves the target field by reading
+        // that live focus state, not by tracking it here.
+        var ctrlPos = e.GetPosition(this);
+        if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && ctrlPos.Y >= RaisedLabelHeight + ZoneBarHeight)
+        {
+            var (_, ctrlLeftX, ctrlRightX) = BuildLayout();
+            PianoKeyCtrlClicked?.Invoke(PixelToKey(ctrlPos.X, ctrlLeftX, ctrlRightX));
+            return;
+        }
+
         Focus();
         var (whiteWidth, leftX, rightX) = BuildLayout();
         var ranges = ComputeRanges();
@@ -260,7 +327,7 @@ sealed class SampleKeymapControl : FrameworkElement
         // Boundary drag can only START from the header/zone-bar strip - same "piano
         // clicks always select" reasoning as OnMouseMove above; a piano-key click never
         // starts a resize drag even when x happens to line up with a boundary.
-        if (pos.Y < ZoneBarHeight)
+        if (InZoneBarStrip(pos.Y))
         {
             int hit = HitTestBoundary(rightX, ranges, x);
             if (hit >= 0)
@@ -273,6 +340,8 @@ sealed class SampleKeymapControl : FrameworkElement
             }
         }
 
+        // A click above the zone bar (in the raised-label strip) or on the bar itself
+        // but off any boundary handle still needs to resolve to a key/zone below.
         int key = PixelToKey(x, leftX, rightX);
         var hitZone = ZoneAt(key, ranges);
         if (hitZone == null) return;
@@ -280,9 +349,9 @@ sealed class SampleKeymapControl : FrameworkElement
         // The zone bar (the label strip above the piano) starts a POTENTIAL reorder
         // drag - whether it turns into a reorder or a plain select is decided on
         // mouse-up (see below), by comparing where the drag ENDED against where it
-        // started. Piano-key clicks (y >= ZoneBarHeight) still select immediately,
+        // started. Piano-key clicks (below the bar) still select immediately,
         // unchanged - only the zone bar itself is a drag surface.
-        if (pos.Y < ZoneBarHeight)
+        if (InZoneBarStrip(pos.Y))
         {
             _dragZoneOrigin = hitZone;
             _dragZoneHover = hitZone;
@@ -291,7 +360,18 @@ sealed class SampleKeymapControl : FrameworkElement
             return;
         }
 
-        ZoneClicked?.Invoke(hitZone);
+        if (pos.Y >= RaisedLabelHeight + ZoneBarHeight)
+        {
+            ZoneClicked?.Invoke(hitZone);
+            // Captured so a hold-and-drag off the control still delivers the eventual
+            // mouse-up here (rather than it going to whatever's under the cursor), and
+            // so OnLostMouseCapture below is a reliable single place to detect "the key
+            // is no longer held" - including window deactivation, which Windows treats
+            // as an implicit capture release.
+            _pianoKeyDown = true;
+            CaptureMouse();
+            PianoKeyClicked?.Invoke(hitZone, key);
+        }
     }
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
@@ -329,6 +409,19 @@ sealed class SampleKeymapControl : FrameworkElement
         InvalidateVisual();
     }
 
+    // ReleaseMouseCapture() above always raises this, so a plain mouse-up on a held
+    // piano key is already covered here - this override is the ONE place that needs to
+    // know about "the key stopped being held," including the cases a MouseUp handler
+    // alone would miss (Windows releases capture when the window is deactivated, e.g.
+    // Alt-Tab while the mouse button is still down).
+    protected override void OnLostMouseCapture(MouseEventArgs e)
+    {
+        base.OnLostMouseCapture(e);
+        if (!_pianoKeyDown) return;
+        _pianoKeyDown = false;
+        PianoKeyReleased?.Invoke();
+    }
+
     protected override void OnRender(DrawingContext dc)
     {
         var w = ActualWidth;
@@ -339,15 +432,18 @@ sealed class SampleKeymapControl : FrameworkElement
 
         var (whiteWidth, leftX, rightX) = BuildLayout();
         var ranges = ComputeRanges();
-        double pianoTop = ZoneBarHeight;
-        double pianoHeight = Math.Max(1, h - ZoneBarHeight);
+        double pianoTop = RaisedLabelHeight + ZoneBarHeight;
+        double pianoHeight = Math.Max(1, h - pianoTop - RangeBarsTotalHeight);
+
+        var selectedRange = SelectedZone != null ? ranges.FirstOrDefault(r => ReferenceEquals(r.Zone, SelectedZone)) : default;
+        bool hasSelection = selectedRange.Zone != null;
 
         // ── Zone assignment bar ──
         if (ranges.Length == 0)
         {
             var text = new FormattedText("No zones", CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
                 new Typeface("Segoe UI"), 10, (Brush)FindResource("MutedTextBrush"), VisualTreeHelper.GetDpi(this).PixelsPerDip);
-            dc.DrawText(text, new Point(4, 2));
+            dc.DrawText(text, new Point(4, RaisedLabelHeight + 2));
         }
         else
         {
@@ -367,7 +463,7 @@ sealed class SampleKeymapControl : FrameworkElement
                 // it (over the piano), or the two would visibly disagree about where a
                 // zone actually ends.
                 double x0 = leftX[low], x1 = rightX[high];
-                var rect = new Rect(x0, 0, Math.Max(1, x1 - x0), ZoneBarHeight);
+                var rect = new Rect(x0, RaisedLabelHeight, Math.Max(1, x1 - x0), ZoneBarHeight);
 
                 Brush fill = zone.IsSkipped ? skippedBrush : i % 2 == 0 ? zoneEvenBrush : (Brush)FindResource("PanelBackgroundBrush");
                 dc.DrawRectangle(fill, barBorder, rect);
@@ -383,14 +479,46 @@ sealed class SampleKeymapControl : FrameworkElement
                 if (_dragZoneHover != null && ReferenceEquals(zone, _dragZoneHover) && !ReferenceEquals(zone, _dragZoneOrigin))
                     dc.DrawRectangle(null, new Pen(Brushes.Yellow, 2), rect);
 
+                // Each zone's own compact label, CLIPPED to its own segment - previously
+                // unclipped, so a long filename with no break points (KMP/KSF names have
+                // no spaces, so FormattedText's own MaxTextWidth wrapping never kicks in)
+                // rendered straight past its rect's right edge and visibly bled into the
+                // NEXT zone's segment. That bleed is what looked like "the text keeps
+                // getting pushed to the right" as zones were added/selected and every
+                // segment's own width shifted. Clipping to `rect` makes an over-length
+                // label truncate at its own boundary instead of overlapping a neighbor -
+                // the selected zone's FULL name is still readable via the raised label
+                // above (see below), so nothing is lost, just no longer allowed to spill.
                 if (rect.Width > 12)
                 {
                     var label = zone.IsSkipped ? "-" : zone.Filename;
                     var text = new FormattedText(label, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
                         typeface, 9, textBrush, dpi) { MaxTextWidth = Math.Max(1, rect.Width - 2), MaxTextHeight = ZoneBarHeight };
-                    dc.DrawText(text, new Point(rect.X + 1, 1));
+                    dc.PushClip(new RectangleGeometry(rect));
+                    dc.DrawText(text, new Point(rect.X + 1, RaisedLabelHeight + 1));
+                    dc.Pop();
                 }
             }
+        }
+
+        // ── Raised label: the SELECTED zone's full sample name, drawn in its own strip
+        //    above the zone bar so a narrow segment's own clipped in-bar label doesn't
+        //    have to carry the whole readable name. Only the selection gets this - every
+        //    other zone stays exactly as compact as its own bar segment allows, "sitting
+        //    close to the keyboard" per the request this implements. ──
+        if (hasSelection && !SelectedZone!.IsSkipped)
+        {
+            double x0 = leftX[selectedRange.LowKey], x1 = rightX[selectedRange.HighKey];
+            var typeface = new Typeface("Segoe UI");
+            double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
+            var text = new FormattedText(SelectedZone.Filename, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+                typeface, 10, Brushes.White, dpi);
+            // Centered over the zone's own span when there's room, clamped to the
+            // control's own bounds so it never gets clipped off-screen at either edge.
+            double labelX = Math.Clamp(x0 + (x1 - x0 - text.Width) / 2, 0, Math.Max(0, w - text.Width));
+            var bgRect = new Rect(labelX - 3, 0, text.Width + 6, RaisedLabelHeight);
+            dc.DrawRectangle((Brush)FindResource("WaveformSelectionBrush"), null, bgRect);
+            dc.DrawText(text, new Point(labelX, (RaisedLabelHeight - text.Height) / 2));
         }
 
         // ── Piano: white keys first (full height), then any WHITE-key highlight, then
@@ -419,8 +547,6 @@ sealed class SampleKeymapControl : FrameworkElement
         // tint rather than a solid block over the darker black keys.
         var keyHighlight = new SolidColorBrush(Color.FromArgb(100, 140, 140, 140));
         keyHighlight.Freeze();
-        var selectedRange = SelectedZone != null ? ranges.FirstOrDefault(r => ReferenceEquals(r.Zone, SelectedZone)) : default;
-        bool hasSelection = selectedRange.Zone != null;
         bool InSelection(int key) => hasSelection && key >= selectedRange.LowKey && key <= selectedRange.HighKey;
 
         for (int key = 0; key <= 127; key++)
@@ -458,7 +584,9 @@ sealed class SampleKeymapControl : FrameworkElement
         //    highlight above now replaces for "where does a zone's range fall." The
         //    line itself is still the actual drag handle (hit-tested in HitTestBoundary
         //    regardless of whether it's currently drawn), so resizing still works
-        //    exactly the same - only the constant-clutter rest state is gone. ──
+        //    exactly the same - only the constant-clutter rest state is gone. Spans
+        //    just the piano band now (pianoTop..pianoTop+pianoHeight), not the raised
+        //    label/zone-bar/range-bar strips above and below it. ──
         for (int i = 0; i < ranges.Length - 1; i++)
         {
             bool active = _dragBoundary == i || _hoverBoundary == i;
@@ -474,7 +602,24 @@ sealed class SampleKeymapControl : FrameworkElement
             {
                 x = BoundaryX(rightX, ranges, i);
             }
-            dc.DrawLine(new Pen(Brushes.Yellow, 2), new Point(x, 0), new Point(x, h));
+            dc.DrawLine(new Pen(Brushes.Yellow, 2), new Point(x, pianoTop), new Point(x, pianoTop + pianoHeight));
         }
+
+        // ── Keyboard-range indicator strips - three thin bands directly under the
+        //    piano showing where a real 88/73/61-key Kronos's own keyboard would sit
+        //    relative to the full 128-key MIDI range shown here. Closest-to-farthest
+        //    from the keys: 88-key (red), 73-key (blue), 61-key (green), stacked in
+        //    that order per the original request. ──
+        double rangeY = pianoTop + pianoHeight;
+        DrawRangeBar(dc, leftX, rightX, rangeY, Key88Low, Key88High, Color.FromRgb(0xCC, 0x33, 0x33));
+        DrawRangeBar(dc, leftX, rightX, rangeY + RangeBarHeight, Key73Low, Key73High, Color.FromRgb(0x33, 0x66, 0xCC));
+        DrawRangeBar(dc, leftX, rightX, rangeY + RangeBarHeight * 2, Key61Low, Key61High, Color.FromRgb(0x33, 0xAA, 0x55));
+    }
+
+    static void DrawRangeBar(DrawingContext dc, double[] leftX, double[] rightX, double y, int lowKey, int highKey, Color color)
+    {
+        var brush = new SolidColorBrush(color);
+        brush.Freeze();
+        dc.DrawRectangle(brush, null, new Rect(leftX[lowKey], y, rightX[highKey] - leftX[lowKey], RangeBarHeight));
     }
 }

@@ -44,6 +44,14 @@ sealed class SamplePlayback : IDisposable
 
     public bool IsPlaying => _output?.PlaybackState == PlaybackState.Playing;
 
+    // Bumped by every Stop()/Start() call (see _generation's own comment above) - a
+    // caller that wants to know "did some OTHER playback start/stop happen since I
+    // triggered mine" (SampleEditorViewModel.ReleasePianoKey, deciding whether a
+    // mouse-up should still stop what it started) can snapshot this right after
+    // starting and compare later, without this class needing to know anything about
+    // who its callers are or track per-trigger identity itself.
+    public int Generation => _generation;
+
     public event Action? PlaybackStopped;
 
     // Peak level (0..1) from the most recent metering notification - updated on
@@ -101,6 +109,20 @@ sealed class SamplePlayback : IDisposable
         if (_volumeProvider != null) _volumeProvider.Volume = _pendingVolume * (_boostEnabled ? 1f : BoostOffAttenuation);
     }
 
+    // 0..127, MIDI pan convention - 0 = full Left, 64 = Center, 127 = full Right. "This
+    // app only" playback preview, same scope as Volume (not a persisted KSF field - no
+    // such field exists on real hardware for this app's own auditioning). Applied live
+    // via PanningSampleProvider, same "set on the live provider if one's running,
+    // otherwise just remembered for the next Start()" pattern Volume/BoostEnabled use.
+    int _pendingPan = 64;
+    PanningSampleProvider? _panProvider;
+
+    public int Pan
+    {
+        get => _pendingPan;
+        set { _pendingPan = Math.Clamp(value, 0, 127); _panProvider?.SetPan(_pendingPan); }
+    }
+
     public void Play(short[] pcm, int sampleRate)
     {
         Stop();
@@ -110,24 +132,70 @@ sealed class SamplePlayback : IDisposable
         Start(provider.ToSampleProvider());
     }
 
+    // Piano-key trigger (Sample Editor keymap): plays `pcm` as if struck at `playedKey`,
+    // pitch-shifted relative to `originalKey`. A real hardware sampler transposes by
+    // playing the SAME recorded audio slower/faster, not by substituting a separately
+    // pitch-shifted copy - tape-style, speed and pitch move together - so this just
+    // declares a DIFFERENT WaveFormat sample rate on the identical PCM bytes rather than
+    // running anything through a pitch-shifting DSP path. No new resampler needed: this
+    // app's own WasapiOut output already plays every sample at whatever native rate it
+    // was recorded at (Play/PlayFrom above), which is exactly the "declared rate isn't
+    // the device's own mix format" case being reused here, just with a rate that's been
+    // deliberately shifted rather than the sample's true native one.
+    public void PlayAtKey(short[] pcm, int nativeSampleRate, int originalKey, int playedKey, int startFrame = 0, bool reverse = false)
+        => PlayFrom(pcm, EffectiveRate(nativeSampleRate, originalKey, playedKey), startFrame, reverse);
+
+    // True-stereo counterpart to PlayAtKey - a resolved L/R pair plays TOGETHER through
+    // one interleaved provider (matching how a real stereo instrument sounds on the
+    // Kronos), not as two separate mono triggers racing each other through this class's
+    // single _output slot.
+    public void PlayStereoAtKey(short[] left, short[] right, int nativeSampleRate, int originalKey, int playedKey, int startFrame = 0, bool reverse = false)
+        => PlayStereoFrom(left, right, EffectiveRate(nativeSampleRate, originalKey, playedKey), startFrame, reverse);
+
+    // Loop-aware counterparts of PlayAtKey/PlayStereoAtKey - a piano-key trigger for a
+    // zone whose sample has its own Loop Enabled flag on should sustain exactly like
+    // PlaySelectedSample's loop branch does, not just play the one-shot attack and stop
+    // (the bug this pair fixes: the keymap piano previously always went through
+    // PlayFrom/PlayStereoFrom regardless of the sample's own loop/reverse flags).
+    public void PlayLoopedAtKey(short[] pcm, int nativeSampleRate, int originalKey, int playedKey, int sampleStartFrame, int loopStartFrame, int loopEndFrame, bool reverse)
+        => PlayLooped(pcm, EffectiveRate(nativeSampleRate, originalKey, playedKey), sampleStartFrame, loopStartFrame, loopEndFrame, reverse);
+
+    public void PlayStereoLoopedAtKey(short[] left, short[] right, int nativeSampleRate, int originalKey, int playedKey, int sampleStartFrame, int loopStartFrame, int loopEndFrame, bool reverse)
+        => PlayStereoLooped(left, right, EffectiveRate(nativeSampleRate, originalKey, playedKey), sampleStartFrame, loopStartFrame, loopEndFrame, reverse);
+
+    // Tape-style speed/pitch shift shared by every *AtKey entry point - see PlayAtKey's
+    // own comment for why this is a declared WaveFormat rate change rather than a
+    // pitch-shifting DSP path.
+    static int EffectiveRate(int nativeSampleRate, int originalKey, int playedKey)
+    {
+        double ratio = Math.Pow(2.0, (playedKey - originalKey) / 12.0);
+        return Math.Clamp((int)Math.Round(nativeSampleRate * ratio), 1000, 384000);
+    }
+
     // A scrub-click's "play from here" gesture - one-shot from an arbitrary frame to
     // the end of the buffer, deliberately ignoring loop state (this is an audition
     // gesture, not a statement about how the sample plays normally - PlaySelectedSample/
-    // PlayLooped remain the loop-aware entry points).
-    public void PlayFrom(short[] pcm, int sampleRate, int startFrame)
+    // PlayLooped remain the loop-aware entry points). `reverse` mirrors the real Kronos
+    // Reverse flag (SMD1 flags bit 0x40, hardware-confirmed - "reverses playback
+    // direction of the whole sample," unconditional on loop state, per the Sample
+    // Editor's own tooltip) - when set, playback runs from the END of the buffer DOWN TO
+    // `startFrame` instead of from `startFrame` up to the end, the same "same bounds,
+    // opposite direction" relationship LoopingSampleProvider already has between its
+    // forward and reverse loop modes.
+    public void PlayFrom(short[] pcm, int sampleRate, int startFrame, bool reverse = false)
     {
         Stop();
         if (pcm.Length == 0) return;
-        var provider = new OneShotSampleWaveProvider(pcm, null, sampleRate, startFrame);
+        var provider = new OneShotSampleWaveProvider(pcm, null, sampleRate, startFrame, reverse);
         _positionGetter = () => provider.PositionFrame;
         Start(provider.ToSampleProvider());
     }
 
-    public void PlayStereoFrom(short[] left, short[] right, int sampleRate, int startFrame)
+    public void PlayStereoFrom(short[] left, short[] right, int sampleRate, int startFrame, bool reverse = false)
     {
         Stop();
         if (left.Length == 0 && right.Length == 0) return;
-        var provider = new OneShotSampleWaveProvider(left, right, sampleRate, startFrame);
+        var provider = new OneShotSampleWaveProvider(left, right, sampleRate, startFrame, reverse);
         _positionGetter = () => provider.PositionFrame;
         Start(provider.ToSampleProvider());
     }
@@ -176,7 +244,16 @@ sealed class SamplePlayback : IDisposable
         _volumeProvider = new VolumeSampleProvider(source);
         ApplyVolume();
 
-        var meter = new MeteringSampleProvider(_volumeProvider, Math.Max(1, source.WaveFormat.SampleRate / 20));
+        // Pan is the FINAL software stage before metering - Volume/Boost are plain
+        // per-sample scalar multiplies, so applying them before or after pan's
+        // per-channel split is mathematically identical; putting pan last means
+        // metering always sees the actual post-pan L/R balance, including for a mono
+        // source (PanningSampleProvider upmixes it to 2 channels so pan has somewhere
+        // to go - see its own comment).
+        _panProvider = new PanningSampleProvider(_volumeProvider);
+        _panProvider.SetPan(_pendingPan);
+
+        var meter = new MeteringSampleProvider(_panProvider, Math.Max(1, _panProvider.WaveFormat.SampleRate / 20));
         meter.StreamVolume += (_, e) =>
         {
             var vals = e.MaxSampleValues;
@@ -191,8 +268,21 @@ sealed class SamplePlayback : IDisposable
         // source since the queued tail can span a loop wrap). 40ms - matched to the VU
         // timer's own polling interval - trades a little more CPU/dropout risk for a
         // much shorter, still-inaudible-in-practice stop tail versus the previous 100ms.
+        //
+        // useEventSync: true (2026-08-25, reported audible hiccups/stutters) - the
+        // (shareMode, latency) overload this used to call defaults to FALSE, which
+        // makes WasapiOut refill the buffer by Thread.Sleep(latency/2)-ing between
+        // polls instead of waiting on a real WASAPI-signaled event. Windows' default
+        // ~15ms Sleep timer resolution is a significant fraction of a 40ms buffer, so a
+        // poll landing late (ordinary scheduler jitter, nothing exotic) can genuinely
+        // underrun and produce an audible click - a known NAudio pitfall at low
+        // latencies, not something extra app-level threading/async would touch: the
+        // audio callback ALREADY runs on WasapiOut's own dedicated thread, never the UI
+        // thread, whichever sync mode is used. Event sync instead blocks on a kernel
+        // wait handle the audio engine itself signals when it actually needs more data
+        // - no fixed poll interval to be late for.
         int generation = ++_generation;
-        _output = new WasapiOut(NAudio.CoreAudioApi.AudioClientShareMode.Shared, 40);
+        _output = new WasapiOut(NAudio.CoreAudioApi.AudioClientShareMode.Shared, useEventSync: true, latency: 40);
         _output.Init(meter.ToWaveProvider());
         _output.PlaybackStopped += (_, _) =>
         {
@@ -211,6 +301,7 @@ sealed class SamplePlayback : IDisposable
         _output?.Dispose();
         _output = null;
         _volumeProvider = null;
+        _panProvider = null;
         _positionGetter = null;
         PeakLevel = 0f;
         PeakLevelLeft = 0f;
@@ -241,41 +332,59 @@ sealed class OneShotSampleWaveProvider : IWaveProvider
     readonly short[]? _right; // null for mono
     readonly int _channels;
     readonly int _totalFrames; // pads whichever of left/right is shorter with silence, matching the old eager Interleave's own rule
+    readonly bool _reverse;
+    readonly int _endFrame; // forward: exclusive upper bound (_totalFrames). reverse: inclusive lower bound (the caller's startFrame).
     volatile int _positionFrame;
 
     public WaveFormat WaveFormat { get; }
     public int PositionFrame => _positionFrame;
 
-    public OneShotSampleWaveProvider(short[] left, short[]? right, int sampleRate, int startFrame = 0)
+    // `reverse` plays from the END of the buffer down to `startFrame` instead of from
+    // `startFrame` up to the end - same bounds as forward, opposite direction, mirroring
+    // the real Kronos Reverse flag (see PlayFrom's own comment for the hardware detail).
+    public OneShotSampleWaveProvider(short[] left, short[]? right, int sampleRate, int startFrame = 0, bool reverse = false)
     {
         _left = left;
         _right = right;
         _channels = right != null ? 2 : 1;
         _totalFrames = right != null ? Math.Max(left.Length, right.Length) : left.Length;
         WaveFormat = new WaveFormat(sampleRate, 16, _channels);
-        _positionFrame = Math.Clamp(startFrame, 0, _totalFrames);
+        _reverse = reverse;
+        int clampedStart = Math.Clamp(startFrame, 0, _totalFrames);
+        if (reverse)
+        {
+            _positionFrame = Math.Max(0, _totalFrames - 1);
+            _endFrame = clampedStart;
+        }
+        else
+        {
+            _positionFrame = clampedStart;
+            _endFrame = _totalFrames;
+        }
     }
 
     public int Read(byte[] buffer, int offset, int count)
     {
         int frameBytes = 2 * _channels;
         count -= count % frameBytes;
-        int frames = Math.Max(0, Math.Min(count / frameBytes, _totalFrames - _positionFrame));
 
-        if (_channels == 1)
+        if (!_reverse && _channels == 1)
         {
-            Buffer.BlockCopy(_left, _positionFrame * 2, buffer, offset, frames * 2);
+            int fastFrames = Math.Max(0, Math.Min(count / frameBytes, _endFrame - _positionFrame));
+            Buffer.BlockCopy(_left, _positionFrame * 2, buffer, offset, fastFrames * 2);
+            _positionFrame += fastFrames;
+            return fastFrames * frameBytes;
         }
-        else
+
+        int avail = _reverse ? Math.Max(0, _positionFrame - _endFrame + 1) : Math.Max(0, _endFrame - _positionFrame);
+        int frames = Math.Min(count / frameBytes, avail);
+        int bi = offset;
+        for (int i = 0; i < frames; i++)
         {
-            int bi = offset;
-            for (int i = 0; i < frames; i++)
-            {
-                WriteFrame(buffer, bi, _positionFrame + i);
-                bi += frameBytes;
-            }
+            WriteFrame(buffer, bi, _positionFrame);
+            _positionFrame += _reverse ? -1 : 1;
+            bi += frameBytes;
         }
-        _positionFrame += frames;
         return frames * frameBytes;
     }
 
@@ -311,7 +420,7 @@ sealed class LoopingSampleProvider : IWaveProvider
     readonly bool _reverse;
 
     bool _inIntro;
-    int _cursorFrame;     // forward read position (intro, and the non-reverse loop)
+    int _cursorFrame;     // intro read position (either direction) and the non-reverse loop
     int _reverseFrame;    // current frame index when reverse-looping (counts down)
 
     public WaveFormat WaveFormat { get; }
@@ -337,8 +446,26 @@ sealed class LoopingSampleProvider : IWaveProvider
         _loopStartFrame = loopStart;
         _loopEndFrame = loopEnd;
 
-        _inIntro = startFrame < loopStart;
-        _cursorFrame = _inIntro ? startFrame : _loopStartFrame;
+        // Reverse's intro is NOT "the same forward intro, reversed at the end" (the bug
+        // this fixes - it used to always read _cursorFrame forward here regardless of
+        // _reverse, so a Reverse+Loop sample played its attack forward and only started
+        // reversing once it reached the loop). It's the mirror of the forward intro's
+        // OWN span [sampleStartFrame, loopEnd) - reverse plays that same span backward,
+        // from the buffer's true last frame down to Loop Start, exactly once, before
+        // handing off to the (already-correct) backward loop-repeat below. sampleStart
+        // has no reverse equivalent (there's no "where reverse audio begins" marker on
+        // real hardware - only where forward playback used to begin), so it's simply not
+        // used for this branch.
+        if (reverse)
+        {
+            _inIntro = totalFrames - 1 >= loopStart;
+            _cursorFrame = _inIntro ? totalFrames - 1 : loopEnd - 1;
+        }
+        else
+        {
+            _inIntro = startFrame < loopStart;
+            _cursorFrame = _inIntro ? startFrame : loopStart;
+        }
         _reverseFrame = loopEnd - 1;
     }
 
@@ -365,11 +492,27 @@ sealed class LoopingSampleProvider : IWaveProvider
         {
             if (_inIntro)
             {
+                if (_reverse)
+                {
+                    // Backward intro - see the constructor's own comment. Single-frame
+                    // steps, matching the reverse loop-repeat branch below (not a new
+                    // pattern this introduces).
+                    if (_cursorFrame < _loopStartFrame)
+                    {
+                        _inIntro = false;
+                        _reverseFrame = _loopEndFrame - 1;
+                        continue;
+                    }
+                    WriteFrame(buffer, offset + written, _cursorFrame);
+                    _cursorFrame--;
+                    written += frameBytes;
+                    continue;
+                }
+
                 if (_cursorFrame >= _loopEndFrame)
                 {
                     _inIntro = false;
-                    if (_reverse) _reverseFrame = _loopEndFrame - 1;
-                    else _cursorFrame = _loopStartFrame;
+                    _cursorFrame = _loopStartFrame;
                     continue;
                 }
                 int avail = _loopEndFrame - _cursorFrame;
@@ -400,5 +543,81 @@ sealed class LoopingSampleProvider : IWaveProvider
             }
         }
         return written;
+    }
+}
+
+// Software stereo pan - the ISampleProvider stage SamplePlayback.Start inserts after
+// Volume/Boost, before Metering (see Start's own comment for why order there doesn't
+// matter mathematically but channel count does). Equal-power (constant-loudness) pan
+// law: at center both channels are at unity gain; sweeping to either extreme brings the
+// OPPOSITE channel down to silence while the SAME-side channel stays at unity, so
+// perceived loudness doesn't dip passing through center the way a naive linear
+// crossfade would. A MONO source is upmixed to 2 channels so pan has somewhere to go;
+// a source that's ALREADY stereo (a resolved true-stereo L/R pair) keeps its own two
+// channels and is balanced between them, rather than being summed to mono first and
+// re-panned from scratch - true stereo content keeps its own channel separation.
+sealed class PanningSampleProvider : ISampleProvider
+{
+    readonly ISampleProvider _source;
+    readonly int _sourceChannels;
+    float[] _scratch = [];
+    volatile float _leftGain = 1f, _rightGain = 1f;
+
+    public WaveFormat WaveFormat { get; }
+
+    public PanningSampleProvider(ISampleProvider source)
+    {
+        _source = source;
+        _sourceChannels = source.WaveFormat.Channels;
+        WaveFormat = WaveFormat.CreateIeeeFloatWaveFormat(source.WaveFormat.SampleRate, 2);
+    }
+
+    // 0..127, MIDI pan convention - 0 = full Left, 64 = Center, 127 = full Right.
+    public void SetPan(int pan)
+    {
+        double t = Math.Clamp(pan, 0, 127) / 127.0; // 0..1
+        double angle = t * (Math.PI / 2); // 0..pi/2
+        _leftGain = (float)Math.Cos(angle);
+        _rightGain = (float)Math.Sin(angle);
+    }
+
+    public int Read(float[] buffer, int offset, int count)
+    {
+        // Snapshot once per call - SetPan can be written from the UI thread while this
+        // runs on the audio thread; torn reads of two independent floats would at worst
+        // read a half-updated gain pair for one buffer, never anything unsafe.
+        float lg = _leftGain, rg = _rightGain;
+
+        if (_sourceChannels == 1)
+        {
+            int outFrames = count / 2;
+            EnsureScratch(outFrames);
+            int read = _source.Read(_scratch, 0, outFrames);
+            for (int i = 0; i < read; i++)
+            {
+                buffer[offset + i * 2] = _scratch[i] * lg;
+                buffer[offset + i * 2 + 1] = _scratch[i] * rg;
+            }
+            return read * 2;
+        }
+
+        EnsureScratch(count);
+        int readSamples = _source.Read(_scratch, 0, count);
+        int frames = readSamples / 2;
+        for (int i = 0; i < frames; i++)
+        {
+            buffer[offset + i * 2] = _scratch[i * 2] * lg;
+            buffer[offset + i * 2 + 1] = _scratch[i * 2 + 1] * rg;
+        }
+        return frames * 2;
+    }
+
+    // Reused across Read() calls rather than allocated fresh each time - this class
+    // exists in the same "no allocation in the steady-state audio callback" family as
+    // OneShotSampleWaveProvider/LoopingSampleProvider (see their own comments); it only
+    // grows (never shrinks) since WASAPI requests a stable buffer size per stream.
+    void EnsureScratch(int minLength)
+    {
+        if (_scratch.Length < minLength) _scratch = new float[minLength];
     }
 }

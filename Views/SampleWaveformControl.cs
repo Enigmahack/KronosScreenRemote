@@ -506,11 +506,20 @@ public sealed class SampleWaveformControl : FrameworkElement
 
         if (!_dragMoved)
         {
-            // A plain click, not a drag - the committed selection was never touched (the
-            // drag preview only ever lived in _previewSelStart/End), so there's nothing
-            // to restore; just drop the preview and treat it as "play from here" instead
-            // of a selection change.
+            // A plain click, not a drag - drops any EXISTING highlight (a prior drag's
+            // committed selection) rather than leaving it stuck on screen, then treats
+            // the click as "play from here" the same as before. SelectionEndFrame >
+            // SelectionStartFrame is this control's own established "there is a real
+            // selection" convention (Zoom to Selection/Loop Selected Area/the info text
+            // all key off it) - collapsing both to the same frame reads as "nothing
+            // selected" everywhere that already checks it, with no separate "cleared"
+            // state needed. Only fires SelectionChanged when there WAS something to
+            // clear, so a click with no prior selection doesn't push a no-op update.
             ClearPreviewSelection();
+            bool hadSelection = SelectionEndFrame > SelectionStartFrame;
+            SelectionStartFrame = clickedFrame;
+            SelectionEndFrame = clickedFrame;
+            if (hadSelection) SelectionChanged?.Invoke();
             ScrubFrame = clickedFrame;
             ScrubRequested?.Invoke(clickedFrame);
             return;

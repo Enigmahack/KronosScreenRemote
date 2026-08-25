@@ -241,6 +241,22 @@ partial class SampleEditorViewModel : ObservableObject
     // those use, for the same reason - pushing a stale on-disk file while newer edits
     // sit only in memory would upload the wrong content with no indication anything's
     // off.
+    // Writes a collection's own .KSC AND regenerates its _UserBank.KSC sibling
+    // together - every local write of a collection's .KSC (Save Changes, Save As,
+    // importing to the repository, retiring a consumed entry, creating/deleting a
+    // multisample) keeps the two in sync, per explicit request ("every time the user
+    // updates the main .KSC file, whether locally or pushed to Kronos"). SaveUserBank's
+    // own writer only ever reflects "the collection's own on-disk entries" (hardware-
+    // confirmed 2026-08-24, see its own doc comment) - exactly what just changed
+    // whenever this runs. The push side (SampleFtpPush.PushClosureAsync) uploads
+    // whatever this already wrote locally, so pushing never needs its own separate
+    // regeneration step.
+    static void SaveCollectionWithUserBank(KscCollection collection, string path)
+    {
+        collection.Save(path);
+        collection.SaveUserBank();
+    }
+
     public async Task PushCollectionToKronosAsync(IRemoteSampleSource source)
     {
         if (_collection == null || _collectionPath == null) { StatusText = "Open a collection first."; return; }
@@ -978,15 +994,95 @@ partial class SampleEditorViewModel : ObservableObject
     // Rename's own purpose.
     public string? SelectedMultisampleLabel => CurrentMultisampleName;
 
+    // The KMP's own on-disk base filename (no extension), for deriving its content
+    // folder name (which must match exactly). Delegates entirely to
+    // KmpMultisample.AutoFileName - the SAME hardware-confirmed writer
+    // SampleImportBuilder.CreateStereoMultisamplePair/NewMultisampleInCollection
+    // already use for a brand-new multisample, so a renamed one always agrees with a
+    // freshly-created one instead of two naming implementations quietly drifting apart
+    // (a real bug this fixes 2026-08-25: this method used to have its own duplicate,
+    // un-padded tiering logic, disagreeing with AutoFileName's hardware-confirmed
+    // underscore-padding for short names - "GAGA LEAD" -> "GAGA_000.KMP", not
+    // "GAGA000.KMP" - the very case a Rename could have gotten wrong).
+    internal static string ComputeKmpBaseName(string name, uint mno1) =>
+        Path.GetFileNameWithoutExtension(KmpMultisample.AutoFileName(name, mno1));
+
+    // Moves `m`'s own .KMP file + its zone-content folder to match its CURRENT
+    // Name/Mno1-derived filename (ComputeKmpBaseName) - called immediately on rename,
+    // NOT deferred to Save like every other field edit here. Deferring would mean every
+    // Save has to reconcile "the path this is keyed under" against "the path its name
+    // now implies," for every dirty entry, on every save - real complexity for what a
+    // rename-time File.Move/Directory.Move (atomic-ish on one volume, fails loudly and
+    // immediately with nothing half-written) sidesteps entirely. The FILE CONTENTS
+    // still defer exactly as before - this moves whatever bytes already exist on disk
+    // unedited via File.Move (never m.Save(newPath), which would flush the pending Name
+    // edit early) - only the container moves; `m` itself becomes a pending dirty entry
+    // at the NEW path the same way any other edit does.
+    //
+    // In-keymap .KSF files inside the folder are NEVER renamed (hardware-confirmed:
+    // AIRTO097/BEER-000/24K_1028's own zone files are MS<Mno1><zoneIndex>-keyed, not
+    // name-keyed - matches KmpMultisample.NextKsfFilename's own existing convention).
+    // Only the FOLDER containing them needs to move, to keep KmpZone.KsfPath (which
+    // derives the folder name from the KMP's OWN basename) resolving correctly against
+    // the new KMP path.
+    //
+    // Returns the new path, or the SAME path back unchanged if no move was needed
+    // (computed name already matches) or a collision blocked it (StatusText set,
+    // nothing touched - never a partial move).
+    string MoveMultisampleFilesIfNeeded(KmpMultisample m, string oldPath)
+    {
+        var dir = Path.GetDirectoryName(oldPath) ?? "";
+        var newBase = ComputeKmpBaseName(m.Name, m.Mno1);
+        if (newBase.Length == 0) return oldPath; // sanitized name is empty - nothing usable to rename to
+        var newPath = Path.Combine(dir, newBase + ".KMP");
+        if (string.Equals(newPath, oldPath, StringComparison.OrdinalIgnoreCase)) return oldPath;
+
+        var oldFolder = Path.Combine(dir, Path.GetFileNameWithoutExtension(oldPath));
+        var newFolder = Path.Combine(dir, newBase);
+
+        if (File.Exists(newPath) || Directory.Exists(newFolder))
+        {
+            StatusText = $"Can't rename to '{newBase}' - a multisample already uses that filename in this collection.";
+            return oldPath;
+        }
+
+        if (File.Exists(oldPath)) File.Move(oldPath, newPath);
+        else m.Save(newPath); // shouldn't happen (every selectable multisample has a saved .KMP), defensive fallback
+        if (Directory.Exists(oldFolder)) Directory.Move(oldFolder, newFolder);
+
+        RekeyPendingEdits(oldFolder, newFolder); // any pending zone-sample edit moves with its folder
+        _dirtyMultisamples.Remove(oldPath);
+        RegisterDirtyMultisample(m, newPath);
+
+        if (_collection != null && _collectionPath != null)
+        {
+            var entryIdx = _collection.Entries.FindIndex(e => string.Equals(e, Path.GetFileName(oldPath), StringComparison.OrdinalIgnoreCase));
+            if (entryIdx >= 0) _collection.Entries[entryIdx] = Path.GetFileName(newPath);
+
+            // Immediate, not deferred to the next Save Changes - same precedent
+            // NewMultisampleInCollection/DeleteSelectedMultisample already set for any
+            // action that mutates Entries. Leaving the .KSC stale here would mean it
+            // names a .KMP that no longer exists on disk (the move above already
+            // happened) until the user happens to hit Save Changes - a real
+            // inconsistency window, not just an unsaved-edit convenience. Also keeps
+            // _UserBank.KSC in sync per the same "every .KSC write" rule.
+            SaveCollectionWithUserBank(_collection, _collectionPath);
+        }
+
+        return newPath;
+    }
+
     // Renames the in-context multisample's Name field (Suffix - the "-L"/"-R" stereo
     // marker - is left alone; editing it here would silently break stereo pairing,
-    // which matches by exact Suffix, not something a plain rename box should risk). A
-    // live edit like every other field here: marks the .KMP dirty, doesn't save
-    // immediately - Save Changes/Save Multisample writes it. Mirrored onto a resolved
-    // stereo sibling the same way every other zone/name edit is, since the sibling
-    // match (FindLiveStereoSibling) requires an EXACT Name match - renaming only one
-    // half would silently break the pairing the same way an unmirrored key-range edit
-    // does (see ApplyZoneEdits' own comment).
+    // which matches by exact Suffix, not something a plain rename box should risk),
+    // AND its .KMP file/folder to match (MoveMultisampleFilesIfNeeded, immediate - see
+    // its own comment for why this isn't deferred like the Name field itself is).
+    // Mirrored onto a resolved stereo sibling the same way every other zone/name edit
+    // is, since the sibling match (FindLiveStereoSibling) requires an EXACT Name match
+    // - renaming only one half would silently break the pairing the same way an
+    // unmirrored key-range edit does (see ApplyZoneEdits' own comment). BOTH halves'
+    // collisions are checked and BOTH moved before the tree rebuilds, so a blocked
+    // sibling move can never leave a pair straddling old/new locations.
     public void RenameSelectedMultisample(string newName)
     {
         newName = newName.Trim();
@@ -996,17 +1092,53 @@ partial class SampleEditorViewModel : ObservableObject
         if (m.Name == newName) return;
 
         var (sibling, sibPath) = FindLiveStereoSibling(m, path);
+
+        // Collision-check BOTH halves against their OWN target names before moving
+        // either - a refused sibling move must never leave the primary half already
+        // relocated with nothing to undo it.
+        var newBase = ComputeKmpBaseName(newName, m.Mno1);
+        var newTarget = Path.Combine(Path.GetDirectoryName(path) ?? "", newBase + ".KMP");
+        if (!string.Equals(newTarget, path, StringComparison.OrdinalIgnoreCase) &&
+            (File.Exists(newTarget) || Directory.Exists(Path.Combine(Path.GetDirectoryName(path) ?? "", newBase))))
+        {
+            StatusText = $"Can't rename to '{newName}' - '{newBase}.KMP' already exists in this collection.";
+            return;
+        }
+        if (sibling != null && sibPath != null)
+        {
+            var sibNewBase = ComputeKmpBaseName(newName, sibling.Mno1);
+            var sibNewTarget = Path.Combine(Path.GetDirectoryName(sibPath) ?? "", sibNewBase + ".KMP");
+            if (!string.Equals(sibNewTarget, sibPath, StringComparison.OrdinalIgnoreCase) &&
+                (File.Exists(sibNewTarget) || Directory.Exists(Path.Combine(Path.GetDirectoryName(sibPath) ?? "", sibNewBase))))
+            {
+                StatusText = $"Can't rename to '{newName}' - '{sibNewBase}.KMP' (stereo partner) already exists in this collection.";
+                return;
+            }
+        }
+
         m.Name = newName;
-        RegisterDirtyMultisample(m, path);
-        RefreshMultisampleNodeLabel(m, path);
+        var newPath = MoveMultisampleFilesIfNeeded(m, path);
+        string? newSibPath = null;
         if (sibling != null && sibPath != null)
         {
             sibling.Name = newName;
-            RegisterDirtyMultisample(sibling, sibPath);
-            RefreshMultisampleNodeLabel(sibling, sibPath);
+            newSibPath = MoveMultisampleFilesIfNeeded(sibling, sibPath);
         }
+
+        if (_collectionPath != null && _collection != null)
+        {
+            RebuildTreeFromCollection(_collectionPath, _collection);
+            var reselect = AllMultisampleNodes().FirstOrDefault(n => string.Equals(n.MultisampleRef!.Value.Path, newPath, StringComparison.OrdinalIgnoreCase));
+            if (reselect != null) SelectNode(reselect);
+        }
+        else
+        {
+            RefreshMultisampleNodeLabel(m, newPath);
+            if (sibling != null && newSibPath != null) RefreshMultisampleNodeLabel(sibling, newSibPath);
+        }
+
         StatusText = $"Renamed multisample to '{newName}{m.Suffix}'"
-            + (sibling != null ? " (mirrored to stereo partner)" : "") + " - not yet saved.";
+            + (sibling != null ? " (mirrored to stereo partner)" : "") + " - filename/folder updated, Name change not yet saved.";
     }
 
     // Repaints whichever tree node(s) represent `m` (matched by reference, not path -
@@ -1689,7 +1821,7 @@ partial class SampleEditorViewModel : ObservableObject
                 _playback.PlayStereoLooped(left, right, (int)_selectedSample.SampleRate,
                     loopStartFrame, SampleLoopStart, SampleLoopEnd, SampleReverseEnabled);
             else
-                _playback.PlayStereoFrom(left, right, (int)_selectedSample.SampleRate, oneShotStartFrame);
+                _playback.PlayStereoFrom(left, right, (int)_selectedSample.SampleRate, oneShotStartFrame, SampleReverseEnabled);
         }
         else if (loop)
         {
@@ -1698,10 +1830,122 @@ partial class SampleEditorViewModel : ObservableObject
         }
         else
         {
-            _playback.PlayFrom(_selectedSample.Samples(), (int)_selectedSample.SampleRate, oneShotStartFrame);
+            _playback.PlayFrom(_selectedSample.Samples(), (int)_selectedSample.SampleRate, oneShotStartFrame, SampleReverseEnabled);
         }
         IsPlaying = true;
         IsPaused = false;
+    }
+
+    // Keymap piano-key trigger: plays whichever sample `zone` assigns, pitch-shifted as
+    // if struck at `playedKey` - SamplePlayback.PlayAtKey does the actual tape-style
+    // speed/pitch change. SampleKeymapControl.PianoKeyClicked only ever fires for a real
+    // ZoneAt() hit, so "outside every zone's range" never reaches here; a skipped
+    // placeholder zone (no real sample) and a header-only sample (no audio data) both
+    // just do nothing, per explicit request ("without dragging in the whole voice-
+    // manager machinery" - this is a one-shot audition trigger, not note-on/note-off
+    // tracking, deliberately no polyphony).
+    //
+    // Reads the zone's OWN sample independently of whatever's currently loaded in the
+    // Sample panel (_selectedSample) - clicking a key plays THAT key's zone, which is
+    // very often not the currently-selected one. Checks the live pending edit
+    // (_dirtySamples) before falling back to disk, same "live edit wins over stale disk
+    // state" rule every other read here already follows (RebuildTreeFromCollection's own
+    // comment).
+    public void PlayZoneAtKey(KmpZone zone, int playedKey)
+    {
+        if (zone.IsSkipped) return;
+        var (m, kmpPath) = ResolveContextMultisample();
+        if (m == null || kmpPath == null) return;
+        var ksfPath = zone.KsfPath(kmpPath);
+
+        KsfSample? OpenOrPending(string path)
+        {
+            if (_dirtySamples.TryGetValue(path, out var pending)) return pending;
+            try { return File.Exists(path) ? KsfSample.Open(File.ReadAllBytes(path)) : null; }
+            catch (Exception ex) { AppLog.Warn($"Sample Editor: couldn't open '{path}' for key trigger: {ex.Message}"); return null; }
+        }
+
+        var s = OpenOrPending(ksfPath);
+        if (s == null || s.IsHeaderOnly) return;
+
+        // Stereo pair, in Combine mode (not Split): play both channels TOGETHER, per
+        // explicit request - matches how the Kronos itself sounds a stereo instrument,
+        // not just whichever half's own keymap happened to be clicked. Same zone-
+        // correspondence rule ResolveStereoPartner/ResolveSiblingZonesFor already use
+        // (exact OriginalKey/TopKey match, falling back to the same list index) - best-
+        // effort: any failure here just falls back to playing the primary alone.
+        int startFrame = Math.Clamp((int)s.SampleStart, 0, Math.Max(0, s.FrameCount - 1));
+        // Own sample's flags, not the Sample-panel's SampleXxxEnabled properties - this
+        // zone's KSF is very often not the one currently loaded in the Sample panel (see
+        // this method's own top comment), and edits made through that panel are mirrored
+        // onto a stereo partner (ApplySampleFieldsTo), so reading them off `s` here is
+        // authoritative for either side of a pair.
+        _playback.BoostEnabled = s.Is12dbBoostEnabled;
+        bool loop = s.IsLoopEnabled;
+        int loopStart = (int)s.LoopStart, loopEnd = (int)s.LoopEnd;
+        if (!SplitLR)
+        {
+            var (sibling, siblingPath) = ResolveStereoSibling(m, kmpPath);
+            if (sibling != null && siblingPath != null)
+            {
+                var matchZone = sibling.Zones.FirstOrDefault(z =>
+                    !z.IsSkipped && z.OriginalKey == zone.OriginalKey && z.TopKey == zone.TopKey);
+                if (matchZone == null)
+                {
+                    int idx = m.Zones.IndexOf(zone);
+                    if (idx >= 0 && idx < sibling.Zones.Count && !sibling.Zones[idx].IsSkipped)
+                        matchZone = sibling.Zones[idx];
+                }
+                if (matchZone != null)
+                {
+                    var partner = OpenOrPending(matchZone.KsfPath(siblingPath));
+                    if (partner is { IsHeaderOnly: false })
+                    {
+                        bool leftIsPrimary = m.Suffix == "-L";
+                        var left = leftIsPrimary ? s.Samples() : partner.Samples();
+                        var right = leftIsPrimary ? partner.Samples() : s.Samples();
+                        if (loop)
+                            _playback.PlayStereoLoopedAtKey(left, right, (int)s.SampleRate, zone.OriginalKey, playedKey, startFrame, loopStart, loopEnd, s.IsReversed);
+                        else
+                            _playback.PlayStereoAtKey(left, right, (int)s.SampleRate, zone.OriginalKey, playedKey, startFrame, s.IsReversed);
+                        IsPlaying = true;
+                        IsPaused = false;
+                        _pianoKeyPlaybackGeneration = _playback.Generation;
+                        return;
+                    }
+                }
+            }
+        }
+
+        if (loop)
+            _playback.PlayLoopedAtKey(s.Samples(), (int)s.SampleRate, zone.OriginalKey, playedKey, startFrame, loopStart, loopEnd, s.IsReversed);
+        else
+            _playback.PlayAtKey(s.Samples(), (int)s.SampleRate, zone.OriginalKey, playedKey, startFrame, s.IsReversed);
+        IsPlaying = true;
+        IsPaused = false;
+        _pianoKeyPlaybackGeneration = _playback.Generation;
+    }
+
+    // Generation snapshot from SamplePlayback.Generation, taken right after PlayZoneAtKey
+    // starts audio - lets ReleasePianoKey (mouse-up/lost-capture on the keymap piano) tell
+    // "is the sound I started still the one playing" from "has something else (the
+    // transport Play button, a scrub-click, another key) taken over the single output
+    // slot since." SamplePlayback bumps its generation on every Stop()/Start(), so any
+    // intervening playback change makes this comparison false with no per-caller
+    // bookkeeping needed on either side. -1 = no piano-key playback pending release.
+    int _pianoKeyPlaybackGeneration = -1;
+
+    // Mouse-up/lost-capture on the keymap piano (SampleKeymapControl.PianoKeyReleased) -
+    // "play only while the key is held" per explicit request, EXCEPT the transport Play
+    // button, which is a click (not a hold) and is expected to keep a loop going
+    // indefinitely; that's why this only stops playback that's STILL the piano trigger's
+    // own (see _pianoKeyPlaybackGeneration's own comment), never whatever Play started
+    // after the key press.
+    public void ReleasePianoKey()
+    {
+        if (_pianoKeyPlaybackGeneration >= 0 && _pianoKeyPlaybackGeneration == _playback.Generation)
+            StopPlayback();
+        _pianoKeyPlaybackGeneration = -1;
     }
 
     // Moves the grey scrub-line cursor to `frame` WITHOUT starting playback - a plain
@@ -1722,17 +1966,41 @@ partial class SampleEditorViewModel : ObservableObject
 
     // Scrub-click "play from here" (the grey line in SampleWaveformControl) - a plain
     // click anywhere on the waveform, outside any marker/loop hit, plays one-shot from
-    // that frame to the end. Deliberately ignores loop state (an audition gesture, not
+    // that frame to the end. Deliberately ignores LOOP state (an audition gesture, not
     // a statement about normal playback) and, like PlaySelectedSample, plays TRUE
     // stereo whenever a partner is resolved and Combine mode is active.
+    //
+    // Also this session's Pause/Resume and Rewind/Fast-Forward restart path
+    // (TransportTogglePause/TransportSeekTo below), NOT just the scrub click - so
+    // Reverse (unlike Loop) can't be dropped here the way the comment above always
+    // drops loop: a reversed sample that plays backward from Play but forward from
+    // Resume/Rewind/FF would be a worse bug than the one this fixes.
+    //
+    // `frame` is passed straight through as PlayFrom's own `startFrame`, whose meaning
+    // under reverse is "the LOWER bound to read down to," not "where to begin" (see
+    // PlayFrom's own comment) - reverse playback here always (re)starts at the buffer's
+    // last frame, same as the initial Play/piano-key trigger, and reads down to `frame`.
+    // For Resume specifically, that means it does NOT continue from the paused
+    // position - it restarts the reverse pass from the end and replays down to (and
+    // stops at) wherever GetPlaybackFrame() had reached, rather than continuing past
+    // it toward 0. Accepted as one further simplification on top of "Resume plays a
+    // one-shot from the paused frame, NOT a resumed loop" already documented on
+    // IsPaused, not a new kind of one - correct DIRECTION always, at the cost of
+    // Resume/Rewind/FF re-hearing already-played material on a reversed sample rather
+    // than continuing into new material. Giving reverse a genuine "continue from here"
+    // start point (as opposed to always mirroring the full one-shot span) would fix
+    // that too, but needs its own bounds pair through OneShotSampleWaveProvider -
+    // deferred; this fixes the reported bug (Reverse being silently ignored/flipped to
+    // forward here) without it.
     public void PlayFromFrame(int frame)
     {
         if (_selectedSample == null || _selectedSample.IsHeaderOnly) return;
         _playback.BoostEnabled = Sample12dbBoostEnabled;
         bool stereo = HasStereoPair && !SplitLR && _partnerSample is { IsHeaderOnly: false };
+        bool reverse = SampleReverseEnabled;
 
-        if (stereo) _playback.PlayStereoFrom(LeftSampleWaveform!, RightSampleWaveform!, (int)_selectedSample.SampleRate, frame);
-        else _playback.PlayFrom(_selectedSample.Samples(), (int)_selectedSample.SampleRate, frame);
+        if (stereo) _playback.PlayStereoFrom(LeftSampleWaveform!, RightSampleWaveform!, (int)_selectedSample.SampleRate, frame, reverse);
+        else _playback.PlayFrom(_selectedSample.Samples(), (int)_selectedSample.SampleRate, frame, reverse);
         IsPlaying = true;
         IsPaused = false;
     }
@@ -1814,6 +2082,17 @@ partial class SampleEditorViewModel : ObservableObject
     {
         get => _playback.Volume;
         set => _playback.Volume = value;
+    }
+
+    // 0..127, MIDI pan convention (0 = full Left, 64 = Center, 127 = full Right) - "this
+    // app only" playback preview, same scope as Volume above, but NOT persisted across
+    // selections the way Volume is: pan is a stereo-field auditioning convenience, not
+    // a loudness-safety concern, so there's no "shouldn't get a fresh chance to startle"
+    // reason to carry it forward. Resets to Center each session.
+    public int Pan
+    {
+        get => _playback.Pan;
+        set => _playback.Pan = value;
     }
 
     // Polled by the window's own timer to drive the VU meter - see SamplePlayback.
@@ -2411,7 +2690,7 @@ partial class SampleEditorViewModel : ObservableObject
             }
         }
 
-        if (written.Count > 0) _collection.Save(_collectionPath);
+        if (written.Count > 0) SaveCollectionWithUserBank(_collection, _collectionPath);
         StatusText = failures.Count == 0
             ? $"Imported {written.Count} sample(s) to the repository (Un-referenced Samples)."
             : $"Imported {written.Count} sample(s), {failures.Count} failed: {string.Join(", ", failures)}";
@@ -2593,7 +2872,7 @@ partial class SampleEditorViewModel : ObservableObject
         if (_collection == null || _collectionPath == null) return;
         var fileName = Path.GetFileName(ksfPath);
         if (_collection.Entries.RemoveAll(e => string.Equals(e, fileName, StringComparison.OrdinalIgnoreCase)) > 0)
-            _collection.Save(_collectionPath);
+            SaveCollectionWithUserBank(_collection, _collectionPath);
     }
 
     // Deletes every bare .KSF sitting directly in the collection's own content folder
@@ -2690,9 +2969,12 @@ partial class SampleEditorViewModel : ObservableObject
     // A Kronos stereo instrument is two full multisamples - same Name, opposite
     // "-L"/"-R" Suffix, matching key ranges - never two zones inside one .KMP.
 
-    public void NewStereoMultisamplePairInCollection(string baseName, uint mno1Left)
+    // Same "return the freshly-created node so the caller can select it" reasoning as
+    // NewMultisampleInCollection - returns the LEFT half's node (matching the window's
+    // own established "left half selected by default" convention for a new pair).
+    public SampleTreeNode? NewStereoMultisamplePairInCollection(string baseName, uint mno1Left)
     {
-        if (_collection == null || _collectionPath == null) { StatusText = "Open or create a collection first."; return; }
+        if (_collection == null || _collectionPath == null) { StatusText = "Open or create a collection first."; return null; }
         try
         {
             var (left, leftPath, right, rightPath) = SampleImportBuilder.CreateStereoMultisamplePair(
@@ -2714,11 +2996,13 @@ partial class SampleEditorViewModel : ObservableObject
             RebuildTreeFromCollection(_collectionPath, _collection);
             StatusText = $"Created stereo multisample pair '{baseName}' "
                 + $"('{Path.GetFileName(leftPath)}' + '{Path.GetFileName(rightPath)}').";
+            return AllMultisampleNodes().FirstOrDefault(n => string.Equals(n.MultisampleRef!.Value.Path, leftPath, StringComparison.OrdinalIgnoreCase));
         }
         catch (Exception ex)
         {
             AppLog.Error($"Sample Editor: new stereo multisample pair failed: {ex}");
             StatusText = $"Failed to create stereo pair: {ex.Message}";
+            return null;
         }
     }
 
@@ -2830,7 +3114,7 @@ partial class SampleEditorViewModel : ObservableObject
             // UUID, or both is still an open question (kronosology doc), so two banks
             // sharing a UUID has unknown hardware behavior - not worth risking here.
             var newCollection = new KscCollection { Path = newKscPath, Entries = [.._collection.Entries] };
-            newCollection.Save();
+            SaveCollectionWithUserBank(newCollection, newKscPath);
 
             RekeyPendingEdits(oldContentDir, newContentDir);
 
@@ -2901,32 +3185,44 @@ partial class SampleEditorViewModel : ObservableObject
         }
     }
 
-    public void NewMultisampleInCollection(string name, uint mno1)
+    // Returns the freshly-created node (found in the just-rebuilt tree by the EXACT
+    // kmpPath this method itself just wrote, not re-derived/guessed by a caller) so the
+    // window can select it immediately - RebuildTreeFromCollection's own SelectNode(null)
+    // (entry-8 data-loss fix) unconditionally drops whatever was selected before this
+    // ran, so without an explicit reselect the newly-created multisample is left
+    // invisible in the MS dropdown until the user finds and clicks it again.
+    public SampleTreeNode? NewMultisampleInCollection(string name, uint mno1)
     {
         if (_collection == null || _collectionPath == null)
         {
             StatusText = "Open or create a collection first.";
-            return;
+            return null;
         }
         try
         {
             var kmpDir = KscCollection.ContentDirFor(_collectionPath);
             Directory.CreateDirectory(kmpDir);
-            var kmpFileName = $"{name}.KMP";
+            // AutoFileName, not a literal "<name>.KMP" (fixed 2026-08-25 - a real
+            // inconsistency with the stereo path, which already used AutoFileName via
+            // SampleImportBuilder.CreateStereoMultisamplePair; a mono Create Multisample
+            // never got a Kronos-correct filename until its first rename).
+            var kmpFileName = KmpMultisample.AutoFileName(name, mno1);
             var kmpPath = Path.Combine(kmpDir, kmpFileName);
             var m = new KmpMultisample { Name = name, Mno1 = mno1 };
             m.Zones.Add(SampleImportBuilder.MakeDefaultFirstZone());
             SaveMultisampleNow(m, kmpPath);
 
             _collection.Entries.Add(kmpFileName);
-            _collection.Save(_collectionPath);
+            SaveCollectionWithUserBank(_collection, _collectionPath);
             RebuildTreeFromCollection(_collectionPath, _collection);
             StatusText = $"Created multisample '{kmpFileName}'.";
+            return AllMultisampleNodes().FirstOrDefault(n => string.Equals(n.MultisampleRef!.Value.Path, kmpPath, StringComparison.OrdinalIgnoreCase));
         }
         catch (Exception ex)
         {
             AppLog.Error($"Sample Editor: new multisample failed: {ex}");
             StatusText = $"Failed to create multisample: {ex.Message}";
+            return null;
         }
     }
 
@@ -2955,7 +3251,7 @@ partial class SampleEditorViewModel : ObservableObject
             var zoneDir = Path.Combine(kmpDir, Path.GetFileNameWithoutExtension(kmpPath));
 
             _collection.Entries.RemoveAll(e => string.Equals(e, kmpFileName, StringComparison.OrdinalIgnoreCase));
-            _collection.Save(_collectionPath);
+            SaveCollectionWithUserBank(_collection, _collectionPath);
 
             if (Directory.Exists(zoneDir)) Directory.Delete(zoneDir, recursive: true);
             if (File.Exists(kmpPath)) File.Delete(kmpPath);
@@ -3232,14 +3528,26 @@ partial class SampleEditorViewModel : ObservableObject
 
     // The single entry point every Sample Start/Loop Start/Loop End edit routes through
     // - whether it came from dragging a marker line in the waveform or typing a new
-    // value into a field. Order matters and is fixed here, not left to emerge from
-    // handler ordering: clamp to the buffer -> snap to the nearest zero-crossing (if
-    // Use Zero) -> apply Loop Lock's length preservation (computed from the ALREADY-
-    // SNAPPED edge, so the edge you actually placed lands exactly where you put it; the
-    // linked edge is derived from it and may itself land a few frames off a crossing -
-    // an accepted trade-off, not a bug) -> commit through ApplySampleFieldsTo, which
-    // applies the final "Loop Start can never precede Sample Start" clamp regardless of
-    // what Loop Lock computed.
+    // value into a field. Clamp to the buffer happens first, unconditionally; which
+    // FRAME actually gets snapped (if Use Zero is on) depends on Loop Lock and which
+    // edge was edited - explicit request (2026-08-25): with Loop Lock on, Loop Start is
+    // always the edge Use Zero snaps against, never Loop End, regardless of which of the
+    // two was actually dragged/typed. So:
+    //   - Sample Start: snaps itself (Loop Lock doesn't apply to it at all).
+    //   - Loop Start edited: snaps itself; Loop Lock (if on) derives Loop End from the
+    //     now-snapped Loop Start, unsnapped (Loop End just follows to preserve length).
+    //   - Loop End edited, Loop Lock OFF: snaps itself directly (no linked edge to defer
+    //     to - this is the only field actually changing).
+    //   - Loop End edited, Loop Lock ON: does NOT snap the typed/dragged Loop End frame
+    //     directly. Instead derives the candidate Loop Start that length-preservation
+    //     would produce, snaps THAT, then re-derives Loop End from the snapped Loop
+    //     Start - so Loop Start still lands exactly on a crossing even though Loop End
+    //     was the one physically moved, and Loop End may itself land a few frames off a
+    //     crossing (an accepted trade-off, not a bug, same shape as the previous
+    //     "linked edge is derived, not independently snapped" rule - just anchored on
+    //     Loop Start specifically now instead of whichever edge was touched).
+    // Commits through ApplySampleFieldsTo, which applies the final "Loop Start can never
+    // precede Sample Start" clamp regardless of what the logic above computed.
     // Returns whether anything was actually committed (added 2026-08-22, Opus
     // redundancy review) - the code-behind's EnsureLoopVisible was firing even on a
     // genuine no-op (e.g. LostFocus with nothing typed), which could yank a manually-
@@ -3250,7 +3558,6 @@ partial class SampleEditorViewModel : ObservableObject
     {
         if (_selectedSample == null) return false;
         proposedFrame = Math.Clamp(proposedFrame, 0, SampleFrameCount);
-        if (UseZeroCrossing) proposedFrame = SnapToNearestZeroCrossing(proposedFrame);
 
         int sampleStart = SampleSampleStart, loopStart = SampleLoopStart, loopEnd = SampleLoopEnd;
         int loopLen = loopEnd - loopStart;
@@ -3258,15 +3565,23 @@ partial class SampleEditorViewModel : ObservableObject
         switch (kind)
         {
             case SampleMarkerKind.SampleStart:
-                sampleStart = proposedFrame;
+                sampleStart = UseZeroCrossing ? SnapToNearestZeroCrossing(proposedFrame) : proposedFrame;
                 break;
             case SampleMarkerKind.LoopStart:
-                loopStart = proposedFrame;
+                loopStart = UseZeroCrossing ? SnapToNearestZeroCrossing(proposedFrame) : proposedFrame;
                 if (LoopLockEnabled) loopEnd = loopStart + loopLen;
                 break;
             case SampleMarkerKind.LoopEnd:
-                loopEnd = proposedFrame;
-                if (LoopLockEnabled) loopStart = loopEnd - loopLen;
+                if (LoopLockEnabled)
+                {
+                    int candidateLoopStart = proposedFrame - loopLen;
+                    loopStart = UseZeroCrossing ? SnapToNearestZeroCrossing(candidateLoopStart) : candidateLoopStart;
+                    loopEnd = loopStart + loopLen;
+                }
+                else
+                {
+                    loopEnd = UseZeroCrossing ? SnapToNearestZeroCrossing(proposedFrame) : proposedFrame;
+                }
                 break;
         }
 
@@ -3295,7 +3610,17 @@ partial class SampleEditorViewModel : ObservableObject
 
         LoadSampleDetailState(_selectedSample, reloadWaveform: false);
         RefreshUndoRedoState();
-        StatusText = $"{kind} set to {proposedFrame}{(mirror ? " (both L/R channels)" : "")}.";
+        // The actually-committed value for `kind`, not the raw proposedFrame - those
+        // diverge whenever Use Zero snapped it (or, for a Loop-Locked Loop End edit,
+        // when the snap was applied to the derived Loop Start instead - see this
+        // method's own comment above).
+        int committedFrame = kind switch
+        {
+            SampleMarkerKind.SampleStart => sampleStart,
+            SampleMarkerKind.LoopStart => loopStart,
+            _ => loopEnd,
+        };
+        StatusText = $"{kind} set to {committedFrame}{(mirror ? " (both L/R channels)" : "")}.";
         return true;
     }
 

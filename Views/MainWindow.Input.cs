@@ -149,6 +149,14 @@ public partial class MainWindow
             Storage.SaveSettings(_settings);
         }
 
+        // SampleEditorWindow is deliberately NOT WPF-owned any more (see
+        // OpenSampleEditorWindow's own comment - an owned window is permanently kept
+        // above its owner in Win32 z-order, which was the "always on top of the main
+        // Kronos window" complaint) - so it no longer closes automatically when this
+        // window does. Close it explicitly here instead, past every cancellable point
+        // above, so the previous "closing Main closes everything" behavior still holds.
+        if (_sampleEditorWin != null && _sampleEditorWin.IsLoaded) _sampleEditorWin.Close();
+
         _trayIcon?.Dispose();
         CompositionTarget.Rendering -= RenderTick;
         _screenSession?.Dispose();

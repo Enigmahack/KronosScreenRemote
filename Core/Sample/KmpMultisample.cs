@@ -157,24 +157,42 @@ sealed class KmpMultisample
     // while byte-identical content saved under this exact naming pattern loaded and
     // played correctly - the L/R distinction belongs ONLY in the internal Suffix field
     // (MSP1/NAME, doc §2.2), never baked into the .KMP's own filename.
+    // Tiered for MNO1 >= 1000 (2026-08-25, doc's own "max of 3999 possible keymaps"
+    // ceiling) - both tiers hardware-confirmed against real MASTER-LIBRARY content over
+    // FTP: AIRTO097.KMP/BEER-000.KMP at the original 5-char-name+3-digit tier,
+    // 24K_1028.KMP/24K_1029.KMP at the 4-char-name+4-digit tier once MNO1 reaches 1000.
+    // Name width shrinks from 5 to 4 characters, index width grows from 3 to 4 digits,
+    // always summing to the 8-character DOS 8.3 stem.
     public static string AutoFileName(string name, uint mno1)
     {
         var sanitized = new string(name.ToUpperInvariant()
             .Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray());
-        var prefix = sanitized.Length >= 5 ? sanitized[..5] : sanitized.PadRight(5, '_');
-        return $"{prefix}{mno1:D3}.KMP";
+        int nameWidth = mno1 <= 999 ? 5 : 4;
+        int indexWidth = mno1 <= 999 ? 3 : 4;
+        var prefix = sanitized.Length >= nameWidth ? sanitized[..nameWidth] : sanitized.PadRight(nameWidth, '_');
+        return $"{prefix}{mno1.ToString($"D{indexWidth}")}.KMP";
     }
 
-    // MS<multisample:03d><zone:03d>.KSF - the real naming convention, used when
-    // adding a brand-new zone. ONLY valid for that case (appending) - Zones.Count is
-    // "the new zone's own future index" exactly because the new zone hasn't been
-    // inserted yet. Do NOT reuse this for "replace an EXISTING zone's sample": Count
-    // doesn't change across that operation, so calling this for two different existing
-    // zones in the same session returns the SAME string both times, and the second
-    // Save silently overwrites the first zone's own file - see NextFreeZoneFileName
-    // below for that case instead (fixed 2026-08-22, this was a real bug in
-    // KsfSample.ImportSampleIntoZone).
-    public string NextKsfFilename() => $"MS{Mno1:D3}{Zones.Count:D3}.KSF";
+    // MS<multisample:03d><zone:03d>.KSF for MNO1 0-999, M<multisample:04d><zone:03d>.KSF
+    // for MNO1 1000-3999 (2026-08-25 - hardware-confirmed both tiers over FTP against
+    // real MASTER-LIBRARY content: AIRTO097/'s own zones are MS097000.KSF etc., while
+    // 24K_1028/'s are M1028000.KSF etc. - "MS"/"M" both keep the prefix+MNO1 portion at
+    // a fixed 5 characters, zone index always 3 digits either way, so
+    // NextFreeZoneFileName's own length check below needs no tier-specific change).
+    // The real naming convention, used when adding a brand-new zone. ONLY valid for
+    // that case (appending) - Zones.Count is "the new zone's own future index" exactly
+    // because the new zone hasn't been inserted yet. Do NOT reuse this for "replace an
+    // EXISTING zone's sample": Count doesn't change across that operation, so calling
+    // this for two different existing zones in the same session returns the SAME
+    // string both times, and the second Save silently overwrites the first zone's own
+    // file - see NextFreeZoneFileName below for that case instead (fixed 2026-08-22,
+    // this was a real bug in KsfSample.ImportSampleIntoZone).
+    public string NextKsfFilename() => $"{ZoneFilePrefix}{Zones.Count:D3}.KSF";
+
+    // "MS<mno1:D3>" for MNO1 0-999, "M<mno1:D4>" for MNO1 1000-3999 - both 5 characters,
+    // shared by NextKsfFilename/NextFreeZoneFileName so the tier logic lives in one
+    // place.
+    string ZoneFilePrefix => Mno1 <= 999 ? $"MS{Mno1:D3}" : $"M{Mno1:D4}";
 
     // Collision-free filename for "give an EXISTING zone new/different audio" - scans
     // every OTHER zone's own current Filename for the numeric suffix already in use
@@ -183,11 +201,11 @@ sealed class KmpMultisample
     // smallest index not currently claimed by any zone in this multisample.
     public string NextFreeZoneFileName()
     {
-        var prefix = $"MS{Mno1:D3}";
+        var prefix = ZoneFilePrefix;
         var used = new HashSet<int>();
         foreach (var z in Zones)
         {
-            if (z.Filename.Length == prefix.Length + 7 // "MS###" + "###" + ".KSF"
+            if (z.Filename.Length == prefix.Length + 7 // "<prefix>" (5 chars either tier) + "###" + ".KSF"
                 && z.Filename.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
                 && z.Filename.EndsWith(".KSF", StringComparison.OrdinalIgnoreCase)
                 && int.TryParse(z.Filename.AsSpan(prefix.Length, 3), out int idx))

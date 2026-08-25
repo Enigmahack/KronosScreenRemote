@@ -43,43 +43,54 @@ static class SamplePhase8SelfTests
                 frames.SequenceEqual(new short[] { 0, 10, 20, 30, 40, 20, 30, 40, 20, 30, 40 }));
         }
 
-        // ── LoopingSampleProvider: reverse=true - the intro is still forward (the whole
-        //    sample plays through normally once), only the LOOP itself reverses ──
+        // ── LoopingSampleProvider: reverse=true - the intro ALSO reads backward ──
+        // CORRECTED 2026-08-25 (Commit Notes.md entry 48): this test used to assert the
+        // intro stayed forward with only the loop itself reversing - a real, reported
+        // bug ("plays forward, and then reverses at the loop"), not the intended
+        // hardware behavior. The intro now mirrors the FORWARD intro's own span
+        // [sampleStart, loopEnd) backward - from the buffer's true last frame down to
+        // Loop Start - before handing off to the loop-repeat (unchanged below).
+        // sampleStartFrame plays no role in the reverse case (there's no "where reverse
+        // audio begins" marker on real hardware).
         {
-            short[] samples = [0, 10, 20, 30, 40, 50];
+            short[] samples = [0, 10, 20, 30, 40, 50]; // frames 0..5, loop = frames [2,5)
             var provider = new LoopingSampleProvider(samples, null, 44100, sampleStartFrame: 0, loopStartFrame: 2, loopEndFrame: 5, reverse: true);
             var buf = new byte[22];
             provider.Read(buf, 0, buf.Length);
             var frames = new short[11];
             Buffer.BlockCopy(buf, 0, frames, 0, buf.Length);
+            // Intro backward, frame 5 -> frame 2 inclusive: 50,40,30,20. Then the
+            // loop-repeat (frame 4 -> frame 2, wrapping): 40,30,20,40,30,20,40.
             Check("loop-intro-then-reverse-loop",
-                frames.SequenceEqual(new short[] { 0, 10, 20, 30, 40, 40, 30, 20, 40, 30, 20 }));
+                frames.SequenceEqual(new short[] { 50, 40, 30, 20, 40, 30, 20, 40, 30, 20, 40 }));
         }
 
         // ── LoopingSampleProvider: reverse loop on a STEREO (interleaved) buffer keeps
-        //    L/R paired within each frame - the reverse branch copies whole frames
-        //    backward (Array.Copy(_pcm, _reverseFrame * _frameBytes, ..., _frameBytes)),
+        //    L/R paired within each frame, through the (now also backward) intro too -
+        //    the reverse branch writes whole frames (WriteFrame(buffer, ..., frame)),
         //    so this specifically catches an off-by-one that would swap channels or
         //    split a frame instead of reversing frame ORDER only. sampleStartFrame(0)
-        //    < loopStartFrame(1) so there's a real one-frame intro before the loop, the
-        //    same shape the mono intro-then-reverse test above exercises. ──
+        //    < loopStartFrame(1) so there's a real intro before the loop. ──
         {
             // 4 stereo frames, L/R deliberately far apart so a channel swap is obvious:
-            // frame0=(1,-1) [intro only], frame1=(100,-100), frame2=(200,-200), frame3=(300,-300) [loop region].
+            // frame0=(1,-1) [before the loop, never played in reverse], frame1=(100,-100),
+            // frame2=(200,-200), frame3=(300,-300) [loop region].
             short[] left = [1, 100, 200, 300];
             short[] right = [-1, -100, -200, -300];
             var provider = new LoopingSampleProvider(left, right, 44100, sampleStartFrame: 0, loopStartFrame: 1, loopEndFrame: 4, reverse: true);
-            var buf = new byte[28]; // 7 stereo frames: 4-frame intro + one reverse pass over the 3-frame loop
+            var buf = new byte[28]; // 7 stereo frames: 3-frame backward intro + 4 of the reverse loop repeat
             provider.Read(buf, 0, buf.Length);
             var frames = new short[14];
             Buffer.BlockCopy(buf, 0, frames, 0, buf.Length);
-            // Intro (forward, sampleStart -> loopEnd): (1,-1)(100,-100)(200,-200)(300,-300);
-            // then the loop reverses frame 3 down to frame 1: (300,-300)(200,-200)(100,-100)
+            // Intro backward, frame 3 -> frame 1 inclusive: (300,-300)(200,-200)(100,-100)
+            // - frame 0 (1,-1) is BEFORE Loop Start and is never reached, same as real
+            // hardware never plays material before Loop Start once reversed. Then the
+            // loop-repeat (frame 3 -> frame 1, wrapping): (300,-300)(200,-200)(100,-100)(300,-300)
             // - L and R stay paired throughout.
             Check("stereo-reverse-loop-keeps-channels-paired", frames.SequenceEqual(new short[]
             {
-                1, -1, 100, -100, 200, -200, 300, -300,
                 300, -300, 200, -200, 100, -100,
+                300, -300, 200, -200, 100, -100, 300, -300,
             }));
         }
 

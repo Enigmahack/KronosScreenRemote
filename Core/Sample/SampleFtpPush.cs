@@ -23,6 +23,24 @@ static class SampleFtpPush
 
         await UploadOneAsync(client, localKscPath, kscRemotePath, onProgress, failures);
 
+        // _UserBank.KSC (2026-08-25) - SaveCollectionWithUserBank already wrote this
+        // sibling locally as part of any local save, so pushing just uploads whatever's
+        // already there rather than regenerating it again. Derived from `localKscPath`
+        // directly (mirrors KscCollection.UserBankPath's own logic) rather than reading
+        // `collection.Path` - that field is only populated by KscCollection.Save's own
+        // side effect, so it can still be null here for a collection that was loaded
+        // and pushed without ever going through a local Save in THIS instance's
+        // lifetime. Not a push failure if the file is missing (an older collection
+        // saved before this existed) - it's a derived convenience file, not owned data.
+        var userBankLocalPath = Path.Combine(
+            Path.GetDirectoryName(localKscPath) ?? "",
+            Path.GetFileNameWithoutExtension(localKscPath) + "_UserBank.KSC");
+        if (File.Exists(userBankLocalPath))
+        {
+            var userBankRemotePath = $"{remoteDestDirTrimmed}/{Path.GetFileName(userBankLocalPath)}";
+            await UploadOneAsync(client, userBankLocalPath, userBankRemotePath, onProgress, failures);
+        }
+
         var contentDir = KscCollection.ContentDirFor(localKscPath);
         var kscBaseRemoteDir = $"{remoteDestDirTrimmed}/{Path.GetFileNameWithoutExtension(kscName)}";
         foreach (var entry in collection.Entries)

@@ -65,6 +65,7 @@ public partial class SampleEditorWindow : ThemedWindow
         SampleTree.ItemsSource = _vm.Roots;
         _vm.TreeRefreshed += () => { }; // ItemsSource already bound to the live collection - no rebind needed
         VolumeControl.Volume = _vm.Volume;
+        PanControl.Pan = _vm.Pan;
 
         // IsPlaying can flip to false on its own (playback reaching the end of the
         // buffer), not just from clicking Stop - without this, the Play/Stop button
@@ -191,8 +192,10 @@ public partial class SampleEditorWindow : ThemedWindow
         uint mno1 = 0;
         if (idDlg.ShowDialog() == true) uint.TryParse(idDlg.Result, out mno1);
 
-        _vm.NewMultisampleInCollection(nameDlg.Result, mno1);
+        var msNode = _vm.NewMultisampleInCollection(nameDlg.Result, mno1);
+        RefreshDetailPanels();
         UpdateStatus();
+        if (msNode != null) SelectTreeNode(msNode);
     }
 
     void OnNewStereoMultisamplePair(object sender, RoutedEventArgs e)
@@ -204,8 +207,10 @@ public partial class SampleEditorWindow : ThemedWindow
         uint mno1Left = 0;
         if (idDlg.ShowDialog() == true) uint.TryParse(idDlg.Result, out mno1Left);
 
-        _vm.NewStereoMultisamplePairInCollection(nameDlg.Result, mno1Left);
+        var msNode = _vm.NewStereoMultisamplePairInCollection(nameDlg.Result, mno1Left);
+        RefreshDetailPanels();
         UpdateStatus();
+        if (msNode != null) SelectTreeNode(msNode);
     }
 
     // "Create" button on the MS panel itself - the next free slot is computed and shown
@@ -239,28 +244,19 @@ public partial class SampleEditorWindow : ThemedWindow
         // Multisample on a second round-trip through the dialog for.
         uint slot = dlg.Stereo ? _vm.NextFreeMno1(2) : previewSlot;
         var baseName = $"NEWMS{slot:D3}";
-        if (dlg.Stereo) _vm.NewStereoMultisamplePairInCollection(baseName, slot);
-        else _vm.NewMultisampleInCollection(baseName, slot);
+        var msNode = dlg.Stereo ? _vm.NewStereoMultisamplePairInCollection(baseName, slot)
+                                 : _vm.NewMultisampleInCollection(baseName, slot);
         RefreshDetailPanels();
         UpdateStatus();
 
         // Select the new multisample right away (same courtesy OnAddPlaceholderZone
-        // gives a new zone) - without this the collection/tree/combo rebuild these two
-        // calls trigger leaves nothing selected, so the user has to go find and click
-        // it themselves before the editor panel (fixed above) has anything to show.
-        // Both New*InCollection methods write "<baseName>.KMP" (mono) or
-        // "<baseName>-L.KMP"/"-R.KMP" (stereo, left half selected by default) under
-        // "<collection-dir>/<collection-basename>/" - reconstructing that path here
-        // rather than threading a return value through both VM methods, since it's
-        // already exactly this window's own established KMP-path convention.
-        if (_vm.ActiveCollectionPath is { } kscPath)
-        {
-            var kmpDir = KscCollection.ContentDirFor(kscPath);
-            var kmpFileName = dlg.Stereo ? $"{baseName}-L.KMP" : $"{baseName}.KMP";
-            var kmpPath = System.IO.Path.Combine(kmpDir, kmpFileName);
-            var msNode = FindMultisampleNode(_vm.Roots, kmpPath);
-            if (msNode != null) SelectTreeNode(msNode);
-        }
+        // gives a new zone) - without this the tree/combo rebuild these two calls
+        // trigger leaves nothing selected (RebuildTreeFromCollection's own entry-8
+        // SelectNode(null) fix), so the user has to go find and click it themselves
+        // before the editor panel has anything to show. Uses the node the VM itself just
+        // created (returned directly), not a path reconstructed here - the VM already
+        // knows exactly which node it built.
+        if (msNode != null) SelectTreeNode(msNode);
     }
 
     void OnDeleteMultisample(object sender, RoutedEventArgs e)
@@ -826,15 +822,19 @@ public partial class SampleEditorWindow : ThemedWindow
         var sampleTabs = _vm.HasSampleLoaded ? Visibility.Visible : Visibility.Collapsed;
         EditingFrame.Visibility = sampleTabs;
         WaveformPanel.Visibility = sampleTabs;
-        // Keymap is static (outside this frame entirely - see KeymapSection's own XAML
-        // comment). Same "!= null" fix as ZonePanel above, same reason.
-        KeymapSection.Visibility = _vm.CurrentMultisampleZones != null ? Visibility.Visible : Visibility.Collapsed;
+        // Keymap now lives inside MsSection itself (see that Border's own XAML comment -
+        // merged in from the old standalone KeymapSection). Same "!= null" fix as
+        // ZonePanel above, same reason - toggles the piano control directly rather than
+        // a wrapping section, since MsSection's dropdown/Create/Rename/Delete row above
+        // it stays visible either way.
+        Keymap.Visibility = _vm.CurrentMultisampleZones != null ? Visibility.Visible : Visibility.Collapsed;
         NoSelectionText.Visibility = _vm.HasZoneSelected ? Visibility.Collapsed : Visibility.Visible;
         UpdateWindowTitle();
         MNU_UnloadCollection.IsEnabled = _vm.HasActiveCollection;
         MNU_RevertKsc.IsEnabled = _vm.HasActiveCollection;
         MNU_RevertAll.IsEnabled = _vm.Roots.Count > 0;
         MNU_RenameMultisample.IsEnabled = _vm.CurrentMultisampleName != null;
+        BtnRenameMultisample.IsEnabled = _vm.CurrentMultisampleName != null;
         MNU_RenameSample.IsEnabled = _vm.HasSampleLoaded;
 
         if (_vm.HasZoneSelected)
@@ -1155,6 +1155,8 @@ public partial class SampleEditorWindow : ThemedWindow
 
     void OnVolumeChanged(double volume) => _vm.Volume = (float)volume;
 
+    void OnPanChanged(int pan) => _vm.Pan = pan;
+
     void UpdateVuMeter()
     {
         VuMeterLeft.Level = _vm.GetPlaybackLevelLeft();
@@ -1324,6 +1326,50 @@ public partial class SampleEditorWindow : ThemedWindow
     {
         var target = FindNodeForZone(_vm.Roots, zone);
         if (target != null) SelectTreeNode(target);
+    }
+
+    // Piano-key trigger (item 8): plays the clicked zone's own sample the way it would
+    // actually sound at that key, pitch-shifted from its Original Key - see
+    // SampleEditorViewModel.PlayZoneAtKey/SamplePlayback.PlayAtKey for the tape-style
+    // speed-change mechanism. Deliberately does NOT change tree/zone selection (unlike
+    // OnKeymapZoneClicked above) - a click meant purely as an audition trigger shouldn't
+    // also yank the editor panel over to a different zone.
+    void OnKeymapPianoKeyClicked(KmpZone zone, int key)
+    {
+        _vm.PlayZoneAtKey(zone, key);
+        RefreshDetailPanels();
+    }
+
+    // Mouse-up/lost-capture counterpart to the click above - "play only while the key
+    // is held" (explicit request), including loops. See
+    // SampleEditorViewModel.ReleasePianoKey's own comment for why this is safe to call
+    // unconditionally: it's a no-op if the transport Play button (or anything else) has
+    // already taken over the single playback slot since the key was pressed.
+    void OnKeymapPianoKeyReleased()
+    {
+        _vm.ReleasePianoKey();
+    }
+
+    // Ctrl+Click assignment: click into Orig.Key or Top Key first (giving it focus),
+    // then Ctrl+Click a key on the piano to write that key's note name into whichever
+    // field is still focused - SampleKeymapControl checks/fires this BEFORE it takes
+    // its own Focus(), so the field clicked in step one is still the live focused
+    // element here. Reuses the exact same commit path (OnZoneOrigKeyBoxChanged/
+    // OnZoneTopKeyBoxChanged) the typed field itself already uses, so ApplyZoneEdits'
+    // floor/cascade rules apply identically either way. Neither field focused (Ctrl+
+    // Click without clicking a field first) is a silent no-op, not an error.
+    void OnKeymapPianoKeyCtrlClicked(int key)
+    {
+        if (ZoneOrigKeyBox.IsKeyboardFocusWithin)
+        {
+            ZoneOrigKeyBox.Text = MidiNoteName.ToName(key);
+            OnZoneOrigKeyBoxChanged(ZoneOrigKeyBox, new RoutedEventArgs());
+        }
+        else if (ZoneTopKeyBox.IsKeyboardFocusWithin)
+        {
+            ZoneTopKeyBox.Text = MidiNoteName.ToName(key);
+            OnZoneTopKeyBoxChanged(ZoneTopKeyBox, new RoutedEventArgs());
+        }
     }
 
     void OnKeymapBoundaryMoved(KmpZone zone, int newTopKey)

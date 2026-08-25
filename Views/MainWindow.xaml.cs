@@ -1558,7 +1558,20 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             _sampleEditorWin.Focus();
             return;
         }
-        _sampleEditorWin = new SampleEditorWindow().OwnedBy(this);
+        // Deliberately NOT .OwnedBy(this) - a WPF/Win32 owned window is permanently kept
+        // ABOVE its owner in z-order for as long as both are visible, even once the
+        // owner is the active/focused window. That's real "always on top" (of this one
+        // window, not the whole desktop) and was exactly the complaint: the user needs
+        // to click back to the live Kronos screen on MainWindow while the editor stays
+        // open, which an owned window never allows. Centering (normally ThemedWindow's
+        // own CenterOwner default, which needs a real Owner to work) and "closes when
+        // MainWindow closes" (normally automatic for an owned window) are both
+        // reproduced manually instead - see the manual Left/Top below and OnClosing's
+        // own explicit _sampleEditorWin.Close() call.
+        var win = new SampleEditorWindow { WindowStartupLocation = WindowStartupLocation.Manual };
+        win.Left = Left + (ActualWidth - win.Width) / 2;
+        win.Top = Top + (ActualHeight - win.Height) / 2;
+        _sampleEditorWin = win;
         _sampleEditorWin.Closed += (_, _) => _sampleEditorWin = null;
         _sampleEditorWin.Show();
     }

@@ -186,6 +186,20 @@ static class SampleEditorVisualCheck
                             win.DetailScrollViewer.UpdateLayout();
                             await Task.Delay(150);
                             Screenshot(win, "05b_real_zone_selected_scrolled", outDir);
+
+                            // Split L/R (2026-08-25) - SplitChannelCombo only renders
+                            // once this is checked, so it's otherwise invisible to every
+                            // screenshot above. Toggled back off afterward so it doesn't
+                            // perturb the Add Zone flow below (that flow assumes Combine).
+                            if (win.SplitLRBox.Visibility == System.Windows.Visibility.Visible)
+                            {
+                                win.SplitLRBox.IsChecked = true;
+                                await Task.Delay(150);
+                                Screenshot(win, "05c_split_lr_enabled", outDir);
+                                win.SplitLRBox.IsChecked = false;
+                                await Task.Delay(150);
+                            }
+
                             win.DetailScrollViewer.ScrollToTop();
                             win.DetailScrollViewer.UpdateLayout();
 
