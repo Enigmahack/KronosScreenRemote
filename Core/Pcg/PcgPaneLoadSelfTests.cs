@@ -101,12 +101,12 @@ static class PcgPaneLoadSelfTests
         ms.Write(new byte[8]);
 
         WriteAscii("MBK1");
-        WriteBE32(0); WriteBE32(0);
+        WriteBE32(0); WriteBE32(PcgFileSelfTests.ChunkChecksum(1, programSize, 0, programBody));
         WriteBE32(1); WriteBE32(programSize); WriteBE32(0);
         ms.Write(programBody);
 
         WriteAscii("SBK1");
-        WriteBE32(0); WriteBE32(0);
+        WriteBE32(0); WriteBE32(PcgFileSelfTests.ChunkChecksum(1, setListSize, 0, setListBody));
         WriteBE32(1); WriteBE32(setListSize); WriteBE32(0);
         ms.Write(setListBody);
 

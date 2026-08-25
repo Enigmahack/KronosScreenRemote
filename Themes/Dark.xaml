@@ -555,6 +555,14 @@
     <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}"              Color="#FFFFFFFF"/>
     <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}"                    Color="#FF232323"/>
     <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#FF1A4E6E"/>
+    <!-- Foreground counterpart of the brush directly above - the stock TreeViewItem
+         template pairs InactiveSelectionHighlightBrushKey (background) with
+         InactiveSelectionHighlightTextBrushKey (text) for a selected-but-unfocused row.
+         Only the background half was overridden here, so a selected tree row's text
+         switched from HighlightTextBrushKey's white to this key's un-overridden (near-
+         black) system default the instant the window/TreeView lost focus - reported as
+         "clicking elsewhere changes the font color used in the tree view." -->
+    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#FFFFFFFF"/>
 
     <!-- Named for direct use by custom (non-native) selection highlighting - e.g. the
          Librarian's TV_Local/TV_Pcg (Views/LibrarianShellWindow.xaml), which drive their own

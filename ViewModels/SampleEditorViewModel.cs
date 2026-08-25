@@ -234,6 +234,23 @@ partial class SampleEditorViewModel : ObservableObject
         StatusText = result.StatusMessage;
     }
 
+    // Tree right-click "Push to Kronos..." (2026-08-24) - uploads the WHOLE active
+    // collection to a folder the user navigates to over FTP, unlike PushSelected*Async
+    // above (which push a single already-pulled file back to where it came from and
+    // have no "arbitrary destination" concept at all). Same "save locally first" guard
+    // those use, for the same reason - pushing a stale on-disk file while newer edits
+    // sit only in memory would upload the wrong content with no indication anything's
+    // off.
+    public async Task PushCollectionToKronosAsync(IRemoteSampleSource source)
+    {
+        if (_collection == null || _collectionPath == null) { StatusText = "Open a collection first."; return; }
+        if (HasUnsavedChanges) { StatusText = "Save changes locally first (use Save Changes), then push."; return; }
+
+        StatusText = "Pushing to Kronos...";
+        var result = await source.PickFolderAndPushCollectionAsync(_collectionPath, _collection);
+        StatusText = result.StatusMessage;
+    }
+
     // ── Opening ──────────────────────────────────────────────────────────────
 
     // A live streamed shortcut to library content on the Kronos's own SSD, not real
@@ -413,9 +430,14 @@ partial class SampleEditorViewModel : ObservableObject
         return false;
     }
 
+    // Shared with RefreshMultisampleNodeLabel below so a rename produces the EXACT same
+    // text a fresh tree build would - a hand-rolled second format string here would
+    // silently drift from this one the next time either changed.
+    static string MultisampleNodeLabel(KmpMultisample m, string path) => $"{m.Name}{m.Suffix} ({Path.GetFileName(path)})";
+
     static SampleTreeNode BuildMultisampleNode(KmpMultisample m, string path)
     {
-        var node = SampleTreeNode.ForMultisample($"{m.Name}{m.Suffix} ({Path.GetFileName(path)})", m, path);
+        var node = SampleTreeNode.ForMultisample(MultisampleNodeLabel(m, path), m, path);
         foreach (var z in m.Zones)
         {
             var label = z.IsSkipped ? $"(skipped) up to {MidiNoteName.ToName(z.TopKey)}" : $"{z.Filename}  up to {MidiNoteName.ToName(z.TopKey)}";
@@ -885,6 +907,13 @@ partial class SampleEditorViewModel : ObservableObject
     // impossible to express.
     public bool HasUnsavedChanges => _dirtySamples.Count > 0 || _dirtyMultisamples.Count > 0;
 
+    // Lets a caller check for a live, unsaved edit of a .KSF BEFORE falling back to
+    // reading it off disk (window code-behind's Zone Sample dropdown repository scan -
+    // GetRepositorySampleInfo - used to read straight from disk, so a rename sitting in
+    // _dirtySamples was invisible there until Save Sample actually wrote it out).
+    public (string Name, string Suffix)? TryGetPendingSampleInfo(string ksfPath) =>
+        _dirtySamples.TryGetValue(ksfPath, out var s) ? (s.Name, s.Suffix) : null;
+
     // Called from the _sampleDirty setter, so every edit method that already marks the
     // sample dirty enrols it here with no per-site change. The stereo partner is
     // enrolled alongside it whenever mirroring is active, because every mirrored edit
@@ -928,6 +957,22 @@ partial class SampleEditorViewModel : ObservableObject
         get { var (m, _) = ResolveContextMultisample(); return m == null ? null : $"{m.Name}{m.Suffix}"; }
     }
 
+    // Bare (no Suffix) version of the above - what the Rename Multisample dialog should
+    // actually pre-fill, since RenameSelectedMultisample takes a bare name and appends
+    // Suffix itself. Pre-filling with CurrentMultisampleName's Suffix-included form (the
+    // bug this fixes) let a rename that didn't manually strip "-L"/"-R" back off bake the
+    // stereo marker into Name, which then showed up doubled ("Foo-L-L") once Suffix was
+    // appended again for display.
+    public string? CurrentMultisampleBareName
+    {
+        get { var (m, _) = ResolveContextMultisample(); return m?.Name; }
+    }
+
+    // Same bug, same fix, for the currently loaded sample - SampleName (bound to the
+    // Sample Name field/dropdown) always carries Suffix, so the Rename Sample dialog
+    // needs its own bare source to pre-fill from.
+    public string? CurrentSampleBareName => _selectedSample?.Name;
+
     // Same resolution/display as CurrentMultisampleName - separate property so the
     // Delete Multisample confirm dialog (code-behind) doesn't read a property named for
     // Rename's own purpose.
@@ -953,13 +998,26 @@ partial class SampleEditorViewModel : ObservableObject
         var (sibling, sibPath) = FindLiveStereoSibling(m, path);
         m.Name = newName;
         RegisterDirtyMultisample(m, path);
+        RefreshMultisampleNodeLabel(m, path);
         if (sibling != null && sibPath != null)
         {
             sibling.Name = newName;
             RegisterDirtyMultisample(sibling, sibPath);
+            RefreshMultisampleNodeLabel(sibling, sibPath);
         }
         StatusText = $"Renamed multisample to '{newName}{m.Suffix}'"
             + (sibling != null ? " (mirrored to stereo partner)" : "") + " - not yet saved.";
+    }
+
+    // Repaints whichever tree node(s) represent `m` (matched by reference, not path -
+    // same identity every other live-edit lookup here uses) so the TreeView and
+    // MultisampleCombo - both bound to SampleTreeNode.Label - reflect the rename
+    // immediately instead of waiting for the next full RebuildTreeFromCollection.
+    void RefreshMultisampleNodeLabel(KmpMultisample m, string path)
+    {
+        foreach (var node in AllMultisampleNodes())
+            if (ReferenceEquals(node.MultisampleRef!.Value.Multisample, m))
+                node.Label = MultisampleNodeLabel(m, path);
     }
 
     // Same idea for the currently loaded sample's Name (Suffix left alone, mirrored to
@@ -975,7 +1033,10 @@ partial class SampleEditorViewModel : ObservableObject
         _selectedSample.Name = newName;
         if (ShouldMirrorToPartner && _partnerSample != null) _partnerSample.Name = newName;
         _sampleDirty = true;
-        SampleName = _selectedSample.Name;
+        // Must include Suffix, matching LoadSampleDetailState's own "Name+Suffix" form -
+        // SampleName is otherwise the ONE place this rename left a stereo sample's
+        // displayed name silently missing its "-L"/"-R" marker until reselected.
+        SampleName = _selectedSample.Name + _selectedSample.Suffix;
         StatusText = $"Renamed sample to '{newName}{_selectedSample.Suffix}'"
             + (ShouldMirrorToPartner && _partnerSample != null ? " (mirrored to stereo partner)" : "") + " - not yet saved.";
     }
@@ -1013,32 +1074,44 @@ partial class SampleEditorViewModel : ObservableObject
         _dirtyMultisamples.Remove(path);
     }
 
+    // Raising a zone's Top Key past the NEXT zone's own Top Key now pushes every zone
+    // above it upward by the same amount, preserving each pushed zone's own width until
+    // it runs out of room at 127 (explicit user choice, 2026-08-24, replacing the entry-
+    // 21 ceiling clamp that used to silently cap a typed value at "next zone's TopKey -
+    // 1" instead). Lowering a Top Key never cascades - it just grows the next zone's low
+    // edge for free (KmpZone's own convention: a zone's range runs from the previous
+    // zone's TopKey + 1), no write to any other zone needed. Shared by ApplyZoneEdits
+    // (the typed field) and MoveZoneBoundary (the keymap drag) below - same rule either
+    // way a Top Key gets changed.
+    static void CascadeTopKeys(List<KmpZone> zones, int idx, int delta)
+    {
+        for (int j = idx + 1; j < zones.Count; j++)
+            zones[j].TopKey = (byte)Math.Min(127, zones[j].TopKey + delta);
+    }
+
     // Top Key can never be typed lower than the PREVIOUS zone's own Top Key + 1 - a
     // zone's trigger range always runs from (previous zone's TopKey + 1) through its
     // own TopKey (KmpZone's own convention, same one the keymap's boundary-drag already
     // enforces by construction), so a Top Key at or below the previous zone's would
-    // create a zero/negative-width or inverted range. The keymap's drag handle already
-    // can't produce this (its min/max clamp the drag to the neighboring boundaries) -
-    // this is the same floor applied to the manual Top Key text field, which had no
-    // such neighbor-aware check before.
-    // The ceiling is the mirror image of that floor, and was missing: with only a floor,
-    // typing a Top Key ABOVE the next zone's own Top Key left that neighbour with an
-    // inverted (negative-width) range - the exact failure the floor exists to prevent,
-    // just in the other direction.
+    // create a zero/negative-width or inverted range. This is the same floor applied to
+    // the manual Top Key text field, which had no such neighbor-aware check before.
+    // There's no matching ceiling from the NEXT zone any more (see CascadeTopKeys above)
+    // - only the hard 0..127 MIDI range still applies on that side.
     public void ApplyZoneEdits(int originalKey, int topKey)
     {
         if (_selectedZone == null) return;
-        int floor = 0, ceiling = 127;
+        int floor = 0;
         int idx = -1;
+        int? oldNextTopKey = null;
         if (CurrentMultisampleZones is { } bounds)
         {
             idx = bounds.IndexOf(_selectedZone);
             if (idx > 0) floor = bounds[idx - 1].TopKey + 1;
-            if (idx >= 0 && idx < bounds.Count - 1) ceiling = Math.Max(floor, bounds[idx + 1].TopKey - 1);
+            if (idx >= 0 && idx < bounds.Count - 1) oldNextTopKey = bounds[idx + 1].TopKey;
         }
 
         byte newOrig = (byte)Math.Clamp(originalKey, 0, 127);
-        byte newTop = (byte)Math.Clamp(Math.Clamp(topKey, floor, ceiling), 0, 127);
+        byte newTop = (byte)Math.Clamp(topKey, floor, 127);
 
         // These fields commit on LostFocus, which fires on every focus change - not just
         // the ones that actually changed a value. Without this guard, tabbing through
@@ -1059,13 +1132,15 @@ partial class SampleEditorViewModel : ObservableObject
         var (siblingZones, siblingM, siblingPath) = CurrentMultisampleZones is { } primary
             ? ResolveSiblingZonesFor(primary) : (null, null, null);
 
-        if (CurrentMultisampleZones is { } zones)
+        var zones = CurrentMultisampleZones;
+        if (zones != null)
         {
             _zoneUndo.RecordBeforeEdit(ZoneListSnapshot.Of(zones, siblingZones));
             _undoDomains.Add(EditDomain.Zone);
             _redoDomains.Clear();
         }
 
+        int oldTop = _selectedZone.TopKey;
         _selectedZone.OriginalKey = newOrig;
         _selectedZone.TopKey = newTop;
         if (siblingZones != null && idx >= 0 && idx < siblingZones.Count)
@@ -1074,13 +1149,25 @@ partial class SampleEditorViewModel : ObservableObject
             siblingZones[idx].TopKey = newTop;
         }
 
+        // newTop >= oldNextTopKey implies newTop > oldTop (a well-formed zone list
+        // always has oldNextTopKey > oldTop), so delta here is always positive - this IS
+        // the "ran past the next zone" case CascadeTopKeys exists for.
+        bool cascaded = oldNextTopKey is { } oldNext && newTop >= oldNext && zones != null;
+        if (cascaded)
+        {
+            int delta = newTop - oldTop;
+            CascadeTopKeys(zones!, idx, delta);
+            if (siblingZones != null) CascadeTopKeys(siblingZones, idx, delta);
+        }
+
         ZoneOriginalKey = _selectedZone.OriginalKey;
         ZoneTopKey = _selectedZone.TopKey;
         _zoneDirty = true;
         if (siblingM != null && siblingPath != null) RegisterDirtyMultisample(siblingM, siblingPath);
         RefreshUndoRedoState();
-        StatusText = $"Zone key range updated{(siblingZones != null ? " (both L/R channels)" : "")} "
-            + "(unsaved - use Save Multisample).";
+        StatusText = $"Zone key range updated{(siblingZones != null ? " (both L/R channels)" : "")}"
+            + (cascaded ? " - pushed the following zone(s) up to make room" : "")
+            + " (unsaved - use Save Multisample).";
     }
 
     // True when a stereo partner exists AND Combine mode is active AND the partner
@@ -2704,6 +2791,97 @@ partial class SampleEditorViewModel : ObservableObject
         }
     }
 
+    // Tree right-click "Save as..." (2026-08-24). Copies the ACTIVE collection's
+    // on-disk content - unedited, exactly as it sits on disk right now - to a brand-new
+    // .KSC path/content folder, then switches the editor to treat that copy as the
+    // active document (standard Save-As semantics: the original file is left untouched,
+    // the open document becomes the new one). Deliberately copy-FIRST, not
+    // flush-pending-edits-then-copy: writing pending edits into the ORIGINAL files
+    // first, even briefly, would break the one guarantee a Save As makes - open Foo,
+    // edit it, "Save As Bar" must leave Foo exactly as it was before this ran.
+    public void SaveCollectionAs(string newKscPath)
+    {
+        if (_collection == null || _collectionPath == null) { StatusText = "Open a collection first."; return; }
+        var oldKscPath = _collectionPath;
+        if (string.Equals(Path.GetFullPath(oldKscPath), Path.GetFullPath(newKscPath), StringComparison.OrdinalIgnoreCase))
+        { StatusText = "Choose a different file name - that's already this collection's own path."; return; }
+
+        var oldContentDir = KscCollection.ContentDirFor(oldKscPath);
+        var newContentDir = KscCollection.ContentDirFor(newKscPath);
+        try
+        {
+            if (Directory.Exists(oldContentDir))
+            {
+                Directory.CreateDirectory(newContentDir);
+                foreach (var file in Directory.EnumerateFiles(oldContentDir, "*", SearchOption.AllDirectories))
+                {
+                    var rel = Path.GetRelativePath(oldContentDir, file);
+                    var dest = Path.Combine(newContentDir, rel);
+                    Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+                    File.Copy(file, dest, overwrite: true);
+                }
+            }
+
+            // The SAME entry list, not a rescan of the just-copied folder (which could
+            // pick up orphaned files never actually in Entries) - this is a copy of THIS
+            // collection specifically, not "whatever's sitting in the folder." BankUuid
+            // left null - Save()/ToBytes() generates a FRESH one, deliberately not the
+            // original's own: whether the Kronos's duplicate-bank check keys on name,
+            // UUID, or both is still an open question (kronosology doc), so two banks
+            // sharing a UUID has unknown hardware behavior - not worth risking here.
+            var newCollection = new KscCollection { Path = newKscPath, Entries = [.._collection.Entries] };
+            newCollection.Save();
+
+            RekeyPendingEdits(oldContentDir, newContentDir);
+
+            var oldRoot = Roots.FirstOrDefault(r => string.Equals(r.CollectionRef?.Path, oldKscPath, StringComparison.OrdinalIgnoreCase));
+            // Same staleness reasoning as RebuildTreeFromCollection/UnloadCollection's own
+            // comments - the old root is about to be removed entirely, so any selection
+            // still pointing into it would be left dangling (reference-unequal to
+            // anything in the new tree) rather than cleanly cleared.
+            if (oldRoot != null && IsDescendant(oldRoot, _selectedNode)) SelectNode(null);
+            if (oldRoot != null) Roots.Remove(oldRoot);
+
+            _collection = newCollection;
+            _collectionPath = newKscPath;
+            RebuildTreeFromCollection(newKscPath, newCollection);
+            AddRecentFile(newKscPath);
+            StatusText = $"Saved a copy as '{Path.GetFileName(newKscPath)}' - now the active collection "
+                + "(the original file on disk is untouched).";
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error($"Sample Editor: Save As '{newKscPath}' failed: {ex}");
+            StatusText = $"Save As failed: {ex.Message}";
+        }
+    }
+
+    // Retargets any pending, unsaved edit whose path pointed under the OLD content
+    // folder onto the equivalent path under the NEW one. Both _dirtySamples and
+    // _dirtyMultisamples are keyed by absolute path - without this, an edit made before
+    // Save As either silently vanishes (RebuildTreeFromCollection looks it up by the
+    // NEW path, finds nothing there, and re-reads the just-copied CLEAN file instead -
+    // the entry-21 "stale dirty key" regression class) or, worse, a later Save Changes
+    // keeps writing it back into the OLD file the dictionary key still names.
+    void RekeyPendingEdits(string oldContentDir, string newContentDir)
+    {
+        string Remap(string path) => IsUnder(path, oldContentDir)
+            ? Path.Combine(newContentDir, Path.GetRelativePath(oldContentDir, path)) : path;
+
+        foreach (var (oldPath, sample) in _dirtySamples.ToList())
+        {
+            var newPath = Remap(oldPath);
+            if (!string.Equals(newPath, oldPath, StringComparison.OrdinalIgnoreCase))
+            { _dirtySamples.Remove(oldPath); _dirtySamples[newPath] = sample; }
+        }
+        foreach (var (oldPath, m) in _dirtyMultisamples.ToList())
+        {
+            var newPath = Remap(oldPath);
+            if (!string.Equals(newPath, oldPath, StringComparison.OrdinalIgnoreCase))
+            { _dirtyMultisamples.Remove(oldPath); _dirtyMultisamples[newPath] = m; }
+        }
+    }
+
     // Smallest non-negative MNO1 not currently used by any multisample in the LIVE tree
     // (not a disk rescan - a just-created-but-not-yet-saved multisample must count too,
     // same "live state over disk" preference every other lookup here already uses).
@@ -2902,8 +3080,11 @@ partial class SampleEditorViewModel : ObservableObject
     // Dragging a boundary in the piano keymap (Views/SampleKeymapControl.cs) changes
     // where `zone` ends - the next zone's own low edge is auto-derived from that
     // (KmpZone's own convention: previous zone's TopKey+1), so nothing else needs to
-    // change here. The keymap control itself already clamped newTopKey against its
-    // neighbors before firing this, so no further validation is needed - just apply it.
+    // change here for a boundary pulled DOWN (shrinking `zone`). Dragged UP past the
+    // next zone's own Top Key, though, the control now lets the drag go all the way to
+    // 127 (see SampleKeymapControl's own comment) and this cascades every following
+    // zone upward by the same amount, same rule and same CascadeTopKeys helper as
+    // ApplyZoneEdits' typed Top Key field (2026-08-24).
     // Mirrored onto the stereo sibling's zone at the SAME INDEX (see ApplyZoneEdits'
     // own comment for why every key-range edit has to be) - a well-formed pair has
     // identical zone lists, so index is the right correspondence here, and the pair is
@@ -2917,25 +3098,39 @@ partial class SampleEditorViewModel : ObservableObject
         KmpMultisample? siblingM = null;
         string? siblingPath = null;
         int idx = -1;
+        int? oldNextTopKey = null;
+        var zones = CurrentMultisampleZones;
 
-        if (CurrentMultisampleZones is { } zones)
+        if (zones != null)
         {
             idx = zones.IndexOf(zone);
+            if (idx >= 0 && idx < zones.Count - 1) oldNextTopKey = zones[idx + 1].TopKey;
             (siblingZones, siblingM, siblingPath) = ResolveSiblingZonesFor(zones);
             _zoneUndo.RecordBeforeEdit(ZoneListSnapshot.Of(zones, siblingZones));
             _undoDomains.Add(EditDomain.Zone);
             _redoDomains.Clear();
         }
 
+        int oldTop = zone.TopKey;
         zone.TopKey = newTop;
         if (siblingZones != null && idx >= 0 && idx < siblingZones.Count) siblingZones[idx].TopKey = newTop;
         if (ReferenceEquals(zone, _selectedZone)) ZoneTopKey = zone.TopKey;
+
+        bool cascaded = oldNextTopKey is { } oldNext && newTop >= oldNext && zones != null;
+        if (cascaded)
+        {
+            int delta = newTop - oldTop;
+            CascadeTopKeys(zones!, idx, delta);
+            if (siblingZones != null) CascadeTopKeys(siblingZones, idx, delta);
+        }
+
         _zoneDirty = true;
         if (siblingM != null && siblingPath != null) RegisterDirtyMultisample(siblingM, siblingPath);
         RefreshUndoRedoState();
         StatusText = $"Zone '{(zone.IsSkipped ? "(skipped)" : zone.Filename)}' now extends to "
-            + $"{MidiNoteName.ToName(zone.TopKey)}{(siblingZones != null ? " (both L/R channels)" : "")} "
-            + "(unsaved - use Save Multisample).";
+            + $"{MidiNoteName.ToName(zone.TopKey)}{(siblingZones != null ? " (both L/R channels)" : "")}"
+            + (cascaded ? " - pushed the following zone(s) up to make room" : "")
+            + " (unsaved - use Save Multisample).";
     }
 
     // Drag/drop reordering a zone in the keymap (Views/SampleKeymapControl.cs) - moves

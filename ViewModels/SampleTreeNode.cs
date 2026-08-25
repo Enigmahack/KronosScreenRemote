@@ -10,7 +10,13 @@ namespace KronosScreenRemote.ViewModels;
 // render.
 partial class SampleTreeNode : ObservableObject
 {
-    public string Label { get; }
+    // Settable + observable (not a plain get-only property) so a rename can update an
+    // already-built node in place - the TreeView's ItemTemplate and MultisampleCombo's
+    // DisplayMemberPath both bind to this, and WPF only picks up a changed display
+    // string automatically when the bound source raises PropertyChanged. Before this,
+    // Label was baked in once at tree-build time; renaming left every already-built node
+    // (and the combo showing it) stuck on the old name until the next full tree rebuild.
+    [ObservableProperty] string label;
 
     // Exactly one of these is non-null, identifying what kind of node this is and
     // what it points at. CollectionRef carries its own .KSC path (like MultisampleRef/

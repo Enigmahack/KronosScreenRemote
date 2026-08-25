@@ -249,6 +249,8 @@
         <Border DockPanel.Dock="Top" Background="{StaticResource PanelBackgroundBrush}"
                 BorderBrush="{StaticResource DividerBrush}" BorderThickness="0 0 0 1" Padding="8 6">
             <StackPanel Orientation="Horizontal">
+                <Button x:Name="BtnNewCollection" Content="New Collection..." Padding="10 3" Margin="0 0 16 0" Click="OnNewCollection"
+                        ToolTip="Creates a brand-new, empty .KSC collection - same as File &gt; New Collection (.KSC)..."/>
                 <TextBlock Text="Open Collection:" VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}" Margin="0 0 8 0"/>
                 <Button Content="From File..." Padding="10 3" Margin="0 0 6 0" Click="OnOpenCollection"/>
                 <Button Content="From Kronos..." Padding="10 3" Click="OnPullCollectionFromKronos"/>

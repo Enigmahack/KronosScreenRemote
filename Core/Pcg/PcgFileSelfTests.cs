@@ -80,6 +80,27 @@ static class PcgFileSelfTests
         // Not a valid PCG file at all (bad magic) -> Open returns null, not an exception.
         Check("rejects-non-pcg", PcgFile.Open(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }) == null);
 
+        // §12 checksum: a well-formed bank whose checksum byte doesn't match its payload must
+        // still be extracted (advisory only, not rejected - see PcgChecksumWarning's comment
+        // for why: on a read-only import path, silently dropping a structurally valid bank
+        // over a stale/wrong checksum is worse than loading it and flagging the mismatch).
+        var corrupted = (byte[])buffer.Clone();
+        corrupted[16 + 11] ^= 0xFF;   // flip the MBK1 chunk's checksum byte (offset+11)
+        var corruptFile = PcgFile.Open(corrupted);
+        Check("checksum-corrupt-file-opens", corruptFile != null);
+        if (corruptFile != null)
+        {
+            Check("checksum-mismatch-still-extracts-bank",
+                new PcgLibraryView(corruptFile).GetName(progLoc) == programName);
+            Check("checksum-mismatch-surfaced",
+                corruptFile.ChecksumWarnings.Any(w => w.Tag == "MBK1" && w.Offset == 16));
+            Check("checksum-good-banks-not-flagged",
+                corruptFile.ChecksumWarnings.All(w => w.Tag == "MBK1"));
+        }
+        // The untouched fixture must never warn - proves the fixture builder's own checksums
+        // (ChunkChecksum) are correct, not just that the mismatch path fires on demand.
+        Check("checksum-good-file-has-no-warnings", file.ChecksumWarnings.Count == 0);
+
         // Real-file bank-id encoding (confirmed against an actual factory PRELOAD.PCG, and -
         // critically - against a real user file with confirmed U-GG content; see
         // PcgObjectExtractor's class comment). Program: literal 0..4 for I-A..I-E, a
@@ -109,9 +130,23 @@ static class PcgFileSelfTests
             Check("bankid-combi-I-G", bankIdView.GetName(new ObjLoc(LibObj.Combi, 0x06, 0)) == "I-G COMBI");
             Check("bankid-combi-U-A-via-0x20000", bankIdView.GetName(new ObjLoc(LibObj.Combi, 0x40, 0)) == "U-A COMBI");
             Check("bankid-combi-U-G-via-0x20006", bankIdView.GetName(new ObjLoc(LibObj.Combi, 0x46, 0)) == "U-G COMBI");
+            Check("bankid-file-checksums-clean", bankIdFile.ChecksumWarnings.Count == 0);
         }
 
         return fails;
+    }
+
+    // Mirrors PcgObjectExtractor's §12 checksum: sum of the count/itemSize/bankId sub-header
+    // bytes plus every record byte, mod 256. `records` must be exactly count*itemSize bytes.
+    // Internal (not private) so other synthetic-.pcg-fixture self-tests (PcgPaneLoadSelfTests)
+    // can reuse it instead of re-deriving the same algorithm.
+    internal static int ChunkChecksum(int count, int itemSize, int bankId, byte[] records)
+    {
+        int sum = 0;
+        void Add(int v) { sum = (sum + (byte)(v >> 24) + (byte)(v >> 16) + (byte)(v >> 8) + (byte)v) & 0xFF; }
+        Add(count); Add(itemSize); Add(bankId);
+        foreach (byte b in records) sum = (sum + b) & 0xFF;
+        return sum;
     }
 
     static byte[] BuildBankIdEncodedPcg()
@@ -125,9 +160,13 @@ static class PcgFileSelfTests
         {
             var record = new byte[itemSize];
             Encoding.ASCII.GetBytes(name).CopyTo(record, 0);
+            const int count = 1;   // 1 record per bank, enough to prove bank assignment
+            // Reserved field's low byte doubles as the §12 checksum (offset+11) - set it to the
+            // real sum so these fixtures don't spuriously report as checksum-mismatched.
+            int checksum = ChunkChecksum(count, itemSize, bankId, record);
             WriteAscii(tag);
-            WriteBE32(0); WriteBE32(0);
-            WriteBE32(1);          // count = 1 record per bank, enough to prove bank assignment
+            WriteBE32(0); WriteBE32(checksum);
+            WriteBE32(count);
             WriteBE32(itemSize);
             WriteBE32(bankId);
             ms.Write(record);
@@ -178,7 +217,9 @@ static class PcgFileSelfTests
         {
             WriteAscii(tag);
             WriteBE32(0);           // chunk length - not read by the extractor
-            WriteBE32(0);           // reserved/meta
+            // Reserved field's low byte doubles as the §12 checksum (offset+11) - real sum,
+            // so these fixtures don't spuriously report as checksum-mismatched.
+            WriteBE32(ChunkChecksum(count, itemSize, bankId, record));
             WriteBE32(count);
             WriteBE32(itemSize);
             WriteBE32(bankId);

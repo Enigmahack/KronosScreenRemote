@@ -387,6 +387,7 @@ public static class AppMessages
             public static string NotRecognizedPcg(string fileName) => $"{fileName} is not a recognizable Kronos .pcg file.";
             public static string Loaded(string fileName, int count) => $"Loaded {fileName} - {count} object(s).";
             public static string RejectedBanksSuffix(int count) => $" ({count} bank chunk(s) couldn't be read - see log)";
+            public static string ChecksumWarningsSuffix(int count) => $" ({count} bank chunk(s) failed their checksum - see log)";
             public const string FtpLoginFailedOrCancelled = "FTP login failed or was cancelled.";
             public const string LoadFromKronosCancelled =
                 "Load from Kronos cancelled - the previously loaded file (if any) is unchanged.";

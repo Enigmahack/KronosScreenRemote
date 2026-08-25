@@ -61,4 +61,26 @@ sealed class KronosRemoteSampleSource : IRemoteSampleSource
             return RemoteSamplePushResult.Failed($"Push failed: {ex.Message}");
         }
     }
+
+    // The folder-pick dialog does BOTH the browse AND the upload over its own single
+    // connection before closing (SampleRemoteBrowserDialog.SelectFolderAndPushAsync) -
+    // same one-connection discipline PickAndPullAsync above relies on, same reason (that
+    // class's own header comment: a second connection right after the first closes
+    // risked hanging on the Kronos's FTP server). Nothing left to do here once it
+    // returns except report the result.
+    public async Task<RemoteCollectionPushResult> PickFolderAndPushCollectionAsync(string localKscPath, KscCollection collection)
+    {
+        if (!await KronosFtpSession.EnsureLoginAsync(_owner, _settings, _host))
+            return RemoteCollectionPushResult.Failed(AppMessages.Librarian.Pcg.FtpLoginFailedOrCancelled);
+
+        var dlg = new SampleRemoteBrowserDialog(_host, _settings.FtpPort, _settings.FtpUsername, _settings.FtpPassword, localKscPath, collection)
+        {
+            Owner = _owner,
+        };
+        if (dlg.ShowDialog() != true || dlg.SelectedRemoteDir == null)
+            return RemoteCollectionPushResult.Failed("Push to Kronos cancelled.");
+
+        return RemoteCollectionPushResult.Success(
+            $"Pushed '{Path.GetFileName(localKscPath)}' and its content to '{dlg.SelectedRemoteDir}' on the Kronos.");
+    }
 }

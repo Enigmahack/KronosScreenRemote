@@ -6,8 +6,10 @@ using System.Text;
 // wire-format/8-to-7 knowledge. FromRawBody holds the field-walk logic that used to
 // live inline in SetListData.FromObjectDump; that method now just validates the
 // wire header, runs KronosSysEx.Decode8to7, and delegates here - so a .pcg-sourced
-// raw body (byte-identical layout, confirmed against Documentation/PCG Structure
-// Kronos.txt) reuses the exact same decoder as a live dump, never a second copy.
+// raw body (byte-identical layout; slot fields at +24/+25/+26 corpus-verified against
+// 32 real Kronos-written .pcg files, see kronosology/docs/interfaces/pcg_file_format.md
+// §5 and pcg_corpus_verification_2026-08.md) reuses the exact same decoder as a live
+// dump, never a second copy.
 static class SetListBody
 {
     public const int NameLen    = 24;

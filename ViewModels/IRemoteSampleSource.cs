@@ -24,6 +24,13 @@ interface IRemoteSampleSource
     // inverse of PickAndPullAsync for a single file, used once a pulled file has been
     // edited and saved locally.
     Task<RemoteSamplePushResult> PushAsync(string localPath, string remotePath);
+
+    // Let the user browse and pick a remote DESTINATION FOLDER, then upload the whole
+    // collection at localKscPath (itself + every listed .KMP + every non-skipped zone's
+    // .KSF) into it (2026-08-24, tree right-click "Push to Kronos..."). Unlike PushAsync
+    // above, this has no pull-provenance requirement - it can target any folder the user
+    // navigates to, not just wherever a file was originally pulled from.
+    Task<RemoteCollectionPushResult> PickFolderAndPushCollectionAsync(string localKscPath, KscCollection collection);
 }
 
 readonly record struct RemoteSamplePullResult(
@@ -38,4 +45,10 @@ readonly record struct RemoteSamplePushResult(bool Ok, string StatusMessage)
 {
     public static RemoteSamplePushResult Success(string statusMessage) => new(true, statusMessage);
     public static RemoteSamplePushResult Failed(string statusMessage) => new(false, statusMessage);
+}
+
+readonly record struct RemoteCollectionPushResult(bool Ok, string StatusMessage)
+{
+    public static RemoteCollectionPushResult Success(string statusMessage) => new(true, statusMessage);
+    public static RemoteCollectionPushResult Failed(string statusMessage) => new(false, statusMessage);
 }

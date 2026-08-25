@@ -291,21 +291,18 @@ static class SampleEditorSmokeTest
 
         // Edit + save + reopen round trip on the zone's key fields.
         //
-        // Top Key is bounded on BOTH sides now: floored at the previous zone's TopKey+1
-        // (added earlier, so this zone can't become inverted) and capped at the NEXT
-        // zone's TopKey-1 (so the next zone can't). That cap is not new behaviour
-        // invented here - it's exactly what SampleKeymapControl.cs:211 already clamped a
-        // boundary DRAG to; the typed field was simply the one path that skipped it.
-        // This test used to bump TopKey by +1 unconditionally and assert it landed
-        // verbatim, which only passed while the typed path was unclamped.
+        // Top Key is still floored at the previous zone's TopKey+1 (so this zone can't
+        // become inverted). There's no ceiling from the NEXT zone any more (2026-08-24,
+        // explicit user choice): raising a Top Key past it now cascades every following
+        // zone upward by the same amount instead of silently clamping below it - see the
+        // dedicated cascade check further down. A plain +1 here is far below any
+        // realistic next-zone boundary, so this round trip isn't expected to cascade.
         var editedZone = zoneNode.ZoneRef!.Value.Zone;
         var ownerZones = vm.CurrentMultisampleZones;
         int zoneIdx = ownerZones?.IndexOf(editedZone) ?? -1;
-        int topKeyCeiling = ownerZones != null && zoneIdx >= 0 && zoneIdx < ownerZones.Count - 1
-            ? ownerZones[zoneIdx + 1].TopKey - 1 : 127;
 
         int newOrigKey = (editedZone.OriginalKey + 1) % 128;
-        int newTopKey = Math.Min(editedZone.TopKey + 1, topKeyCeiling);
+        int newTopKey = Math.Min(editedZone.TopKey + 1, 127);
         vm.ApplyZoneEdits(newOrigKey, newTopKey);
         vm.SaveSelectedMultisample();
         if (vm.StatusText.StartsWith("Save failed") || vm.StatusText.Contains("Couldn't resolve"))
@@ -321,15 +318,22 @@ static class SampleEditorSmokeTest
         { Fail($"key edit not persisted: expected ({newOrigKey},{newTopKey}), got ({matchingZone.OriginalKey},{matchingZone.TopKey})"); return; }
         Ok($"zone key edit persisted: OriginalKey={matchingZone.OriginalKey} TopKey={matchingZone.TopKey}");
 
-        // ...and the cap itself is exercised directly, rather than merely avoided above:
-        // asking for the highest possible Top Key must land on the ceiling, never past
-        // it (which would leave the NEXT zone with an inverted key range).
+        // ...and the cascade itself is exercised directly: raising a zone's Top Key past
+        // the NEXT zone's own Top Key must land EXACTLY where asked (no clamp below the
+        // next zone any more) and push every following zone upward by the same delta,
+        // itself capped at 127.
         if (zoneIdx >= 0 && ownerZones != null && zoneIdx < ownerZones.Count - 1)
         {
+            var oldTop = editedZone.TopKey;
+            var oldNextTop = ownerZones[zoneIdx + 1].TopKey;
+            int delta = 127 - oldTop;
             vm.ApplyZoneEdits(newOrigKey, 127);
-            if (editedZone.TopKey != topKeyCeiling)
-            { Fail($"Top Key ceiling not enforced: asked for 127 with next zone at {ownerZones[zoneIdx + 1].TopKey}, expected {topKeyCeiling}, got {editedZone.TopKey}"); return; }
-            Ok($"Top Key ceiling enforced: 127 clamped to {topKeyCeiling} (next zone's TopKey - 1)");
+            if (editedZone.TopKey != 127)
+            { Fail($"Top Key cascade: asked for 127, expected the edited zone to land exactly there, got {editedZone.TopKey}"); return; }
+            byte expectedNextTop = (byte)Math.Min(127, oldNextTop + delta);
+            if (ownerZones[zoneIdx + 1].TopKey != expectedNextTop)
+            { Fail($"Top Key cascade: next zone expected TopKey {expectedNextTop} (was {oldNextTop}, pushed by {delta}), got {ownerZones[zoneIdx + 1].TopKey}"); return; }
+            Ok($"Top Key cascade: raising to 127 pushed the next zone from {oldNextTop} to {ownerZones[zoneIdx + 1].TopKey}");
         }
 
         Console.WriteLine("\nALL SMOKE TESTS PASSED");

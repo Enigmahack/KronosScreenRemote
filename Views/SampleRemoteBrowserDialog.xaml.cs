@@ -19,15 +19,28 @@ internal partial class SampleRemoteBrowserDialog : ThemedWindow
     }
 
     readonly AsyncFtpClient _client;
-    readonly string _extensionFilter;   // e.g. ".KSC" or ".KMP" (case-insensitive)
-    readonly string _localRoot;
+    readonly string _extensionFilter;   // e.g. ".KSC" or ".KMP" (case-insensitive) - unused in folder-push mode
+    readonly string _localRoot;         // unused in folder-push mode (nothing is downloaded)
+    readonly bool _folderPickMode;
+    readonly string? _pushLocalKscPath; // folder-push mode only
+    readonly KscCollection? _pushCollection;
     string _dir = "/";
 
     // Set once the user picks a file AND its whole closure has downloaded successfully
-    // over this dialog's own connection - only then does the dialog close.
+    // over this dialog's own connection - only then does the dialog close. Unset in
+    // folder-push mode, where SelectedRemoteDir is the result instead.
     public string? PickedLocalPath { get; private set; }
     public Dictionary<string, string>? RemoteMap { get; private set; }
 
+    // Set (folder-push mode only) to whichever remote directory the user was browsing
+    // when they confirmed AND the push into it completed (see SelectFolderAndPushAsync) -
+    // "Push to Kronos..." (whole-collection upload) needs a destination FOLDER, not a
+    // file to pull, so this mode repurposes the same connect/browse/navigate machinery
+    // below, uploading over the SAME connection before closing rather than downloading.
+    public string? SelectedRemoteDir { get; private set; }
+
+    // Pull mode: browse for a .KSC/.KMP matching extensionFilter, download its whole
+    // dependency closure into localRoot.
     public SampleRemoteBrowserDialog(string host, int port, string user, string pass, string extensionFilter, string localRoot)
     {
         InitializeComponent();
@@ -35,6 +48,31 @@ internal partial class SampleRemoteBrowserDialog : ThemedWindow
         _extensionFilter = extensionFilter;
         _localRoot = localRoot;
         LST_Items.SelectionChanged += (_, _) => BTN_Select.IsEnabled = LST_Items.SelectedItem is Entry { IsDirectory: false };
+        Loaded += async (_, _) => await ConnectAndRefreshAsync();
+        Closed += (_, _) => DisposeInBackground();
+    }
+
+    // Folder-push mode: browse for a DESTINATION FOLDER, then upload localKscPath's
+    // whole collection (itself + every listed .KMP + every non-skipped zone's .KSF, via
+    // SampleFtpPush) into it over this SAME connection before closing - same one-
+    // connection discipline as the pull constructor above, same reason (this class's own
+    // header comment). Distinguished from the pull constructor by taking a KscCollection,
+    // not by an extra flag - unambiguous overload, no dead pull-only fields to ignore.
+    public SampleRemoteBrowserDialog(string host, int port, string user, string pass, string localKscPath, KscCollection collection)
+    {
+        InitializeComponent();
+        _client = KronosFtpSession.CreateClient(host, port, user, pass);
+        _extensionFilter = "";
+        _localRoot = "";
+        _folderPickMode = true;
+        _pushLocalKscPath = localKscPath;
+        _pushCollection = collection;
+        Title = "Select Folder on Kronos";
+        BTN_Select.Content = "Select This Folder";
+        // Enabled once RefreshAsync's first listing succeeds (see there) - "push into
+        // whatever directory I'm currently browsing," not "act on the highlighted row"
+        // like the pull mode's per-file gate above, but still gated on actually being
+        // connected rather than enabled unconditionally from the start.
         Loaded += async (_, _) => await ConnectAndRefreshAsync();
         Closed += (_, _) => DisposeInBackground();
     }
@@ -72,7 +110,11 @@ internal partial class SampleRemoteBrowserDialog : ThemedWindow
             var listing = await _client.GetListing(_dir);
             var entries = listing
                 .Select(i => new Entry(i.Name, i.FullName, i.Type == FtpObjectType.Directory))
-                .Where(e => e.IsDirectory || e.Name.EndsWith(_extensionFilter, StringComparison.OrdinalIgnoreCase))
+                // Folder-pick mode: directories only, nothing to filter by file type -
+                // there's no file to select, just a destination to navigate into/confirm.
+                .Where(e => _folderPickMode
+                    ? e.IsDirectory
+                    : e.IsDirectory || e.Name.EndsWith(_extensionFilter, StringComparison.OrdinalIgnoreCase))
                 // _UserBank.KSC is a live shortcut to Kronos SSD library content, not
                 // real sample data (KscCollection.ToBytes already refuses to write one;
                 // this keeps it from being picked in the first place, not just rejected
@@ -82,6 +124,7 @@ internal partial class SampleRemoteBrowserDialog : ThemedWindow
                 .ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
                 .ToList();
             LST_Items.ItemsSource = entries;
+            if (_folderPickMode) BTN_Select.IsEnabled = true; // a successful listing means we're actually connected
             TXT_Status.Text = AppMessages.RemoteSamplePicker.ItemCount(entries.Count);
         }
         catch (Exception ex) { TXT_Status.Text = AppMessages.RemoteSamplePicker.Error(ex.Message); }
@@ -105,8 +148,40 @@ internal partial class SampleRemoteBrowserDialog : ThemedWindow
 
     async void OnSelect(object sender, RoutedEventArgs e)
     {
+        if (_folderPickMode) { await SelectFolderAndPushAsync(); return; }
         if (LST_Items.SelectedItem is Entry { IsDirectory: false } entry)
             await SelectAndPullAsync(entry);
+    }
+
+    // Folder-push mode's counterpart to SelectAndPullAsync below - same shape (disable
+    // controls, show progress in TXT_Status, surface partial failures via MessageBox
+    // before closing), uploading via SampleFtpPush instead of downloading.
+    async Task SelectFolderAndPushAsync()
+    {
+        BTN_Select.IsEnabled = false;
+        BTN_Cancel.IsEnabled = false;
+        BTN_Up.IsEnabled = false;
+        TXT_Status.Text = $"Pushing to '{_dir}'...";
+        try
+        {
+            var failures = await SampleFtpPush.PushClosureAsync(_client, _pushLocalKscPath!, _pushCollection!, _dir,
+                msg => TXT_Status.Text = msg);
+            SelectedRemoteDir = _dir;
+            if (failures.Count > 0)
+            {
+                MessageBox.Show(this,
+                    $"{failures.Count} file(s) could not be uploaded to '{_dir}':\n\n{string.Join("\n", failures)}",
+                    "Some Files Didn't Upload", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            DialogResult = true;
+        }
+        catch (Exception ex)
+        {
+            TXT_Status.Text = $"Push failed: {ex.Message}";
+            BTN_Select.IsEnabled = true;
+            BTN_Cancel.IsEnabled = true;
+            BTN_Up.IsEnabled = true;
+        }
     }
 
     async Task SelectAndPullAsync(Entry entry)

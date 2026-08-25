@@ -157,5 +157,16 @@ static class SampleRemoteSelfTests
                 ? RemoteSamplePushResult.Success("pushed")
                 : RemoteSamplePushResult.Failed("failed"));
         }
+
+        public string? PushedCollectionKscPath { get; private set; }
+        public bool NextCollectionPushSucceeds = true;
+
+        public Task<RemoteCollectionPushResult> PickFolderAndPushCollectionAsync(string localKscPath, KscCollection collection)
+        {
+            PushedCollectionKscPath = localKscPath;
+            return Task.FromResult(NextCollectionPushSucceeds
+                ? RemoteCollectionPushResult.Success("pushed collection")
+                : RemoteCollectionPushResult.Failed("failed"));
+        }
     }
 }

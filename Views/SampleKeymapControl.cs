@@ -207,9 +207,14 @@ sealed class SampleKeymapControl : FrameworkElement
 
         if (_dragBoundary >= 0)
         {
+            // Floor only - the previous zone's own Top Key still can't be invaded (same
+            // reasoning ApplyZoneEdits' floor uses). No ceiling from the NEXT zone any
+            // more: dragging past its Top Key now pushes it (and everything after it)
+            // upward instead of stopping the drag dead at its edge - SampleEditorViewModel.
+            // MoveZoneBoundary/CascadeTopKeys own the actual shift, applied once on
+            // mouse-up; this control only needs to let the drag reach that far.
             int minKey = _dragBoundary > 0 ? ranges[_dragBoundary - 1].Item3 + 1 : 0;
-            int maxKey = _dragBoundary + 1 < ranges.Length ? ranges[_dragBoundary + 1].Item3 - 1 : 126;
-            _dragPendingKey = PixelToBoundaryKey(x, rightX, minKey, maxKey);
+            _dragPendingKey = PixelToBoundaryKey(x, rightX, minKey, 127);
             InvalidateVisual();
             return;
         }

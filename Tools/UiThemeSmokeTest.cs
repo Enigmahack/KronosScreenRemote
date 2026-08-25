@@ -85,6 +85,20 @@ static class UiThemeSmokeTest
                 ? "NOT FOUND via TryFindResource"
                 : $"FOUND, Setters={appWindowStyle.Setters.Count}, TargetType={appWindowStyle.TargetType}"));
 
+        // Pins the tree-focus-loss text color fix (2026-08-24): the stock TreeViewItem
+        // template pairs InactiveSelectionHighlightBrushKey (background - already
+        // overridden) with InactiveSelectionHighlightTextBrushKey (foreground). Only the
+        // background half was overridden before this fix, so a selected tree row's text
+        // fell back to the un-overridden system default (near-black) the instant the
+        // window/TreeView lost focus. A screenshot can't prove IsSelectionActive was
+        // actually false at capture time - this checks the resource itself.
+        {
+            var inactiveTextBrush = Application.Current.TryFindResource(SystemColors.InactiveSelectionHighlightTextBrushKey) as SolidColorBrush;
+            bool isWhite = inactiveTextBrush?.Color == Colors.White;
+            results.Add(("  InactiveSelectionHighlightTextBrushKey resolves to white", isWhite,
+                isWhite ? null : $"resolved to {inactiveTextBrush?.Color.ToString() ?? "NOT FOUND"}"));
+        }
+
         Try("AboutWindow",            () => new AboutWindow(null, 0));
         Try("CommandPaletteWindow",   () => new CommandPaletteWindow(new List<CommandEntry> { new("test", "Test", "", () => { }) }));
         Try("FileManagerWindow",      () => new FileManagerWindow("", 21, "", ""));
@@ -231,7 +245,26 @@ static class UiThemeSmokeTest
         // it never calls Show/ShowDialog), so this never actually reaches out over the
         // network despite taking connection args.
         Try("SampleRemoteBrowserDialog", () => new SampleRemoteBrowserDialog("dummy-host", 21, "user", "pass", ".KSC", Path.GetTempPath()));
+        Try("SampleRemoteBrowserDialog (folder-push mode)", () => new SampleRemoteBrowserDialog("dummy-host", 21, "user", "pass", "dummy.KSC", new KscCollection()));
         Try("RemoteFilePickerDialog",    () => new RemoteFilePickerDialog("dummy-host", 21, "user", "pass", ".PCG"));
+
+        // Behavioral: folder-push mode is a distinct constructor overload (see its own
+        // comment) that repurposes the SAME dialog for "pick a destination folder and
+        // upload" rather than "pick a file and download" - pins that it actually swaps
+        // the title/button text and starts with Select disabled (only RefreshAsync's
+        // first successful listing enables it - unreachable here with no live server,
+        // which is the point: Select must NOT be usable before a connection exists).
+        {
+            var pushDlg = new SampleRemoteBrowserDialog("dummy-host", 21, "user", "pass", "dummy.KSC", new KscCollection());
+            bool titleOk = pushDlg.Title == "Select Folder on Kronos";
+            var selectButton = (System.Windows.Controls.Button)pushDlg.FindName("BTN_Select");
+            bool contentOk = (string)selectButton.Content == "Select This Folder";
+            bool startsDisabled = !selectButton.IsEnabled;
+            pushDlg.Close();
+            bool ok = titleOk && contentOk && startsDisabled;
+            results.Add(("  SampleRemoteBrowserDialog folder-push mode UI", ok,
+                ok ? null : $"title={titleOk} buttonContent={contentOk} startsDisabled={startsDisabled}"));
+        }
 
         // Behavioral: both dialogs used to truncate their status line
         // (TextTrimming="CharacterEllipsis", no wrap), which silently cut off exactly

@@ -44,6 +44,11 @@ public partial class SampleEditorWindow : ThemedWindow
     // expected repository-scan state, not a bug, same contract as KsfSample.Open itself.
     (string Name, string Suffix)? GetRepositorySampleInfo(string ksfPath)
     {
+        // A rename (or any other field edit) is a live, unsaved edit sitting in the VM's
+        // _dirtySamples - checked first and never cached here, since disk hasn't changed
+        // and won't until Save Sample. Without this, a just-renamed sample's dropdown
+        // entry kept showing its old on-disk name until it was actually saved.
+        if (_vm.TryGetPendingSampleInfo(ksfPath) is { } pending) return pending;
         if (_repositorySampleCache.TryGetValue(ksfPath, out var cached)) return cached;
         KsfSample? s;
         try { s = File.Exists(ksfPath) ? KsfSample.Open(File.ReadAllBytes(ksfPath)) : null; }
@@ -150,6 +155,31 @@ public partial class SampleEditorWindow : ThemedWindow
         // freshly-created collection's own root node sat there unselected, requiring an
         // extra click before anything showed.
         if (dlg.ShowDialog(this) == true) { _vm.NewCollection(dlg.FileName); SelectFirstRoot(); UpdateStatus(); }
+    }
+
+    // Tree right-click "Save as..." - `owningPath` is the collection the user actually
+    // right-clicked (resolved by OnTreeContextMenuOpening the same way "Close
+    // Collection" already is), not just "whatever's currently active," since selecting
+    // the node to right-click it already re-syncs the VM's active-collection fields to
+    // match (SelectNode) - but being explicit here matches this handler's own contract
+    // with its caller rather than relying on that indirection staying true.
+    void OnSaveCollectionAs(string owningPath)
+    {
+        var dlg = new SaveFileDialog
+        {
+            Title = "Save Collection As",
+            Filter = "Korg KSC Files|*.KSC|All Files|*.*",
+            FileName = Path.GetFileName(owningPath),
+        };
+        if (dlg.ShowDialog(this) != true) return;
+        _vm.SaveCollectionAs(dlg.FileName);
+        // The new collection lands at the END of Roots (RebuildTreeFromCollection adds
+        // rather than replaces, since its path differs from the old one) - SelectFirstRoot
+        // would pick the WRONG root whenever another collection is already open first.
+        var newRoot = _vm.Roots.FirstOrDefault(r => string.Equals(r.CollectionRef?.Path, dlg.FileName, StringComparison.OrdinalIgnoreCase));
+        if (newRoot != null) SelectTreeNode(newRoot);
+        RefreshDetailPanels();
+        UpdateStatus();
     }
 
     void OnNewMultisample(object sender, RoutedEventArgs e)
@@ -1412,10 +1442,13 @@ public partial class SampleEditorWindow : ThemedWindow
     }
 
     // Builds the tree's right-click menu on the fly rather than a static XAML
-    // ContextMenu resource - "Unload KSC" only makes sense once we know which
+    // ContextMenu resource - "Close Collection" only makes sense once we know which
     // collection the right-clicked node actually belongs to (resolved the same way
     // SelectNode resolves "the active collection" for the collection-level menu
-    // actions), and there's nothing else on this menu yet to justify a static resource.
+    // actions). The other items are the same File-menu actions already reachable from
+    // the top menu bar/toolbar - the tree only ever shows collection ROOTS (see the
+    // TreeView's own XAML comment), so "New"/"Open" here unambiguously mean the
+    // collection-level versions, not "new multisample" or "open a bare .KMP".
     void OnTreeContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
         SampleTree.ContextMenu = null;
@@ -1424,9 +1457,22 @@ public partial class SampleEditorWindow : ThemedWindow
         if (owningPath == null) { e.Handled = true; return; }
 
         var menu = new ContextMenu();
-        var unload = new MenuItem { Header = "Unload KSC" };
-        unload.Click += (_, _) => UnloadCollectionWithConfirm(owningPath);
-        menu.Items.Add(unload);
+        void Add(string header, RoutedEventHandler click, bool enabled = true)
+        {
+            var item = new MenuItem { Header = header, IsEnabled = enabled };
+            item.Click += click;
+            menu.Items.Add(item);
+        }
+
+        Add("New Collection (.KSC)...", OnNewCollection);
+        Add("Open Collection (.KSC)...", OnOpenCollection);
+        menu.Items.Add(new Separator());
+        Add("Save Changes", OnSaveChanges, _vm.HasUnsavedChanges);
+        Add("Save as...", (_, _) => OnSaveCollectionAs(owningPath));
+        Add("Push to Kronos...", OnPushCollectionToKronos);
+        menu.Items.Add(new Separator());
+        Add("Close Collection", (_, _) => UnloadCollectionWithConfirm(owningPath));
+        Add("Close Editor", (_, _) => Close());
         SampleTree.ContextMenu = menu;
     }
 
@@ -1673,6 +1719,13 @@ public partial class SampleEditorWindow : ThemedWindow
         UpdateStatus();
     }
 
+    async void OnPushCollectionToKronos(object sender, RoutedEventArgs e)
+    {
+        if (MakeRemoteSampleSource() is not { } source) return;
+        await _vm.PushCollectionToKronosAsync(source);
+        UpdateStatus();
+    }
+
     // ── Import / Export (Phase 4) ───────────────────────────────────────────────
 
     void OnImportAudio(object sender, RoutedEventArgs e)
@@ -1785,7 +1838,11 @@ public partial class SampleEditorWindow : ThemedWindow
     // every other field in this window - marks the file dirty, doesn't save immediately.
     void OnRenameMultisample(object sender, RoutedEventArgs e)
     {
-        var current = _vm.CurrentMultisampleName;
+        // Pre-fills with the BARE name (no "-L"/"-R") - RenameSelectedMultisample treats
+        // the whole dialog result as the new Name and appends Suffix itself, so pre-
+        // filling with CurrentMultisampleName's Suffix-included form let an un-stripped
+        // "-L"/"-R" get baked into Name and then doubled on display ("Foo-L-L").
+        var current = _vm.CurrentMultisampleBareName;
         if (current == null) return;
         var dlg = new PromptDialog("New multisample name:", current) { Owner = this };
         if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.Result)) return;
@@ -1797,7 +1854,9 @@ public partial class SampleEditorWindow : ThemedWindow
     void OnRenameSample(object sender, RoutedEventArgs e)
     {
         if (!_vm.HasSampleLoaded) return;
-        var dlg = new PromptDialog("New sample name:", _vm.SampleName) { Owner = this };
+        // Same bare-name reasoning as OnRenameMultisample above - _vm.SampleName carries
+        // Suffix, RenameSelectedSample doesn't expect it back.
+        var dlg = new PromptDialog("New sample name:", _vm.CurrentSampleBareName ?? "") { Owner = this };
         if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.Result)) return;
         _vm.RenameSelectedSample(dlg.Result);
         _repositorySampleCache.Clear(); // the Sample dropdown's cached name for this .KSF is now stale
