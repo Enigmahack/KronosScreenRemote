@@ -1035,7 +1035,15 @@ partial class SampleEditorViewModel : ObservableObject
         var newBase = ComputeKmpBaseName(m.Name, m.Mno1);
         if (newBase.Length == 0) return oldPath; // sanitized name is empty - nothing usable to rename to
         var newPath = Path.Combine(dir, newBase + ".KMP");
-        if (string.Equals(newPath, oldPath, StringComparison.OrdinalIgnoreCase)) return oldPath;
+        if (string.Equals(newPath, oldPath, StringComparison.OrdinalIgnoreCase))
+        {
+            // Computed filename didn't change (e.g. the new Name sanitizes/truncates to the
+            // same on-disk basename as the old one), but Name itself may still have changed -
+            // still register dirty, or RebuildTreeFromCollection re-reads the KMP from disk
+            // and silently reverts the in-memory Name edit.
+            RegisterDirtyMultisample(m, oldPath);
+            return oldPath;
+        }
 
         var oldFolder = Path.Combine(dir, Path.GetFileNameWithoutExtension(oldPath));
         var newFolder = Path.Combine(dir, newBase);

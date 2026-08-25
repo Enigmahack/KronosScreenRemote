@@ -360,18 +360,20 @@ sealed class SampleKeymapControl : FrameworkElement
             return;
         }
 
-        if (pos.Y >= RaisedLabelHeight + ZoneBarHeight)
-        {
-            ZoneClicked?.Invoke(hitZone);
-            // Captured so a hold-and-drag off the control still delivers the eventual
-            // mouse-up here (rather than it going to whatever's under the cursor), and
-            // so OnLostMouseCapture below is a reliable single place to detect "the key
-            // is no longer held" - including window deactivation, which Windows treats
-            // as an implicit capture release.
-            _pianoKeyDown = true;
-            CaptureMouse();
-            PianoKeyClicked?.Invoke(hitZone, key);
-        }
+        // By this point InZoneBarStrip(pos.Y) is known false (the branch above already
+        // returned for it), so pos.Y is either below the zone bar (the piano itself) or
+        // above it (the raised-label strip) - both resolve to the same key/zone click
+        // per this method's own comment above; a stricter y-check here previously
+        // swallowed raised-label-strip clicks entirely.
+        ZoneClicked?.Invoke(hitZone);
+        // Captured so a hold-and-drag off the control still delivers the eventual
+        // mouse-up here (rather than it going to whatever's under the cursor), and
+        // so OnLostMouseCapture below is a reliable single place to detect "the key
+        // is no longer held" - including window deactivation, which Windows treats
+        // as an implicit capture release.
+        _pianoKeyDown = true;
+        CaptureMouse();
+        PianoKeyClicked?.Invoke(hitZone, key);
     }
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)

@@ -155,7 +155,14 @@ public partial class MainWindow
         // Kronos window" complaint) - so it no longer closes automatically when this
         // window does. Close it explicitly here instead, past every cancellable point
         // above, so the previous "closing Main closes everything" behavior still holds.
-        if (_sampleEditorWin != null && _sampleEditorWin.IsLoaded) _sampleEditorWin.Close();
+        if (_sampleEditorWin != null && _sampleEditorWin.IsLoaded)
+        {
+            _sampleEditorWin.Close();
+            // Close() can be cancelled by the Sample Editor's own unsaved-changes prompt
+            // (SampleEditorWindow.OnWindowClosing) - if the user chose not to discard,
+            // IsLoaded is still true here, and Main must not tear down around it either.
+            if (_sampleEditorWin.IsLoaded) { e.Cancel = true; return; }
+        }
 
         _trayIcon?.Dispose();
         CompositionTarget.Rendering -= RenderTick;

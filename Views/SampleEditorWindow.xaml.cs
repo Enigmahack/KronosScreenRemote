@@ -188,9 +188,10 @@ public partial class SampleEditorWindow : ThemedWindow
         var nameDlg = new PromptDialog("Multisample name:", "NewMS") { Owner = this };
         if (nameDlg.ShowDialog() != true || string.IsNullOrWhiteSpace(nameDlg.Result)) return;
 
-        var idDlg = new PromptDialog("Multisample ID # (0-999):", "0") { Owner = this };
+        var idDlg = new PromptDialog("Multisample ID # (0-3999):", "0") { Owner = this };
         uint mno1 = 0;
         if (idDlg.ShowDialog() == true) uint.TryParse(idDlg.Result, out mno1);
+        mno1 = Math.Min(mno1, 3999); // doc's own "max of 3999 possible keymaps" ceiling - AutoFileName's 8-char DOS 8.3 stem depends on never exceeding it
 
         var msNode = _vm.NewMultisampleInCollection(nameDlg.Result, mno1);
         RefreshDetailPanels();
@@ -203,9 +204,10 @@ public partial class SampleEditorWindow : ThemedWindow
         var nameDlg = new PromptDialog("Stereo pair base name (no -L/-R suffix):", "NewStereoMS") { Owner = this };
         if (nameDlg.ShowDialog() != true || string.IsNullOrWhiteSpace(nameDlg.Result)) return;
 
-        var idDlg = new PromptDialog("Left multisample ID # (0-998; Right uses ID+1):", "0") { Owner = this };
+        var idDlg = new PromptDialog("Left multisample ID # (0-3998; Right uses ID+1):", "0") { Owner = this };
         uint mno1Left = 0;
         if (idDlg.ShowDialog() == true) uint.TryParse(idDlg.Result, out mno1Left);
+        mno1Left = Math.Min(mno1Left, 3998); // Right (mno1Left+1) must also stay within the 3999 ceiling
 
         var msNode = _vm.NewStereoMultisamplePairInCollection(nameDlg.Result, mno1Left);
         RefreshDetailPanels();

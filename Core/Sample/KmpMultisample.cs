@@ -165,6 +165,10 @@ sealed class KmpMultisample
     // always summing to the 8-character DOS 8.3 stem.
     public static string AutoFileName(string name, uint mno1)
     {
+        // Clamp to the doc's own "max of 3999 possible keymaps" ceiling - the two-tier
+        // width split below only sums to the fixed 8-char DOS 8.3 stem up to 3999;
+        // nothing upstream (dialogs, callers) is guaranteed to have validated this.
+        mno1 = Math.Min(mno1, 3999);
         var sanitized = new string(name.ToUpperInvariant()
             .Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray());
         int nameWidth = mno1 <= 999 ? 5 : 4;
