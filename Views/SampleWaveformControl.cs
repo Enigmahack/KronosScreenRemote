@@ -181,6 +181,86 @@ public sealed class SampleWaveformControl : FrameworkElement
         set => SetValue(LoopLockEnabledProperty, value);
     }
 
+    public static readonly DependencyProperty MoveToolActiveProperty =
+        DependencyProperty.Register(nameof(MoveToolActive), typeof(bool), typeof(SampleWaveformControl),
+            new FrameworkPropertyMetadata(false));
+
+    // Local Edits' Select/Move toggle (SampleEditorWindow.xaml). Select (default,
+    // false): a plain click-drag on empty waveform starts a new crop selection - today's
+    // only behavior, entirely unchanged. Move (true): a plain click-drag instead
+    // relocates whatever it starts on - an existing selection, the loop region (without
+    // needing LoopLockEnabled - Move IS the "reposition the loop" gesture now, LoopLock
+    // keeps its own separate "preserve loop length while dragging an EDGE" meaning), or
+    // failing either of those, the whole waveform itself (only when CanMoveWaveform - see
+    // its own comment). Marker-edge dragging (Sample Start/Loop Start/Loop End lines) is
+    // unaffected by this - grabbing a line always resizes/repositions that one marker
+    // regardless of mode, same as before modes existed.
+    public bool MoveToolActive
+    {
+        get => (bool)GetValue(MoveToolActiveProperty);
+        set => SetValue(MoveToolActiveProperty, value);
+    }
+
+    public static readonly DependencyProperty CanMoveWaveformProperty =
+        DependencyProperty.Register(nameof(CanMoveWaveform), typeof(bool), typeof(SampleWaveformControl),
+            new FrameworkPropertyMetadata(false));
+
+    // Whole-waveform dragging only means anything with a stereo partner to offset
+    // against (SampleEditorViewModel.ApplyChannelMove requires HasStereoPair && SplitLR
+    // and no-ops otherwise) - the window sets this to HasStereoPair && SplitLR. When
+    // false, a Move-mode drag that starts on bare waveform (no selection, no loop under
+    // the cursor) falls through to an ordinary crop-selection drag instead of doing
+    // nothing - Move's toggle state shouldn't make the waveform stop responding to clicks
+    // just because there's nothing for IT specifically to move right now.
+    public bool CanMoveWaveform
+    {
+        get => (bool)GetValue(CanMoveWaveformProperty);
+        set => SetValue(CanMoveWaveformProperty, value);
+    }
+
+    // Fires once, on mouse-up, after a whole-waveform Move drag actually moved
+    // (deltaFrames, +later/-earlier) - see SampleEditorViewModel.ApplyChannelMove for
+    // what this does to the underlying PCM. Never fires for a plain click (no movement)
+    // or when CanMoveWaveform is false.
+    public event Action<int>? WaveformMoved;
+
+    public static readonly DependencyProperty IsSplitChannelPaneProperty =
+        DependencyProperty.Register(nameof(IsSplitChannelPane), typeof(bool), typeof(SampleWaveformControl),
+            new FrameworkPropertyMetadata(false));
+
+    // Set by the window (RefreshDetailPanels) to HasStereoPair && SplitLR - true whenever
+    // this pane represents one half of an actively Split-edited stereo pair. Gates
+    // ChannelDoubleClicked below: a double-click outside the loop region only means
+    // "pick a channel" in that context - for a mono sample, or in Combine (where both
+    // channels always mirror together and there's nothing to pick), double-click keeps
+    // its ordinary "reset zoom to fit" meaning.
+    public bool IsSplitChannelPane
+    {
+        get => (bool)GetValue(IsSplitChannelPaneProperty);
+        set => SetValue(IsSplitChannelPaneProperty, value);
+    }
+
+    public static readonly DependencyProperty IsActiveChannelProperty =
+        DependencyProperty.Register(nameof(IsActiveChannel), typeof(bool), typeof(SampleWaveformControl),
+            new FrameworkPropertyMetadata(false, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    // Set by the window (RefreshDetailPanels) - true when THIS pane is (one of) the
+    // channel(s) edits currently target: the sole active side, or either side while Both
+    // is active. Purely a rendering cue (see OnRender's accent border) - has no bearing
+    // on hit-testing/gestures, only on what the user sees.
+    public bool IsActiveChannel
+    {
+        get => (bool)GetValue(IsActiveChannelProperty);
+        set => SetValue(IsActiveChannelProperty, value);
+    }
+
+    // Fires on a double-click outside the loop region (that still takes priority - see
+    // OnMouseLeftButtonDown) while IsSplitChannelPane is true - the window
+    // (OnWaveformLeftChannelDoubleClicked/OnWaveformRightChannelDoubleClicked) owns what
+    // "select a channel" actually means (ActivateSplitChannel/ActivateBothSplitChannels),
+    // this control only reports the gesture.
+    public event Action? ChannelDoubleClicked;
+
 
     public static readonly DependencyProperty ScrubFrameProperty =
         DependencyProperty.Register(nameof(ScrubFrame), typeof(int), typeof(SampleWaveformControl),
@@ -234,8 +314,53 @@ public sealed class SampleWaveformControl : FrameworkElement
     // Single-marker (Sample Start line, or one loop edge independently) drag state.
     SampleMarkerKind? _draggingMarker;
 
+    // Move tool's "drag an existing selection" state - same anchor/at-anchor shape as
+    // the loop whole-region drag above, kept separate so the two can't be confused with
+    // each other (a selection and a loop region can overlap on screen). Live feedback
+    // reuses SetPreviewSelection/_previewSelStart-End (the same preview channel a normal
+    // crop-selection drag uses) rather than writing the committed DPs on every
+    // MouseMove, for the same perf reason SelectionPreviewChanged's own comment gives.
+    bool _movingSelection;
+    bool _selMoveMoved;
+    int _selMoveAnchorFrame, _selMoveStartAtAnchor, _selMoveEndAtAnchor;
+
+    // Move tool's "drag the whole waveform" state (CanMoveWaveform only). Live feedback
+    // is a pure RenderTransform translate - correct for free (everything currently drawn,
+    // trace and markers alike, slides together exactly as it will once the real PCM
+    // shift + marker shift commit) and O(1) per MouseMove, unlike the trace geometry
+    // itself which is O(view length) to rebuild. Committed by converting the total pixel
+    // delta back to frames on mouse-up and firing WaveformMoved once.
+    bool _movingWaveform;
+    // Local coordinates, captured with the transform at X=0 - see the mouse-down/
+    // mouse-move sites' own comments for how this stays stable once the transform
+    // starts moving (PointToScreen was tried and reverted: it returns DEVICE pixels
+    // while _waveMoveTransform.X is DIPs, so at any display scaling other than 100%
+    // the waveform would slide faster/slower than the cursor).
+    double _waveMoveAnchorX;
+    readonly TranslateTransform _waveMoveTransform = new();
+
+    // External pair-timeline override for the VIEW WINDOW only (SetView/wheel-zoom/
+    // double-click-reset bounds) - NOT for rendering or hit-testing, which still use
+    // this pane's own real FrameCount. The window sets this to max(left, right) frame
+    // count on BOTH panes whenever they're part of a stereo pair (SampleEditorWindow.
+    // xaml.cs's RefreshDetailPanels), because Split L/R's Move tool lets the two
+    // channels' buffers end up different lengths. Without this, SyncWaveformViews'
+    // shared numeric view window (both panes forced to the SAME [ViewStart,ViewEnd)
+    // frame numbers, so an offset between them renders as a real pixel offset) gets
+    // clamped down to whichever pane is SHORTER on every SetView call - the two panes
+    // would silently end up at different zoom levels instead of showing the offset at
+    // all. 0 (default) means "no override - just use this pane's own FrameCount", so a
+    // mono pane, or one not part of a pair, behaves exactly as before.
+    public int ViewFrameCount { get; set; }
+
+    int ViewSpan => Math.Max(FrameCount, ViewFrameCount);
+
+    // Read by SyncWaveformViews for the shared horizontal scrollbar's range - must span
+    // the LONGER pane or zoomed scrolling can never reach the end of it.
+    public int ViewSpanFrameCount => ViewSpan;
+
     public int ViewStartFrame => _viewStart;
-    public int ViewEndFrame => _viewEnd == 0 ? FrameCount : _viewEnd;
+    public int ViewEndFrame => _viewEnd == 0 ? ViewSpan : _viewEnd;
 
     public SampleWaveformControl()
     {
@@ -258,13 +383,13 @@ public sealed class SampleWaveformControl : FrameworkElement
         if (newCount != _lastFrameCount)
         {
             _viewStart = 0;
-            _viewEnd = newCount;
+            _viewEnd = ViewSpan; // full PAIR timeline, not just this pane's own length - see ViewFrameCount's own comment
             ScrubFrame = -1;
         }
         else
         {
-            _viewStart = Math.Clamp(_viewStart, 0, Math.Max(0, newCount - 1));
-            _viewEnd = Math.Clamp(_viewEnd, _viewStart + 1, newCount);
+            _viewStart = Math.Clamp(_viewStart, 0, Math.Max(0, ViewSpan - 1));
+            _viewEnd = Math.Clamp(_viewEnd, _viewStart + 1, ViewSpan);
         }
         _lastFrameCount = newCount;
         ViewChanged?.Invoke();
@@ -276,8 +401,8 @@ public sealed class SampleWaveformControl : FrameworkElement
     // rather than reaching into private zoom state directly.
     public void SetView(int start, int end)
     {
-        int len = Math.Clamp(end - start, 1, Math.Max(1, FrameCount));
-        start = Math.Clamp(start, 0, Math.Max(0, FrameCount - len));
+        int len = Math.Clamp(end - start, 1, Math.Max(1, ViewSpan));
+        start = Math.Clamp(start, 0, Math.Max(0, ViewSpan - len));
         _viewStart = start;
         _viewEnd = start + len;
         InvalidateVisual();
@@ -314,21 +439,47 @@ public sealed class SampleWaveformControl : FrameworkElement
         if (FrameCount == 0) return;
         Focus();
 
+        double x = e.GetPosition(this).X;
+        int clickFrame = PixelToFrame(x);
+
         // Double-click resets to the full-sample view - the only "un-zoom" affordance;
         // deliberately not a button, matching how the equivalent gesture works in most
         // waveform editors. FrameworkElement has no OnMouseDoubleClick override (that's
-        // Control-only), so ClickCount is checked here instead.
+        // Control-only), so ClickCount is checked here instead. Double-clicking INSIDE
+        // the loop region is the one exception - explicit request: it selects the loop
+        // (matching Loop Selected Area's own [LoopStart, LoopEnd) range) instead,
+        // regardless of Select/Move tool - unlike the single-click "grab the whole loop
+        // to drag" gesture below (Move tool only), this is a selection, not a move, so
+        // there's no reason to gate it on which tool is active.
         if (e.ClickCount == 2)
         {
+            if (HasLoop && InLoopRegion(clickFrame))
+            {
+                ClearPreviewSelection();
+                SelectionStartFrame = LoopStartFrame;
+                SelectionEndFrame = LoopEndFrame;
+                SelectionChanged?.Invoke();
+                return;
+            }
+
+            // Split L/R: outside the loop region, double-click picks a channel instead
+            // of resetting zoom - explicit request. Click 1 of this same gesture already
+            // ran through the window's ordinary single-click channel-activation
+            // (OnWaveformPaneScrubRequested), so by now this pane is already the sole
+            // active channel; ChannelDoubleClicked's only remaining job (window-side) is
+            // deciding what a SECOND click on the already-active pane means.
+            if (IsSplitChannelPane)
+            {
+                ChannelDoubleClicked?.Invoke();
+                return;
+            }
+
             _viewStart = 0;
-            _viewEnd = FrameCount;
+            _viewEnd = ViewSpan;
             InvalidateVisual();
             ViewChanged?.Invoke();
             return;
         }
-
-        double x = e.GetPosition(this).X;
-        int clickFrame = PixelToFrame(x);
 
         // Marker edges take priority over the loop-region body / crop-selection -
         // checked in the same visual order they're drawn (Sample Start on top, then the
@@ -357,15 +508,17 @@ public sealed class SampleWaveformControl : FrameworkElement
 
         // A click starting INSIDE the current loop region (but not on either edge) grabs
         // the WHOLE region for dragging instead of starting a new crop selection there -
-        // but ONLY when Loop Lock is on. With Loop Lock off, click-drag-to-highlight
-        // needs to work everywhere, loop region included - it no longer needs a separate
-        // "move the loop" gesture competing for the same click. Also excluded when the
-        // loop already spans the entire sample (LoopEndFrame - LoopStartFrame >=
-        // FrameCount): the drag-to-move below clamps newStart to [0, FrameCount - len],
-        // which is always exactly 0 in that case - the region can never actually move,
-        // so a click there could never do anything useful anyway. Either way, falling
-        // through to the normal crop-selection start below.
-        if (LoopLockEnabled && InLoopRegion(clickFrame) && LoopEndFrame - LoopStartFrame < FrameCount)
+        // Move mode ONLY (explicit feedback: Select mode must never move anything, only
+        // ever highlight/select - Loop Lock no longer doubles as an implicit "move the
+        // loop" trigger the way it used to; Loop Lock's own meaning is unchanged
+        // elsewhere, it still links Start/End length when dragging a single EDGE). Also
+        // excluded when the loop already spans the entire sample (LoopEndFrame -
+        // LoopStartFrame >= FrameCount): the drag-to-move below clamps newStart to
+        // [0, FrameCount - len], which is always exactly 0 in that case - the region can
+        // never actually move, so a click there could never do anything useful anyway.
+        // Either way, falling through to the normal crop-selection start below.
+        bool loopMovable = MoveToolActive && InLoopRegion(clickFrame) && LoopEndFrame - LoopStartFrame < FrameCount;
+        if (loopMovable)
         {
             _draggingLoop = true;
             _loopDragMoved = false;
@@ -374,6 +527,43 @@ public sealed class SampleWaveformControl : FrameworkElement
             _loopDragEndAtAnchor = LoopEndFrame;
             CaptureMouse();
             return;
+        }
+
+        if (MoveToolActive)
+        {
+            // A click starting inside the CURRENT selection grabs the whole highlight to
+            // relocate it - selection only, the underlying waveform is untouched (see
+            // ApplyChannelMove's own comment for why that's a separate gesture below).
+            bool hasSelection = SelectionEndFrame > SelectionStartFrame;
+            if (hasSelection && clickFrame >= SelectionStartFrame && clickFrame < SelectionEndFrame)
+            {
+                _movingSelection = true;
+                _selMoveMoved = false;
+                _selMoveAnchorFrame = clickFrame;
+                _selMoveStartAtAnchor = SelectionStartFrame;
+                _selMoveEndAtAnchor = SelectionEndFrame;
+                CaptureMouse();
+                return;
+            }
+
+            if (CanMoveWaveform && FrameCount > 0)
+            {
+                _movingWaveform = true;
+                // Transform is reset to 0 BEFORE the anchor is read, so x here is a
+                // genuine untransformed local position - see OnMouseMove for how every
+                // later reading stays comparable to this one even once the transform
+                // moves away from 0.
+                _waveMoveTransform.X = 0;
+                _waveMoveAnchorX = x;
+                RenderTransform = _waveMoveTransform;
+                CaptureMouse();
+                return;
+            }
+
+            // Move mode but nothing here to move (no selection under the cursor, and
+            // either not split or already dragged past what CanMoveWaveform allows) -
+            // fall through to an ordinary crop-selection drag rather than absorbing the
+            // click and doing nothing.
         }
 
         _dragAnchorFrame = clickFrame;
@@ -414,17 +604,55 @@ public sealed class SampleWaveformControl : FrameworkElement
             return;
         }
 
+        if (_movingSelection)
+        {
+            int frame = PixelToFrame(e.GetPosition(this).X);
+            int delta = frame - _selMoveAnchorFrame;
+            if (delta != 0) _selMoveMoved = true;
+            int len = _selMoveEndAtAnchor - _selMoveStartAtAnchor;
+            int newStart = Math.Clamp(_selMoveStartAtAnchor + delta, 0, Math.Max(0, FrameCount - len));
+            SetPreviewSelection(newStart, newStart + len);
+            SelectionPreviewChanged?.Invoke();
+            return;
+        }
+
+        if (_movingWaveform)
+        {
+            // e.GetPosition(this) is relative to this control's OWN post-transform
+            // layout, so as _waveMoveTransform.X moves, the raw reading here silently
+            // becomes "true position minus the transform we're also writing" - adding
+            // the transform's CURRENT value back cancels that out and recovers a
+            // stable untransformed X directly comparable to the anchor, with no
+            // feedback loop and no coordinate-space mismatch (still DIPs throughout,
+            // unlike the PointToScreen version this replaced, which mixed device
+            // pixels into a DIP-valued transform and drifted at non-100% scaling).
+            double stableLocalX = e.GetPosition(this).X + _waveMoveTransform.X;
+            _waveMoveTransform.X = stableLocalX - _waveMoveAnchorX;
+            return;
+        }
+
         if (_dragAnchorFrame < 0)
         {
             // Hover-only: a resize cursor over any marker line, a grab hand over the
-            // loop region body, matching whichever drag interaction is actually
-            // available at that point (see OnMouseLeftButtonDown's own comment for the
-            // same LoopLockEnabled/whole-sample-loop conditions).
+            // loop region body (or, in Move mode, the current selection, or the bare
+            // waveform when CanMoveWaveform) - matching whichever drag interaction is
+            // actually available at that point (see OnMouseLeftButtonDown's own comment
+            // for the same conditions).
             double xx = e.GetPosition(this).X;
+            int hoverFrame = PixelToFrame(xx);
+            bool loopGrabbable = MoveToolActive && InLoopRegion(hoverFrame) && LoopEndFrame - LoopStartFrame < FrameCount;
+            bool selectionGrabbable = MoveToolActive && SelectionEndFrame > SelectionStartFrame
+                && hoverFrame >= SelectionStartFrame && hoverFrame < SelectionEndFrame;
             if (NearPixel(xx, SampleStartFrame) || (HasLoop && (NearPixel(xx, LoopStartFrame) || NearPixel(xx, LoopEndFrame))))
                 Cursor = Cursors.SizeWE;
+            // SizeAll (4 small arrows, one per cardinal direction) for every Move-mode
+            // grab (loop region, selection, or the bare waveform) - explicit request:
+            // Hand read as a generic "clickable" cursor, not specifically "this can be
+            // relocated," and previously only the bare-waveform drag used SizeAll.
+            else if (loopGrabbable || selectionGrabbable || (MoveToolActive && CanMoveWaveform))
+                Cursor = Cursors.SizeAll;
             else
-                Cursor = LoopLockEnabled && InLoopRegion(PixelToFrame(xx)) && LoopEndFrame - LoopStartFrame < FrameCount ? Cursors.Hand : null;
+                Cursor = null;
             return;
         }
 
@@ -494,6 +722,45 @@ public sealed class SampleWaveformControl : FrameworkElement
                 // from here" scrub-click every other plain click on the waveform does.
                 ScrubFrame = _loopDragAnchorFrame;
                 ScrubRequested?.Invoke(_loopDragAnchorFrame);
+            }
+            InvalidateVisual();
+            return;
+        }
+
+        if (_movingSelection)
+        {
+            _movingSelection = false;
+            ReleaseMouseCapture();
+            if (_selMoveMoved)
+            {
+                int movedStart = _previewSelStart!.Value;
+                int movedEnd = _previewSelEnd!.Value;
+                SelectionStartFrame = movedStart;
+                SelectionEndFrame = movedEnd;
+                SelectionChanged?.Invoke();
+            }
+            else
+            {
+                ClearPreviewSelection();
+                ScrubFrame = _selMoveAnchorFrame;
+                ScrubRequested?.Invoke(_selMoveAnchorFrame);
+            }
+            InvalidateVisual();
+            return;
+        }
+
+        if (_movingWaveform)
+        {
+            _movingWaveform = false;
+            ReleaseMouseCapture();
+            double pixelDelta = _waveMoveTransform.X;
+            _waveMoveTransform.X = 0;
+            RenderTransform = Transform.Identity;
+            if (pixelDelta != 0)
+            {
+                int viewLen = Math.Max(1, ViewEndFrame - _viewStart);
+                int frameDelta = (int)Math.Round(pixelDelta * viewLen / Math.Max(1, ActualWidth));
+                if (frameDelta != 0) WaveformMoved?.Invoke(frameDelta);
             }
             InvalidateVisual();
             return;
@@ -598,10 +865,10 @@ public sealed class SampleWaveformControl : FrameworkElement
         int cursorFrame = PixelToFrame(e.GetPosition(this).X);
         double factor = e.Delta > 0 ? 0.8 : 1.25;
         int minLen = Math.Max(1, (int)ActualWidth);
-        int newLen = Math.Clamp((int)(viewLen * factor), Math.Min(minLen, FrameCount), FrameCount);
+        int newLen = Math.Clamp((int)(viewLen * factor), Math.Min(minLen, ViewSpan), ViewSpan);
 
         double t = viewLen == 0 ? 0.5 : (double)(cursorFrame - _viewStart) / viewLen;
-        int newStart = Math.Clamp(cursorFrame - (int)(newLen * t), 0, FrameCount - newLen);
+        int newStart = Math.Clamp(cursorFrame - (int)(newLen * t), 0, ViewSpan - newLen);
         _viewStart = newStart;
         _viewEnd = newStart + newLen;
         InvalidateVisual();
@@ -667,8 +934,16 @@ public sealed class SampleWaveformControl : FrameworkElement
                 int end = viewStart + (int)((long)(px + 1) * viewLen / pixelCount);
                 end = Math.Clamp(end, start + 1, viewEnd);
 
+                // viewStart/viewEnd can now extend past THIS pane's own samples.Length
+                // (they're clamped to the pair-wide ViewSpan, not this buffer) - a
+                // column entirely beyond real data has nothing to bucket, so it's left
+                // undrawn (correctly blank) rather than indexing past the array.
+                if (start >= samples.Length) continue;
+                int readEnd = Math.Min(end, samples.Length);
+                if (readEnd <= start) continue;
+
                 short min = short.MaxValue, max = short.MinValue;
-                for (int i = start; i < end; i++)
+                for (int i = start; i < readEnd; i++)
                 {
                     if (samples[i] < min) min = samples[i];
                     if (samples[i] > max) max = samples[i];
@@ -710,8 +985,18 @@ public sealed class SampleWaveformControl : FrameworkElement
             return;
         }
 
-        int viewStart = Math.Clamp(_viewStart, 0, samples.Length);
-        int viewEnd = Math.Clamp(ViewEndFrame, viewStart + 1, samples.Length);
+        // Clamped against ViewSpan (the pair-wide timeline), NOT samples.Length (this
+        // pane's own buffer) - matching FrameToPixel's own math exactly. Clamping to
+        // samples.Length here made the untouched pane in a Split pair compute its grid
+        // interval/spacing from ITS OWN shorter length after the other channel grew via
+        // a Move, while every marker/grid line was still POSITIONED with FrameToPixel's
+        // full-pair math - two different notions of "how many frames across this view"
+        // in the same frame, which is what left the untouched pane's grid stale/wrong
+        // instead of resizing to match. GetOrBuildTraceGeometry is told separately (via
+        // samples.Length inside it) where THIS pane's real data actually ends, so it
+        // still never reads past its own buffer.
+        int viewStart = Math.Clamp(_viewStart, 0, ViewSpan);
+        int viewEnd = Math.Clamp(ViewEndFrame, viewStart + 1, ViewSpan);
         int viewLen = viewEnd - viewStart;
 
         // Vertical zoom grid, under everything else.
@@ -778,6 +1063,17 @@ public sealed class SampleWaveformControl : FrameworkElement
         // of the above.
         if (PlayheadFrame >= viewStart && PlayheadFrame <= viewEnd)
             dc.DrawLine(new Pen(Brushes.White, 1), new Point(MarkerX(PlayheadFrame, w), 0), new Point(MarkerX(PlayheadFrame, w), h));
+
+        // Active-channel cue for Split L/R (explicit request: single click should
+        // "highlight either the L or R depending on the track selected") - a plain
+        // accent border, inset half its own thickness so it draws crisply inside the
+        // control's own bounds rather than getting clipped/anti-aliased against the
+        // edge. Absent entirely in Combine/mono (IsActiveChannel is never set there).
+        if (IsActiveChannel)
+        {
+            var accentPen = new Pen((Brush)FindResource("AccentBrush"), 2);
+            dc.DrawRectangle(null, accentPen, new Rect(1, 1, Math.Max(0, w - 2), Math.Max(0, h - 2)));
+        }
     }
 
     // FrameToPixel, clamped half a pen-width in from each edge so a marker sitting

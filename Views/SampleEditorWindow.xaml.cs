@@ -21,6 +21,23 @@ public partial class SampleEditorWindow : ThemedWindow
     // repopulating ItemsSource/SelectedItem to mirror the tree's real selection.
     bool _suppressComboEvents;
 
+    // Guards OnZoneOrigKeyBoxChanged/OnZoneTopKeyBoxChanged against firing while
+    // RefreshDetailPanels is programmatically setting ZoneOrigKeyBox.Text/
+    // ZoneTopKeyBox.Text to mirror a newly-selected zone (both boxes are wired to
+    // TextChanged, so each assignment fires its own handler). Without this, switching
+    // zones corrupted the NEW zone's range: setting ZoneOrigKeyBox.Text first fired
+    // OnZoneOrigKeyBoxChanged immediately, which read the new zone's (just-set) orig
+    // key alongside ZoneTopKeyBox.Text - still showing the OLD zone's top key, not yet
+    // overwritten - and committed that mismatched pair via ApplyZoneEdits onto the
+    // already-switched _selectedZone, clamping/cascading the new zone's range against
+    // stale data (the "zone creep" - and, once the list was corrupted enough, the
+    // crash - moving between zones). The second box's own assignment then re-fired the
+    // handler with correct values and usually self-corrected, but not before the first,
+    // wrong ApplyZoneEdits call had already mutated - and could cascade into - the zone
+    // list. Not needed on OnKeymapPianoKeyCtrlClicked's Text assignments (~line 1559/
+    // 1564 below) - those deliberately want the commit to fire.
+    bool _suppressZoneKeyFieldEvents;
+
     // Sample dropdown shows each zone's real .KSF Name, not its filename - reading that
     // means opening every zone's .KSF, which is too expensive to redo on every
     // RefreshDetailPanels call (fires on nearly every edit, not just navigation).
@@ -57,6 +74,13 @@ public partial class SampleEditorWindow : ThemedWindow
     public SampleEditorWindow()
     {
         InitializeComponent();
+        // Select is the default tool. Set directly rather than via a simulated click -
+        // OnSelectToolClick/OnMoveToolClick are wired to Click (see the XAML's own
+        // comment), which only fires from real user input, not from an IsChecked
+        // assignment - so the pairing has to be established by hand here too.
+        BtnSelectTool.IsChecked = true;
+        BtnMoveTool.IsChecked = false;
+        _vm.IsMoveToolActive = false;
         SampleTree.ItemsSource = _vm.Roots;
         _vm.TreeRefreshed += () => { }; // ItemsSource already bound to the live collection - no rebind needed
         VolumeControl.Volume = _vm.Volume;
@@ -75,12 +99,13 @@ public partial class SampleEditorWindow : ThemedWindow
 
         // Transport Locate/Rewind/FF pressed while fully stopped - relocates the grey
         // scrub line without starting audio (see SampleEditorViewModel.CursorMoved's own
-        // comment). Mirrored to both stereo panes the same way OnWaveformScrubRequested
-        // mirrors a manual scrub-click.
+        // comment). Mirrored to both stereo panes the same way OnWaveformPaneScrubRequested
+        // mirrors a manual scrub-click - both panes are visible together now regardless
+        // of SplitLR (see RefreshDetailPanels), not just in Combine mode.
         _vm.CursorMoved += frame =>
         {
             WaveformLeft.ScrubFrame = frame;
-            if (_vm.HasStereoPair && !_vm.SplitLR) WaveformRight.ScrubFrame = frame;
+            if (_vm.HasStereoPair) WaveformRight.ScrubFrame = frame;
         };
 
         // VU meter: polls SamplePlayback.PeakLevel (see its own comment on why this is
@@ -313,6 +338,7 @@ public partial class SampleEditorWindow : ThemedWindow
     // last committed value exactly like the original shared handler did.
     void OnZoneOrigKeyBoxChanged(object sender, RoutedEventArgs e)
     {
+        if (_suppressZoneKeyFieldEvents) return;
         if (MidiNoteName.TryParse(ZoneOrigKeyBox.Text) is not { } origKey) return;
         var topKey = MidiNoteName.TryParse(ZoneTopKeyBox.Text) ?? _vm.ZoneTopKey;
         _vm.ApplyZoneEdits(origKey, topKey);
@@ -322,6 +348,7 @@ public partial class SampleEditorWindow : ThemedWindow
 
     void OnZoneTopKeyBoxChanged(object sender, RoutedEventArgs e)
     {
+        if (_suppressZoneKeyFieldEvents) return;
         if (MidiNoteName.TryParse(ZoneTopKeyBox.Text) is not { } topKey) return;
         var origKey = MidiNoteName.TryParse(ZoneOrigKeyBox.Text) ?? _vm.ZoneOriginalKey;
         _vm.ApplyZoneEdits(origKey, topKey);
@@ -760,8 +787,22 @@ public partial class SampleEditorWindow : ThemedWindow
     // Marker drag (Sample Start line, or either loop edge independently) from either
     // waveform pane - routes through the same SetMarker choke point the typed fields
     // use, so Use Zero/Loop Lock/ordering apply identically regardless of origin.
-    void OnWaveformMarkerDragged(SampleMarkerKind kind, int frame)
+    //
+    // Real bug: this used to be ONE shared handler for both panes with no idea which
+    // one actually fired, so it always committed onto whichever channel happened to be
+    // _selectedSample already - not necessarily the pane the user just dragged. In
+    // Split L/R with R active, dragging L's Sample Start line visibly snapped L back to
+    // its old value (RefreshDetailPanels redrew it from the still-unchanged VM state)
+    // and moved R instead. ActivateSplitChannel (same fix OnWaveformPaneSelectionChanged
+    // already applies to a selection drag) makes the DRAGGED pane's channel the active
+    // one BEFORE the commit, so SetMarker always lands on the sample whose line actually
+    // moved. A no-op outside Split L/R, same as every other ActivateSplitChannel call.
+    void OnWaveformLeftMarkerDragged(SampleMarkerKind kind, int frame) => OnWaveformPaneMarkerDragged(WaveformLeft, kind, frame);
+    void OnWaveformRightMarkerDragged(SampleMarkerKind kind, int frame) => OnWaveformPaneMarkerDragged(WaveformRight, kind, frame);
+
+    void OnWaveformPaneMarkerDragged(SampleWaveformControl pane, SampleMarkerKind kind, int frame)
     {
+        ActivateSplitChannel(ReferenceEquals(pane, WaveformLeft));
         _vm.SetMarker(kind, frame);
         RefreshDetailPanels();
         UpdateStatus();
@@ -771,12 +812,57 @@ public partial class SampleEditorWindow : ThemedWindow
     // sets the grey cursor line (mirrored onto the sibling stereo pane) WITHOUT starting
     // playback. The next Play (button, Space,
     // or Pause's Resume) starts from here - see SampleEditorViewModel.SetCursorFrame/
-    // PlaySelectedSample.
-    void OnWaveformScrubRequested(int frame)
+    // PlaySelectedSample. Also doubles as Split's dual-pane "click either pane to make
+    // it the active channel" gesture (ActivateSplitChannel) - a plain click was already
+    // the natural "I'm pointing at THIS one" gesture, no separate click target needed.
+    void OnWaveformLeftScrubRequested(int frame) => OnWaveformPaneScrubRequested(WaveformLeft, frame);
+    void OnWaveformRightScrubRequested(int frame) => OnWaveformPaneScrubRequested(WaveformRight, frame);
+
+    void OnWaveformPaneScrubRequested(SampleWaveformControl pane, int frame)
     {
+        ActivateSplitChannel(ReferenceEquals(pane, WaveformLeft));
         WaveformLeft.ScrubFrame = frame;
-        if (_vm.HasStereoPair && !_vm.SplitLR) WaveformRight.ScrubFrame = frame;
+        if (_vm.HasStereoPair) WaveformRight.ScrubFrame = frame;
         _vm.SetCursorFrame(frame);
+        UpdateStatus();
+    }
+
+    // Move tool's whole-waveform drag (SampleWaveformControl.WaveformMoved) - fires with
+    // the delta relative to whichever PANE was actually dragged, which may be the
+    // partner's pane rather than the tree-active one (RefreshDetailPanels shows both
+    // panes at once in Split - see its own comment). ApplyChannelMove now always targets
+    // whichever channel the dragged PANE represents (targetPartner), with the delta's
+    // sign passed straight through unchanged (+later/-toward zero on that SAME channel) -
+    // no more cross-channel sign flip. Deliberately does NOT activate the dragged pane
+    // first (unlike a plain click) - a move-drag is a self-contained gesture that
+    // shouldn't also reset undo history as a side effect (SelectNode does, via
+    // ActivateSplitChannel). internal (not private) so SampleEditorVisualCheck.cs can
+    // exercise the exact same path a real mouse-drag commit uses (ApplyChannelMove +
+    // RefreshDetailPanels) without needing to synthesize actual WPF mouse input - same
+    // reasoning as x:Name fields like BtnAddZone already being internal for that file's
+    // own "real handler, not a bare VM call" checks.
+    internal void OnWaveformLeftMoved(int deltaFrames) => OnWaveformPaneMoved(WaveformLeft, deltaFrames);
+    void OnWaveformRightMoved(int deltaFrames) => OnWaveformPaneMoved(WaveformRight, deltaFrames);
+
+    void OnWaveformPaneMoved(SampleWaveformControl pane, int deltaFrames)
+    {
+        bool paneIsActive = ReferenceEquals(pane, WaveformLeft) == _vm.IsPrimaryLeftChannel;
+
+        // Explicit request: a scrub-cursor line placed before a Move-mode waveform drag
+        // must survive it. ApplyChannelMove pads/trims the moved channel's PCM, changing
+        // its frame count - RefreshDetailPanels below reassigns that pane's Samples DP to
+        // the new array, and SampleWaveformControl.OnSamplesChanged treats ANY frame-
+        // count change as "this counts as loading a different sample" and clears
+        // ScrubFrame to -1 (correct for a real navigation/Crop, wrong here: a channel
+        // move repositions content under a fixed line, same "markers are frame numbers,
+        // not content pointers" reasoning ApplyChannelMove's own doc comment already
+        // applies to Sample Start/Loop points). Capture both panes' scrub position first
+        // and restore it after the reset RefreshDetailPanels triggers.
+        int leftScrub = WaveformLeft.ScrubFrame, rightScrub = WaveformRight.ScrubFrame;
+        _vm.ApplyChannelMove(targetPartner: !paneIsActive, deltaFrames);
+        RefreshDetailPanels();
+        WaveformLeft.ScrubFrame = leftScrub;
+        WaveformRight.ScrubFrame = rightScrub;
         UpdateStatus();
     }
 
@@ -822,6 +908,11 @@ public partial class SampleEditorWindow : ThemedWindow
         BtnRenameMultisample.IsEnabled = _vm.CurrentMultisampleName != null;
         MNU_RenameSample.IsEnabled = _vm.HasSampleLoaded;
 
+        // Both boxes are wired to TextChanged (see _suppressZoneKeyFieldEvents' own
+        // comment) - suppressed here so mirroring the model into the UI can't be
+        // misread as the user editing it, which corrupted the newly-selected zone by
+        // committing the first box's new value against the second box's still-stale one.
+        _suppressZoneKeyFieldEvents = true;
         if (_vm.HasZoneSelected)
         {
             ZoneOrigKeyBox.Text = MidiNoteName.ToName(_vm.ZoneOriginalKey);
@@ -835,6 +926,7 @@ public partial class SampleEditorWindow : ThemedWindow
             ZoneOrigKeyBox.Text = "";
             ZoneTopKeyBox.Text = "";
         }
+        _suppressZoneKeyFieldEvents = false;
 
         var allMsNodes = _vm.AllMultisampleNodes().ToList();
         var currentMsNode = FindCurrentMultisampleNode(allMsNodes, _vm.CurrentMultisampleZones);
@@ -852,11 +944,6 @@ public partial class SampleEditorWindow : ThemedWindow
         SplitLRBox.Visibility = _vm.HasStereoPair ? Visibility.Visible : Visibility.Collapsed;
         SplitLRBox.IsChecked = _vm.SplitLR;
         VuMeterLeft.Visibility = _vm.HasStereoPair ? Visibility.Visible : Visibility.Collapsed;
-
-        SplitChannelCombo.Visibility = _vm.HasStereoPair && _vm.SplitLR ? Visibility.Visible : Visibility.Collapsed;
-        _suppressComboEvents = true;
-        SplitChannelCombo.SelectedIndex = _vm.IsPrimaryLeftChannel ? 0 : 1;
-        _suppressComboEvents = false;
 
         if (_vm.HasSampleLoaded)
         {
@@ -879,57 +966,122 @@ public partial class SampleEditorWindow : ThemedWindow
             Sample12dbBoostBox.IsChecked = _vm.Sample12dbBoostEnabled;
             LoopTuneBox.Text = _vm.SampleLoopTune.ToString();
 
-            if (_vm.HasStereoPair && !_vm.SplitLR)
+            if (_vm.HasStereoPair)
             {
-                // Combine: a single logical stereo view - both panes always shown, L
-                // fixed top / R fixed bottom, sharing one selection and one set of
-                // markers (Sample Start/Loop region) on BOTH panes - dragging either
-                // pane's markers/loop edits the shared primary+partner pair via
-                // SetMarker/MoveLoopRegion's own mirroring.
+                // Both panes are always shown together now, L fixed top / R fixed
+                // bottom - Combine mirrors one shared selection/marker set onto both
+                // (toolbar edits apply to both channels via ApplyEffect's own
+                // mirroring); Split shows each channel's OWN independent markers
+                // (LeftSampleStartFrame/RightSampleStartFrame etc. - edits still apply
+                // only to whichever channel is tree-active, same as before, just visible
+                // side by side now instead of hiding the inactive one). SetStereoRowsVisible's
+                // wideGap gives Split a visibly wider seam so the two reading as
+                // independent, not just mirrored, is obvious without opening the tree.
                 WaveformRightRow.Visibility = Visibility.Visible;
-                SetStereoRowsVisible(true);
+                SetStereoRowsVisible(true, _vm.SplitLR);
                 WaveformDivider.Visibility = Visibility.Visible;
                 LeftChannelLabel.Visibility = Visibility.Visible;
                 LeftChannelLabel.Text = "L";
+
+                // ViewFrameCount MUST be set on both panes BEFORE Samples below - assigning
+                // Samples fires OnSamplesChanged synchronously (which reads ViewFrameCount
+                // to reset/reclamp the view), and Split's Move tool can leave the two
+                // channels with different real lengths (SampleWaveformControl.ViewFrameCount's
+                // own comment) - without the shared override in place first, the pane that
+                // happens to update first resets to ITS OWN (possibly shorter) length, and
+                // SyncWaveformViews's mirrored SetView onto the other pane then clamps the
+                // shared view back down to match, silently erasing the very offset a move
+                // just created.
+                int pairFrameCount = Math.Max(_vm.LeftSampleWaveform?.Length ?? 0, _vm.RightSampleWaveform?.Length ?? 0);
+                WaveformLeft.ViewFrameCount = pairFrameCount;
+                WaveformRight.ViewFrameCount = pairFrameCount;
                 WaveformLeft.Samples = _vm.LeftSampleWaveform;
                 WaveformRight.Samples = _vm.RightSampleWaveform;
 
                 foreach (var pane in new[] { WaveformLeft, WaveformRight })
                 {
-                    pane.SelectionStartFrame = _vm.SelectionStartFrame;
-                    pane.SelectionEndFrame = _vm.SelectionEndFrame;
-                    pane.SampleStartFrame = _vm.SampleSampleStart;
-                    pane.LoopStartFrame = _vm.SampleLoopStart;
-                    pane.LoopEndFrame = _vm.SampleLoopEnd;
-                    pane.LoopEnabled = _vm.SampleLoopEnabled;
-                    pane.LoopLockEnabled = _vm.LoopLockEnabled;
+                    pane.MoveToolActive = _vm.IsMoveToolActive;
+                    pane.CanMoveWaveform = _vm.SplitLR;
                 }
-            }
-            else if (_vm.HasStereoPair && _vm.SplitLR)
-            {
-                // Split: only the tree-selected channel is shown, in the (only visible)
-                // top slot - the OTHER channel's zone must be selected in the tree to
-                // see/edit it, same as any other zone.
-                WaveformRightRow.Visibility = Visibility.Collapsed;
-                SetStereoRowsVisible(false);
-                WaveformDivider.Visibility = Visibility.Collapsed;
-                LeftChannelLabel.Visibility = Visibility.Visible;
-                LeftChannelLabel.Text = _vm.IsPrimaryLeftChannel ? "L" : "R";
-                WaveformLeft.Samples = _vm.SampleWaveform;
-                WaveformLeft.SelectionStartFrame = _vm.SelectionStartFrame;
-                WaveformLeft.SelectionEndFrame = _vm.SelectionEndFrame;
-                WaveformLeft.SampleStartFrame = _vm.SampleSampleStart;
-                WaveformLeft.LoopStartFrame = _vm.SampleLoopStart;
-                WaveformLeft.LoopEndFrame = _vm.SampleLoopEnd;
-                WaveformLeft.LoopEnabled = _vm.SampleLoopEnabled;
-                WaveformLeft.LoopLockEnabled = _vm.LoopLockEnabled;
+
+                if (!_vm.SplitLR)
+                {
+                    foreach (var pane in new[] { WaveformLeft, WaveformRight })
+                    {
+                        pane.SelectionStartFrame = _vm.SelectionStartFrame;
+                        pane.SelectionEndFrame = _vm.SelectionEndFrame;
+                        pane.SampleStartFrame = _vm.SampleSampleStart;
+                        pane.LoopStartFrame = _vm.SampleLoopStart;
+                        pane.LoopEndFrame = _vm.SampleLoopEnd;
+                        pane.LoopEnabled = _vm.SampleLoopEnabled;
+                        pane.LoopLockEnabled = _vm.LoopLockEnabled;
+                        // No single/both-channel concept in Combine - everything already
+                        // mirrors unconditionally, so there's nothing to highlight as
+                        // "the" active channel and no channel-picking double-click either.
+                        pane.IsSplitChannelPane = false;
+                        pane.IsActiveChannel = false;
+                    }
+                }
+                else
+                {
+                    // The active channel's selection lives on the VM (SelectionStartFrame/
+                    // EndFrame, same as any other zone - Crop/Fade/etc only ever touch the
+                    // active channel(s)). Explicit request: with Both active (a double-
+                    // click on the already-active pane, or a drag that crossed into the
+                    // other pane - see ActivateBothSplitChannels/OnWaveformPaneSelectionChanged)
+                    // BOTH panes show it, not just one - matching that edits now actually
+                    // apply to both (ShouldMirrorToPartner). Otherwise only the one pane
+                    // whose channel is actually active shows it; the other has none.
+                    bool leftActive = _vm.IsPrimaryLeftChannel;
+                    bool both = _vm.SplitBothActive;
+                    WaveformLeft.SelectionStartFrame = (leftActive || both) ? _vm.SelectionStartFrame : 0;
+                    WaveformLeft.SelectionEndFrame = (leftActive || both) ? _vm.SelectionEndFrame : 0;
+                    WaveformRight.SelectionStartFrame = (!leftActive || both) ? _vm.SelectionStartFrame : 0;
+                    WaveformRight.SelectionEndFrame = (!leftActive || both) ? _vm.SelectionEndFrame : 0;
+                    WaveformLeft.SampleStartFrame = _vm.LeftSampleStartFrame;
+                    WaveformRight.SampleStartFrame = _vm.RightSampleStartFrame;
+                    WaveformLeft.LoopStartFrame = _vm.LeftLoopStartFrame;
+                    WaveformRight.LoopStartFrame = _vm.RightLoopStartFrame;
+                    WaveformLeft.LoopEndFrame = _vm.LeftLoopEndFrame;
+                    WaveformRight.LoopEndFrame = _vm.RightLoopEndFrame;
+                    WaveformLeft.LoopEnabled = _vm.LeftLoopEnabled;
+                    WaveformRight.LoopEnabled = _vm.RightLoopEnabled;
+                    WaveformLeft.LoopLockEnabled = _vm.LoopLockEnabled;
+                    WaveformRight.LoopLockEnabled = _vm.LoopLockEnabled;
+                    WaveformLeft.IsSplitChannelPane = true;
+                    WaveformRight.IsSplitChannelPane = true;
+                    WaveformLeft.IsActiveChannel = leftActive || both;
+                    WaveformRight.IsActiveChannel = !leftActive || both;
+                }
+
+                // Explicit, unconditional - every property write above is a WPF
+                // DependencyProperty that skips its own change callback (and therefore
+                // any redraw) when the new value happens to equal the old one by
+                // reference/value, which is exactly the common case for the pane that
+                // DIDN'T just change (its Samples array, its markers, everything is
+                // identical to a moment ago). Reported bug: after a channel move, the
+                // MOVED pane's grid/scale lines correctly reflect the new frame count
+                // (its own Samples DP genuinely changed, forcing OnSamplesChanged's own
+                // reset+redraw), but the OTHER, untouched pane's grid could be left
+                // showing a stale interval if it happens to reach this point without any
+                // of ITS OWN property writes having actually differed from what they
+                // already were - ViewFrameCount in particular is a plain CLR property,
+                // not a DP, so reassigning it alone (even to a genuinely NEW pair-wide
+                // value) never invalidates anything on its own. Forcing both panes to
+                // redraw here removes any dependency on some OTHER write happening to
+                // differ - correct, if occasionally one redundant repaint.
+                WaveformLeft.InvalidateVisual();
+                WaveformRight.InvalidateVisual();
             }
             else
             {
                 WaveformRightRow.Visibility = Visibility.Collapsed;
-                SetStereoRowsVisible(false);
+                SetStereoRowsVisible(false, false);
                 WaveformDivider.Visibility = Visibility.Collapsed;
                 LeftChannelLabel.Visibility = Visibility.Collapsed;
+                // Clears any pair-timeline override left over from a previous stereo
+                // selection - this control instance is reused across tree selections.
+                WaveformLeft.ViewFrameCount = 0;
                 WaveformLeft.Samples = _vm.SampleWaveform;
                 WaveformLeft.SelectionStartFrame = _vm.SelectionStartFrame;
                 WaveformLeft.SelectionEndFrame = _vm.SelectionEndFrame;
@@ -938,6 +1090,8 @@ public partial class SampleEditorWindow : ThemedWindow
                 WaveformLeft.LoopEndFrame = _vm.SampleLoopEnd;
                 WaveformLeft.LoopEnabled = _vm.SampleLoopEnabled;
                 WaveformLeft.LoopLockEnabled = _vm.LoopLockEnabled;
+                WaveformLeft.MoveToolActive = _vm.IsMoveToolActive;
+                WaveformLeft.CanMoveWaveform = false;
             }
             // WaveformLeft.Samples above already reset ITS view (OnSamplesChanged fires
             // ViewChanged), which syncs the ruler/scrollbar/right pane via
@@ -948,7 +1102,7 @@ public partial class SampleEditorWindow : ThemedWindow
             WaveformLeft.Samples = null;
             WaveformRight.Samples = null;
             WaveformRightRow.Visibility = Visibility.Collapsed;
-            SetStereoRowsVisible(false);
+            SetStereoRowsVisible(false, false);
             WaveformDivider.Visibility = Visibility.Collapsed;
             LeftChannelLabel.Visibility = Visibility.Collapsed;
         }
@@ -1006,9 +1160,12 @@ public partial class SampleEditorWindow : ThemedWindow
     // Keeps the two stereo-only Grid rows' heights in step with their children's
     // Visibility - a Collapsed child does NOT shrink a fixed-height RowDefinition, so
     // these have to be driven explicitly or a mono sample keeps the R pane's dead space.
-    void SetStereoRowsVisible(bool visible)
+    // wideGap: Split L/R gets a visibly wider seam (14px vs Combine's 2px) - the two
+    // panes now show independently-editable channels rather than one mirrored view, and
+    // the gap is the visual cue for that, not just a style flourish.
+    void SetStereoRowsVisible(bool visible, bool wideGap)
     {
-        WaveformDividerRow.Height = new GridLength(visible ? 2 : 0);
+        WaveformDividerRow.Height = new GridLength(!visible ? 0 : wideGap ? 14 : 2);
         WaveformRightRowDef.Height = new GridLength(visible ? 170 : 0);
     }
 
@@ -1029,16 +1186,84 @@ public partial class SampleEditorWindow : ThemedWindow
     // ── Waveform editing ─────────────────────────────────────────────────────────
 
     // Combine mode shows the SAME selection on both panes (a single logical stereo
-    // view - see RefreshDetailPanels), and Split mode only ever shows one pane at all,
-    // so a drag on EITHER visible pane always means "set the shared/primary selection."
+    // view - see RefreshDetailPanels). Split mode shows it on the ACTIVE channel(s) only -
+    // a drag on either pane activates that pane's channel first (ActivateSplitChannel),
+    // UNLESS the drag crosses into the other pane, which activates BOTH instead
+    // (_splitDragCrossedIntoOtherPane, tracked below).
     void OnWaveformLeftSelectionChanged() => OnWaveformPaneSelectionChanged(WaveformLeft);
     void OnWaveformRightSelectionChanged() => OnWaveformPaneSelectionChanged(WaveformRight);
 
     void OnWaveformPaneSelectionChanged(SampleWaveformControl pane)
     {
-        _vm.SelectionStartFrame = pane.SelectionStartFrame;
-        _vm.SelectionEndFrame = pane.SelectionEndFrame;
+        // Read the pane's just-committed selection BEFORE activating - ActivateSplitChannel
+        // (when it actually switches channel) routes through SelectNode, which zeroes
+        // SelectionStartFrame/EndFrame and calls RefreshDetailPanels, which then writes
+        // that zero straight back into both panes' own DPs. Reading pane.SelectionStartFrame/
+        // EndFrame AFTER that call would see the just-cleared 0/0, silently discarding the
+        // selection this handler exists to commit.
+        int newStart = pane.SelectionStartFrame;
+        int newEnd = pane.SelectionEndFrame;
+
+        // A selection drawn (or Move-tool-relocated) on the INACTIVE pane in Split's
+        // dual view must activate that channel first - otherwise the selection just
+        // drawn on, say, the R pane would silently become the L channel's own
+        // SelectionStartFrame/EndFrame (Crop/Fade/etc. only ever act on the active
+        // channel), cropping the wrong audio. A no-op in Combine (ActivateSplitChannel
+        // itself gates on SplitLR) and when the pane clicked is already active. Except:
+        // if the drag crossed into the OTHER pane at some point, explicit request is
+        // that BOTH channels become active instead of just whichever pane the mouse
+        // happened to be over at release.
+        if (_vm.SplitLR && _vm.HasStereoPair && _splitDragCrossedIntoOtherPane)
+            ActivateBothSplitChannels();
+        else
+            ActivateSplitChannel(ReferenceEquals(pane, WaveformLeft));
+        _vm.SelectionStartFrame = newStart;
+        _vm.SelectionEndFrame = newEnd;
         RefreshDetailPanels();
+
+        // MirrorSelectionPreview (below) mirrors the LIVE drag highlight onto the
+        // sibling pane via SetPreviewSelection, which bypasses SelectionStartFrame/
+        // EndFrame entirely - committing here never implicitly clears it. In Split L/R
+        // with only ONE channel active, RefreshDetailPanels above always writes 0/0 onto
+        // the INACTIVE pane's real selection, which is a no-op (and so never fires the
+        // DP's own ClearPreviewSelection callback - see SelectionStartFrameProperty)
+        // whenever it was already 0/0, the common case. Without this, the sibling's
+        // preview rectangle from the drag that just ended would stay stuck on screen.
+        (ReferenceEquals(pane, WaveformLeft) ? WaveformRight : WaveformLeft).ClearPreviewSelection();
+    }
+
+    // Whether the drag currently in progress has ever crossed from its own pane into the
+    // sibling's - reset on every mouse-down (OnWaveformAreaPreviewMouseDown) and latched
+    // true for the rest of that one gesture by OnWaveformAreaPreviewMouseMove. Read by
+    // OnWaveformPaneSelectionChanged (commit) and MirrorSelectionPreview (live) so a
+    // Split-mode drag highlights only the pane it's actually on UNTIL it crosses, per
+    // explicit correction - the previous behavior (always mirroring the preview to both
+    // panes regardless) had it backwards.
+    bool _splitDragCrossedIntoOtherPane;
+
+    // Hooked as Preview (tunneling) handlers on the Grid wrapping both waveform panes
+    // (XAML) rather than on the panes themselves - mouse CAPTURE during a drag routes
+    // ordinary Mouse* events only to the captured element, so a plain MouseMove handler
+    // on the sibling pane would never fire while the OTHER pane holds capture. Preview
+    // events still tunnel down to (and past) whichever element is captured regardless,
+    // and Mouse.Captured/e.GetPosition don't care about capture at all - GetPosition is
+    // a pure coordinate transform, valid for any visual regardless of who's capturing.
+    void OnWaveformAreaPreviewMouseDown(object sender, MouseButtonEventArgs e) => _splitDragCrossedIntoOtherPane = false;
+
+    void OnWaveformAreaPreviewMouseMove(object sender, MouseEventArgs e)
+    {
+        if (_splitDragCrossedIntoOtherPane) return; // latched - no need to keep checking
+        if (e.LeftButton != MouseButtonState.Pressed) return;
+        if (!_vm.HasStereoPair || !_vm.SplitLR) return;
+        var capturedPane = Mouse.Captured switch
+        {
+            var c when ReferenceEquals(c, WaveformLeft) => WaveformRight,
+            var c when ReferenceEquals(c, WaveformRight) => WaveformLeft,
+            _ => null,
+        };
+        if (capturedPane == null) return;
+        double y = e.GetPosition(capturedPane).Y;
+        if (y >= 0 && y <= capturedPane.ActualHeight) _splitDragCrossedIntoOtherPane = true;
     }
 
     // Live mirror of the crop-selection highlight onto the sibling stereo pane WHILE
@@ -1046,12 +1271,18 @@ public partial class SampleEditorWindow : ThemedWindow
     // through the source/other panes' own preview-only state (SetPreviewSelection),
     // not their committed DPs, so it stays cheap enough to run on every MouseMove
     // without writing either pane's real selection until the drag actually commits.
+    // Split L/R only shows the highlight on the pane actually being dragged UNTIL the
+    // drag crosses into the sibling pane (_splitDragCrossedIntoOtherPane) - explicit
+    // correction: mirroring unconditionally from the start of every Split-mode drag had
+    // it backwards (both highlighted even when the mouse never left the origin pane).
+    // Combine mode is unaffected - always mirrors, no crossing concept there.
     void OnWaveformLeftSelectionPreview() => MirrorSelectionPreview(WaveformLeft, WaveformRight);
     void OnWaveformRightSelectionPreview() => MirrorSelectionPreview(WaveformRight, WaveformLeft);
 
     void MirrorSelectionPreview(SampleWaveformControl source, SampleWaveformControl other)
     {
-        if (!_vm.HasStereoPair || _vm.SplitLR) return;
+        if (!_vm.HasStereoPair) return;
+        if (_vm.SplitLR && !_splitDragCrossedIntoOtherPane) { other.ClearPreviewSelection(); return; }
         other.SetPreviewSelection(source.EffectiveSelectionStart, source.EffectiveSelectionEnd);
     }
 
@@ -1096,21 +1327,28 @@ public partial class SampleEditorWindow : ThemedWindow
             WaveformRuler.ViewStartFrame = source.ViewStartFrame;
             WaveformRuler.ViewEndFrame = source.ViewEndFrame;
 
-            int frameCount = source.Samples?.Length ?? 0;
+            // ViewSpanFrameCount, not Samples.Length - once Split's Move tool leaves the
+            // two channels different lengths, the scrollbar's range must reach the end of
+            // the LONGER one on both panes, not just whichever pane raised this event.
+            int frameCount = source.ViewSpanFrameCount;
             int viewLen = Math.Max(1, source.ViewEndFrame - source.ViewStartFrame);
             WaveformHScroll.Minimum = 0;
             WaveformHScroll.Maximum = Math.Max(0, frameCount - viewLen);
             WaveformHScroll.ViewportSize = viewLen;
             WaveformHScroll.Value = source.ViewStartFrame;
             // Collapsed (not just disabled) until the user actually zooms in - same
-            // "Collapsed child + zeroed RowDefinition" treatment WaveformDividerRow/
-            // WaveformRightRowDef already use for the mono/stereo row, for the same
-            // reason: a merely-disabled-but-still-visible scrollbar sat there doing
-            // nothing at full view, permanently occupying its row's space and (per
-            // user report) visually overlapping the ruler's text right above it.
-            bool zoomed = frameCount > viewLen;
-            WaveformHScroll.Visibility = zoomed ? Visibility.Visible : Visibility.Collapsed;
-            WaveformHScrollRow.Height = new GridLength(zoomed ? 14 : 0);
+            // "Collapsed child" treatment WaveformDividerRow/WaveformRightRowDef already
+            // use for the mono/stereo row, for the same reason: a merely-disabled-but-
+            // still-visible scrollbar sat there doing nothing at full view, permanently
+            // occupying its row's space and (per user report) visually overlapping the
+            // ruler's text right above it. Unlike those two, this row is Height="Auto"
+            // (XAML) rather than a hand-picked pixel value toggled from here - a fixed
+            // pixel height (14, previously) was slightly SHORTER than the ScrollBar's own
+            // real rendered height, clipping its bottom edge; Auto measures to whatever
+            // the ScrollBar (Visible) or nothing (Collapsed) actually needs, so it can
+            // never clip again regardless of theme/DPI. The ScrollBar's own top Margin
+            // (XAML) is the fixed gap between it and the ruler above.
+            WaveformHScroll.Visibility = frameCount > viewLen ? Visibility.Visible : Visibility.Collapsed;
         }
         finally { _syncingWaveformViews = false; }
     }
@@ -1225,10 +1463,10 @@ public partial class SampleEditorWindow : ThemedWindow
     {
         if (!_vm.HasSampleLoaded) { StatusBar.Text = "No sample loaded."; return; }
         int suggested = Math.Max(1, _vm.SampleRate / 4);
-        var dlg = new InsertSilenceDialog(_vm.SampleRate, suggested) { Owner = this };
+        var dlg = new InsertSilenceDialog(_vm.SampleRate, suggested, _vm.HasStereoPair) { Owner = this };
         if (dlg.ShowDialog() != true) return;
 
-        _vm.ApplyInsertSilence(dlg.Frames);
+        _vm.ApplyInsertSilence(dlg.Frames, dlg.ApplyToLeft, dlg.ApplyToRight);
         RefreshDetailPanels();
         UpdateStatus();
     }
@@ -1371,29 +1609,91 @@ public partial class SampleEditorWindow : ThemedWindow
         UpdateStatus();
     }
 
+    // Select/Move tool toggle - two independent ToggleButtons (not RadioButtons, see the
+    // XAML's own comment), kept mutually exclusive by hand. Wired to Click, not
+    // Checked: a ToggleButton flips its own IsChecked BEFORE Click fires, so clicking
+    // whichever tool is already active would otherwise just uncheck it - Checked never
+    // fires again to put it back, leaving NEITHER button checked and IsMoveToolActive
+    // stale. Forcing both buttons' IsChecked (and IsMoveToolActive) unconditionally
+    // here, on every click regardless of which one was clicked or what it toggled
+    // itself to, makes "exactly one of the two is always active" hold no matter what
+    // the ToggleButton's own state machine just did.
+    void OnSelectToolClick(object sender, RoutedEventArgs e)
+    {
+        BtnSelectTool.IsChecked = true;
+        BtnMoveTool.IsChecked = false;
+        _vm.IsMoveToolActive = false;
+        RefreshDetailPanels();
+    }
+
+    void OnMoveToolClick(object sender, RoutedEventArgs e)
+    {
+        BtnMoveTool.IsChecked = true;
+        BtnSelectTool.IsChecked = false;
+        _vm.IsMoveToolActive = true;
+        RefreshDetailPanels();
+    }
+
     void OnSplitLRChanged(object sender, RoutedEventArgs e)
     {
         _vm.SplitLR = SplitLRBox.IsChecked == true;
+        _vm.SplitBothActive = false; // stale either direction - re-entering Split starts single-active, and Combine has no such state at all
         RefreshDetailPanels(); // without this, the pane layout only caught up on the NEXT
                                 // click/selection - toggling the checkbox itself had no
                                 // visible effect until some unrelated action refreshed it
         UpdateStatus();
     }
 
-    // Split mode used to have no way to reach the OTHER channel except hunting for its
-    // zone in the tree by hand (SplitLR's own XAML comment used to document this as the
-    // only way) - picking a channel here instead selects that side's zone the same way
-    // the MS/Sample dropdowns already do (SelectTreeNode via a real TreeViewItem, so
-    // OnTreeSelectionChanged fires normally). A no-op if the requested channel is
-    // already the one showing.
-    void OnSplitChannelComboChanged(object sender, SelectionChangedEventArgs e)
+    // Split's only way to make a channel the "active" one for markers/text-fields/
+    // Crop-Fade-etc now that the L/R dropdown is gone (both panes are always visible, so
+    // picking a channel by clicking directly on its own pane is the whole affordance) -
+    // called from a plain click on either waveform pane (OnWaveformPaneScrubRequested)
+    // and from drawing a selection on one (OnWaveformPaneSelectionChanged). Routes
+    // through the same real TreeViewItem selection the MS/Sample dropdowns use (not a
+    // direct field write), which IS what resets undo/RefreshDetailPanels/etc - a known
+    // cost (SelectNode resets _sampleUndo on any scope change), not a bug. A no-op if the
+    // requested channel is already the one active.
+    void ActivateSplitChannel(bool wantLeft)
     {
-        if (_suppressComboEvents) return;
-        bool wantLeft = SplitChannelCombo.SelectedIndex == 0;
+        if (!_vm.HasStereoPair || !_vm.SplitLR) return;
+        // A plain click always means "just this one channel" - explicit request - so
+        // this drops Both even when wantLeft already matches the active side (a no-op
+        // single-side re-click shouldn't leave Both active behind it).
+        _vm.SplitBothActive = false;
         if (wantLeft == _vm.IsPrimaryLeftChannel) return;
         if (_vm.PartnerZoneRef is not { } partner) return;
         var target = FindNodeForZone(_vm.Roots, partner.Zone);
         if (target != null) SelectTreeNode(target);
+    }
+
+    // Both channels at once, while staying in the Split dual-pane view - reached by
+    // double-clicking the pane that's already the sole active channel
+    // (OnWaveformPaneChannelDoubleClicked) or by a selection drag that crosses into the
+    // other pane (OnWaveformPaneSelectionChanged). Doesn't need to change which zone is
+    // tree-selected/"primary" - both _selectedSample and _partnerSample are already
+    // resolved, ShouldMirrorToPartner picks them both up from here on.
+    void ActivateBothSplitChannels()
+    {
+        if (!_vm.HasStereoPair || !_vm.SplitLR) return;
+        _vm.SplitBothActive = true;
+    }
+
+    // Double-click on a Split-mode pane, outside the loop region (that still takes
+    // priority - see SampleWaveformControl.OnMouseLeftButtonDown's own loop-select
+    // branch). By the time this fires, click 1 of the double-click has ALREADY run
+    // through OnWaveformPaneScrubRequested -> ActivateSplitChannel for this exact pane
+    // (a double-click's first mouse-down/up cycle is a real, ordinary single click as
+    // far as WPF/this window are concerned) - so this pane is already guaranteed to be
+    // the sole active channel by construction, and the only meaningful action left for
+    // the second click is promoting to Both.
+    void OnWaveformLeftChannelDoubleClicked() => OnWaveformPaneChannelDoubleClicked();
+    void OnWaveformRightChannelDoubleClicked() => OnWaveformPaneChannelDoubleClicked();
+
+    void OnWaveformPaneChannelDoubleClicked()
+    {
+        ActivateBothSplitChannels();
+        RefreshDetailPanels();
+        UpdateStatus();
     }
 
     static SampleTreeNode? FindNodeForZone(IEnumerable<SampleTreeNode> nodes, KmpZone zone)
@@ -1563,11 +1863,26 @@ public partial class SampleEditorWindow : ThemedWindow
     // its actions target the primary (tree-selected) sample regardless of which pane
     // was actually right-clicked, same as every other toolbar action; `sender` isn't
     // needed here beyond being the element the ContextMenu is attached to.
+    //
+    // The menu always opens (right-click must still reach Paste with no selection) -
+    // every item that only makes sense against a highlighted range is individually
+    // disabled here instead, refreshed on every open rather than bound, matching this
+    // window's existing "code-behind reads VM state" style for this menu. Paste (by
+    // clipboard content) and Undo/Redo (by undo/redo history) are the exceptions - see
+    // WaveformContextMenu's own XAML comment for why each item is grouped the way it is.
     void OnWaveformContextMenuOpening(object sender, ContextMenuEventArgs e)
     {
-        if (sender is not FrameworkElement fe) return;
-        if (fe.ContextMenu?.Items.OfType<MenuItem>().FirstOrDefault(m => (string?)m.Header == "_Paste") is { } pasteItem)
-            pasteItem.IsEnabled = SampleClipboard.HasContent;
+        if (sender is not FrameworkElement { ContextMenu: { } menu }) return;
+        bool hasSelection = _vm.SelectionEndFrame > _vm.SelectionStartFrame;
+
+        MenuItem? ByHeader(string header) => menu.Items.OfType<MenuItem>().FirstOrDefault(m => (string?)m.Header == header);
+
+        foreach (var header in new[] { "Cu_t", "_Copy", "Cro_p to Selection", "Fade _In", "Fade _Out", "_Silence", "_Loop Selected Area", "_Normalize", "Amplify", "Soften" })
+            if (ByHeader(header) is { } item) item.IsEnabled = hasSelection;
+
+        if (ByHeader("_Paste") is { } pasteItem) pasteItem.IsEnabled = SampleClipboard.HasContent;
+        if (ByHeader("_Undo") is { } undoItem) undoItem.IsEnabled = _vm.CanUndo;
+        if (ByHeader("_Redo") is { } redoItem) redoItem.IsEnabled = _vm.CanRedo;
     }
 
     void OnWaveformCut(object sender, RoutedEventArgs e) { _vm.CutSelection(); RefreshDetailPanels(); UpdateStatus(); }
@@ -1585,8 +1900,33 @@ public partial class SampleEditorWindow : ThemedWindow
         UpdateStatus();
     }
 
-    void OnUndo(object sender, RoutedEventArgs e) { _vm.Undo(); RefreshDetailPanels(); UpdateStatus(); }
-    void OnRedo(object sender, RoutedEventArgs e) { _vm.Redo(); RefreshDetailPanels(); UpdateStatus(); }
+    // BtnAmplify/BtnSoften are plain Buttons carrying their preset list as their own
+    // ContextMenu (+1/+3/+6 dB and -1/-3/-6 dB respectively) rather than being
+    // ToggleButtons/ComboBoxes - a Button's own Click doesn't open its ContextMenu on
+    // its own, so this opens it explicitly, anchored under the button that was
+    // clicked. OnWaveformAmplify (unchanged) still handles the actual preset clicks.
+    void OnAmplifyDropdownClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button { ContextMenu: { } menu } button) return;
+        menu.PlacementTarget = button; // Placement="Bottom" is already set in XAML
+        menu.IsOpen = true;
+    }
+
+    // TempoBox/PitchBox aren't VM-backed (see OnTempoPitch's own comment) - Undo/Redo
+    // correctly reverts the PCM either applied (self-test-verified: tempo change is one
+    // of the edits round-tripped bit-exact in --sample-editor-smoketest), but the boxes
+    // themselves never get told, so they kept showing whatever was last typed/applied -
+    // "2.0"/"12" - even after undoing that exact change back out, reading as "undo
+    // didn't work" even though the sample data genuinely had. Reset to neutral here so
+    // the fields never claim a pending multiplier/transpose that isn't real.
+    void OnUndo(object sender, RoutedEventArgs e) { _vm.Undo(); ResetTempoPitchBoxes(); RefreshDetailPanels(); UpdateStatus(); }
+    void OnRedo(object sender, RoutedEventArgs e) { _vm.Redo(); ResetTempoPitchBoxes(); RefreshDetailPanels(); UpdateStatus(); }
+
+    void ResetTempoPitchBoxes()
+    {
+        TempoBox.Text = "1.0";
+        PitchBox.Text = "0";
+    }
 
     void OnWindowPreviewKeyDown(object sender, KeyEventArgs e)
     {
@@ -1689,6 +2029,11 @@ public partial class SampleEditorWindow : ThemedWindow
         }
 
         _vm.ApplyTempoPitch(tempo, pitch);
+        // Tempo Multiplier/Pitch are a one-shot "apply this next" value, not persisted
+        // sample state (unlike Sample Start/Loop points) - resetting to neutral after
+        // every apply attempt means the fields never keep claiming a change that's
+        // already been folded into the PCM (or that failed to parse and fell back).
+        ResetTempoPitchBoxes();
         RefreshDetailPanels();
         UpdateStatus();
     }
@@ -1876,8 +2221,21 @@ public partial class SampleEditorWindow : ThemedWindow
         var dlg = new PromptDialog("New multisample name:", current) { Owner = this };
         if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.Result)) return;
         _vm.RenameSelectedMultisample(dlg.Result);
-        RefreshDetailPanels();
         UpdateStatus();
+
+        // A rename inside a loaded collection rebuilds the whole tree (see
+        // RenameSelectedMultisample's own comment), which throws away the previously-
+        // selected node - LastRenamedMultisamplePath names its replacement so it can be
+        // reselected through THIS window's own SelectTreeNode (same pattern
+        // OnAddPlaceholderZone uses), which also calls RefreshDetailPanels and - for a
+        // multisample node - auto-drops into its first zone. Without this, the rename
+        // left the multisample "selected" with no zone within it selected, so every
+        // zone/sample detail field went blank until manually reselected via the tree.
+        var renamedPath = _vm.LastRenamedMultisamplePath;
+        if (renamedPath == null) { RefreshDetailPanels(); return; }
+        var msNode = FindMultisampleNode(_vm.Roots, renamedPath);
+        if (msNode != null) SelectTreeNode(msNode);
+        else RefreshDetailPanels();
     }
 
     void OnRenameSample(object sender, RoutedEventArgs e)

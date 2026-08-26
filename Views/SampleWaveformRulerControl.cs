@@ -44,6 +44,13 @@ public sealed class SampleWaveformRulerControl : FrameworkElement
         return h > 0 ? $"{h}:{m:00}:{s:00}" : $"{m}:{s:00}";
     }
 
+    // Frame count at the same tick, so a user can read off exactly which frame a
+    // second-marker lands on without doing the seconds*rate math themselves - explicit
+    // request. Rounds the same way FormatTime's own tick position is computed (t is
+    // already an absolute seconds-from-frame-0 value, not view-relative).
+    static string FormatFrame(double seconds, int sampleRate) =>
+        ((long)Math.Round(seconds * sampleRate)).ToString(CultureInfo.InvariantCulture);
+
     protected override void OnRender(DrawingContext dc)
     {
         var w = ActualWidth;
@@ -76,6 +83,13 @@ public sealed class SampleWaveformRulerControl : FrameworkElement
                 FlowDirection.LeftToRight, typeface, 10, textBrush, dpi);
             double labelX = Math.Min(Math.Max(0, x + 2), Math.Max(0, w - text.Width));
             dc.DrawText(text, new Point(labelX, 6));
+
+            // Frame row - same tick, smaller text directly below the time label so the
+            // pair reads as "this second = this frame," not two independent rulers.
+            var frameText = new FormattedText(FormatFrame(t, sampleRate), CultureInfo.InvariantCulture,
+                FlowDirection.LeftToRight, typeface, 9, textBrush, dpi);
+            double frameLabelX = Math.Min(Math.Max(0, x + 2), Math.Max(0, w - frameText.Width));
+            dc.DrawText(frameText, new Point(frameLabelX, 19));
         }
     }
 }

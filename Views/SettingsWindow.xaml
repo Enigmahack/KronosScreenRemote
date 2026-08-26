@@ -742,9 +742,9 @@
                     <TextBlock Text="Position" Foreground="#FF888888" FontSize="11" Margin="0 0 0 4"/>
                     <StackPanel Orientation="Horizontal" Margin="0 0 0 10">
                         <RadioButton x:Name="RadZoneCreateRight" Content="Right" GroupName="ZoneCreatePosition" Margin="0 0 16 0"
-                                     ToolTip="A newly created zone takes the higher-key portion of the carved range; the existing last zone shrinks from the top. This was the only behavior before this setting existed."/>
+                                     ToolTip="A newly created zone is appended above the current top zone's own Top Key, without shrinking or otherwise changing it. Only falls back to shrinking the top zone from above if it's already at the very top of the MIDI range (127)."/>
                         <RadioButton x:Name="RadZoneCreateLeft" Content="Left" GroupName="ZoneCreatePosition"
-                                     ToolTip="A newly created zone takes the lower-key portion of the carved range instead; the existing last zone keeps its own Top Key."/>
+                                     ToolTip="A newly created zone takes the lower-key portion of the current last zone's range instead; the existing last zone keeps its own Top Key."/>
                     </StackPanel>
 
                     <Grid Margin="0 0 0 10">

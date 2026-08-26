@@ -196,6 +196,46 @@ static class SampleEditorVisualCheck
                                 win.SplitLRBox.IsChecked = true;
                                 await Task.Delay(150);
                                 Screenshot(win, "05c_split_lr_enabled", outDir);
+
+                                // Move tool: commit a large offset through the exact same
+                                // path a real mouse-drag's mouse-up uses (OnWaveformLeftMoved
+                                // -> ApplyChannelMove -> RefreshDetailPanels), not a bare VM
+                                // call - proves the SHARED VIEW WINDOW survives the two
+                                // channels ending up different lengths (SampleWaveformControl.
+                                // ViewFrameCount's own comment: without it, SyncWaveformViews'
+                                // mirrored SetView silently clamps the offset back out, and the
+                                // two panes would render at different zoom levels with no
+                                // visible offset at all - a bug that would look identical to
+                                // "it worked" in every earlier screenshot, since none of them
+                                // ever actually moved a channel).
+                                win.OnWaveformLeftMoved(20000);
+                                await Task.Delay(150);
+                                bool viewsInSync = win.WaveformLeft.ViewStartFrame == win.WaveformRight.ViewStartFrame
+                                    && win.WaveformLeft.ViewEndFrame == win.WaveformRight.ViewEndFrame;
+                                Console.WriteLine("[visual-check] after channel move: L view=["
+                                    + win.WaveformLeft.ViewStartFrame + "," + win.WaveformLeft.ViewEndFrame
+                                    + ") R view=[" + win.WaveformRight.ViewStartFrame + "," + win.WaveformRight.ViewEndFrame
+                                    + ") inSync=" + viewsInSync);
+                                if (!viewsInSync) Console.WriteLine("[visual-check] FAIL: shared view window diverged after a channel move");
+                                Screenshot(win, "05d_after_channel_move", outDir);
+
+                                // Zoom BOTH panes in tight (the grid's own NiceInterval
+                                // picks a much smaller frame-per-gridline spacing at this
+                                // zoom than the earlier full-view screenshot did, which
+                                // makes any divergence between panes obvious at a glance)
+                                // and move again, to chase a reported "gridlines on the
+                                // untouched pane don't redraw after a move" bug.
+                                win.WaveformLeft.SetView(0, 4000);
+                                win.WaveformRight.SetView(0, 4000);
+                                await Task.Delay(150);
+                                Screenshot(win, "05e_zoomed_before_second_move", outDir);
+                                win.OnWaveformLeftMoved(500);
+                                await Task.Delay(150);
+                                Console.WriteLine("[visual-check] after zoomed move: L view=["
+                                    + win.WaveformLeft.ViewStartFrame + "," + win.WaveformLeft.ViewEndFrame
+                                    + ") R view=[" + win.WaveformRight.ViewStartFrame + "," + win.WaveformRight.ViewEndFrame + ")");
+                                Screenshot(win, "05f_zoomed_after_second_move", outDir);
+
                                 win.SplitLRBox.IsChecked = false;
                                 await Task.Delay(150);
                             }

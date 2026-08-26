@@ -76,7 +76,14 @@ partial class SampleEditorViewModel : ObservableObject
     // without needing one unified snapshot type for two genuinely different kinds of
     // data. Every call site that records a sample edit also pushes EditDomain.Sample
     // here (see RecordBeforeEdit call sites); MoveZoneBoundary pushes EditDomain.Zone.
-    enum EditDomain { Sample, Zone }
+    // PartnerSample is distinct from Sample: it records an edit that landed on
+    // _partnerSample ALONE (ApplyChannelMove's targetPartner branch - dragging the
+    // PARTNER's own pane in Split, only reachable with SplitLR so ShouldMirrorToPartner
+    // is false and the ordinary Sample-domain Undo/Redo's own partnerAlso mirroring
+    // never fires for it). Without a separate domain, Ctrl+Z after moving the partner's
+    // pane would try to undo _selectedSample (which that edit never touched) and
+    // silently do nothing.
+    enum EditDomain { Sample, Zone, PartnerSample }
     SampleZoneUndo _zoneUndo = new();
     List<KmpZone>? _zoneUndoScope; // which zone list _zoneUndo currently belongs to
     // List used as a stack (append/remove-last), not Stack<T> - SelectNode needs to
@@ -126,6 +133,49 @@ partial class SampleEditorViewModel : ObservableObject
     [ObservableProperty] bool isPrimaryLeftChannel;
     [ObservableProperty] short[]? partnerSampleWaveform;
 
+    // Split L/R's third edit-target state, alongside "whichever channel IsPrimaryLeftChannel
+    // names" - both channels at once, while still showing the Split dual-pane view (as
+    // opposed to Combine, which mirrors unconditionally and has no single/both distinction
+    // at all). Set by the window (SampleEditorWindow.xaml.cs: ActivateBothSplitChannels,
+    // reached by double-clicking the already-active pane or a drag that crosses into the
+    // other pane) and cleared by ActivateSplitChannel whenever a SPECIFIC single side is
+    // chosen (a plain click always means "just this one"). ShouldMirrorToPartner below is
+    // the only thing that reads it - every mirrored edit (ApplyEffect/SetMarker/Normalize/
+    // TrimSilence/TempoPitch/...) gets "mirror to both" for free the same way Combine mode
+    // already does, with no per-method changes needed.
+    [ObservableProperty] bool splitBothActive;
+
+    // The partner's OWN Sample Start/Loop Start/Loop End/Loop Enabled - only meaningful
+    // (and only ever diverges from the primary's own SampleSampleStart/etc above) once
+    // Split L/R edits stop mirroring (ShouldMirrorToPartner false). Needed so the
+    // inactive pane in Split's dual-pane view (SampleEditorWindow.xaml.cs
+    // RefreshDetailPanels) can draw the PARTNER's real markers instead of a copy of the
+    // active channel's - see LeftSampleStartFrame/RightSampleStartFrame etc. below,
+    // which pick between this and the primary fields the same way LeftSampleWaveform/
+    // RightSampleWaveform already pick between SampleWaveform/PartnerSampleWaveform.
+    [ObservableProperty] int partnerSampleStart;
+    [ObservableProperty] int partnerLoopStart;
+    [ObservableProperty] int partnerLoopEnd;
+    [ObservableProperty] bool partnerLoopEnabled;
+
+    void RefreshPartnerMarkers()
+    {
+        if (_partnerSample is { } p)
+        {
+            PartnerSampleStart = (int)p.SampleStart;
+            PartnerLoopStart = (int)p.LoopStart;
+            PartnerLoopEnd = (int)p.LoopEnd;
+            PartnerLoopEnabled = p.IsLoopEnabled;
+        }
+        else
+        {
+            PartnerSampleStart = 0;
+            PartnerLoopStart = 0;
+            PartnerLoopEnd = 0;
+            PartnerLoopEnabled = false;
+        }
+    }
+
     // The resolved stereo partner's own zone/path - exposed so the window's Split L/R
     // channel picker (Views/SampleEditorWindow.xaml.cs) can find its tree node
     // (FindNodeForZone) and select it directly, the same way every other combo-driven
@@ -141,10 +191,11 @@ partial class SampleEditorViewModel : ObservableObject
     // drags) apply to BOTH the selected zone's sample AND its stereo partner, using the
     // same parameters - correctness matters here, not just convenience: mismatched loop
     // points between stereo channels would be a real playback bug on the Kronos. Split
-    // mode shows only ONE pane - whichever channel is currently selected in the tree -
-    // and edits apply only to that sample; select the OTHER channel's zone in the tree
-    // to edit it instead, the same way you'd select any other zone. See
-    // SampleEditorWindow.xaml.cs's RefreshDetailPanels for the pane-visibility split.
+    // mode ALSO always shows both panes (entry 52a removed the old one-pane-at-a-time
+    // dropdown), but edits apply only to whichever pane was actually clicked/dragged -
+    // clicking/dragging the OTHER pane activates that channel instead (ActivateSplitChannel
+    // in SampleEditorWindow.xaml.cs), the same way selecting the other channel's zone in
+    // the tree always did. See RefreshDetailPanels for the pane-visibility split.
     [ObservableProperty] bool splitLR;
 
     // Fixed L-on-top/R-on-bottom regardless of which side is "primary" - the window
@@ -152,6 +203,26 @@ partial class SampleEditorViewModel : ObservableObject
     // has to duplicate the IsPrimaryLeftChannel branch itself.
     public short[]? LeftSampleWaveform => !HasStereoPair ? null : IsPrimaryLeftChannel ? SampleWaveform : PartnerSampleWaveform;
     public short[]? RightSampleWaveform => !HasStereoPair ? null : IsPrimaryLeftChannel ? PartnerSampleWaveform : SampleWaveform;
+
+    // Same fixed-L-on-top/R-on-bottom resolution as LeftSampleWaveform/RightSampleWaveform,
+    // for the markers Split's dual-pane view draws on each pane. In Combine mode both
+    // panes already show identical values by construction (ShouldMirrorToPartner), so
+    // these are only load-bearing once Split L/R actually lets the two diverge.
+    public int LeftSampleStartFrame => IsPrimaryLeftChannel ? SampleSampleStart : PartnerSampleStart;
+    public int RightSampleStartFrame => IsPrimaryLeftChannel ? PartnerSampleStart : SampleSampleStart;
+    public int LeftLoopStartFrame => IsPrimaryLeftChannel ? SampleLoopStart : PartnerLoopStart;
+    public int RightLoopStartFrame => IsPrimaryLeftChannel ? PartnerLoopStart : SampleLoopStart;
+    public int LeftLoopEndFrame => IsPrimaryLeftChannel ? SampleLoopEnd : PartnerLoopEnd;
+    public int RightLoopEndFrame => IsPrimaryLeftChannel ? PartnerLoopEnd : SampleLoopEnd;
+    public bool LeftLoopEnabled => IsPrimaryLeftChannel ? SampleLoopEnabled : PartnerLoopEnabled;
+    public bool RightLoopEnabled => IsPrimaryLeftChannel ? PartnerLoopEnabled : SampleLoopEnabled;
+
+    // Select (false, default) vs Move (true) - the Local Edits toolbar's cursor/hand
+    // toggle (SampleEditorWindow.xaml). Purely an interaction-mode switch for
+    // SampleWaveformControl (which waveform gesture a plain click-drag performs); it has
+    // no bearing on what edits apply to which channel - that's still SplitLR/the tree
+    // selection, unchanged.
+    [ObservableProperty] bool isMoveToolActive;
 
     public event Action? TreeRefreshed;
 
@@ -627,6 +698,7 @@ partial class SampleEditorViewModel : ObservableObject
         _partnerKmpPath = null;
         HasStereoPair = false;
         PartnerSampleWaveform = null;
+        RefreshPartnerMarkers();
 
         HasZoneSelected = _selectedZone != null;
         if (_selectedZone is { } z)
@@ -738,6 +810,7 @@ partial class SampleEditorViewModel : ObservableObject
             HasStereoPair = true;
             IsPrimaryLeftChannel = owningMultisample.Suffix == "-L";
             PartnerSampleWaveform = pendingPartner.IsHeaderOnly ? null : pendingPartner.Samples();
+            RefreshPartnerMarkers();
             return;
         }
 
@@ -754,6 +827,7 @@ partial class SampleEditorViewModel : ObservableObject
             HasStereoPair = true;
             IsPrimaryLeftChannel = owningMultisample.Suffix == "-L";
             PartnerSampleWaveform = ps.IsHeaderOnly ? null : ps.Samples();
+            RefreshPartnerMarkers();
         }
         catch (Exception ex)
         {
@@ -932,6 +1006,15 @@ partial class SampleEditorViewModel : ObservableObject
             _dirtySamples[_partnerSamplePath] = _partnerSample;
     }
 
+    // ApplyChannelMove's targetPartner branch mutates _partnerSample alone, with
+    // mirroring off (SplitLR) - RegisterDirtySample's own mirror gate would enrol
+    // nothing in that case, so this is the explicit equivalent for partner-only edits.
+    void RegisterDirtyPartnerSample()
+    {
+        if (_partnerSample != null && _partnerSamplePath != null)
+            _dirtySamples[_partnerSamplePath] = _partnerSample;
+    }
+
     void RegisterDirtyMultisample()
     {
         var (m, path) = ResolveContextMultisample();
@@ -1079,8 +1162,25 @@ partial class SampleEditorViewModel : ObservableObject
     // unmirrored key-range edit does (see ApplyZoneEdits' own comment). BOTH halves'
     // collisions are checked and BOTH moved before the tree rebuilds, so a blocked
     // sibling move can never leave a pair straddling old/new locations.
+    //
+    // LastRenamedMultisamplePath is set (non-null) exactly when the caller needs to
+    // reselect - i.e. when RebuildTreeFromCollection actually ran and threw away every
+    // node, including whichever one was selected. Left null on a no-op/failed rename
+    // and on the no-collection branch below (RefreshMultisampleNodeLabel edits labels
+    // in place; the existing selection is never invalidated, so there's nothing to
+    // reselect). The caller (SampleEditorWindow.OnRenameMultisample) must re-select via
+    // its OWN SelectTreeNode, not a plain _vm.SelectNode call here - SelectTreeNode is
+    // what auto-drops a multisample selection into its first zone (see its own
+    // comment), which lives in the View and has no ViewModel equivalent. Calling
+    // SelectNode(reselect) directly here - the previous behavior - left the multisample
+    // itself selected but no zone within it, so every zone/sample detail field (Orig.
+    // Key, Top Key, waveform, ...) went blank until the user manually reselected
+    // through the tree.
+    public string? LastRenamedMultisamplePath { get; private set; }
+
     public void RenameSelectedMultisample(string newName)
     {
+        LastRenamedMultisamplePath = null;
         newName = newName.Trim();
         if (newName.Length == 0) return;
         var (m, path) = ResolveContextMultisample();
@@ -1124,8 +1224,7 @@ partial class SampleEditorViewModel : ObservableObject
         if (_collectionPath != null && _collection != null)
         {
             RebuildTreeFromCollection(_collectionPath, _collection);
-            var reselect = AllMultisampleNodes().FirstOrDefault(n => string.Equals(n.MultisampleRef!.Value.Path, newPath, StringComparison.OrdinalIgnoreCase));
-            if (reselect != null) SelectNode(reselect);
+            LastRenamedMultisamplePath = newPath;
         }
         else
         {
@@ -1299,7 +1398,7 @@ partial class SampleEditorViewModel : ObservableObject
     // True when a stereo partner exists AND Combine mode is active AND the partner
     // actually has audio data to edit - the single gate every stereo-mirroring edit
     // method below checks before also touching _partnerSample.
-    bool ShouldMirrorToPartner => HasStereoPair && !SplitLR && _partnerSample is { IsHeaderOnly: false };
+    bool ShouldMirrorToPartner => HasStereoPair && (!SplitLR || SplitBothActive) && _partnerSample is { IsHeaderOnly: false };
 
     public void ApplySampleEdits(int sampleRate, bool loopEnabled, int sampleStart, int loopStart, int loopEnd)
     {
@@ -1424,14 +1523,19 @@ partial class SampleEditorViewModel : ObservableObject
     // than its louder partner, audibly shifting the stereo image.
     public void ApplyNormalize(double targetPeakDb = -0.1)
     {
+        if (_selectedSample == null) { StatusText = "No sample loaded."; return; }
+        var (start, end) = SelectionOrWholeBuffer();
+
         int? sharedPeak = null;
         if (ShouldMirrorToPartner && _selectedSample is { IsHeaderOnly: false })
         {
-            int primaryPeak = GainNormalizeEffect.ComputePeak(_selectedSample.Samples());
-            int partnerPeak = GainNormalizeEffect.ComputePeak(_partnerSample!.Samples());
+            int primaryPeak = GainNormalizeEffect.ComputePeak(_selectedSample.Samples(), start, Math.Min(end, _selectedSample.Samples().Length));
+            var partnerHost = _partnerSample!.Samples();
+            int partnerPeak = GainNormalizeEffect.ComputePeak(partnerHost, Math.Min(start, partnerHost.Length), Math.Min(end, partnerHost.Length));
             sharedPeak = Math.Max(primaryPeak, partnerPeak);
         }
-        ApplyEffect(new GainNormalizeEffect(targetPeakDb, sharedPeak), "Normalized gain");
+        ApplyEffect(new GainNormalizeEffect(targetPeakDb, sharedPeak, start, end),
+            end - start >= _selectedSample.FrameCount ? "Normalized gain" : $"Normalized gain [{start}, {end})");
     }
 
     // A stereo pair trims as a SINGLE track: only delete a leading/trailing run that's
@@ -1451,10 +1555,18 @@ partial class SampleEditorViewModel : ObservableObject
         ApplyEffect(new SilenceTrimEffect(thresholdAmplitude, sharedBounds), "Trimmed silence");
     }
 
-    // Amplify (+dB) and Soften (-dB) are the same operation - the context menu just
-    // passes a positive or negative decibels value for its presets (1/3/6 dB either way).
-    public void ApplyGainAdjust(double decibels) =>
-        ApplyEffect(new GainAdjustEffect(decibels), $"Applied {(decibels >= 0 ? "+" : "")}{decibels:0.#} dB gain");
+    // Amplify (+dB) and Soften (-dB) are the same operation - the toolbar buttons just
+    // pass a positive or negative decibels value for their presets (1/3/6 dB either
+    // way). Acts on the current selection when there is one, the whole sample
+    // otherwise - same SelectionOrWholeBuffer convention as Reverse/Silence.
+    public void ApplyGainAdjust(double decibels)
+    {
+        if (_selectedSample == null) { StatusText = "No sample loaded."; return; }
+        var (start, end) = SelectionOrWholeBuffer();
+        ApplyEffect(new GainAdjustEffect(decibels, start, end),
+            $"Applied {(decibels >= 0 ? "+" : "")}{decibels:0.#} dB gain"
+            + (end - start >= _selectedSample.FrameCount ? "" : $" [{start}, {end})"));
+    }
 
     // Fade In/Out on the current SELECTION - ramp gain across exactly the highlighted
     // range, leaving everything outside it untouched. Reachable from the Edit
@@ -1606,13 +1718,197 @@ partial class SampleEditorViewModel : ObservableObject
 
     // Inserts silence at the selection start (or at the scrub cursor when nothing is
     // selected), pushing the rest later - the standard way to make room in a sample.
-    public void ApplyInsertSilence(int frameCount)
+    // applyToLeft/applyToRight are the dialog's explicit "Apply to:" checkboxes
+    // (InsertSilenceDialog) - unlike every other edit here, which channel(s) get
+    // touched is picked by the user directly rather than inferred from Split L/R, so
+    // this can mirror to both channels even while Split (normally non-mirroring) is on,
+    // or touch only one channel even in Combine. Ignored entirely when there's no
+    // stereo partner to choose between.
+    public void ApplyInsertSilence(int frameCount, bool applyToLeft, bool applyToRight)
     {
         if (_selectedSample == null) { StatusText = "No sample loaded."; return; }
         if (frameCount <= 0) { StatusText = "Enter a positive number of frames to insert."; return; }
+
+        bool hasPartner = HasStereoPair && _partnerSample is { IsHeaderOnly: false };
+        bool applyPrimary = !hasPartner || (IsPrimaryLeftChannel ? applyToLeft : applyToRight);
+        bool applyPartner = hasPartner && (IsPrimaryLeftChannel ? applyToRight : applyToLeft);
+        if (!applyPrimary && !applyPartner) { StatusText = "Select at least one channel to insert silence into."; return; }
+
         int at = SelectionEndFrame > SelectionStartFrame ? SelectionStartFrame
             : _cursorFrame >= 0 ? _cursorFrame : 0;
-        ApplyEffect(new InsertSilenceEffect(at, frameCount), $"Inserted {frameCount} frame(s) of silence at {at}");
+
+        // Both channels checked AND the ambient mirror condition already agrees (Combine
+        // mode, or Split with Both active): identical to every other mirrored edit, so
+        // just reuse the generic path - one EditDomain.Sample undo step, with Undo/Redo's
+        // own ShouldMirrorToPartner recompute picking the partner back up automatically.
+        if (applyPrimary && applyPartner && ShouldMirrorToPartner)
+        {
+            ApplyEffect(new InsertSilenceEffect(at, frameCount), $"Inserted {frameCount} frame(s) of silence at {at}");
+            return;
+        }
+
+        var effect = new InsertSilenceEffect(at, frameCount);
+        _redoDomains.Clear();
+
+        if (applyPrimary)
+        {
+            _sampleUndo.RecordBeforeEdit(SampleFieldSnapshot.Of(_selectedSample));
+            _undoDomains.Add(EditDomain.Sample);
+            var edited = effect.Apply(_selectedSample.Samples(), (int)_selectedSample.SampleRate);
+            _selectedSample.SetSamples(edited);
+            ClampMarkersToBuffer(_selectedSample);
+            _sampleDirty = true;
+        }
+        if (applyPartner)
+        {
+            _partnerUndo.RecordBeforeEdit(SampleFieldSnapshot.Of(_partnerSample!));
+            _undoDomains.Add(EditDomain.PartnerSample);
+            var partnerEdited = effect.Apply(_partnerSample!.Samples(), (int)_partnerSample.SampleRate);
+            _partnerSample.SetSamples(partnerEdited);
+            ClampMarkersToBuffer(_partnerSample);
+            RegisterDirtyPartnerSample();
+            PartnerSampleWaveform = _partnerSample.IsHeaderOnly ? null : _partnerSample.Samples();
+            RefreshPartnerMarkers();
+        }
+        else if (applyPrimary && hasPartner && ShouldMirrorToPartner)
+        {
+            // Primary channel only, but the ambient mirror condition is ON (Combine, or
+            // Split with Both active): Undo()/Redo()'s EditDomain.Sample branch always
+            // ALSO pops _partnerUndo whenever that same condition holds (the same
+            // recompute the fast path above relies on for the both-channels case),
+            // regardless of whether THIS particular edit touched the partner. Push the
+            // partner's CURRENT (unedited) state so that automatic pop restores exactly
+            // what's already there - a no-op - instead of silently reverting an
+            // unrelated earlier partner edit still sitting on its stack.
+            _partnerUndo.RecordBeforeEdit(SampleFieldSnapshot.Of(_partnerSample!));
+        }
+
+        if (applyPrimary) LoadSampleDetailState(_selectedSample, reloadWaveform: true);
+        RefreshUndoRedoState();
+
+        string channels = applyPrimary && applyPartner ? " (both L/R channels)"
+            : applyPrimary ? $" ({(IsPrimaryLeftChannel ? "L" : "R")} channel only)"
+            : $" ({(IsPrimaryLeftChannel ? "R" : "L")} channel only)";
+        StatusText = $"Inserted {frameCount} frame(s) of silence at {at}{(hasPartner ? channels : "")} (unsaved - use Save Sample).";
+    }
+
+    // How many leading frames of a channel's CURRENT buffer were added by ApplyChannelMove
+    // THIS session - as opposed to real audio that was already there. Keyed by the live
+    // KsfSample instance (object identity - the same instance stays selected across
+    // ordinary navigation, per entry 21's "_dirtySamples holds LIVE edited objects").
+    // Only padding counted here is ever eligible to be trimmed back by a later leftward
+    // move - dragging left can NEVER eat into real audio, no matter how far past 0 it's
+    // dragged (explicit feedback after an earlier version clamped against the buffer's
+    // TOTAL length instead, which let a large enough leftward drag trim real content and
+    // silently destroy it). Cleared entirely by Undo()/Redo() (see their own top) -
+    // conservative: once PCM has been restored to some earlier state by undo, this count
+    // can no longer be trusted, and under-counting (a trim that's refused because the
+    // padding "looks like" 0) is the safe direction to err, never over-counting (a trim
+    // that eats real audio).
+    readonly Dictionary<KsfSample, int> _moveToolPadding = new();
+
+    // The Move tool's "drag the bare waveform" gesture (only meaningful with Split L/R
+    // on - see the window's WaveformMoved handler for why Combine ignores it). Always
+    // targets whichever channel's PANE was actually dragged (targetPartner - the window
+    // decides this from pane identity, not from deltaFrames' sign): positive deltaFrames
+    // pads that channel's own leading edge with silence, moving its content LATER.
+    // Negative deltaFrames trims up to -deltaFrames frames of PREVIOUSLY-ADDED padding off
+    // that SAME channel's own leading edge - never more than _moveToolPadding currently
+    // tracks for it, so a channel can walk back to exactly where it started and then hard
+    // stops; dragging further left is a no-op, not a trim into real audio. It does NOT
+    // touch the other channel (an earlier version made a negative drag pad the SIBLING
+    // instead - reverted per explicit feedback: to offset the pair the other way, drag the
+    // OTHER channel's own pane to the right instead, using this exact same self-only
+    // path). SampleStart/LoopStart/LoopEnd are NEVER touched by this method, in either
+    // direction - see ShiftChannelEdge's own comment for why.
+    public void ApplyChannelMove(bool targetPartner, int deltaFrames)
+    {
+        if (deltaFrames == 0) return;
+        if (!HasStereoPair || !SplitLR)
+        { StatusText = "Move only offsets a channel relative to its stereo partner - turn on Split L/R first."; return; }
+
+        if (!targetPartner)
+        {
+            if (_selectedSample is not { IsHeaderOnly: false } s) { StatusText = "No audio data to move."; return; }
+            int applied = ClampToTrimmablePadding(s, deltaFrames);
+            if (applied == 0) { StatusText = "Already at the earliest position for this channel - nothing left to move back."; return; }
+            _sampleUndo.RecordBeforeEdit(SampleFieldSnapshot.Of(s));
+            _undoDomains.Add(EditDomain.Sample);
+            _redoDomains.Clear();
+            ShiftChannelEdge(s, applied);
+            _sampleDirty = true;
+            LoadSampleDetailState(s, reloadWaveform: true);
+            RefreshUndoRedoState();
+            StatusText = applied > 0
+                ? $"Moved channel {applied} frame(s) later (unsaved - use Save Sample)."
+                : $"Moved channel {-applied} frame(s) back toward 0 (unsaved - use Save Sample).";
+        }
+        else
+        {
+            if (_partnerSample is not { IsHeaderOnly: false } p) { StatusText = "No stereo partner audio to offset."; return; }
+            int applied = ClampToTrimmablePadding(p, deltaFrames);
+            if (applied == 0) { StatusText = "Already at the earliest position for the sibling channel - nothing left to move back."; return; }
+            _partnerUndo.RecordBeforeEdit(SampleFieldSnapshot.Of(p));
+            _undoDomains.Add(EditDomain.PartnerSample);
+            _redoDomains.Clear();
+            ShiftChannelEdge(p, applied);
+            RegisterDirtyPartnerSample();
+            PartnerSampleWaveform = p.IsHeaderOnly ? null : p.Samples();
+            RefreshPartnerMarkers();
+            RefreshUndoRedoState();
+            StatusText = applied > 0
+                ? $"Moved sibling channel {applied} frame(s) later (unsaved - use Save Sample)."
+                : $"Moved sibling channel {-applied} frame(s) back toward 0 (unsaved - use Save Sample).";
+        }
+    }
+
+    // Positive requestedDelta always goes through unchanged (padding is always allowed -
+    // there's no upper bound on how far a channel can move later) and grows this sample's
+    // own tracked padding balance. Negative requestedDelta is clamped so its magnitude
+    // never exceeds that balance, returning 0 once it's exhausted - the actual "hard
+    // stop." Updates _moveToolPadding as a side effect either way.
+    int ClampToTrimmablePadding(KsfSample s, int requestedDelta)
+    {
+        if (requestedDelta > 0)
+        {
+            _moveToolPadding[s] = _moveToolPadding.GetValueOrDefault(s) + requestedDelta;
+            return requestedDelta;
+        }
+        int available = _moveToolPadding.GetValueOrDefault(s);
+        int trim = Math.Min(-requestedDelta, available);
+        if (trim <= 0) return 0;
+        _moveToolPadding[s] = available - trim;
+        return -trim;
+    }
+
+    // Positive frameCount: prepends that many frames of silence. Negative frameCount:
+    // trims -frameCount frames off the front (the caller, ClampToTrimmablePadding, has
+    // already guaranteed this never exceeds tracked padding, but the buffer-length clamp
+    // stays as cheap insurance). Deliberately does NOT touch SampleStart/LoopStart/
+    // LoopEnd in either direction - explicit feedback: the loop/sample-start overlay is a
+    // fixed frame-number reference and must stay exactly where it is regardless of how
+    // the underlying audio shifts under it; a channel move is not a loop move.
+    // ClampMarkersToBuffer still runs so a marker that now sits past a shrunk buffer's end
+    // doesn't get saved out of range - it CLAMPS, it does not shift, which is exactly what
+    // belongs here (compare InsertSilenceEffect/CropEffect's generic ApplyEffect path,
+    // which only clamps too and is the pre-existing bug noted in Commit Notes entry 52 -
+    // this method was never that path to begin with, so nothing to revert there).
+    static void ShiftChannelEdge(KsfSample s, int frameCount)
+    {
+        var host = s.Samples();
+        if (frameCount > 0)
+        {
+            var shifted = new InsertSilenceEffect(0, frameCount).Apply(host, (int)s.SampleRate);
+            s.SetSamples(shifted);
+        }
+        else
+        {
+            int trim = Math.Min(-frameCount, host.Length);
+            if (trim <= 0) return;
+            var trimmed = new DeleteRangeEffect(0, trim).Apply(host, (int)s.SampleRate);
+            s.SetSamples(trimmed);
+        }
+        ClampMarkersToBuffer(s);
     }
 
     // Whole-buffer only, deliberately - see DcOffsetEffect's own comment.
@@ -1688,6 +1984,11 @@ partial class SampleEditorViewModel : ObservableObject
     public void Undo()
     {
         if (_undoDomains.Count == 0) return;
+        // _moveToolPadding's own comment: any undo can hand a sample's PCM back to an
+        // earlier state, after which the tracked padding balance can no longer be
+        // trusted - cleared wholesale rather than trying to reason per-domain about which
+        // entries it should survive.
+        _moveToolPadding.Clear();
         var domain = PopDomain(_undoDomains);
 
         if (domain == EditDomain.Zone)
@@ -1712,13 +2013,35 @@ partial class SampleEditorViewModel : ObservableObject
             return;
         }
 
+        if (domain == EditDomain.PartnerSample)
+        {
+            if (_partnerSample == null) { RefreshUndoRedoState(); return; }
+            var partnerRestoredAlone = _partnerUndo.Undo(SampleFieldSnapshot.Of(_partnerSample));
+            if (partnerRestoredAlone == null) { RefreshUndoRedoState(); return; }
+            partnerRestoredAlone.Value.ApplyTo(_partnerSample);
+            RegisterDirtyPartnerSample();
+            PartnerSampleWaveform = _partnerSample.IsHeaderOnly ? null : _partnerSample.Samples();
+            RefreshPartnerMarkers();
+            _redoDomains.Add(EditDomain.PartnerSample);
+            RefreshUndoRedoState();
+            StatusText = "Undid sibling channel move (unsaved - use Save Sample).";
+            return;
+        }
+
         if (_selectedSample == null) { RefreshUndoRedoState(); return; }
         var restored = _sampleUndo.Undo(SampleFieldSnapshot.Of(_selectedSample));
         if (restored == null) { RefreshUndoRedoState(); return; }
         restored.Value.ApplyTo(_selectedSample);
         _sampleDirty = true;
 
-        bool partnerAlso = HasStereoPair && !SplitLR && _partnerSample != null && _partnerUndo.CanUndo;
+        // (!SplitLR || SplitBothActive) - must track ShouldMirrorToPartner's own
+        // condition exactly, since that's what decided whether the forward edit this is
+        // undoing actually pushed a partner-undo step to begin with (SplitBothActive
+        // added it here too: with Both active, a mirrored edit's forward pass DOES touch
+        // _partnerUndo, so skipping it here on the undo side would leave that step
+        // stranded forever - never popped, and the partner's PCM silently never reverted
+        // despite the status text claiming "both L/R channels").
+        bool partnerAlso = HasStereoPair && (!SplitLR || SplitBothActive) && _partnerSample != null && _partnerUndo.CanUndo;
         if (partnerAlso && _partnerUndo.Undo(SampleFieldSnapshot.Of(_partnerSample!)) is { } partnerRestored)
         {
             partnerRestored.ApplyTo(_partnerSample!);
@@ -1737,6 +2060,7 @@ partial class SampleEditorViewModel : ObservableObject
     public void Redo()
     {
         if (_redoDomains.Count == 0) return;
+        _moveToolPadding.Clear(); // see Undo()'s own comment
         var domain = PopDomain(_redoDomains);
 
         if (domain == EditDomain.Zone)
@@ -1755,13 +2079,29 @@ partial class SampleEditorViewModel : ObservableObject
             return;
         }
 
+        if (domain == EditDomain.PartnerSample)
+        {
+            if (_partnerSample == null) { RefreshUndoRedoState(); return; }
+            var partnerRestoredAlone = _partnerUndo.Redo(SampleFieldSnapshot.Of(_partnerSample));
+            if (partnerRestoredAlone == null) { RefreshUndoRedoState(); return; }
+            partnerRestoredAlone.Value.ApplyTo(_partnerSample);
+            RegisterDirtyPartnerSample();
+            PartnerSampleWaveform = _partnerSample.IsHeaderOnly ? null : _partnerSample.Samples();
+            RefreshPartnerMarkers();
+            _undoDomains.Add(EditDomain.PartnerSample);
+            RefreshUndoRedoState();
+            StatusText = "Redid sibling channel move (unsaved - use Save Sample).";
+            return;
+        }
+
         if (_selectedSample == null) { RefreshUndoRedoState(); return; }
         var restored = _sampleUndo.Redo(SampleFieldSnapshot.Of(_selectedSample));
         if (restored == null) { RefreshUndoRedoState(); return; }
         restored.Value.ApplyTo(_selectedSample);
         _sampleDirty = true;
 
-        bool partnerAlso = HasStereoPair && !SplitLR && _partnerSample != null && _partnerUndo.CanRedo;
+        // Mirrors Undo()'s own partnerAlso condition above - see its comment.
+        bool partnerAlso = HasStereoPair && (!SplitLR || SplitBothActive) && _partnerSample != null && _partnerUndo.CanRedo;
         if (partnerAlso && _partnerUndo.Redo(SampleFieldSnapshot.Of(_partnerSample!)) is { } partnerRestored)
         {
             partnerRestored.ApplyTo(_partnerSample!);
@@ -2346,8 +2686,6 @@ partial class SampleEditorViewModel : ObservableObject
             {
                 var last = m.Zones[^1];
                 int lastLow = m.Zones.Count > 1 ? m.Zones[^2].TopKey + 1 : 0;
-                int available = last.TopKey - lastLow + 1;
-                int width = Math.Max(1, Math.Min(rangeSetting, available - 1)); // leave >=1 key for the existing zone
 
                 if (prefs.SampleZoneCreatePosition == SampleZoneCreatePosition.Left)
                 {
@@ -2356,12 +2694,32 @@ partial class SampleEditorViewModel : ObservableObject
                     // derived from whatever precedes it, moves up) and stays last in the
                     // list - the new zone is inserted just before it so list order still
                     // matches the ascending-key-order the TopKey range convention assumes.
+                    int available = last.TopKey - lastLow + 1;
+                    int width = Math.Max(1, Math.Min(rangeSetting, available - 1)); // leave >=1 key for the existing zone
                     newLow = lastLow;
                     newTop = lastLow + width - 1;
                     insertIndex = m.Zones.Count - 1;
                 }
+                else if (last.TopKey < 127)
+                {
+                    // New zone is appended ABOVE the current top zone's own Top Key,
+                    // claiming previously-unassigned range rather than carving into it -
+                    // a Kronos multisample's top zone has no requirement to reach 127
+                    // (only the FIRST zone is pinned, to 0/C-1), so there's no need to
+                    // shrink/deform it just to make room for a new one above it. This
+                    // used to always carve `width` keys off the TOP of the existing last
+                    // zone and shrink its own TopKey down to make room - silently
+                    // "eating into" whatever the user had just finished setting up there.
+                    int width = Math.Max(1, Math.Min(rangeSetting, 127 - last.TopKey));
+                    newLow = last.TopKey + 1;
+                    newTop = last.TopKey + width;
+                }
                 else
                 {
+                    // No unassigned range left above 127 at all - the only remaining way
+                    // to add a zone is the old carve-from-the-top behavior.
+                    int available = last.TopKey - lastLow + 1;
+                    int width = Math.Max(1, Math.Min(rangeSetting, available - 1));
                     newLow = last.TopKey - width + 1;
                     newTop = last.TopKey;
                     last.TopKey = (byte)Math.Max(lastLow, newLow - 1);
@@ -3445,7 +3803,18 @@ partial class SampleEditorViewModel : ObservableObject
         int prevTop = -1;
         foreach (var z in zones) { widthByZone[z] = z.TopKey - prevTop; prevTop = z.TopKey; }
 
-        if (fromIndex < toIndex) toIndex--; // RemoveAt below shifts every later index down by one
+        // toIndex is dropTarget's index in the ORIGINAL (pre-removal) list, and is used
+        // as-is - NOT decremented for a forward drag. RemoveAt below does shift every
+        // later index down by one, but Insert(toIndex, ...) at that now-shifted position
+        // is exactly what lands `dragged` in dropTarget's original slot (dropTarget
+        // itself settles one earlier, right behind it) - which is the documented
+        // semantic above. Decrementing toIndex first (the previous behavior) instead
+        // inserted `dragged` immediately BEFORE dropTarget's post-removal position: for
+        // any ADJACENT forward drag (toIndex == fromIndex + 1) that decremented index
+        // equals fromIndex itself, so RemoveAt+Insert put `dragged` right back where it
+        // started - a silent no-op. Dragging the other direction (fromIndex > toIndex)
+        // was never decremented and so already worked; only forward, adjacent drags were
+        // swallowed, which read as "reordering only works right-to-left."
         zones.RemoveAt(fromIndex);
         zones.Insert(toIndex, dragged);
 

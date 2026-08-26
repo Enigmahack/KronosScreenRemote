@@ -13,13 +13,21 @@ public partial class InsertSilenceDialog : ThemedWindow
     bool _syncing; // reentrancy guard - TextChanged on the box THIS method just wrote would otherwise recompute the other box from a rounded value and drift
 
     public int Frames { get; private set; }
+    public bool ApplyToLeft { get; private set; } = true;
+    public bool ApplyToRight { get; private set; } = true;
 
-    public InsertSilenceDialog(int sampleRate, int initialFrames)
+    // hasStereoPair hides the L/R picker entirely for a mono sample, where it's
+    // meaningless - SampleEditorViewModel.ApplyInsertSilence ignores ApplyToLeft/
+    // ApplyToRight in that case anyway, but showing two checkboxes with nothing for
+    // them to choose between would just be confusing. Defaults false so existing
+    // callers (UiThemeSmokeTest's construction check) keep compiling unchanged.
+    public InsertSilenceDialog(int sampleRate, int initialFrames, bool hasStereoPair = false)
     {
         InitializeComponent();
         _sampleRate = Math.Max(1, sampleRate);
         FramesBox.Text = initialFrames.ToString(CultureInfo.InvariantCulture);
         SecondsBox.Text = FormatSeconds(initialFrames / (double)_sampleRate);
+        ChannelPickerPanel.Visibility = hasStereoPair ? Visibility.Visible : Visibility.Collapsed;
         Loaded += (_, _) => { FramesBox.SelectAll(); FramesBox.Focus(); };
     }
 
@@ -55,7 +63,16 @@ public partial class InsertSilenceDialog : ThemedWindow
             PromptLabel.Foreground = (System.Windows.Media.Brush)FindResource("DangerTextBrush");
             return;
         }
+        if (ChannelPickerPanel.Visibility == Visibility.Visible
+            && ApplyLeftBox.IsChecked != true && ApplyRightBox.IsChecked != true)
+        {
+            PromptLabel.Text = "Select at least one channel to apply to (Left, Right, or both).";
+            PromptLabel.Foreground = (System.Windows.Media.Brush)FindResource("DangerTextBrush");
+            return;
+        }
         Frames = frames;
+        ApplyToLeft = ApplyLeftBox.IsChecked == true;
+        ApplyToRight = ApplyRightBox.IsChecked == true;
         DialogResult = true;
     }
 

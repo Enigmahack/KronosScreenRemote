@@ -109,9 +109,18 @@ sealed class SampleKeymapControl : FrameworkElement
     static readonly int Key61Low = MidiNoteName.TryParse("C2")!.Value;
     static readonly int Key61High = MidiNoteName.TryParse("C7")!.Value;
 
+    // Reorder-drag outline colors (see OnRender's own comment) - origin is a darker,
+    // muted gold ("being moved FROM"), hover/drop-target is full-brightness yellow
+    // ("drop HERE"), so the two ends of the drag read as different actions rather than
+    // the same color at two different line weights.
+    static readonly Brush _dragOriginBrush = FreezeBrush(Color.FromRgb(0xB8, 0x86, 0x0B));
+    static readonly Brush _dragHoverBrush = FreezeBrush(Colors.Yellow);
+    static Brush FreezeBrush(Color c) { var b = new SolidColorBrush(c); b.Freeze(); return b; }
+
     int _hoverBoundary = -1;
     int _dragBoundary = -1;
     int _dragPendingKey = -1;
+    double _dragBoundaryAnchorX;
 
     // Zone-bar drag-to-reorder state - separate from the boundary-drag state above
     // (mutually exclusive: a boundary hit is checked first and, if hit, owns the drag).
@@ -191,9 +200,16 @@ sealed class SampleKeymapControl : FrameworkElement
     // this also drops the old leftX[topKey+1]-out-of-range special case entirely.
     double BoundaryX(double[] rightX, (KmpZone, int, int)[] ranges, int i) => rightX[ranges[i].Item3];
 
+    // Runs through i == ranges.Length - 1 too - the HIGHEST zone's own top edge, not
+    // just the edges BETWEEN two zones. A Kronos multisample's top zone has no
+    // requirement to reach key 127 (only the FIRST zone is pinned, to 0/C-1), so its
+    // own upper bound is a real, independently draggable edge exactly like every other
+    // boundary - it just has no next zone on the other side of it to cascade into
+    // (MoveZoneBoundary already handles that: idx == zones.Count-1 has no
+    // oldNextTopKey, so it only ever clamps/shrinks-or-grows that one zone).
     int HitTestBoundary(double[] rightX, (KmpZone, int, int)[] ranges, double x)
     {
-        for (int i = 0; i < ranges.Length - 1; i++)
+        for (int i = 0; i < ranges.Length; i++)
             if (Math.Abs(x - BoundaryX(rightX, ranges, i)) <= HitTestPixels) return i;
         return -1;
     }
@@ -279,7 +295,11 @@ sealed class SampleKeymapControl : FrameworkElement
                 _dragZoneHover = hover;
                 InvalidateVisual();
             }
-            Cursor = Cursors.Hand;
+            // SizeAll (4 small cardinal-direction arrows), matching every other
+            // relocate-style drag cursor in this app (SampleWaveformControl's Move
+            // mode) - explicit request, Hand read as generic-clickable rather than
+            // specifically "this can be relocated."
+            Cursor = Cursors.SizeAll;
             return;
         }
 
@@ -334,6 +354,7 @@ sealed class SampleKeymapControl : FrameworkElement
             {
                 _dragBoundary = hit;
                 _dragPendingKey = ranges[hit].Item3;
+                _dragBoundaryAnchorX = x;
                 CaptureMouse();
                 InvalidateVisual();
                 return;
@@ -360,12 +381,24 @@ sealed class SampleKeymapControl : FrameworkElement
             return;
         }
 
-        // By this point InZoneBarStrip(pos.Y) is known false (the branch above already
-        // returned for it), so pos.Y is either below the zone bar (the piano itself) or
-        // above it (the raised-label strip) - both resolve to the same key/zone click
-        // per this method's own comment above; a stricter y-check here previously
-        // swallowed raised-label-strip clicks entirely.
-        ZoneClicked?.Invoke(hitZone);
+        // By this point InZoneBarStrip(pos.Y) is known false, so pos.Y is either below
+        // the zone bar (the piano itself) or above it (the raised-label strip). ONLY the
+        // raised-label strip still selects on a plain click here - explicit correction:
+        // a PIANO click must never change which zone is selected/its Top Key, only
+        // audition it (PianoKeyClicked below); it used to also fire ZoneClicked
+        // unconditionally, which silently reassigned the tree/editor selection to
+        // whichever zone the clicked key happened to fall in - e.g. clicking a key one
+        // semitone past a zone's own Top Key, still resolving to the NEXT zone via
+        // ZoneAt, looked exactly like that next zone's range had just been "expanded" to
+        // reach it, even though nothing was actually edited. Ctrl+Click (handled above)
+        // remains the only piano gesture that can ever write a key into Orig./Top Key.
+        //
+        // Returns here rather than falling through - a raised-label click must ONLY
+        // select, never also audition. It used to fall through into the PianoKeyClicked
+        // block below unconditionally, so clicking the raised label (which sits well
+        // above the actual keys) triggered playback exactly as if a key had been
+        // pressed there.
+        if (pos.Y < RaisedLabelHeight) { ZoneClicked?.Invoke(hitZone); return; }
         // Captured so a hold-and-drag off the control still delivers the eventual
         // mouse-up here (rather than it going to whatever's under the cursor), and
         // so OnLostMouseCapture below is a reliable single place to detect "the key
@@ -381,9 +414,24 @@ sealed class SampleKeymapControl : FrameworkElement
         base.OnMouseLeftButtonUp(e);
         if (_dragBoundary >= 0 && _dragPendingKey >= 0)
         {
+            // Real bug: a plain CLICK that happened to land within HitTestPixels of a
+            // boundary (easy to do on an ordinary zone-select click near a narrow zone's
+            // edge - the exact scenario reported) started a boundary drag on mouse-DOWN
+            // with no further gate, so the ordinary sub-pixel jitter between a mouse-
+            // down and mouse-up that never felt like "dragging" at all could still
+            // resolve PixelToBoundaryKey to a DIFFERENT nearest key than where the drag
+            // started, and this unconditionally committed that as a real BoundaryMoved -
+            // silently nudging (or, worse, snapping onto an ADJACENT zone's own Top Key,
+            // which then cascades that neighbor's Top Key up by one to stay non-empty)
+            // a Top Key nobody actually meant to touch. Same HitTestPixels tolerance the
+            // hit-test itself uses: the mouse has to move at least that far from where
+            // the drag started to count as an intentional drag, not just a click that
+            // happened to land in the hit zone.
+            double upX = e.GetPosition(this).X;
+            bool actuallyDragged = Math.Abs(upX - _dragBoundaryAnchorX) > HitTestPixels;
             var ranges = ComputeRanges();
             var zone = ranges[_dragBoundary].Item1;
-            if (_dragPendingKey != zone.TopKey) BoundaryMoved?.Invoke(zone, _dragPendingKey);
+            if (actuallyDragged && _dragPendingKey != zone.TopKey) BoundaryMoved?.Invoke(zone, _dragPendingKey);
         }
         _dragBoundary = -1;
         _dragPendingKey = -1;
@@ -474,12 +522,15 @@ sealed class SampleKeymapControl : FrameworkElement
 
                 // Zone-bar reorder-drag feedback: the origin stays outlined for the
                 // whole drag (so it's clear what's being moved), and whichever zone the
-                // cursor is currently over gets a thicker yellow outline (matching the
-                // boundary-drag's own "active = yellow" convention) as the drop target.
+                // cursor is currently over gets a thicker outline as the drop target.
+                // Distinct shades of yellow (not the same color at two widths, which
+                // read as "both zones are just... yellow" with nothing telling you which
+                // one was the source and which was the destination) - a darker/muted
+                // gold for "being moved FROM", full-brightness yellow for "drop HERE".
                 if (_dragZoneOrigin != null && ReferenceEquals(zone, _dragZoneOrigin))
-                    dc.DrawRectangle(null, new Pen(Brushes.Yellow, 1), rect);
+                    dc.DrawRectangle(null, new Pen(_dragOriginBrush, 2), rect);
                 if (_dragZoneHover != null && ReferenceEquals(zone, _dragZoneHover) && !ReferenceEquals(zone, _dragZoneOrigin))
-                    dc.DrawRectangle(null, new Pen(Brushes.Yellow, 2), rect);
+                    dc.DrawRectangle(null, new Pen(_dragHoverBrush, 2), rect);
 
                 // Each zone's own compact label, CLIPPED to its own segment - previously
                 // unclipped, so a long filename with no break points (KMP/KSF names have
@@ -588,8 +639,11 @@ sealed class SampleKeymapControl : FrameworkElement
         //    regardless of whether it's currently drawn), so resizing still works
         //    exactly the same - only the constant-clutter rest state is gone. Spans
         //    just the piano band now (pianoTop..pianoTop+pianoHeight), not the raised
-        //    label/zone-bar/range-bar strips above and below it. ──
-        for (int i = 0; i < ranges.Length - 1; i++)
+        //    label/zone-bar/range-bar strips above and below it. Runs through the
+        //    highest zone's own top edge too (i == ranges.Length - 1), same as
+        //    HitTestBoundary above - that edge is a real, independently draggable
+        //    boundary now, not just the gaps BETWEEN zones. ──
+        for (int i = 0; i < ranges.Length; i++)
         {
             bool active = _dragBoundary == i || _hoverBoundary == i;
             if (!active) continue;

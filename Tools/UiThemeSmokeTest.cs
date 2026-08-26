@@ -310,6 +310,37 @@ static class UiThemeSmokeTest
         {
             results.Add(("  InsertSilenceDialog Frames<->Seconds link", false, ex.GetType().Name + ": " + ex.Message));
         }
+
+        // The "Apply to: Left/Right" channel picker (explicit request) - hidden entirely
+        // for a mono sample (nothing to choose between) and defaults both channels
+        // checked for a stereo one (matches the old always-mirror-in-Combine behavior).
+        // OnOk's at-least-one-checked validation isn't exercised here - it sets
+        // DialogResult, which throws unless the window was shown via ShowDialog (not
+        // just constructed), and ShowDialog blocks the calling thread until closed -
+        // not worth the added complexity/risk for logic this simple.
+        try
+        {
+            var monoDlg = new InsertSilenceDialog(44100, 100);
+            var monoPanel = (System.Windows.FrameworkElement)monoDlg.FindName("ChannelPickerPanel");
+            bool hiddenForMono = monoPanel.Visibility == Visibility.Collapsed;
+            monoDlg.Close();
+
+            var stereoDlg = new InsertSilenceDialog(44100, 100, hasStereoPair: true);
+            var stereoPanel = (System.Windows.FrameworkElement)stereoDlg.FindName("ChannelPickerPanel");
+            var leftBox = (System.Windows.Controls.CheckBox)stereoDlg.FindName("ApplyLeftBox");
+            var rightBox = (System.Windows.Controls.CheckBox)stereoDlg.FindName("ApplyRightBox");
+            bool shownForStereo = stereoPanel.Visibility == Visibility.Visible;
+            bool bothCheckedByDefault = leftBox.IsChecked == true && rightBox.IsChecked == true;
+            stereoDlg.Close();
+
+            bool ok = hiddenForMono && shownForStereo && bothCheckedByDefault;
+            results.Add(("  InsertSilenceDialog Left/Right channel picker", ok,
+                ok ? null : $"hiddenForMono={hiddenForMono} shownForStereo={shownForStereo} bothChecked={bothCheckedByDefault}"));
+        }
+        catch (Exception ex)
+        {
+            results.Add(("  InsertSilenceDialog Left/Right channel picker", false, ex.GetType().Name + ": " + ex.Message));
+        }
         Try("PropertiesDialog (Program/Combi)", () => PropertiesDialog.ForProgramOrCombi("Test Properties", "Test Name", 0, 0));
         Try("PropertiesDialog (Set List)",      () => PropertiesDialog.ForSetList("Test Properties", "Test Name", new SetListData(0, "Test", Array.Empty<SetListSlot>())));
         Try("UnresolvedDependenciesDialog",     () => UnresolvedDependenciesDialog.For(new[]

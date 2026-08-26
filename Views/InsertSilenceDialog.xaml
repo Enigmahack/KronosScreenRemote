@@ -17,6 +17,8 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="5"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="10"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="16"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -33,7 +35,19 @@
         <TextBlock Grid.Row="6" Text="Seconds"/>
         <TextBox   Grid.Row="8" x:Name="SecondsBox" TextChanged="OnSecondsChanged"/>
 
-        <StackPanel Grid.Row="10" Orientation="Horizontal" HorizontalAlignment="Right">
+        <!-- Only shown for a stereo pair (SampleEditorViewModel.ApplyInsertSilence
+             ignores these entirely for a mono sample) - explicit per-channel choice
+             instead of silently inferring it from Split L/R, so this can insert into
+             both channels even while Split is on, or just one even in Combine. Both
+             checked by default (the old always-mirror-in-Combine behavior); at least
+             one must stay checked - see OnOk. -->
+        <StackPanel Grid.Row="10" x:Name="ChannelPickerPanel" Orientation="Horizontal">
+            <TextBlock Text="Apply to:" VerticalAlignment="Center" Margin="0 0 10 0"/>
+            <CheckBox x:Name="ApplyLeftBox" Content="Left" IsChecked="True" Margin="0 0 14 0" VerticalAlignment="Center"/>
+            <CheckBox x:Name="ApplyRightBox" Content="Right" IsChecked="True" VerticalAlignment="Center"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="12" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button x:Name="BtnCancel" Content="Cancel" IsCancel="True" Click="OnCancel"
                     Margin="0 0 8 0" Style="{StaticResource DialogButtonStyle}"/>
             <Button x:Name="BtnOk"    Content="OK"     IsDefault="True" Click="OnOk" Style="{StaticResource DialogButtonStyle}"/>

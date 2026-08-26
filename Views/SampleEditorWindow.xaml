@@ -176,20 +176,72 @@
             <Setter Property="Height" Value="30"/>
         </Style>
 
+        <!-- Local Edits' Select/Move tool toggle - same flat-icon look/size as
+             SampleTransportBtn, but a ToggleButton so the active tool stays visibly
+             darkened (not just while the mouse is down), matching MainWindow.xaml's
+             SeqTransportToggleBtn precedent for "stays depressed while active". -->
+        <Style x:Key="EditToolToggleBtn" TargetType="ToggleButton">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="3"
+                                BorderThickness="1" BorderBrush="Transparent">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#FF333333"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#FF454545"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#FF454545"/>
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#FF6E6E6E"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Bigger variant for the Select/Move tool row specifically (per explicit
+             request) - same template/behavior as EditToolToggleBtn, just larger, since
+             this pair is the primary editor-mode switch and now sits alone in its own
+             row above Use Zero/Loop Lock/Split L/R rather than sharing a row with them. -->
+        <Style x:Key="EditToolToggleBtnLarge" TargetType="ToggleButton" BasedOn="{StaticResource EditToolToggleBtn}">
+            <Setter Property="Width" Value="36"/>
+            <Setter Property="Height" Value="32"/>
+        </Style>
+
         <HierarchicalDataTemplate DataType="{x:Type vm:SampleTreeNode}" ItemsSource="{Binding Children}">
             <TextBlock Text="{Binding Label}"/>
         </HierarchicalDataTemplate>
 
-        <!-- Right-click menu on the waveform - all handlers act on the current
-             selection (see SampleEditorViewModel's Cut/Copy/Paste/fade-selection/
-             gain/loop methods). Paste's enabled state is refreshed just before the
-             menu opens (ContextMenuOpening on the waveform control), not bound, to
-             match this window's existing "code-behind reads VM state, not full
-             MVVM binding" style. Defined here in Window.Resources rather than inline
-             on the control, so elements inside it do NOT get InitializeComponent-
-             generated fields (resource-dictionary items aren't part of the page's
-             NameScope) - OnWaveformContextMenuOpening looks Paste up by Header text
-             instead of an x:Name field. -->
+        <!-- Right-click menu on the waveform - always opens (right-click must still
+             reach Paste with no selection - it pastes at the cursor instead), but every
+             item that only makes sense against a highlighted range starts DISABLED
+             until one exists, refreshed in OnWaveformContextMenuOpening just before the
+             popup shows: Cut/Copy/Crop/Fade In/Fade Out/Silence/Loop Selected Area
+             (which only ever act on the selection - see SampleEditorViewModel's
+             fade-selection/loop methods and OnCrop/OnSilenceSelection) plus Normalize/
+             Amplify/Soften (also on the toolbar - those buttons still fall back to the
+             whole sample with no selection; the copies here are selection-only, for
+             discoverability from the same right-click a Cut/Copy/Crop would use).
+             Paste (by clipboard content) and Undo/Redo (by undo/redo history) are the
+             three items whose enabled state has nothing to do with selection at all.
+             Defined here in Window.Resources rather than inline on the control, so
+             elements inside it do NOT get InitializeComponent-generated fields
+             (resource-dictionary items aren't part of the page's NameScope) -
+             OnWaveformContextMenuOpening looks every item up by Header text instead of
+             an x:Name field. -->
         <ContextMenu x:Key="WaveformContextMenu">
             <MenuItem Header="Cu_t" Click="OnWaveformCut"/>
             <MenuItem Header="_Copy" Click="OnWaveformCopy"/>
@@ -198,8 +250,10 @@
             <MenuItem Header="_Undo" Click="OnUndo"/>
             <MenuItem Header="_Redo" Click="OnRedo"/>
             <Separator/>
+            <MenuItem Header="Cro_p to Selection" Click="OnCrop"/>
             <MenuItem Header="Fade _In" Click="OnWaveformFadeIn"/>
             <MenuItem Header="Fade _Out" Click="OnWaveformFadeOut"/>
+            <MenuItem Header="_Silence" Click="OnSilenceSelection"/>
             <MenuItem Header="_Normalize" Click="OnNormalize"/>
             <MenuItem Header="Amplify">
                 <MenuItem Header="+1 dB" Click="OnWaveformAmplify" Tag="1"/>
@@ -271,7 +325,7 @@
                 <MenuItem x:Name="MNU_InsertSilence" Header="_Insert Silence..." Click="OnInsertSilence"/>
                 <MenuItem x:Name="MNU_RemoveDcOffset" Header="Remove D_C Offset" Click="OnRemoveDcOffset"/>
                 <MenuItem x:Name="MNU_Gain" Header="_Gain..." Click="OnGainDialog"
-                          ToolTip="Apply an arbitrary dB change - the waveform's right-click menu only offers the +/-1, 3 and 6 dB presets"/>
+                          ToolTip="Apply an arbitrary dB change - the Amplify/Soften toolbar buttons only offer the +/-1, 3 and 6 dB presets"/>
                 <Separator/>
                 <MenuItem Header="_Zoom">
                     <MenuItem Header="Zoom _In" InputGestureText="Ctrl++" Click="OnZoomIn"/>
@@ -612,7 +666,7 @@
                              marker lines in the waveform below (red/green/blue). -->
                         <Border Style="{StaticResource KronosPanel}">
                             <StackPanel>
-                                <TextBlock Text="KRONOS" Style="{StaticResource GroupPanelLabel}" Foreground="#FF3E7FC0" VerticalAlignment="Center"/>
+                                <TextBlock Text="KRONOS" Style="{StaticResource GroupPanelLabel}" Foreground="#FF3E7FC0" VerticalAlignment="Center" HorizontalAlignment="Left"/>
                                 <WrapPanel Margin="2">
                                     <CheckBox x:Name="LoopReverseBox" Content="Reverse" VerticalAlignment="Bottom" Margin="2"
                                               Checked="OnLoopReverseChanged" Unchecked="OnLoopReverseChanged"
@@ -681,7 +735,46 @@
                         </Border>
                         <Border Style="{StaticResource LocalEditsPanel}">
                                         <StackPanel>
-                                            <TextBlock Text="LOCAL EDITS" Style="{StaticResource GroupPanelLabel}" Foreground="#FFCC7000" HorizontalAlignment="Right"/>
+                                            <TextBlock Text="LOCAL EDITS" Style="{StaticResource GroupPanelLabel}" Foreground="#FFCC7000" HorizontalAlignment="Left"/>
+                                            <WrapPanel Margin="2">
+                                                <!-- Select (default, cursor icon) vs Move (4-way arrow icon) - which
+                                                     gesture a plain click-drag on the waveform performs
+                                                     (SampleWaveformControl.MoveToolActive). Own row, above Use Zero/
+                                                     Loop Lock/Split L/R below - these are the primary mode switch for
+                                                     the whole waveform editor, not just another option alongside the
+                                                     snap/lock checkboxes. Two independent ToggleButtons kept
+                                                     mutually exclusive by hand (OnSelectToolClick/OnMoveToolClick),
+                                                     not RadioButtons - a RadioButton's default look doesn't match this
+                                                     app's depressed-icon toggle convention (EditToolToggleBtn, same as
+                                                     MainWindow's transport toggles). Wired to Click rather than
+                                                     Checked/Unchecked: a ToggleButton flips its own IsChecked on click
+                                                     BEFORE either event fires, so clicking the already-active button
+                                                     would otherwise uncheck it with nothing re-checking it, leaving
+                                                     BOTH tools off. The Click handlers force the correct pair of
+                                                     states unconditionally instead of reacting to what the button
+                                                     toggled itself to. -->
+                                                <!-- No IsChecked="True" here - that would fire the Checked event
+                                                     DURING InitializeComponent() (a ToggleButton raises Checked the
+                                                     instant the property is set, even mid-parse), when BtnMoveTool and
+                                                     every element RefreshDetailPanels touches further down the tree
+                                                     don't exist as fields yet - an immediate NullReferenceException on
+                                                     window construction. The constructor sets this AFTER
+                                                     InitializeComponent() returns instead (see SampleEditorWindow()). -->
+                                                <ToggleButton x:Name="BtnSelectTool" Style="{StaticResource EditToolToggleBtnLarge}"
+                                                    Click="OnSelectToolClick"
+                                                    ToolTip="Select tool - click/drag to select a range in the waveform (default)">
+                                                    <Viewbox Width="16" Height="19">
+                                                        <Path Fill="#FFB4B4B4" Data="M0,0 H10 V1.4 H6 V12.6 H10 V14 H0 V12.6 H4 V1.4 H0 Z"/>
+                                                    </Viewbox>
+                                                </ToggleButton>
+                                                <ToggleButton x:Name="BtnMoveTool" Style="{StaticResource EditToolToggleBtnLarge}"
+                                                    Click="OnMoveToolClick"
+                                                    ToolTip="Move tool - drag to relocate a selection or the loop region; with Split L/R on, drag the bare waveform to offset that channel's audio">
+                                                    <Viewbox Width="16" Height="16">
+                                                        <Path Fill="#FFB4B4B4" Data="F1 M7,4 H9 V12 H7 Z M4,7 H12 V9 H4 Z M8,0 L11,4 H5 Z M8,16 L5,12 H11 Z M0,8 L4,5 V11 Z M16,8 L12,11 V5 Z"/>
+                                                    </Viewbox>
+                                                </ToggleButton>
+                                            </WrapPanel>
                                             <WrapPanel Margin="2">
                                                 <CheckBox x:Name="UseZeroBox" Content="Use Zero" Margin="2"
                                                     Checked="OnUseZeroChanged" Unchecked="OnUseZeroChanged"
@@ -690,37 +783,45 @@
                                                     Checked="OnLoopLockChanged" Unchecked="OnLoopLockChanged"
                                                     ToolTip="Links the Loop Start and End points. When one of these points is edited, the other will be adjusted automatically to keep the loop length the same."/>
                                                 <CheckBox x:Name="SplitLRBox" Content="Split L/R" Visibility="Collapsed" Margin="2"
-                                                    Checked="OnSplitLRChanged" Unchecked="OnSplitLRChanged" 
-                                                    ToolTip="Combined (unchecked): edits apply to both L and R together. Split (checked): edits apply only to whichever channel is selected below."/>
-                                                <!-- Only shown once Split is actually on - picking a channel here
-                                                        selects that side's zone in the tree (same SelectTreeNode
-                                                        path the MS/Sample dropdowns already use), so switching to R
-                                                        no longer means hunting for its zone in the tree by hand. -->
-                                                <ComboBox x:Name="SplitChannelCombo" Width="60" Visibility="Collapsed" Margin="2" Padding="2"
-                                                    VerticalAlignment="Center"
-                                                    SelectionChanged="OnSplitChannelComboChanged">
-                                                    <ComboBoxItem Content="L"/>
-                                                    <ComboBoxItem Content="R"/>
-                                                </ComboBox>
+                                                    Checked="OnSplitLRChanged" Unchecked="OnSplitLRChanged"
+                                                    ToolTip="Combined (unchecked): edits apply to both L and R together, mirrored. Split (checked): both channels stay visible, but edits apply only to whichever pane you click/drag on - see the Move tool for offsetting one against the other."/>
                                             </WrapPanel>
+                                <!-- Crop to Selection/Fade In/Fade Out/Silence stay on the waveform's
+                                     right-click menu (WaveformContextMenu) - each only ever acts on the
+                                     current selection, and that menu now only opens when there IS one
+                                     (see OnWaveformContextMenuOpening), so every item in it is always
+                                     valid to click. Normalize/Amplify/Soften are buttons here instead,
+                                     same as Reverse: all four act on the current selection when there is
+                                     one and fall back to the whole sample otherwise (SelectionOrWholeBuffer) -
+                                     they used to be right-click-only and whole-sample-only, which made
+                                     highlighting a range and reaching for Normalize/Amplify silently do
+                                     nothing useful to just that range. -->
                                 <WrapPanel Margin="2">
-                                    <Button x:Name="BtnCrop" Content="Crop to Selection" Click="OnCrop" Height="26" Padding="10 0" Margin="2" VerticalAlignment="Bottom"/>
-                                    <Button x:Name="BtnNormalize" Content="Normalize" Click="OnNormalize" Height="26" Padding="10 0" Margin="2" VerticalAlignment="Bottom"/>
+                                    <Button x:Name="BtnNormalize" Content="Normalize" Click="OnNormalize" Height="26" Padding="10 0" Margin="2" VerticalAlignment="Bottom"
+                                            ToolTip="Normalizes the selection, or the whole sample when nothing is highlighted"/>
+                                    <Button x:Name="BtnAmplify" Content="Amplify" Click="OnAmplifyDropdownClick" Height="26" Padding="10 0" Margin="2" VerticalAlignment="Bottom"
+                                            ToolTip="Boosts the selection, or the whole sample when nothing is highlighted, by a fixed dB amount">
+                                        <Button.ContextMenu>
+                                            <ContextMenu Placement="Bottom">
+                                                <MenuItem Header="+1 dB" Click="OnWaveformAmplify" Tag="1"/>
+                                                <MenuItem Header="+3 dB" Click="OnWaveformAmplify" Tag="3"/>
+                                                <MenuItem Header="+6 dB" Click="OnWaveformAmplify" Tag="6"/>
+                                            </ContextMenu>
+                                        </Button.ContextMenu>
+                                    </Button>
+                                    <Button x:Name="BtnSoften" Content="Soften" Click="OnAmplifyDropdownClick" Height="26" Padding="10 0" Margin="2" VerticalAlignment="Bottom"
+                                            ToolTip="Cuts the selection, or the whole sample when nothing is highlighted, by a fixed dB amount">
+                                        <Button.ContextMenu>
+                                            <ContextMenu Placement="Bottom">
+                                                <MenuItem Header="-1 dB" Click="OnWaveformAmplify" Tag="-1"/>
+                                                <MenuItem Header="-3 dB" Click="OnWaveformAmplify" Tag="-3"/>
+                                                <MenuItem Header="-6 dB" Click="OnWaveformAmplify" Tag="-6"/>
+                                            </ContextMenu>
+                                        </Button.ContextMenu>
+                                    </Button>
                                     <Button x:Name="BtnTrimSilence" Content="Trim Silence" Click="OnTrimSilence" Height="26" Padding="10 0" Margin="2" VerticalAlignment="Bottom"/>
-                                    <!-- Fade In/Out apply to the current waveform SELECTION - the same
-                                         action the waveform's own right-click context menu already offers,
-                                         promoted to a visible button here since highlighting a range and
-                                         then hunting for a hidden right-click command isn't discoverable.
-                                         Reuses the existing OnWaveformFadeIn/OnWaveformFadeOut handlers
-                                         unchanged - one action, wired from two places. -->
-                                    <Button x:Name="BtnFadeIn" Content="Fade In" Click="OnWaveformFadeIn" Height="26" Padding="10 0" Margin="2" VerticalAlignment="Bottom"
-                                            ToolTip="Ramps gain up across the current waveform selection, from silent to full - highlight a range first"/>
-                                    <Button x:Name="BtnFadeOut" Content="Fade Out" Click="OnWaveformFadeOut" Height="26" Padding="10 0" Margin="2" VerticalAlignment="Bottom"
-                                            ToolTip="Ramps gain down across the current waveform selection, from full to silent - highlight a range first"/>
                                     <Button x:Name="BtnReverse" Content="Reverse" Click="OnReverse" Height="26" Padding="10 0" Margin="2" VerticalAlignment="Bottom"
                                             ToolTip="Reverses the selection, or the whole sample when nothing is highlighted"/>
-                                    <Button x:Name="BtnSilence" Content="Silence" Click="OnSilenceSelection" Height="26" Padding="10 0" Margin="2" VerticalAlignment="Bottom"
-                                            ToolTip="Zeroes the selection without removing it - unlike Cut, the length doesn't change, so markers and stereo alignment are untouched"/>
                                     <Button x:Name="BtnRemoveDcOffset" Content="Remove DC Offset" Click="OnRemoveDcOffset" Height="26" Padding="10 0" Margin="2" VerticalAlignment="Bottom"
                                             ToolTip="Recentres the waveform on zero. A DC offset costs headroom on Normalize and is the usual reason Use Zero can't find a zero-crossing."/>
                                     <Button x:Name="BtnInsertSilence" Content="Insert Silence..." Click="OnInsertSilence" Height="26" Padding="10 0" Margin="2" VerticalAlignment="Bottom"
@@ -734,7 +835,7 @@
                              column), and Volume/VU (right column, vertical) - grouped
                              in one Grid so the meter always sits flush against the
                              waveform(s) it reflects. -->
-                        <Grid Margin="0 4 0 4">
+                        <Grid Margin="0 4 0 4" PreviewMouseLeftButtonDown="OnWaveformAreaPreviewMouseDown" PreviewMouseMove="OnWaveformAreaPreviewMouseMove">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="92"/>
@@ -751,8 +852,11 @@
                                 <RowDefinition Height="170"/>
                                 <RowDefinition x:Name="WaveformDividerRow" Height="0"/>
                                 <RowDefinition x:Name="WaveformRightRowDef" Height="0"/>
-                                <RowDefinition Height="18"/>
-                                <RowDefinition x:Name="WaveformHScrollRow" Height="0"/>
+                                <!-- 30 (was 18): the ruler now draws a second row of frame-count
+                                     labels directly below the time labels (SampleWaveformRulerControl,
+                                     explicit request) and needs the extra vertical room. -->
+                                <RowDefinition Height="30"/>
+                                <RowDefinition x:Name="WaveformHScrollRow" Height="Auto"/>
                             </Grid.RowDefinitions>
 
                             <DockPanel Grid.Row="0" Grid.Column="0">
@@ -764,9 +868,11 @@
                                                               SelectionPreviewChanged="OnWaveformLeftSelectionPreview"
                                                               ViewChanged="OnWaveformLeftViewChanged"
                                                               LoopRegionChanged="OnWaveformLoopRegionChanged"
-                                                              MarkerDragged="OnWaveformMarkerDragged"
+                                                              MarkerDragged="OnWaveformLeftMarkerDragged"
                                                               MarkersChanging="OnWaveformLeftMarkersChanging"
-                                                              ScrubRequested="OnWaveformScrubRequested"
+                                                              ScrubRequested="OnWaveformLeftScrubRequested"
+                                                              WaveformMoved="OnWaveformLeftMoved"
+                                                              ChannelDoubleClicked="OnWaveformLeftChannelDoubleClicked"
                                                               ContextMenu="{StaticResource WaveformContextMenu}"
                                                               ContextMenuOpening="OnWaveformContextMenuOpening"/>
                             </DockPanel>
@@ -788,15 +894,20 @@
                                                               SelectionPreviewChanged="OnWaveformRightSelectionPreview"
                                                               ViewChanged="OnWaveformRightViewChanged"
                                                               LoopRegionChanged="OnWaveformLoopRegionChanged"
-                                                              MarkerDragged="OnWaveformMarkerDragged"
+                                                              MarkerDragged="OnWaveformRightMarkerDragged"
                                                               MarkersChanging="OnWaveformRightMarkersChanging"
-                                                              ScrubRequested="OnWaveformScrubRequested"
+                                                              ScrubRequested="OnWaveformRightScrubRequested"
+                                                              WaveformMoved="OnWaveformRightMoved"
+                                                              ChannelDoubleClicked="OnWaveformRightChannelDoubleClicked"
                                                               ContextMenu="{StaticResource WaveformContextMenu}"
                                                               ContextMenuOpening="OnWaveformContextMenuOpening"/>
                             </DockPanel>
 
                             <local:SampleWaveformRulerControl x:Name="WaveformRuler" Grid.Row="3" Grid.Column="0"/>
-                            <ScrollBar x:Name="WaveformHScroll" Grid.Row="4" Grid.Column="0"
+                            <!-- Margin (not row padding) is the gap between this and the ruler above -
+                                 see WaveformHScrollRow's own comment (SampleEditorWindow.xaml.cs) for
+                                 why that row is Height="Auto" rather than a fixed pixel value. -->
+                            <ScrollBar x:Name="WaveformHScroll" Grid.Row="4" Grid.Column="0" Margin="0 3 0 0"
                                        Orientation="Horizontal" Scroll="OnWaveformHScroll"/>
 
                             <!-- Stereo VU: two EQUAL-width bars, captioned "L"/"R" right
