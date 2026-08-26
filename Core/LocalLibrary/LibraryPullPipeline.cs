@@ -44,8 +44,8 @@ static class LibraryPullPipeline
         // fresh OR missing persisted digest as changed, so without this the bank was re-swept
         // in full on EVERY lazy Sync Library - 128 slots, and (since a bank that won't answer
         // a digest generally won't answer a bulk dump either) 128 individual DumpObjectAsync
-        // round-trips through the bulk-empty fallback below. Observed on Program I-G. The
-        // NoDigest sentinel is the same empty-string convention ChangesetBuilder's conflict
+        // round-trips through the bulk-empty fallback below. The NoDigest sentinel is the same
+        // empty-string convention ChangesetBuilder's conflict
         // pre-scan and LocalLibraryIndex.NoBaselineSentinel already use, and it can never
         // collide with a real digest (always 40 hex chars). A bank pinned this way is then
         // only re-fetched by an explicit Force Pull-All, which bypasses Changed() entirely.

@@ -1,0 +1,972 @@
+<local:ThemedWindow x:Class="KronosScreenRemote.SampleEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:KronosScreenRemote"
+        xmlns:vm="clr-namespace:KronosScreenRemote.ViewModels"
+        Title="Sample Editor - Kronos" Width="1200" Height="780" MinWidth="900" MinHeight="560"
+        ResizeMode="CanResize"
+        ShowInTaskbar="True"
+        PreviewKeyDown="OnWindowPreviewKeyDown"
+        AllowDrop="True" DragOver="OnWindowDragOver" Drop="OnWindowDrop">
+    <Window.Resources>
+        <!-- Bottom-justified, not centered - a row mixing TextBlocks, fixed-height
+             TextBoxes, CheckBoxes, and Buttons with different natural heights only
+             lines up cleanly along a shared baseline/bottom edge; centering each
+             independently made every row look staggered.
+             Bottom margin MUST match every sibling control's own bottom margin (6,
+             throughout this window - FieldBox, the transport/edit buttons, the plain
+             value TextBlocks like ZoneFilenameText) or "bottom-justified" is a lie: with
+             everything Bottom-aligned inside a shared WrapPanel row, a 0 bottom margin
+             here against a 6 bottom margin there sits the label 6px lower than its own
+             field - which is exactly the offset that shipped (every label had Margin
+             "0 0 6 0" while every field/button/value next to it had "... 6"). -->
+        <Style x:Key="FieldLabel" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}"/>
+            <Setter Property="VerticalAlignment" Value="Bottom"/>
+            <Setter Property="Margin" Value="0 0 6 6"/>
+        </Style>
+        <Style x:Key="FieldBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+            <Setter Property="Width" Value="90"/>
+            <Setter Property="VerticalAlignment" Value="Bottom"/>
+            <Setter Property="Margin" Value="0 0 12 6"/>
+            <!-- These fields commit on LostFocus straight into the ViewModel (SetMarker/
+                 ApplyZoneEdits) - a TextBox's own private undo stack (Ctrl+Z reverting
+                 typed characters, independent of the app's Undo) has no meaningful role
+                 here and risked being confused with (or interfering with) the app-level
+                 Undo/Redo this window's Ctrl+Z/Ctrl+Y are meant to drive. -->
+            <Setter Property="IsUndoEnabled" Value="False"/>
+        </Style>
+        <!-- Read-only informational field (Sample Rate) - same box metrics as FieldBox
+             so the row still aligns, but visually flat/non-interactive: no border, muted
+             text, not tab-stoppable. Sample rate only ever changes via an actual
+             resample operation, never by retyping the declared number (doing that alone
+             would desync the declared rate from the real PCM data - the file would
+             still play at the wrong speed on the Kronos even though the number "looks"
+             edited). -->
+        <Style x:Key="ReadOnlyFieldBox" TargetType="TextBox" BasedOn="{StaticResource FieldBox}">
+            <Setter Property="IsReadOnly" Value="True"/>
+            <Setter Property="IsTabStop" Value="False"/>
+            <!-- BorderBrush=Transparent (not BorderThickness=0) - the box keeps FieldBox's
+                 own default border thickness so its total height matches every sibling
+                 FieldBox exactly (bottom-aligned in the same WrapPanel row); dropping the
+                 thickness to 0 instead of just hiding the border made this box ~2px
+                 shorter than its neighbors, which reads as "slightly higher" text. -->
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}"/>
+            <Setter Property="Cursor" Value="Arrow"/>
+        </Style>
+        <!-- Note-name key field (Original Key/Top Key) - "E1", "G#5", not raw MIDI
+             numbers (Views/SampleEditorWindow.xaml.cs parses/formats via
+             Core/Sample/MidiNoteName.cs; the underlying data model stays numeric 0-127,
+             only entry/display changed). -->
+        <Style x:Key="KeyFieldBox" TargetType="TextBox" BasedOn="{StaticResource FieldBox}">
+            <Setter Property="Width" Value="55"/>
+        </Style>
+        <Style x:Key="SectionHeader" TargetType="TextBlock">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}"/>
+            <Setter Property="Margin" Value="0 0 0 8"/>
+        </Style>
+        <!-- Visually sections a group of related fields (Sample Start/Loop Start/Loop
+             End, Playback Format, ...) so they read as a distinct group rather than one
+             undifferentiated wall of boxes. -->
+        <Style x:Key="FieldSection" TargetType="Border">
+            <Setter Property="BorderBrush" Value="{StaticResource DividerBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Padding" Value="10 8"/>
+            <Setter Property="Margin" Value="0 0 0 12"/>
+        </Style>
+        <!-- Both TreeView panes get this so they read as distinct "windows" within the
+             split view, not a borderless wall. -->
+        <Style x:Key="PaneBorder" TargetType="Border">
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush1}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+
+        <!-- The two "what kind of edit is this" panels the editing frame is split into:
+             LOCAL (destructive DSP edits - Crop/Normalize/Fade/etc. - that only ever
+             touch this app's own in-memory buffer/undo stack) vs KRONOS (loop points,
+             loop enable, Reverse/+12dB Boost - fields that get written into the .KSF and
+             actually reflected on the hardware once pushed). A faded tint plus a
+             same-hue-but-darker corner label, not a heavier border/icon treatment - the
+             point is a quiet visual cue, not another wall to read past. Use Zero/Loop
+             Lock/Tempo-Pitch/the transport deliberately sit OUTSIDE both: they're
+             editor-only preferences or playback controls, neither local-destructive nor
+             Kronos data, and putting them in either colored panel would misstate what
+             they actually are. -->
+        <Style x:Key="LocalEditsPanel" TargetType="Border">
+            <Setter Property="Background" Value="#1EFF8C00"/>
+            <Setter Property="BorderBrush" Value="#4DFF8C00"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Padding" Value="8 6"/>
+            <Setter Property="Margin" Value="0 0 0 8"/>
+        </Style>
+        <Style x:Key="KronosPanel" TargetType="Border">
+            <Setter Property="Background" Value="#1E2E7FD6"/>
+            <Setter Property="BorderBrush" Value="#4D2E7FD6"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="3"/>
+            <Setter Property="Padding" Value="8 6"/>
+            <Setter Property="Margin" Value="0 0 0 8"/>
+        </Style>
+        <Style x:Key="GroupPanelLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="9"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+            <Setter Property="Margin" Value="0 0 2 4"/>
+        </Style>
+
+        <!-- Narrow numeric-ish field for Tempo/Pitch - the default FieldBox's 90px width
+             was sized for frame-count values in the thousands; a tempo multiplier
+             ("0.25"-"4") or a semitone count ("-24"-"24") never needs more than a few
+             characters. -->
+        <Style x:Key="NumericFieldBox" TargetType="TextBox" BasedOn="{StaticResource FieldBox}">
+            <Setter Property="Width" Value="48"/>
+        </Style>
+
+        <!-- Flat icon transport button, matching MainWindow.xaml's SeqTransportBtn
+             (footer sequencer transport) exactly - same size/hover/pressed look and the
+             same icon Path geometry, reused here rather than invented fresh, so the
+             transport bar reads as the SAME control the rest of the app already trained
+             the user on ("familiar," per the original ask), not a lookalike. Window-
+             local (not a shared/merged resource, same as SeqTransportBtn itself is
+             StatusBar-local in MainWindow) since no third window needs this style yet. -->
+        <Style x:Key="SampleTransportBtn" TargetType="Button">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="VerticalAlignment" Value="Bottom"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#FF333333"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#FF454545"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.35"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Large transport/undo-redo button - same template as SampleTransportBtn, just
+             bigger (34x30 vs 26x22) so the playback/history controls read as the primary
+             action group in the row, with the (unchanged-size) zoom buttons visually
+             secondary between them. -->
+        <Style x:Key="SampleTransportBtnLarge" TargetType="Button" BasedOn="{StaticResource SampleTransportBtn}">
+            <Setter Property="Width" Value="34"/>
+            <Setter Property="Height" Value="30"/>
+        </Style>
+
+        <!-- Local Edits' Select/Move tool toggle - same flat-icon look/size as
+             SampleTransportBtn, but a ToggleButton so the active tool stays visibly
+             darkened (not just while the mouse is down), matching MainWindow.xaml's
+             SeqTransportToggleBtn precedent for "stays depressed while active". -->
+        <Style x:Key="EditToolToggleBtn" TargetType="ToggleButton">
+            <Setter Property="Focusable" Value="False"/>
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Width" Value="26"/>
+            <Setter Property="Height" Value="22"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}" CornerRadius="3"
+                                BorderThickness="1" BorderBrush="Transparent">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#FF333333"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#FF454545"/>
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#FF454545"/>
+                                <Setter TargetName="bd" Property="BorderBrush" Value="#FF6E6E6E"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Bigger variant for the Select/Move tool row specifically (per explicit
+             request) - same template/behavior as EditToolToggleBtn, just larger, since
+             this pair is the primary editor-mode switch and now sits alone in its own
+             row above Use Zero/Loop Lock/Split L/R rather than sharing a row with them. -->
+        <Style x:Key="EditToolToggleBtnLarge" TargetType="ToggleButton" BasedOn="{StaticResource EditToolToggleBtn}">
+            <Setter Property="Width" Value="36"/>
+            <Setter Property="Height" Value="32"/>
+        </Style>
+
+        <HierarchicalDataTemplate DataType="{x:Type vm:SampleTreeNode}" ItemsSource="{Binding Children}">
+            <TextBlock Text="{Binding Label}"/>
+        </HierarchicalDataTemplate>
+
+        <!-- Right-click menu on the waveform - always opens (right-click must still
+             reach Paste with no selection - it pastes at the cursor instead), but every
+             item that only makes sense against a highlighted range starts DISABLED
+             until one exists, refreshed in OnWaveformContextMenuOpening just before the
+             popup shows: Cut/Copy/Crop/Fade In/Fade Out/Silence/Loop Selected Area
+             (which only ever act on the selection - see SampleEditorViewModel's
+             fade-selection/loop methods and OnCrop/OnSilenceSelection) plus Normalize/
+             Amplify/Soften (also on the toolbar - those buttons still fall back to the
+             whole sample with no selection; the copies here are selection-only, for
+             discoverability from the same right-click a Cut/Copy/Crop would use).
+             Paste (by clipboard content) and Undo/Redo (by undo/redo history) are the
+             three items whose enabled state has nothing to do with selection at all.
+             Defined here in Window.Resources rather than inline on the control, so
+             elements inside it do NOT get InitializeComponent-generated fields
+             (resource-dictionary items aren't part of the page's NameScope) -
+             OnWaveformContextMenuOpening looks every item up by Header text instead of
+             an x:Name field. -->
+        <ContextMenu x:Key="WaveformContextMenu">
+            <MenuItem Header="Cu_t" Click="OnWaveformCut"/>
+            <MenuItem Header="_Copy" Click="OnWaveformCopy"/>
+            <MenuItem Header="_Paste" Click="OnWaveformPaste"/>
+            <Separator/>
+            <MenuItem Header="_Undo" Click="OnUndo"/>
+            <MenuItem Header="_Redo" Click="OnRedo"/>
+            <Separator/>
+            <MenuItem Header="Cro_p to Selection" Click="OnCrop"/>
+            <MenuItem Header="Fade _In" Click="OnWaveformFadeIn"/>
+            <MenuItem Header="Fade _Out" Click="OnWaveformFadeOut"/>
+            <MenuItem Header="_Silence" Click="OnSilenceSelection"/>
+            <MenuItem Header="_Normalize" Click="OnNormalize"/>
+            <MenuItem Header="Amplify">
+                <MenuItem Header="+1 dB" Click="OnWaveformAmplify" Tag="1"/>
+                <MenuItem Header="+3 dB" Click="OnWaveformAmplify" Tag="3"/>
+                <MenuItem Header="+6 dB" Click="OnWaveformAmplify" Tag="6"/>
+            </MenuItem>
+            <MenuItem Header="Soften">
+                <MenuItem Header="-1 dB" Click="OnWaveformAmplify" Tag="-1"/>
+                <MenuItem Header="-3 dB" Click="OnWaveformAmplify" Tag="-3"/>
+                <MenuItem Header="-6 dB" Click="OnWaveformAmplify" Tag="-6"/>
+            </MenuItem>
+            <Separator/>
+            <MenuItem Header="_Loop Selected Area" Click="OnLoopSelectedArea"/>
+        </ContextMenu>
+    </Window.Resources>
+
+    <DockPanel>
+        <!-- ── Menu ──────────────────────────────────────────────────────── -->
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="_File">
+                <MenuItem x:Name="MNU_NewCollection" Header="_New Collection (.KSC)..." Click="OnNewCollection"/>
+                <MenuItem x:Name="MNU_NewMultisample" Header="New M_ultisample in Collection..." Click="OnNewMultisample"/>
+                <MenuItem x:Name="MNU_NewStereoPair" Header="New _Stereo Multisample Pair..." Click="OnNewStereoMultisamplePair"/>
+                <Separator/>
+                <MenuItem x:Name="MNU_OpenCollection" Header="_Open Collection (.KSC)..." InputGestureText="Ctrl+O" Click="OnOpenCollection"/>
+                <MenuItem x:Name="MNU_OpenKmp" Header="Open _Multisample (.KMP)..." Click="OnOpenKmpDirect"/>
+                <MenuItem x:Name="MNU_RecentFiles" Header="_Recent Files" SubmenuOpened="OnRecentFilesSubmenuOpened">
+                    <MenuItem Header="(none)" IsEnabled="False"/>
+                </MenuItem>
+                <MenuItem x:Name="MNU_UnloadCollection" Header="_Unload Collection (.KSC)" Click="OnUnloadActiveCollection"
+                          ToolTip="Removes the active collection from the tree - files on disk are untouched, re-open it any time."/>
+                <Separator/>
+                <MenuItem x:Name="MNU_SaveChanges" Header="Save _Changes" InputGestureText="Ctrl+S" Click="OnSaveChanges"
+                          ToolTip="Writes everything edited this session - sample audio/fields and zone key ranges alike, across every collection currently open."/>
+                <MenuItem x:Name="MNU_SaveMultisample" Header="Save _Multisample" Click="OnSaveMultisample"/>
+                <MenuItem x:Name="MNU_SaveSample" Header="Save _Sample" Click="OnSaveSample"/>
+                <Separator/>
+                <MenuItem x:Name="MNU_PullCollection" Header="Pull Collection from _Kronos (.KSC)..." Click="OnPullCollectionFromKronos"/>
+                <MenuItem x:Name="MNU_PullMultisample" Header="Pull Multisample from Kronos (._KMP)..." Click="OnPullMultisampleFromKronos"/>
+                <MenuItem x:Name="MNU_PushSample" Header="Push Sample to Kronos" Click="OnPushSampleToKronos"/>
+                <MenuItem x:Name="MNU_PushMultisample" Header="Push Multisample to Kronos" Click="OnPushMultisampleToKronos"/>
+                <Separator/>
+                <MenuItem x:Name="MNU_ImportAudio" Header="_Import Audio (WAV/MP3/MP4)..." Click="OnImportAudio"/>
+                <MenuItem x:Name="MNU_ImportStereoAudio" Header="Import Audio as Stereo _Pair..." Click="OnImportStereoAudio"/>
+                <MenuItem x:Name="MNU_NewZone" Header="New _Zone from Existing Sample (.KSF)..." Click="OnNewZoneFromExistingKsf"/>
+                <MenuItem x:Name="MNU_ExportSample" Header="Export Sample to WAV..." Click="OnExportSample"/>
+                <MenuItem x:Name="MNU_ExportMultisample" Header="Export Multisample to Folder..." Click="OnExportMultisample"/>
+                <MenuItem x:Name="MNU_ExportCollection" Header="Export Collection to Folder..." Click="OnExportCollection"/>
+                <Separator/>
+                <MenuItem x:Name="MNU_NormalizationReport" Header="_Normalization Report..." Click="OnNormalizationReport"/>
+            </MenuItem>
+            <MenuItem Header="_Edit">
+                <MenuItem x:Name="MNU_Undo" Header="_Undo" InputGestureText="Ctrl+Z" Click="OnUndo"/>
+                <MenuItem x:Name="MNU_Redo" Header="_Redo" InputGestureText="Ctrl+Y" Click="OnRedo"/>
+                <Separator/>
+                <!-- Cut/Copy/Paste/Select All were previously reachable ONLY by
+                     right-clicking the waveform (and Ctrl+A worked but appeared nowhere
+                     in the UI at all). Same handlers, wired from a second place - the
+                     menu is where a user looks to find out that an editor HAS a
+                     clipboard, and it's where the shortcut is advertised. -->
+                <MenuItem x:Name="MNU_Cut" Header="Cu_t" InputGestureText="Ctrl+X" Click="OnWaveformCut"/>
+                <MenuItem x:Name="MNU_Copy" Header="_Copy" InputGestureText="Ctrl+C" Click="OnWaveformCopy"/>
+                <MenuItem x:Name="MNU_Paste" Header="_Paste" InputGestureText="Ctrl+V" Click="OnWaveformPaste"/>
+                <MenuItem x:Name="MNU_SelectAll" Header="Select _All" InputGestureText="Ctrl+A" Click="OnSelectAll"/>
+                <Separator/>
+                <MenuItem x:Name="MNU_Reverse" Header="Re_verse" Click="OnReverse"
+                          ToolTip="Reverses the selection, or the whole sample when nothing is highlighted"/>
+                <MenuItem x:Name="MNU_SilenceSelection" Header="_Silence Selection" Click="OnSilenceSelection"/>
+                <MenuItem x:Name="MNU_InsertSilence" Header="_Insert Silence..." Click="OnInsertSilence"/>
+                <MenuItem x:Name="MNU_RemoveDcOffset" Header="Remove D_C Offset" Click="OnRemoveDcOffset"/>
+                <MenuItem x:Name="MNU_Gain" Header="_Gain..." Click="OnGainDialog"
+                          ToolTip="Apply an arbitrary dB change - the Amplify/Soften toolbar buttons only offer the +/-1, 3 and 6 dB presets"/>
+                <Separator/>
+                <MenuItem Header="_Zoom">
+                    <MenuItem Header="Zoom _In" InputGestureText="Ctrl++" Click="OnZoomIn"/>
+                    <MenuItem Header="Zoom _Out" InputGestureText="Ctrl+-" Click="OnZoomOut"/>
+                    <MenuItem Header="Zoom to _Selection" Click="OnZoomToSelection"/>
+                    <MenuItem Header="_Fit Whole Sample" InputGestureText="Ctrl+0" Click="OnZoomFit"/>
+                </MenuItem>
+                <Separator/>
+                <MenuItem x:Name="MNU_DeleteZone" Header="_Delete Zone" InputGestureText="Del" Click="OnDeleteZone"/>
+                <Separator/>
+                <!-- Renames the in-memory Name field only (Suffix/-L-R untouched) -
+                     the point is giving a multisample/sample a real name before
+                     importing it into the Kronos, not touching the .KMP/.KSF filenames
+                     the tree shows (those follow Kronos's own MSxxxyyy.KSF convention,
+                     unrelated to this display name). Enabled state tracks whichever
+                     multisample/sample is currently in context - see RefreshDetailPanels. -->
+                <MenuItem x:Name="MNU_RenameMultisample" Header="Rename _Multisample..." Click="OnRenameMultisample"
+                          ToolTip="Renames the multisample (mirrored to its stereo partner, if any) - not written to disk until Save Changes/Save Multisample."/>
+                <MenuItem x:Name="MNU_RenameSample" Header="Rename _Sample..." Click="OnRenameSample"
+                          ToolTip="Renames the currently loaded sample (mirrored to its stereo partner, if any) - not written to disk until Save Changes/Save Sample."/>
+                <Separator/>
+                <MenuItem x:Name="MNU_RevertKsc" Header="Revert _KSC Changes" Click="OnRevertKscChanges"
+                          ToolTip="Re-reads the active collection from disk, discarding any unsaved edits in it. Other open collections are untouched."/>
+                <MenuItem x:Name="MNU_RevertAll" Header="Revert _ALL Changes" Click="OnRevertAllChanges"
+                          ToolTip="Closes every open collection/multisample and starts fresh. Nothing already saved to disk is affected."/>
+            </MenuItem>
+        </Menu>
+
+        <!-- ── Toolbar: the window's only "what do I do first" affordance on an empty
+             load - mirrors the Librarian's own "From Computer"/"From Kronos" pattern. ── -->
+        <Border DockPanel.Dock="Top" Background="{StaticResource PanelBackgroundBrush}"
+                BorderBrush="{StaticResource DividerBrush}" BorderThickness="0 0 0 1" Padding="8 6">
+            <StackPanel Orientation="Horizontal">
+                <Button x:Name="BtnNewCollection" Content="New Collection..." Padding="10 3" Margin="0 0 16 0" Click="OnNewCollection"
+                        ToolTip="Creates a brand-new, empty .KSC collection - same as File &gt; New Collection (.KSC)..."/>
+                <TextBlock Text="Open Collection:" VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}" Margin="0 0 8 0"/>
+                <Button Content="From File..." Padding="10 3" Margin="0 0 6 0" Click="OnOpenCollection"/>
+                <Button Content="From Kronos..." Padding="10 3" Click="OnPullCollectionFromKronos"/>
+            </StackPanel>
+        </Border>
+
+        <!-- ── Status bar + Save Changes ────────────────────────────────── -->
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource PanelBackgroundBrush}"
+                BorderBrush="#FF444444" BorderThickness="0 1 0 0" Padding="6 3">
+            <DockPanel>
+                <!-- Fields/markers apply live (see the Sample panel's LostFocus/Checked
+                     handlers and waveform marker drags) - this is the one place that
+                     commits whatever's actually dirty to disk, replacing the old
+                     per-field Apply buttons. -->
+                <Button x:Name="BtnSaveChanges" DockPanel.Dock="Right" Content="Save Changes"
+                        Click="OnSaveChanges" Padding="14 4" Margin="2"/>
+                <TextBlock x:Name="StatusBar" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center"/>
+            </DockPanel>
+        </Border>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="340"/>
+                <ColumnDefinition Width="4"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- ── Left: Collection / Multisample / Zone tree ───────────────── -->
+            <Border Grid.Column="0" Style="{StaticResource PaneBorder}" Margin="4 4 0 4">
+                <TreeView x:Name="SampleTree"
+                          Background="{StaticResource PanelBackgroundBrush}"
+                          BorderThickness="0"
+                          SelectedItemChanged="OnTreeSelectionChanged"
+                          PreviewMouseRightButtonDown="OnTreeRightButtonDown"
+                          ContextMenuOpening="OnTreeContextMenuOpening">
+                    <!-- Root level ONLY - a plain DataTemplate (no ItemsSource), overriding
+                         the HierarchicalDataTemplate in Window.Resources that would otherwise
+                         apply to every SampleTreeNode by DataType, at every depth. Now that
+                         multisample/zone selection lives entirely in the right pane (the MS/
+                         Sample dropdowns, Index field, and keymap), the tree's only job left
+                         is picking which LOADED LIBRARY (.KSC) is active - "we don't need to
+                         show everything, just the parent." SelectTreeNode (code-behind) still
+                         drives the underlying data/detail panels directly for a zone/
+                         multisample; it just no longer has anything to expand/reveal here.  -->
+                    <TreeView.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding Label}"/>
+                        </DataTemplate>
+                    </TreeView.ItemTemplate>
+                    <!-- Binds every level's expand/collapse state to SampleTreeNode.
+                         IsExpanded (TwoWay) - without this, a node's expansion is pure
+                         TreeViewItem UI state with nothing backing it, so rebuilding the
+                         tree with fresh node objects (any edit that goes through
+                         RebuildTreeFromCollection) always came back fully collapsed.
+                         Now RebuildTreeFromCollection can carry the old expansion state
+                         forward onto the new nodes and this binding actually shows it. -->
+                    <TreeView.ItemContainerStyle>
+                        <!-- BasedOn the app-wide implicit TreeViewItem style (Themes/Dark.xaml) -
+                             an explicit ItemContainerStyle with no BasedOn REPLACES that implicit
+                             style rather than extending it, which is what silently dropped its
+                             Foreground/Background/Padding setters and fell back to WPF's stock
+                             TreeViewItem template (black text) the first time this was added. -->
+                        <Style TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
+                            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+                        </Style>
+                    </TreeView.ItemContainerStyle>
+                </TreeView>
+            </Border>
+
+            <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch" Background="#FF444444"/>
+
+            <!-- ── Right: zone + sample detail, keymap, waveform ────────────── -->
+            <Border Grid.Column="2" Style="{StaticResource PaneBorder}" Margin="0 4 4 4">
+            <ScrollViewer x:Name="DetailScrollViewer" VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="16">
+                    <!-- Nothing loaded at all - the ONLY thing this pane shows in that
+                         state, per its own explicit request; every section below (header,
+                         MS picker, keymap, zone detail, waveform) lives in EditorContent,
+                         collapsed as a whole rather than piece by piece. -->
+                    <TextBlock x:Name="EmptyStateText" Text="Import a .KSC file..."
+                               Foreground="{StaticResource MutedTextBrush}"/>
+
+                    <StackPanel x:Name="EditorContent">
+                    <TextBlock Text="Multisample Editor" Style="{StaticResource SectionHeader}" FontSize="14" Foreground="{StaticResource TextBrush}"/>
+
+                    <!-- MS section - which multisample (.KMP) is being edited, plus its own
+                         keyboard/keymap display in the SAME frame (previously a separate
+                         bordered section below this one) - the piano is how you see/edit a
+                         multisample's own zone layout, so it belongs with the dropdown that
+                         picks which multisample that is, not visually detached from it.
+                         Functionally the dropdown is the same as selecting the .KMP in the
+                         tree; kept here too since the tree may be scrolled out of view or
+                         nested deep in a collection. -->
+                    <Border x:Name="MsSection" Style="{StaticResource FieldSection}" >
+                        <StackPanel>
+                            <TextBlock Text="MULTISAMPLE (MS)" Style="{StaticResource SectionHeader}"/>
+                            <WrapPanel>
+                                <ComboBox x:Name="MultisampleCombo" Width="320" Margin="0 0 12 6" VerticalAlignment="Bottom"
+                                          DisplayMemberPath="Label" SelectionChanged="OnMultisampleComboChanged"/>
+                                <Button x:Name="BtnCreateMultisample" Content="Create" Click="OnCreateMultisample" Height="24" Padding="10 0" Margin="0 0 6 6" VerticalAlignment="Bottom"
+                                        ToolTip="Creates a new multisample in the next free slot - asks mono or stereo"/>
+                                <Button x:Name="BtnRenameMultisample" Content="Rename" Click="OnRenameMultisample" Height="24" Padding="10 0" Margin="0 0 6 6" VerticalAlignment="Bottom"
+                                        ToolTip="Renames the selected multisample (mirrored to its stereo partner, if any) - not written to disk until Save Changes/Save Multisample."/>
+                                <Button x:Name="BtnDeleteMultisample" Content="Delete" Click="OnDeleteMultisample" Height="24" Padding="10 0" Margin="0 0 0 6" VerticalAlignment="Bottom"
+                                        ToolTip="Permanently deletes the selected multisample and its samples from disk"/>
+                            </WrapPanel>
+                            <!-- Piano zone keyboard - matches the Kronos's own Sample/
+                                 Multisample Edit page (the keyboard graphic is a permanent
+                                 fixture there). No section label - a piano keyboard is
+                                 self-explanatory. -->
+                            <local:SampleKeymapControl x:Name="Keymap" Height="104" Margin="0 8 0 0"
+                                                        ZoneClicked="OnKeymapZoneClicked" BoundaryMoved="OnKeymapBoundaryMoved"
+                                                        ZoneReordered="OnKeymapZoneReordered" PianoKeyClicked="OnKeymapPianoKeyClicked"
+                                                        PianoKeyReleased="OnKeymapPianoKeyReleased"
+                                                        PianoKeyCtrlClicked="OnKeymapPianoKeyCtrlClicked"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- WrapPanel, not a horizontal StackPanel: this row carries a
+                         variable-length filename plus several key fields and buttons,
+                         and at the window's own MinWidth (900, less the 340px tree) a
+                         StackPanel simply clipped the buttons off the right-hand edge
+                         with no way to reach them. Every other multi-control row in this
+                         window already wraps; this one was the exception. The
+                         label+field pairs are grouped so a wrap never separates a label
+                         from its own box - same treatment the LOOP fields use. -->
+                    <Border x:Name="ZonePanel" Style="{StaticResource FieldSection}">
+                        <StackPanel>
+                            <WrapPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Index:" Style="{StaticResource FieldLabel}"/>
+                                    <TextBox x:Name="ZoneIndexBox" Style="{StaticResource KeyFieldBox}" Width="34"
+                                             TextAlignment="Center" LostFocus="OnZoneIndexChanged" PreviewKeyDown="OnZoneIndexPreviewKeyDown"
+                                             PreviewMouseWheel="OnZoneIndexWheel"
+                                             ToolTip="Position of this zone within the multisample (1-127) - values below 1 snap to 1, above the last index snap to the last. Mouse-wheel or Up/Down arrow to step."/>
+                                    <TextBlock x:Name="ZoneIndexTotalText" VerticalAlignment="Bottom" Margin="2 0 20 6"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Sample:" Style="{StaticResource FieldLabel}"/>
+                                    <ComboBox x:Name="ZoneSampleCombo" Width="220" Margin="0 0 20 6" VerticalAlignment="Bottom"
+                                              DisplayMemberPath="DisplayName" SelectionChanged="OnZoneSampleComboChanged"
+                                              ToolTip="Assigns a sample to this zone - lists everything already imported into the collection's repository (Un-referenced Samples), first entry is whatever's currently assigned"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Orig.Key:" Style="{StaticResource FieldLabel}"/>
+                                    <TextBox x:Name="ZoneOrigKeyBox" Style="{StaticResource KeyFieldBox}" ToolTip="Note name, e.g. C4"
+                                             TextChanged="OnZoneOrigKeyBoxChanged" LostFocus="OnZoneOrigKeyBoxChanged"
+                                             PreviewKeyDown="OnFieldPreviewKeyDown" PreviewMouseWheel="OnZoneOrigKeyWheel"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Top Key:" Style="{StaticResource FieldLabel}"/>
+                                    <TextBox x:Name="ZoneTopKeyBox" Style="{StaticResource KeyFieldBox}" ToolTip="Note name, e.g. G5"
+                                             TextChanged="OnZoneTopKeyBoxChanged" LostFocus="OnZoneTopKeyBoxChanged"
+                                             PreviewKeyDown="OnFieldPreviewKeyDown" PreviewMouseWheel="OnZoneTopKeyWheel"/>
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="Range:" Style="{StaticResource FieldLabel}"/>
+                                    <TextBlock x:Name="ZoneRangeText" Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Bottom" Margin="0 0 20 6"/>
+                                </StackPanel>
+                            </WrapPanel>
+                            <!-- Create/Delete/Import on their own line below Index/Sample/key
+                                 fields, rather than wrapping onto the end of that row - reads
+                                 as a distinct action row, not just more fields. -->
+                            <WrapPanel>
+                                <Button x:Name="BtnAddZone" Content="Create" Click="OnAddPlaceholderZone" Height="24" Padding="10 0" Margin="0 6 6 0" VerticalAlignment="Bottom"
+                                        ToolTip="Adds an empty zone at the end of the keymap - right-click it afterward and choose Import Sample... to attach audio"/>
+                                <Button x:Name="BtnDeleteZone" Content="Delete" Click="OnDeleteZone" Height="24" Padding="10 0" Margin="0 6 6 0" VerticalAlignment="Bottom"/>
+                                <Button x:Name="BtnImportSampleIntoZone" Content="Import Sample..." Click="OnImportSampleIntoZone" Height="24" Padding="10 0" Margin="0 6 0 0" VerticalAlignment="Bottom"
+                                        ToolTip="Decodes one or more audio files, adds them all to the collection's repository (Un-referenced Samples), and assigns the first to the selected zone - pick a different one anytime via the Sample dropdown above"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Split/Combine: only meaningful (and only shown) once a stereo
+                         partner is actually resolved - see SampleEditorViewModel.
+                         ShouldMirrorToPartner's own comment for what Combine mode does. -->
+
+
+                    <!-- Editing frame - everything about the currently loaded SAMPLE
+                         (waveform, transport, Playback Format, DSP editing, Repair,
+                         Loop), wrapped in one bordered frame like every other section in
+                         this pane. The Samples/Looping TABS this used to be split across
+                         are gone - each was a flat row instead, in the order requested:
+                         transport/zoom/undo-redo/Tempo-Pitch toolbar, then the DSP EDIT
+                         row, then the REPAIR row, then Name/Frames/Sample Rate, then Loop
+                         (Enabled toggle + its detail fields, shown together once enabled -
+                         see LoopFieldsRow below), then the waveform itself last, static
+                         regardless of anything above it changing. -->
+                    <Border x:Name="EditingFrame" Style="{StaticResource FieldSection}">
+                                <StackPanel x:Name="WaveformPanel">
+                                    <WrapPanel Margin="0 0 0 4">
+                                        <Button x:Name="BtnLocateStart" Style="{StaticResource SampleTransportBtnLarge}" Click="OnTransportLocateStart"
+                                    Margin="0 0 1 6" ToolTip="Rewind to start (Home)">
+                                            <Viewbox Width="14" Height="14">
+                                                <Path Fill="#FFB4B4B4" Data="M0,0 H1.8 V10 H0 Z M10,0 L3,5 L10,10 Z"/>
+                                            </Viewbox>
+                                        </Button>
+                                        <Button x:Name="BtnRewind" Style="{StaticResource SampleTransportBtnLarge}" Click="OnTransportRewind"
+                                    Margin="0 0 1 6" ToolTip="Rewind">
+                                            <Viewbox Width="14" Height="14">
+                                                <Path Fill="#FFB4B4B4" Data="M5,0 L0,5 L5,10 Z M10,0 L5,5 L10,10 Z"/>
+                                            </Viewbox>
+                                        </Button>
+                                        <Button x:Name="BtnPlayStop" Style="{StaticResource SampleTransportBtnLarge}" Click="OnPlayStop"
+                                    Margin="0 0 1 6" ToolTip="Play / Stop (Space)">
+                                            <Viewbox Width="14" Height="14">
+                                                <Grid Width="10" Height="10">
+                                                    <Path x:Name="PlayIcon" Fill="{StaticResource SuccessBrush}" Data="M0.5,0 L10,5 L0.5,10 Z"/>
+                                                    <Path x:Name="StopIcon" Fill="{StaticResource DangerTextBrush}" Data="M1,1 H9 V9 H1 Z" Visibility="Collapsed"/>
+                                                </Grid>
+                                            </Viewbox>
+                                        </Button>
+                                        <Button x:Name="BtnPause" Style="{StaticResource SampleTransportBtnLarge}" Click="OnTransportPause"
+                                    Margin="0 0 1 6" ToolTip="Pause / Resume">
+                                            <Viewbox Width="14" Height="14">
+                                                <Path x:Name="PauseIcon" Fill="#FFB4B4B4" Data="M0.5,0 H3 V10 H0.5 Z M6,0 H8.5 V10 H6 Z"/>
+                                            </Viewbox>
+                                        </Button>
+                                        <Button x:Name="BtnFastForward" Style="{StaticResource SampleTransportBtnLarge}" Click="OnTransportFastForward"
+                                    Margin="0 0 1 6" ToolTip="Fast-forward">
+                                            <Viewbox Width="14" Height="14">
+                                                <Path Fill="#FFB4B4B4" Data="M0,0 L5,5 L0,10 Z M5,0 L10,5 L5,10 Z"/>
+                                            </Viewbox>
+                                        </Button>
+                                        <Button x:Name="BtnLocateEnd" Style="{StaticResource SampleTransportBtnLarge}" Click="OnTransportLocateEnd"
+                                    Margin="0 0 8 6" ToolTip="Go to end (End)">
+                                            <Viewbox Width="14" Height="14">
+                                                <Path Fill="#FFB4B4B4" Data="M0,0 L7,5 L0,10 Z M8.2,0 H10 V10 H8.2 Z"/>
+                                            </Viewbox>
+                                        </Button>
+
+                                        <Border Width="1" Margin="0 2 8 8" Background="{StaticResource DividerBrush}"/>
+                                        <Button x:Name="BtnZoomIn" Style="{StaticResource SampleTransportBtn}" Click="OnZoomIn"
+                                    Margin="0 0 1 6" ToolTip="Zoom in around the middle of the current view (Ctrl+Plus, or scroll the wheel over the waveform)">
+                                            <Canvas Width="14" Height="14">
+                                                <Ellipse Canvas.Left="1.5" Canvas.Top="1.5" Width="8" Height="8" Stroke="#FFB4B4B4" StrokeThickness="1.3"/>
+                                                <Line X1="8.4" Y1="8.4" X2="13" Y2="13" Stroke="#FFB4B4B4" StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                                <Line X1="3.5" Y1="5.5" X2="7.5" Y2="5.5" Stroke="#FFB4B4B4" StrokeThickness="1.2"/>
+                                                <Line X1="5.5" Y1="3.5" X2="5.5" Y2="7.5" Stroke="#FFB4B4B4" StrokeThickness="1.2"/>
+                                            </Canvas>
+                                        </Button>
+                                        <Button x:Name="BtnZoomOut" Style="{StaticResource SampleTransportBtn}" Click="OnZoomOut"
+                                    Margin="0 0 4 6" ToolTip="Zoom out around the middle of the current view (Ctrl+Minus)">
+                                            <Canvas Width="14" Height="14">
+                                                <Ellipse Canvas.Left="1.5" Canvas.Top="1.5" Width="8" Height="8" Stroke="#FFB4B4B4" StrokeThickness="1.3"/>
+                                                <Line X1="8.4" Y1="8.4" X2="13" Y2="13" Stroke="#FFB4B4B4" StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                                <Line X1="3.5" Y1="5.5" X2="7.5" Y2="5.5" Stroke="#FFB4B4B4" StrokeThickness="1.2"/>
+                                            </Canvas>
+                                        </Button>
+                                        <Button x:Name="BtnZoomSelection" Content="Zoom to Selection" Click="OnZoomToSelection" Height="26" Padding="8 0" Margin="0 0 4 6" VerticalAlignment="Bottom"
+                                    ToolTip="Fit the highlighted range to the full width - highlight a range first"/>
+                                        <Button x:Name="BtnZoomFit" Content="Fit" Click="OnZoomFit" Height="26" Padding="10 0" Margin="0 0 8 6" VerticalAlignment="Bottom"
+                                    ToolTip="Show the whole sample (Ctrl+0, or double-click the waveform)"/>
+
+                                        <Border Width="1" Margin="0 2 8 8" Background="{StaticResource DividerBrush}"/>
+                                        <Button x:Name="BtnUndo" Style="{StaticResource SampleTransportBtnLarge}" Click="OnUndo" Margin="0 0 1 6" ToolTip="Undo">
+                                            <Viewbox Width="18" Height="18">
+                                                <Canvas Width="14" Height="14">
+                                                    <Path Stroke="#FFB4B4B4" StrokeThickness="1.3" Data="M7,2.5 A4.5,4.5 0 1 0 11.5,7"/>
+                                                    <Path Fill="#FFB4B4B4" Data="M9.8,7.3 L13,6.3 L11.6,9.3 Z"/>
+                                                </Canvas>
+                                            </Viewbox>
+                                        </Button>
+                                        <Button x:Name="BtnRedo" Style="{StaticResource SampleTransportBtnLarge}" Click="OnRedo" Margin="0 0 4 6" ToolTip="Redo">
+                                            <Viewbox Width="18" Height="18">
+                                                <Canvas Width="14" Height="14">
+                                                    <Path Stroke="#FFB4B4B4" StrokeThickness="1.3" Data="M7,2.5 A4.5,4.5 0 1 1 2.5,7"/>
+                                                    <Path Fill="#FFB4B4B4" Data="M4.2,7.3 L1,6.3 L2.4,9.3 Z"/>
+                                                </Canvas>
+                                            </Viewbox>
+                                        </Button>
+                                    </WrapPanel>
+                                    <WrapPanel>
+                            <StackPanel Orientation="Horizontal" Margin="2">
+                                <TextBlock Text="Tempo Multiplier:" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox x:Name="TempoBox" Style="{StaticResource NumericFieldBox}" Text="1.0" VerticalAlignment="Bottom"
+                                         ToolTip="Playback-speed multiplier, 0.25 (quarter speed) to 4 (quadruple). Out-of-range values are clamped rather than allocating a buffer thousands of times the original."/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="2">
+                                <TextBlock Text="Pitch (semitones):" Style="{StaticResource FieldLabel}" Padding="2"/>
+                                    <TextBox x:Name="PitchBox" Style="{StaticResource NumericFieldBox}" Text="0" VerticalAlignment="Bottom"
+                                         ToolTip="Transpose by up to 24 semitones (two octaves) either way. Out-of-range values are clamped."/>
+                            </StackPanel>
+                            <Button x:Name="BtnTempoPitch" Content="Apply Tempo/Pitch" Click="OnTempoPitch" Height="26" Padding="10 0"  VerticalAlignment="Top"/>
+                        </WrapPanel>
+
+                        <WrapPanel Margin="2">
+                            <TextBlock Text="Name:" Style="{StaticResource FieldLabel}"/>
+                            <TextBlock x:Name="SampleNameText" VerticalAlignment="Bottom" Margin="0 0 20 6"/>
+                            <TextBlock Text="Frames:" Style="{StaticResource FieldLabel}"/>
+                            <TextBlock x:Name="SampleFramesText" VerticalAlignment="Bottom" Margin="0 0 20 6"/>
+                            <TextBlock Text="Sample Rate:" Style="{StaticResource FieldLabel}"/>
+                            <TextBox x:Name="SampleRateBox" Style="{StaticResource ReadOnlyFieldBox}" VerticalAlignment="Bottom" Margin="2" ToolTip="Informational - resample via Tempo/Pitch above to actually change this"/>
+                            <TextBlock x:Name="SampleWarningText" Foreground="{StaticResource DangerTextBrush}"
+                                       VerticalAlignment="Bottom" Margin="0 0 0 6"/>
+                        </WrapPanel>
+
+                        <!-- KRONOS panel - every field that gets written into the .KSF and
+                             actually reflected on the hardware once pushed: the loop
+                             toggle and its points, Loop Tune, and the Reverse/+12dB Boost
+                             sample-level flags (SMD1 bits 0x40/0x01, hardware-confirmed).
+                             Sample Start/Loop Start/Loop End's border colors match their
+                             marker lines in the waveform below (red/green/blue). -->
+                        <Border Style="{StaticResource KronosPanel}">
+                            <StackPanel>
+                                <TextBlock Text="KRONOS" Style="{StaticResource GroupPanelLabel}" Foreground="#FF3E7FC0" VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                                <WrapPanel Margin="2">
+                                    <CheckBox x:Name="LoopReverseBox" Content="Reverse" VerticalAlignment="Bottom" Margin="2"
+                                              Checked="OnLoopReverseChanged" Unchecked="OnLoopReverseChanged"
+                                              ToolTip="The real Kronos Reverse flag (SMD1 flags bit 0x40) - reverses playback direction of the whole sample (does not touch the stored audio data) and previews reversed here too. Hardware-confirmed, saved to the .KSF."/>
+                                    <CheckBox x:Name="Sample12dbBoostBox" Content="+12dB Boost" VerticalAlignment="Bottom" Margin="2"
+                                              Checked="OnSample12dbBoostChanged" Unchecked="OnSample12dbBoostChanged"
+                                              ToolTip="Sample-level +12dB gain boost (SMD1 flags bit 0x01). Hardware-confirmed, saved to the .KSF."/>
+                                    <CheckBox x:Name="LoopEnabledBox" Content="Loop Enabled" VerticalAlignment="Bottom" Margin="2"
+                                              Checked="OnLoopEnabledChanged" Unchecked="OnLoopEnabledChanged"/>
+                                </WrapPanel>
+
+                                <!-- Loop - Enabled toggle always shown; the rest of the loop
+                                     detail (Sample Start/Loop Start/Loop End/Loop Tune/Loop
+                                     Selected) only appears once Loop Enabled is actually
+                                     checked (LoopFieldsRow, collapsed as one group - see
+                                     RefreshDetailPanels), in the SAME row as the toggle. -->
+                                <WrapPanel Margin="2">
+                                    
+                                    <!-- Each label+textbox is grouped into its own StackPanel so WrapPanel
+                                         wraps them as an atomic pair, never splitting a label from its box
+                                         onto separate lines (found via an actual screenshot - see
+                                         Tools/SampleEditorVisualCheck.cs). Fields apply live on LostFocus -
+                                         no Apply button; drag the matching marker line in the waveform for
+                                         the same effect. Every edit here (typed or dragged) routes through
+                                         SampleEditorViewModel.SetMarker, so Use Zero/Loop Lock/the
+                                         Sample-Start-is-the-floor ordering rule apply uniformly either way. -->
+                                    <WrapPanel x:Name="LoopFieldsRow">
+                                        <StackPanel Orientation="Horizontal" Margin="2">
+                                            <TextBlock Text="Sample Start:" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox x:Name="SampleStartBox" Style="{StaticResource FieldBox}" Margin="2"
+                                                     BorderBrush="{StaticResource WaveformSampleStartBrush}"
+                                                     TextChanged="OnSampleStartBoxChanged" LostFocus="OnSampleStartBoxChanged"
+                                                     PreviewKeyDown="OnFieldPreviewKeyDown" PreviewMouseWheel="OnSampleStartWheel"
+                                                     ToolTip="Mouse-wheel steps by ~1% of the sample's total length - border color matches the Sample Start marker line in the waveform"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="Loop Start:" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox x:Name="LoopStartBox" Style="{StaticResource FieldBox}" Margin="2"
+                                                     BorderBrush="{StaticResource WaveformLoopStartBrush}"
+                                                     TextChanged="OnLoopStartBoxChanged" LostFocus="OnLoopStartBoxChanged"
+                                                     PreviewKeyDown="OnFieldPreviewKeyDown" PreviewMouseWheel="OnLoopStartWheel"
+                                                     ToolTip="Mouse-wheel steps by ~1% of the sample's total length - border color matches the Loop Start marker line in the waveform"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="Loop End:" Style="{StaticResource FieldLabel}"/>
+                                            <TextBox x:Name="LoopEndBox" Style="{StaticResource FieldBox}" Margin="2"
+                                                     BorderBrush="{StaticResource WaveformLoopEndBrush}"
+                                                     TextChanged="OnLoopEndBoxChanged" LostFocus="OnLoopEndBoxChanged"
+                                                     PreviewKeyDown="OnFieldPreviewKeyDown" PreviewMouseWheel="OnLoopEndWheel"
+                                                     ToolTip="Mouse-wheel steps by ~1% of the sample's total length - border color matches the Loop End marker line in the waveform"/>
+                                        </StackPanel>
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="Loop Tune:" Style="{StaticResource FieldLabel}"/>
+                                                        <TextBox x:Name="LoopTuneBox" Style="{StaticResource FieldBox}" Margin="2"
+                                                     TextChanged="OnLoopTuneBoxChanged" LostFocus="OnLoopTuneBoxChanged"
+                                                     PreviewKeyDown="OnFieldPreviewKeyDown"
+                                                     ToolTip="-99..+99. Changes tuning of the loop. "/>
+                                                    </StackPanel>
+                                                </WrapPanel>
+                                    
+                                </WrapPanel>
+                                            <Button x:Name="BtnLoopFromSelection" Content="Loop Selected" Click="OnLoopSelectedArea"
+        Height="26" Width="100" Padding="10 0" Margin="2" VerticalAlignment="Bottom" HorizontalAlignment="Left"
+        ToolTip="Sets Loop Start/End to the current waveform selection - highlight a range first"/>
+                                        </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource LocalEditsPanel}">
+                                        <StackPanel>
+                                            <TextBlock Text="LOCAL EDITS" Style="{StaticResource GroupPanelLabel}" Foreground="#FFCC7000" HorizontalAlignment="Left"/>
+                                            <WrapPanel Margin="2">
+                                                <!-- Select (default, cursor icon) vs Move (4-way arrow icon) - which
+                                                     gesture a plain click-drag on the waveform performs
+                                                     (SampleWaveformControl.MoveToolActive). Own row, above Use Zero/
+                                                     Loop Lock/Split L/R below - these are the primary mode switch for
+                                                     the whole waveform editor, not just another option alongside the
+                                                     snap/lock checkboxes. Two independent ToggleButtons kept
+                                                     mutually exclusive by hand (OnSelectToolClick/OnMoveToolClick),
+                                                     not RadioButtons - a RadioButton's default look doesn't match this
+                                                     app's depressed-icon toggle convention (EditToolToggleBtn, same as
+                                                     MainWindow's transport toggles). Wired to Click rather than
+                                                     Checked/Unchecked: a ToggleButton flips its own IsChecked on click
+                                                     BEFORE either event fires, so clicking the already-active button
+                                                     would otherwise uncheck it with nothing re-checking it, leaving
+                                                     BOTH tools off. The Click handlers force the correct pair of
+                                                     states unconditionally instead of reacting to what the button
+                                                     toggled itself to. -->
+                                                <!-- No IsChecked="True" here - that would fire the Checked event
+                                                     DURING InitializeComponent() (a ToggleButton raises Checked the
+                                                     instant the property is set, even mid-parse), when BtnMoveTool and
+                                                     every element RefreshDetailPanels touches further down the tree
+                                                     don't exist as fields yet - an immediate NullReferenceException on
+                                                     window construction. The constructor sets this AFTER
+                                                     InitializeComponent() returns instead (see SampleEditorWindow()). -->
+                                                <ToggleButton x:Name="BtnSelectTool" Style="{StaticResource EditToolToggleBtnLarge}"
+                                                    Click="OnSelectToolClick"
+                                                    ToolTip="Select tool - click/drag to select a range in the waveform (default)">
+                                                    <Viewbox Width="16" Height="19">
+                                                        <Path Fill="#FFB4B4B4" Data="M0,0 H10 V1.4 H6 V12.6 H10 V14 H0 V12.6 H4 V1.4 H0 Z"/>
+                                                    </Viewbox>
+                                                </ToggleButton>
+                                                <ToggleButton x:Name="BtnMoveTool" Style="{StaticResource EditToolToggleBtnLarge}"
+                                                    Click="OnMoveToolClick"
+                                                    ToolTip="Move tool - drag to relocate a selection or the loop region; with Split L/R on, drag the bare waveform to offset that channel's audio">
+                                                    <Viewbox Width="16" Height="16">
+                                                        <Path Fill="#FFB4B4B4" Data="F1 M7,4 H9 V12 H7 Z M4,7 H12 V9 H4 Z M8,0 L11,4 H5 Z M8,16 L5,12 H11 Z M0,8 L4,5 V11 Z M16,8 L12,11 V5 Z"/>
+                                                    </Viewbox>
+                                                </ToggleButton>
+                                            </WrapPanel>
+                                            <WrapPanel Margin="2">
+                                                <CheckBox x:Name="UseZeroBox" Content="Use Zero" Margin="2"
+                                                    Checked="OnUseZeroChanged" Unchecked="OnUseZeroChanged"
+                                                    ToolTip="Snaps Sample Start/Loop Start/Loop End to the nearest zero-crossing (where the waveform crosses its center line, on either channel of a stereo pair) instead of the exact dragged/typed position. With Loop Lock also on, only the edge you actually moved snaps - the length-preserved linked edge follows arithmetically and is not independently re-snapped."/>
+                                                <CheckBox x:Name="LoopLockBox" Content="Loop Lock" Margin="2"
+                                                    Checked="OnLoopLockChanged" Unchecked="OnLoopLockChanged"
+                                                    ToolTip="Links the Loop Start and End points. When one of these points is edited, the other will be adjusted automatically to keep the loop length the same."/>
+                                                <CheckBox x:Name="SplitLRBox" Content="Split L/R" Visibility="Collapsed" Margin="2"
+                                                    Checked="OnSplitLRChanged" Unchecked="OnSplitLRChanged"
+                                                    ToolTip="Combined (unchecked): edits apply to both L and R together, mirrored. Split (checked): both channels stay visible, but edits apply only to whichever pane you click/drag on - see the Move tool for offsetting one against the other."/>
+                                            </WrapPanel>
+                                <!-- Crop to Selection/Fade In/Fade Out/Silence stay on the waveform's
+                                     right-click menu (WaveformContextMenu) - each only ever acts on the
+                                     current selection, and that menu now only opens when there IS one
+                                     (see OnWaveformContextMenuOpening), so every item in it is always
+                                     valid to click. Normalize/Amplify/Soften are buttons here instead,
+                                     same as Reverse: all four act on the current selection when there is
+                                     one and fall back to the whole sample otherwise (SelectionOrWholeBuffer) -
+                                     they used to be right-click-only and whole-sample-only, which made
+                                     highlighting a range and reaching for Normalize/Amplify silently do
+                                     nothing useful to just that range. -->
+                                <WrapPanel Margin="2">
+                                    <Button x:Name="BtnNormalize" Content="Normalize" Click="OnNormalize" Height="26" Padding="10 0" Margin="2" VerticalAlignment="Bottom"
+                                            ToolTip="Normalizes the selection, or the whole sample when nothing is highlighted"/>
+                                    <Button x:Name="BtnAmplify" Content="Amplify" Click="OnAmplifyDropdownClick" Height="26" Padding="10 0" Margin="2" VerticalAlignment="Bottom"
+                                            ToolTip="Boosts the selection, or the whole sample when nothing is highlighted, by a fixed dB amount">
+                                        <Button.ContextMenu>
+                                            <ContextMenu Placement="Bottom">
+                                                <MenuItem Header="+1 dB" Click="OnWaveformAmplify" Tag="1"/>
+                                                <MenuItem Header="+3 dB" Click="OnWaveformAmplify" Tag="3"/>
+                                                <MenuItem Header="+6 dB" Click="OnWaveformAmplify" Tag="6"/>
+                                            </ContextMenu>
+                                        </Button.ContextMenu>
+                                    </Button>
+                                    <Button x:Name="BtnSoften" Content="Soften" Click="OnAmplifyDropdownClick" Height="26" Padding="10 0" Margin="2" VerticalAlignment="Bottom"
+                                            ToolTip="Cuts the selection, or the whole sample when nothing is highlighted, by a fixed dB amount">
+                                        <Button.ContextMenu>
+                                            <ContextMenu Placement="Bottom">
+                                                <MenuItem Header="-1 dB" Click="OnWaveformAmplify" Tag="-1"/>
+                                                <MenuItem Header="-3 dB" Click="OnWaveformAmplify" Tag="-3"/>
+                                                <MenuItem Header="-6 dB" Click="OnWaveformAmplify" Tag="-6"/>
+                                            </ContextMenu>
+                                        </Button.ContextMenu>
+                                    </Button>
+                                    <Button x:Name="BtnTrimSilence" Content="Trim Silence" Click="OnTrimSilence" Height="26" Padding="10 0" Margin="2" VerticalAlignment="Bottom"/>
+                                    <Button x:Name="BtnReverse" Content="Reverse" Click="OnReverse" Height="26" Padding="10 0" Margin="2" VerticalAlignment="Bottom"
+                                            ToolTip="Reverses the selection, or the whole sample when nothing is highlighted"/>
+                                    <Button x:Name="BtnRemoveDcOffset" Content="Remove DC Offset" Click="OnRemoveDcOffset" Height="26" Padding="10 0" Margin="2" VerticalAlignment="Bottom"
+                                            ToolTip="Recentres the waveform on zero. A DC offset costs headroom on Normalize and is the usual reason Use Zero can't find a zero-crossing."/>
+                                    <Button x:Name="BtnInsertSilence" Content="Insert Silence..." Click="OnInsertSilence" Height="26" Padding="10 0" Margin="2" VerticalAlignment="Bottom"
+                                            ToolTip="Inserts silence at the selection start (or at the scrub cursor), pushing the rest of the sample later"/>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Waveform (L, and R stacked below it when this zone is part
+                             of a stereo pair) + ruler + horizontal scrollbar (left
+                             column), and Volume/VU (right column, vertical) - grouped
+                             in one Grid so the meter always sits flush against the
+                             waveform(s) it reflects. -->
+                        <Grid Margin="0 4 0 4" PreviewMouseLeftButtonDown="OnWaveformAreaPreviewMouseDown" PreviewMouseMove="OnWaveformAreaPreviewMouseMove">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="92"/>
+                            </Grid.ColumnDefinitions>
+                            <!-- The divider and right-channel rows are collapsed to zero
+                                 height for a MONO sample, not merely emptied. A fixed
+                                 RowDefinition reserves its space regardless of whether
+                                 its child is Collapsed, so a mono sample left ~172px of
+                                 dead grey space between the waveform and its ruler, and
+                                 pushed everything below it further off-screen for no
+                                 reason. RefreshDetailPanels drives these alongside the
+                                 matching Visibility. -->
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="170"/>
+                                <RowDefinition x:Name="WaveformDividerRow" Height="0"/>
+                                <RowDefinition x:Name="WaveformRightRowDef" Height="0"/>
+                                <!-- 30 (was 18): the ruler now draws a second row of frame-count
+                                     labels directly below the time labels (SampleWaveformRulerControl,
+                                     explicit request) and needs the extra vertical room. -->
+                                <RowDefinition Height="30"/>
+                                <RowDefinition x:Name="WaveformHScrollRow" Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <DockPanel Grid.Row="0" Grid.Column="0">
+                                <TextBlock x:Name="LeftChannelLabel" DockPanel.Dock="Left" Text="L" Width="16"
+                                           TextAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"
+                                           Foreground="{StaticResource MutedTextBrush}" Visibility="Collapsed"/>
+                                <local:SampleWaveformControl x:Name="WaveformLeft"
+                                                              SelectionChanged="OnWaveformLeftSelectionChanged"
+                                                              SelectionPreviewChanged="OnWaveformLeftSelectionPreview"
+                                                              ViewChanged="OnWaveformLeftViewChanged"
+                                                              LoopRegionChanged="OnWaveformLoopRegionChanged"
+                                                              MarkerDragged="OnWaveformLeftMarkerDragged"
+                                                              MarkersChanging="OnWaveformLeftMarkersChanging"
+                                                              ScrubRequested="OnWaveformLeftScrubRequested"
+                                                              WaveformMoved="OnWaveformLeftMoved"
+                                                              ChannelDoubleClicked="OnWaveformLeftChannelDoubleClicked"
+                                                              ContextMenu="{StaticResource WaveformContextMenu}"
+                                                              ContextMenuOpening="OnWaveformContextMenuOpening"/>
+                            </DockPanel>
+
+                            <!-- Divider between the two stereo panes - same height (170,
+                                 matching WaveformLeft's row above) so L/R read as equal
+                                 halves of one shared view, with a visible seam between
+                                 them instead of the two just abutting with nothing to
+                                 mark where one ends and the other begins. -->
+                            <Border x:Name="WaveformDivider" Grid.Row="1" Grid.Column="0"
+                                    Background="{StaticResource DividerBrush}" Visibility="Collapsed"/>
+
+                            <DockPanel x:Name="WaveformRightRow" Grid.Row="2" Grid.Column="0" Visibility="Collapsed">
+                                <TextBlock DockPanel.Dock="Left" Text="R" Width="16"
+                                           TextAlignment="Center" VerticalAlignment="Center" FontWeight="Bold"
+                                           Foreground="{StaticResource MutedTextBrush}"/>
+                                <local:SampleWaveformControl x:Name="WaveformRight"
+                                                              SelectionChanged="OnWaveformRightSelectionChanged"
+                                                              SelectionPreviewChanged="OnWaveformRightSelectionPreview"
+                                                              ViewChanged="OnWaveformRightViewChanged"
+                                                              LoopRegionChanged="OnWaveformLoopRegionChanged"
+                                                              MarkerDragged="OnWaveformRightMarkerDragged"
+                                                              MarkersChanging="OnWaveformRightMarkersChanging"
+                                                              ScrubRequested="OnWaveformRightScrubRequested"
+                                                              WaveformMoved="OnWaveformRightMoved"
+                                                              ChannelDoubleClicked="OnWaveformRightChannelDoubleClicked"
+                                                              ContextMenu="{StaticResource WaveformContextMenu}"
+                                                              ContextMenuOpening="OnWaveformContextMenuOpening"/>
+                            </DockPanel>
+
+                            <local:SampleWaveformRulerControl x:Name="WaveformRuler" Grid.Row="3" Grid.Column="0"/>
+                            <!-- Margin (not row padding) is the gap between this and the ruler above -
+                                 see WaveformHScrollRow's own comment (SampleEditorWindow.xaml.cs) for
+                                 why that row is Height="Auto" rather than a fixed pixel value. -->
+                            <ScrollBar x:Name="WaveformHScroll" Grid.Row="4" Grid.Column="0" Margin="0 3 0 0"
+                                       Orientation="Horizontal" Scroll="OnWaveformHScroll"/>
+
+                            <!-- Stereo VU: two EQUAL-width bars, captioned "L"/"R" right
+                                 under each so the pair reads unambiguously as stereo
+                                 metering rather than "one real meter plus an accent
+                                 stripe" (which the previous asymmetric 14px/labeled-26px
+                                 layout looked like). Neither bar draws its own dB tick
+                                 numbers (ShowLabels=False on both) - there's no room for
+                                 them on a sidebar this narrow once it's split two ways,
+                                 and the L/R captions are the more important cue that was
+                                 actually missing. VolumeControl (playback volume, NOT a
+                                 meter) is the genuinely "tiny bar" and is unchanged.
+                                 VuMeterLeft is collapsed for a mono sample -
+                                 RefreshDetailPanels drives that alongside HasStereoPair,
+                                 same pattern as every other stereo-only element here. -->
+                            <Border Grid.Row="0" Grid.RowSpan="4" Grid.Column="1" Margin="6 0 0 0"
+                                    BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="2">
+                                <Grid Margin="4">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="34"/>
+                                    </Grid.ColumnDefinitions>
+                                    <!-- Pan sits above the L/R VU pair it steers, spanning just
+                                         their combined width (not the Volume column beside them -
+                                         Volume is its own separate vertical control). MIDI
+                                         convention 0..127, 64 = Center; double-click re-centers
+                                         (SamplePanControl's own comment). -->
+                                    <local:SamplePanControl x:Name="PanControl" Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2"
+                                                             Height="20" Margin="0 0 3 4"
+                                                             PanChanged="OnPanChanged" ToolTip="Pan (0=L, 64=Center, 127=R) - double-click to re-center"/>
+                                    <local:SampleVuMeterControl x:Name="VuMeterLeft" Grid.Row="1" Grid.Column="0" Margin="0 0 3 0" ShowLabels="False"/>
+                                    <local:SampleVuMeterControl x:Name="VuMeterRight" Grid.Row="1" Grid.Column="1" Margin="0 0 3 0" ShowLabels="False"/>
+                                    <local:SampleVolumeControl x:Name="VolumeControl" Grid.Row="1" Grid.RowSpan="2" Grid.Column="2"
+                                                                VolumeChanged="OnVolumeChanged" ToolTip="Playback volume (this app only)"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="L" HorizontalAlignment="Center" Margin="0 2 3 0"
+                                               FontSize="9" Foreground="{StaticResource MutedTextBrush}"/>
+                                    <TextBlock Grid.Row="2" Grid.Column="1" Text="R" HorizontalAlignment="Center" Margin="0 2 3 0"
+                                               FontSize="9" Foreground="{StaticResource MutedTextBrush}"/>
+                                </Grid>
+                            </Border>
+                        </Grid>
+
+                        <TextBlock x:Name="SelectionInfoText" Foreground="{StaticResource MutedTextBrush}"
+                                   Margin="0 0 0 8" FontSize="11"/>
+                    </StackPanel>
+                    </Border>
+
+                    <TextBlock x:Name="NoSelectionText" Text="Select a zone in the tree to view/edit its sample."
+                               Foreground="{StaticResource MutedTextBrush}" Margin="0 8 0 0"/>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+            </Border>
+        </Grid>
+    </DockPanel>
+</local:ThemedWindow>

@@ -61,8 +61,6 @@ public partial class MainWindow
         return r;
     } }
 
-    // ── Coordinate transforms ─────────────────────────────────────────────────
-
     (int nx, int ny) ScreenToKronos(Point screen)
     {
         double fx = _frameRect.X, fy = _frameRect.Y,
@@ -115,8 +113,6 @@ public partial class MainWindow
         }
         return best;
     }
-
-    // ── Calibration history ───────────────────────────────────────────────────
 
     void CalHistTruncateFuture()
     {

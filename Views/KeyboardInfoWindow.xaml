@@ -10,7 +10,6 @@
         ShowInTaskbar="False" SizeToContent="Height">
     <DockPanel>
 
-        <!-- Bottom bar: update interval + status -->
         <Border DockPanel.Dock="Bottom" Background="#FF121212" Padding="10,5">
             <Grid>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center">
@@ -32,11 +31,9 @@
             </Grid>
         </Border>
 
-        <!-- Main content -->
         <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
             <StackPanel Margin="10,8,10,8">
 
-                <!-- ── CPU ──────────────────────────────────── -->
                 <Grid Margin="0,0,0,3">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -50,14 +47,12 @@
                                HorizontalAlignment="Right"/>
                 </Grid>
 
-                <!-- CPU rolling history graph -->
                 <Border Background="#FF131313" Height="76" CornerRadius="3" Margin="0,0,0,5"
                         ToolTip="Rolling 60-sample CPU usage history. Dashed lines at 25%, 50%, and 75%.">
                     <Canvas x:Name="CpuCanvas" ClipToBounds="True"
                             HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
                 </Border>
 
-                <!-- Overall CPU bar -->
                 <Grid Margin="0,0,0,4">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="36"/>
@@ -83,7 +78,6 @@
                                HorizontalAlignment="Right" VerticalAlignment="Center"/>
                 </Grid>
 
-                <!-- Per-core bars -->
                 <Grid Margin="0,0,0,6">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="18"/>
@@ -97,7 +91,6 @@
                         <ColumnDefinition Width="38"/>
                     </Grid.ColumnDefinitions>
 
-                    <!-- CPU0 -->
                     <TextBlock Grid.Row="0" Grid.Column="0" Text="CPU0"
                                FontSize="10" Foreground="#FF666666" VerticalAlignment="Center"
                                ToolTip="CPU core 0 usage percentage."/>
@@ -115,7 +108,6 @@
                                FontSize="10" FontFamily="Consolas" Foreground="#FF8080A0"
                                HorizontalAlignment="Right" VerticalAlignment="Center"/>
 
-                    <!-- CPU1 -->
                     <TextBlock Grid.Row="1" Grid.Column="0" Text="CPU1"
                                FontSize="10" Foreground="#FF666666" VerticalAlignment="Center"
                                ToolTip="CPU core 1 usage percentage."/>
@@ -133,7 +125,6 @@
                                FontSize="10" FontFamily="Consolas" Foreground="#FF8080A0"
                                HorizontalAlignment="Right" VerticalAlignment="Center"/>
 
-                    <!-- CPU2 -->
                     <TextBlock Grid.Row="2" Grid.Column="0" Text="CPU2"
                                FontSize="10" Foreground="#FF666666" VerticalAlignment="Center"
                                ToolTip="CPU core 2 usage percentage."/>
@@ -151,7 +142,6 @@
                                FontSize="10" FontFamily="Consolas" Foreground="#FF8080A0"
                                HorizontalAlignment="Right" VerticalAlignment="Center"/>
 
-                    <!-- CPU3 -->
                     <TextBlock Grid.Row="3" Grid.Column="0" Text="CPU3"
                                FontSize="10" Foreground="#FF666666" VerticalAlignment="Center"
                                ToolTip="CPU core 3 usage percentage."/>
@@ -172,7 +162,6 @@
 
                 <Rectangle Height="1" Fill="#FF2E2E2E" Margin="0,0,0,6"/>
 
-                <!-- ── Memory ──────────────────────────────── -->
                 <Grid Margin="0,0,0,3">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -291,7 +280,6 @@
 
                 <Rectangle Height="1" Fill="#FF2E2E2E" Margin="0,0,0,8"/>
 
-                <!-- ── Stats table ─────────────────────────── -->
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="52"/>
@@ -307,7 +295,6 @@
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Row 0: Uptime | Mode -->
                     <TextBlock Grid.Row="0" Grid.Column="0" Text="Uptime"
                                FontSize="11" Foreground="#FF666666"
                                ToolTip="Time elapsed since the remote system was powered on."/>
@@ -339,7 +326,6 @@
                                Margin="0,4,0,0"
                                ToolTip="Main system fan speed in RPM."/>
 
-                    <!-- Row 2: Load -->
                     <TextBlock Grid.Row="2" Grid.Column="0" Text="Load"
                                FontSize="11" Foreground="#FF666666" Margin="0,4,0,0"
                                ToolTip="Linux load averages over the last 1, 5, and 15 minutes. Values above the number of CPU cores indicate the system is under pressure."/>
@@ -349,7 +335,6 @@
                                Margin="0,4,0,0"
                                ToolTip="Linux load averages over the last 1, 5, and 15 minutes."/>
 
-                    <!-- Row 3: Audio engine -->
                     <TextBlock Grid.Row="3" Grid.Column="0" Text="Audio"
                                FontSize="11" Foreground="#FF666666" Margin="0,4,0,0"
                                ToolTip="Korg audio engine state: sample rate and output channel count. 'Active' means the engine processed real-time audio since the last update; 'Idle' means it is running but silent."/>

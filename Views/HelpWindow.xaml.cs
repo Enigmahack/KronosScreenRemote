@@ -134,11 +134,9 @@ public partial class HelpWindow : ThemedWindow
         //  DOCUMENT CONTENT
         // ══════════════════════════════════════════════════════════════════════
 
-        // ── Title ─────────────────────────────────────────────────────────────
         Add(AppTitle("Kronos ScreenRemote"));
         Add(SubTitle("Stream and control your Korg Kronos synthesizer over a local network."));
 
-        // ── Getting Started ───────────────────────────────────────────────────
         Add(SectionHead("Getting Started"));
         Add(Body("1.  Open Settings (Settings menu → Settings...) and enter your Kronos IP address."));
         Add(Body("2.  Use Connection → Connect, or simply launch the app - it attempts to connect automatically."));
@@ -150,7 +148,6 @@ public partial class HelpWindow : ThemedWindow
         Add(Body("5.  If the Kronos IP changes or the connection drops, use Connection → Connect to reconnect.\n" +
                  "    The app does not auto-reconnect after a network interruption."));
 
-        // ── Value Slider (left panel) ─────────────────────────────────────────
         Add(SectionHead("Value Slider  (left panel)"));
         Add(Body("The left panel mirrors the Kronos front-panel VALUE slider and increment/decrement buttons."));
         var vs = ShortcutTable();
@@ -161,7 +158,6 @@ public partial class HelpWindow : ThemedWindow
         Add(Note("The left panel is visible in the Full layout when controls are shown. It hides automatically\n" +
                  "in Focused layout or when the value-input panel is hidden via View → Hide Value Input."));
 
-        // ── Screen Panel ──────────────────────────────────────────────────────
         Add(SectionHead("Screen Panel  (centre)"));
         Add(Body("The screen panel streams the Kronos touchscreen display. The image is scaled to fill the panel " +
                  "while preserving the original 4∶3 aspect ratio."));
@@ -172,7 +168,6 @@ public partial class HelpWindow : ThemedWindow
         Row(sp, "Right Click",      "Access the context menu for quick actions.");
         Add(sp);
 
-        // ── Control Surface ───────────────────────────────────────────────────
         Add(SectionHead("Control Surface  (right panel)"));
         Add(Body("The right panel mirrors the physical Kronos front panel. Clicking any button sends the " +
                  "corresponding hardware button press to the Kronos."));
@@ -186,7 +181,6 @@ public partial class HelpWindow : ThemedWindow
         Row(cs, "Data wheel",     "Drag up or down to scroll. Mouse scroll wheel also works everywhere.");
         Add(cs);
 
-        // ── Mode Detection ───────────────────────────────────────────────────
         Add(SectionHead("Mode Detection  (status bar)"));
         Add(Body("The current Kronos operating mode is read directly from the daemon (its STATE command), " +
                  "which reports the mode from Eva's own live state - exact, no image matching. A few frames " +
@@ -195,7 +189,6 @@ public partial class HelpWindow : ThemedWindow
         Add(Note("Mode change buttons are disabled until the daemon confirms the board has finished " +
                  "booting (its BOOT= gate), so a stray press during boot can't light the wrong button."));
 
-        // ── Sequencer Transport & Save ────────────────────────────────────────
         Add(SectionHead("Sequencer Transport & Save  (status bar)"));
         Add(Body("The status bar's footer includes a small transport row that sends the Kronos front-panel " +
                  "SEQUENCER buttons, plus a separate Save button just to its left. Both are greyed out - not " +
@@ -219,7 +212,6 @@ public partial class HelpWindow : ThemedWindow
         Add(Note("On the real Kronos, REC/WRITE is one physical key - this app splits its two roles onto\n" +
                  "two buttons so both stay visible regardless of the current mode."));
 
-        // ── Keyboard Shortcuts ────────────────────────────────────────────────
         Add(SectionHead("Keyboard Shortcuts"));
         Add(Body("These shortcuts work when the app window is focused and keyboard capture is not active.\n" +
                  "All shortcuts (except Ctrl combos) can be rebound in Settings → Settings... → Keybindings."));
@@ -255,7 +247,6 @@ public partial class HelpWindow : ThemedWindow
         Row(ks, "~  (fullscreen only)",       "Show / hide the menu bar while in fullscreen.");
         Add(ks);
 
-        // ── Keyboard Capture ──────────────────────────────────────────────────
         Add(SectionHead("Keyboard Capture  (forwarding keys to the Kronos)"));
         Add(Body("Clicking inside the screen panel activates keyboard capture. " +
                  "While active, most keystrokes are forwarded to the Kronos as if typed on a connected USB keyboard."));
@@ -275,7 +266,6 @@ public partial class HelpWindow : ThemedWindow
         Add(ki);
         Add(Note("Click outside the screen panel - on the control surface, wheel, or menu bar - to release keyboard capture."));
 
-        // ── Layout Presets ────────────────────────────────────────────────────
         Add(SectionHead("Layout Presets  (View → Layout Preset)"));
         var lp = ShortcutTable(100);
         Row(lp, "Full",     "Value slider, screen panel, and control surface side by side (default).");
@@ -283,13 +273,11 @@ public partial class HelpWindow : ThemedWindow
                             "to temporarily overlay the control surface. The value slider is hidden.");
         Add(lp);
 
-        // ── Window Size ───────────────────────────────────────────────────────
         Add(SectionHead("Window Size  (View → Window Size  or  Ctrl+1–5)"));
         Add(Body("Scales the entire window to 75%, 100%, 125%, 150%, or 200%. " +
                  "The value slider, screen panel, and control surface all scale together. Fullscreen overrides this setting."));
         Add(Note("View → Always on Top keeps the window in front of all other applications."));
 
-        // ── Fullscreen ────────────────────────────────────────────────────────
         Add(SectionHead($"Fullscreen  ({K("Fullscreen", "F")}  or  View → Fullscreen)"));
         Add(Body("Maximises the window with no title bar. The control surface is still accessible " +
                  "in fullscreen (unless the layout preset hides it)."));
@@ -298,13 +286,11 @@ public partial class HelpWindow : ThemedWindow
         Row(fs, $"{K("Fullscreen", "F")}  or  Esc", "Exit fullscreen and restore the previous window state.");
         Add(fs);
 
-        // ── Zoom ──────────────────────────────────────────────────────────────
         Add(SectionHead($"Zoom Tool  ({K("Zoom Window", "Z")}  or  View → Zoom Window)"));
         Add(Body("Displays a magnified window that follows the mouse cursor over the screen panel. " +
                  "Press  +  to zoom in and  −  to zoom out in 0.5× steps (range: 2.5× – 10×). " +
                  $"Pressing  +  enables zoom automatically if it is currently off."));
 
-        // ── Calibration ───────────────────────────────────────────────────────
         Add(SectionHead($"Touch Calibration  ({K("Calibrate", "C")}  or  Tools → Calibration)"));
         Add(Body("Corrects for touchscreen coordinate offset on the Kronos display. " +
                  "Use this if tap positions feel consistently shifted relative to the image. " +
@@ -331,7 +317,6 @@ public partial class HelpWindow : ThemedWindow
         Add(Note("Grid size (3×3, 4×4, 5×5) can be changed in Tools → Calibration Grid Size. " +
                  "Changing the grid size clears existing calibration data."));
 
-        // ── Test Mode ─────────────────────────────────────────────────────────
         Add(SectionHead("Test Mode  (Tools → Enter Kronos Test Mode)"));
         Add(Body("Sends the Kronos into its built-in hardware test mode. A confirmation dialog warns\n" +
                  "before proceeding - all unsaved changes on the Kronos will be lost, and the Kronos\n" +
@@ -339,12 +324,10 @@ public partial class HelpWindow : ThemedWindow
         Add(Note("Only use this if you understand the risk. This feature is intended for diagnostics\n" +
                  "and hardware verification."));
 
-        // ── VGA Mirror ────────────────────────────────────────────────────────
         Add(SectionHead($"VGA Mirror  ({K("Mirror", "M")}  or  Settings → Settings...)"));
         Add(Body("Toggles VGA output mirroring on the Kronos. When enabled, the Kronos display is duplicated " +
                  "to the VGA output port. The setting is pushed to the Kronos daemon on every connection."));
 
-        // ── Bank Select ───────────────────────────────────────────────────────
         Add(SectionHead("Bank Select  (Bank Select menu  or  rebindable shortcuts)"));
         Add(Body("Sends a bank-select button press to the Kronos. The Bank Select menu is organized into " +
                  "three sub-menus - Internal, User, and User (AA–GG) - rather than one long flat list. " +
@@ -353,7 +336,6 @@ public partial class HelpWindow : ThemedWindow
                  "both the U and I buttons simultaneously, selecting the combined user/internal bank slot."));
         Add(Note("Bank select shortcuts are unassigned by default. Bind them in Settings → Settings... → Keybindings."));
 
-        // ── File Manager ──────────────────────────────────────────────────────
         Add(SectionHead("File Manager  (Connection → File Manager)"));
         Add(Body("A dual-pane file browser for transferring files between your PC and the Kronos over FTP.\n" +
                  "Uses the same credentials as the screen stream."));
@@ -372,7 +354,6 @@ public partial class HelpWindow : ThemedWindow
         Add(Note("When a file already exists at the destination, a conflict dialog offers Rename / Overwrite / Skip / Cancel\n" +
                  "with an option to apply the choice to all remaining conflicts."));
 
-        // ── Settings ─────────────────────────────────────────────────────────
         Add(SectionHead("Settings  (Settings → Settings...)"));
         var st = ShortcutTable(200);
         Row(st, "Kronos Host",             "IP address of the Kronos.");
@@ -395,7 +376,6 @@ public partial class HelpWindow : ThemedWindow
         Row(st, "Librarian",               "Merge Window staging behavior: Temporary Memory or Local Storage.");
         Add(st);
 
-        // ── MIDI / SysEx ─────────────────────────────────────────────────────
         Add(SectionHead("MIDI / SysEx  (status bar + Tools)"));
         Add(Body("The app monitors the Kronos' live MIDI output - program-change and mode-change follow, " +
                  "the VALUE slider mirror, and the SysEx traffic window all run off it. The link can be the " +
@@ -407,7 +387,6 @@ public partial class HelpWindow : ThemedWindow
         Add(Note("If you use a DAW on the same PC, the USB port is exclusive - open the DAW first and " +
                  "this app falls back to TCP, or vice versa."));
 
-        // ── Librarian ────────────────────────────────────────────────────────
         Add(SectionHead("Librarian  (Tools → Librarian...)"));
         Add(Body("The Librarian manages Kronos programs, combis, and set lists: pull everything from the " +
                  "Kronos into a local library, import .pcg files, stage objects in a Merge Window, and " +
@@ -426,13 +405,11 @@ public partial class HelpWindow : ThemedWindow
                  "a fresh copy; when unchecked, the existing copy is reused instead of writing a " +
                  "duplicate. Defaults: Programs are reused, Combis are copied as-is."));
 
-        // ── Command Palette ───────────────────────────────────────────────────
         Add(SectionHead("Command Palette  (Ctrl+K)"));
         Add(Body("A fuzzy-search launcher for all app commands. Start typing to filter; press Enter or click " +
                  "an entry to run it. Useful for infrequently used actions - bank select, layout changes, " +
                  "mirror toggle - without navigating menus."));
 
-        // ── Screenshot ────────────────────────────────────────────────────────
         Add(SectionHead("Screenshot  (Tools menu  or  Ctrl+S)"));
         Add(Body("Saves the current Kronos screen frame as a PNG file. Requires an active connection."));
         var sc = ShortcutTable(240);
@@ -442,7 +419,6 @@ public partial class HelpWindow : ThemedWindow
         Add(sc);
         Add(Note("Use Tools → Open Screenshots Folder to browse previously saved files."));
 
-        // ── Status Bar ────────────────────────────────────────────────────────
         Add(SectionHead("Status Bar"));
         Add(Body("The status bar at the bottom of the window shows:"));
         var sb = ShortcutTable(200);

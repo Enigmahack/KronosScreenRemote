@@ -16,11 +16,8 @@ static class KronosFtpSession
     // stale "already authenticated" flag.
     public static void ResetAuthentication() => _authenticated = false;
 
-    // Promoted from MainWindow.Streaming.cs's private EnsureFtpLoginAsync (behavior-
-    // preserving) so a second caller (PcgPaneViewModel.LoadFromKronosAsync) doesn't need
-    // its own copy of the silent-verify-then-LoginDialog dance. Mutates `settings` in place
-    // (Username/Password) and saves it if the user checked "save password", exactly as the
-    // original did.
+    // Mutates `settings` in place (Username/Password) and saves it if the user checked
+    // "save password".
     public static async Task<bool> EnsureLoginAsync(Window owner, AppSettings settings, string host)
     {
         if (_authenticated && _authenticatedHost == host) return true;

@@ -3,14 +3,9 @@ using System.Text.Json;
 
 namespace KronosScreenRemote;
 
-// One JSON file, one lock, atomic whole-file read-modify-write. The single owner of the
-// "path + lock + (de)serialize + swallow-and-log" idiom that used to be hand-rolled once
-// per cache in Storage.cs (and, unlocked, in RawKeyMap) - so locking/atomicity is correct
-// in exactly one place instead of five subtly-different copies.
-//
-// Serialization defaults to System.Text.Json but is injectable: RawKeyMap passes its own
-// JsonNode (de)serializers to keep its legacy on-disk shape and per-row skip-bad-entry
-// resilience byte-for-byte unchanged, while still borrowing the lock + I/O plumbing.
+// One JSON file, one lock, atomic whole-file read-modify-write.
+// Serialization defaults to System.Text.Json but is injectable, for callers that need to
+// preserve a specific on-disk shape while still getting the lock + I/O plumbing.
 sealed class JsonFileCache<T> where T : class
 {
     readonly Func<string>     _pathFn;      // lazy: DataDir resolves from ProcessPath at call time
@@ -46,7 +41,6 @@ sealed class JsonFileCache<T> where T : class
         }
     }
 
-    // Whole-file overwrite.
     public void Write(T value)
     {
         lock (_lock)
@@ -56,10 +50,9 @@ sealed class JsonFileCache<T> where T : class
         }
     }
 
-    // Atomic read-modify-write under the lock: read the current whole-file value (or a fresh
-    // fallback() when the file is absent/corrupt - same "?? new()" recovery the old caches
-    // had, so a garbled file gets replaced by current data rather than throwing on save),
-    // hand it to mutate, write the result back. Used by HostKeyedCache.Save.
+    // Atomic read-modify-write under the lock: reads the current value (or fallback() if the
+    // file is absent/corrupt, so a garbled file gets replaced by current data instead of
+    // throwing on save), hands it to mutate, writes the result back.
     public void Mutate(Func<T> fallback, Func<T, T> mutate)
     {
         lock (_lock)
@@ -76,9 +69,7 @@ sealed class JsonFileCache<T> where T : class
 }
 
 // A per-host cache: the file holds Dictionary<host, TValue>, and each host's value is loaded
-// and stored independently. Collapses the four copy-pasted "deserialize Dictionary<host,...> →
-// mutate → serialize" caches in Storage into a one-line declaration each; the atomic RMW on
-// Save is inherited from JsonFileCache.Mutate.
+// and stored independently.
 sealed class HostKeyedCache<TValue> where TValue : class
 {
     readonly JsonFileCache<Dictionary<string, TValue>> _file;

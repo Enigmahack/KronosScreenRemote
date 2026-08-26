@@ -16,19 +16,16 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Title -->
         <TextBlock Grid.Row="0"
                    Text="Kronos ScreenRemote"
                    FontSize="22" FontWeight="Bold"
                    Foreground="#FFDDEEFF"/>
 
-        <!-- Subtitle -->
         <TextBlock Grid.Row="1"
                    Text="Remote viewer and control for Korg Kronos"
                    FontSize="12" Foreground="{StaticResource MutedTextBrush}"
                    Margin="0 4 0 0"/>
 
-        <!-- Info grid -->
         <Grid Grid.Row="3">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="130"/>
@@ -55,7 +52,6 @@
             <TextBlock Grid.Row="4" Grid.Column="1" x:Name="TXT_DaemonBuild" Foreground="#FFD0D0D0" FontSize="12" FontFamily="Consolas" Margin="0 4 0 0"/>
         </Grid>
 
-        <!-- Close button -->
         <Button Grid.Row="5"
                 Content="Close"
                 HorizontalAlignment="Right"

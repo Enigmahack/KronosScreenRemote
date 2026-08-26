@@ -12,66 +12,66 @@ sealed record PcgObjectEntry(ObjLoc Loc, byte[] Body, string Name, bool IsExi = 
 // `rejected` out-param.
 sealed record PcgRejectedBank(string Tag, long Offset, int Count, int ItemSize, int BankIdRaw, string Reason);
 
+// A bank chunk that DID validate and DID get extracted, but whose stored checksum byte
+// (chunk.Offset+11, per kronosology/docs/interfaces/pcg_file_format.md §12) doesn't match
+// the bytes actually on disk. This is advisory, not a rejection: the records are still
+// extracted and usable (Korg's own algorithm is a simple mod-256 sum, easy to get "right by
+// luck" on garbage, and conversely a real, structurally valid bank can carry a stale
+// checksum from a tool - noted in §12 - that wrote payload bytes without recomputing it).
+// What this catches is the case that matters most for a "Load PCG..." file picker: a
+// truncated/corrupted download or a hand-edited file whose bytes are no longer what the
+// Kronos itself wrote - the file still parses, but silently trusting it risks pushing
+// garbage into Local Library. Surfaced by PcgPaneViewModel.Load exactly like RejectedBanks.
+sealed record PcgChecksumWarning(string Tag, long Offset, int Expected, int Actual);
+
 // Extracts raw Program/Combi/Set List records directly from a .pcg file's bytes.
 //
-// Container format per Documentation/PCG Structure Kronos.txt (a third-party
-// REVERSE-ENGINEERING DOC, not third-party code). "KORG" file header, then a chunk-tag(4
-// ASCII)+length(4 BE) container nested at multiple levels. The doc documents two shallow
-// directory passes before the real payload, and - for Set Lists specifically - TWO
-// different encodings (an earlier SLS1/SLD1/SDB1 section and a later STL1/SBK1 section)
-// whose relationship the doc's own author leaves unresolved.
+// Container format per kronosology/docs/interfaces/pcg_file_format.md §2.2/§2.3.
+// "KORG" file header, a fixed-offset DIV1 chunk, then a flat top-level chunk walk (DIV1 ->
+// SLS1 -> PRG1 -> CMB1 -> DKT1 -> WSQ1 -> GLB1 -> DPI1) where each top-level chunk has its
+// own hand-written descent logic for its sub-chunks - PRG1 nests MBK1/PBK1, CMB1 nests CBK1,
+// SLS1 nests SLD1 then STL1 (STL1 nests SBK1).
 //
-// Rather than model that ambiguous outer structure exactly, this parser scans the file for
-// the four sub-chunk tags that carry real object data with a self-describing header -
-// MBK1/PBK1 (Program banks), CBK1 (Combi banks), SBK1 (Set List bank, the STL1 encoding) -
-// and validates each candidate via its own declared count/item-size fields before trusting
-// it, rather than trusting tag or position alone. A stray 4-byte sequence matching a tag
-// inside unrelated binary parameter data fails validation and is just skipped.
+// Rather than walk that outer structure level by level, this parser scans the file directly
+// for the four sub-chunk tags that carry real object data with a self-describing header -
+// MBK1/PBK1 (Program banks), CBK1 (Combi banks), SBK1 (Set List bank) - and validates each
+// candidate via its own declared count/item-size fields and its stored checksum (see
+// PcgChecksumWarning) before trusting it, rather than trusting tag or position alone. A
+// stray 4-byte sequence matching a tag inside unrelated binary parameter data fails
+// validation and is just skipped. This is a deliberate simplification, not a workaround for
+// an unresolved structure: DIV1 is itself "a redundant table-of-contents the loader doesn't
+// need" (§2.3) - the real Kronos firmware discovers banks the same way, by which sub-chunks
+// it actually finds while descending, not by trusting DIV1's bitmap.
 //
 // Header shape common to all four (24 bytes):
 //   +0x00 tag (4 ASCII)     +0x04 chunk length (BE, unused here)   +0x08 reserved/meta (BE)
 //   +0x0C count (BE)        +0x10 item size (BE)                  +0x14 bank id (BE, see below)
 //   +0x18 first record (raw body, `count` of them, `item size` bytes each)
 //
-// VERIFIED against a real factory PRELOAD.PCG (Z:\RestoreDVD_SystemMNT\...\FACTORY\PRELOAD.PCG):
-// header layout, itemSize (4960 Program / 7810 Combi / 69416 Set List), and the 24-byte
-// name field at each record's offset 0 all checked out against real, readable factory
-// program/combi/set-list names at the decoded locations.
-//
 // The `bankId` field (+0x14) is NOT a plain linear bank index - Korg's own on-disk encoding
 // only assigns literal 0..4 to Program banks I-A..I-E; I-F gets a dedicated flag value
 // (0x8000) instead of continuing the sequence; everything from there on (all 14 user banks)
 // resumes as 0x20000+N.
 //
-// CRITICAL ASYMMETRY, confirmed against real files: Program has only 6 int banks (I-A..I-F)
-// - there is NO Program "I-G". Combi genuinely has 7 int banks (I-A..I-G). This is NOT the
-// same thing as this codebase's KronosBanks/ObjectTypeRegistry model, which gives Program 7
-// "editable banks" (0x00-0x06) for the LIVE SysEx side - that's a separate concept (whatever
-// ObjBank 0x06 addresses over MIDI, if anything) and does not correspond to a real bankId
-// slot in the .pcg file's own numbering. An earlier version of this decoder routed Program
-// through that 7-int-bank EditableBanks() list, which silently shifted every user bank's
-// index down by one and dropped the LAST bank (U-GG) out of the valid range entirely -
-// caught by loading a real user file with confirmed U-GG content: bankId 0x2000D was present
-// in the file the whole time, just mis-decoded as U-FF. Confirmed via the reference PCG
-// Tools codebase's own Kronos model (KronosProgramBanks.CreateBanks() in
-// Z:\PCG Tools_enigmahack\PCG-Tools\KorgKronosTools\Model\KronosSpecific\Synth\
-// KronosProgramBanks.cs), which defines exactly 6 int Program banks before user banks begin
-// - and by the doc's own DIV1 bank-presence bitmap, which lists only I-A..I-F for Programs
-// (vs I-A..I-G for Combis). Program is decoded directly to an ObjBank value (DecodeProgramObjBank,
-// below) with no EditableBanks() indirection; Combi (7 int banks, matching its own
-// EditableBanks() list) is unaffected and still decodes via that indirection.
+// CRITICAL ASYMMETRY: Program has only 6 int banks (I-A..I-F) - there is NO Program "I-G".
+// Combi genuinely has 7 int banks (I-A..I-G). This is NOT the same thing as this codebase's
+// KronosBanks/ObjectTypeRegistry model, which gives Program 7 "editable banks" (0x00-0x06)
+// for the LIVE SysEx side - that's a separate concept (whatever ObjBank 0x06 addresses over
+// MIDI, if anything) and does not correspond to a real bankId slot in the .pcg file's own
+// numbering. Routing Program through that 7-int-bank EditableBanks() list here would
+// silently shift every user bank's index down by one and drop the LAST bank (U-GG) out of
+// the valid range entirely. Program is decoded directly to an ObjBank value
+// (DecodeProgramObjBank, below) with no EditableBanks() indirection; Combi (7 int banks,
+// matching its own EditableBanks() list) is unaffected and still decodes via that
+// indirection.
 //
 // PROGRAM FORMAT: every .pcg Program record is a fixed 4960-byte slot, whether the bank's
 // tag is MBK1 (EXi) or PBK1 (HD-1) - but that's the ON-DISK size, not necessarily the wire
-// SysEx Object Dump size for that program. Verified against ~1000 real hardware-pulled
-// Program bodies (this app's own local_library cache) cross-referenced by name against a
-// real factory PRELOAD.PCG: EXi programs dump over wire at the full 4960 bytes, byte-
-// identical to the .pcg slot (0 structural differences across 397 real same-named pairs);
-// HD-1 programs dump over wire at only 3706 bytes, which is an exact truncation of the
-// .pcg slot's first 3706 bytes (620/632 real same-named pairs matched exactly; the
-// remainder differed by ordinary patch-content edits, not a byte-offset pattern). See
-// ProgramFormatConverter for the actual PCG->wire conversion, and IsExi below for how each
-// record's bank type is captured (from which tag - MBK1 or PBK1 - governed its bank).
+// SysEx Object Dump size for that program: EXi programs dump over wire at the full 4960
+// bytes, byte-identical to the .pcg slot; HD-1 programs dump over wire at only 3706 bytes,
+// an exact truncation of the .pcg slot's first 3706 bytes. See ProgramFormatConverter for
+// the actual PCG->wire conversion, and IsExi below for how each record's bank type is
+// captured (from which tag - MBK1 or PBK1 - governed its bank).
 static class PcgObjectExtractor
 {
     const int HeaderSize = 24;
@@ -101,7 +101,10 @@ static class PcgObjectExtractor
         ["SBK1"] = LibObj.SetList,
     };
 
-    public static List<PcgObjectEntry> Extract(byte[] data) => Extract(data, out _);
+    public static List<PcgObjectEntry> Extract(byte[] data) => Extract(data, out _, out _);
+
+    public static List<PcgObjectEntry> Extract(byte[] data, out List<PcgRejectedBank> rejected) =>
+        Extract(data, out rejected, out _);
 
     // The `rejected` list is a diagnostic: every position where one of the four tags
     // literally matched but its header didn't validate (or its bankId didn't resolve to a
@@ -110,17 +113,20 @@ static class PcgObjectExtractor
     // Program bank whose bankId encoding turns out to need another special case we haven't
     // seen yet) will show up here too, which a synthetic self-test never can. Surfaced by
     // PcgPaneViewModel so it's visible instead of just "the bank isn't in the tree."
-    public static List<PcgObjectEntry> Extract(byte[] data, out List<PcgRejectedBank> rejected)
+    //
+    // `checksumWarnings` is a second, non-rejecting diagnostic - see PcgChecksumWarning.
+    public static List<PcgObjectEntry> Extract(byte[] data, out List<PcgRejectedBank> rejected, out List<PcgChecksumWarning> checksumWarnings)
     {
         var results = new List<PcgObjectEntry>();
         rejected = new List<PcgRejectedBank>();
+        checksumWarnings = new List<PcgChecksumWarning>();
         int pos = 0;
         while (pos + HeaderSize <= data.Length)
         {
             string tag = Encoding.ASCII.GetString(data, pos, 4);
             if (BankChunkObjType.TryGetValue(tag, out int objType))
             {
-                if (TryReadBank(data, pos, objType, tag == "MBK1", results, out int consumed, out var reason))
+                if (TryReadBank(data, pos, objType, tag == "MBK1", results, checksumWarnings, out int consumed, out var reason))
                 {
                     pos += consumed;
                     continue;
@@ -132,7 +138,7 @@ static class PcgObjectExtractor
         return results;
     }
 
-    static bool TryReadBank(byte[] data, int offset, int objType, bool isExi, List<PcgObjectEntry> results, out int consumed, out PcgRejectedBank? rejected)
+    static bool TryReadBank(byte[] data, int offset, int objType, bool isExi, List<PcgObjectEntry> results, List<PcgChecksumWarning> checksumWarnings, out int consumed, out PcgRejectedBank? rejected)
     {
         consumed = 0;
         rejected = null;
@@ -186,6 +192,15 @@ static class PcgObjectExtractor
             objBank = editableBanks[bankIndex];
         }
 
+        // §12: checksum byte at offset+11 (last byte of the 12-byte chunk header) should equal
+        // sum(payload from offset+12 through recordsEnd) mod 256 - i.e. the count/itemSize/
+        // bankId sub-header plus every record, for MBK1/PBK1/CBK1/SBK1 alike.
+        // Advisory only - see PcgChecksumWarning for why this doesn't reject the bank.
+        int actualChecksum = data[offset + 11];
+        int expectedChecksum = ComputeChecksum(data, offset + 12, recordsEnd);
+        if (actualChecksum != expectedChecksum)
+            checksumWarnings.Add(new PcgChecksumWarning(tag, offset, expectedChecksum, actualChecksum));
+
         var entries = new List<PcgObjectEntry>(count);
         for (int i = 0; i < count; i++)
         {
@@ -210,4 +225,11 @@ static class PcgObjectExtractor
 
     static int ReadBE32(byte[] data, int offset) =>
         (data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3];
+
+    static int ComputeChecksum(byte[] data, long startInclusive, long endExclusive)
+    {
+        int sum = 0;
+        for (long i = startInclusive; i < endExclusive; i++) sum = (sum + data[i]) & 0xFF;
+        return sum;
+    }
 }

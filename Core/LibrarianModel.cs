@@ -5,9 +5,7 @@ namespace KronosScreenRemote;
 // A "move" swaps a Program or Combi with another slot and rewrites every Combi
 // timbre and Set List slot that referenced either, so nothing is left dangling
 // (the instrument does NOT auto-repair references). Ported from the Python
-// KronosScreenRemotePy librarian, whose bank-encoding + reference logic was
-// validated against real hardware data (99.3% of 500+ real set-list references
-// resolved through the same translation used here).
+// KronosScreenRemotePy librarian's bank-encoding + reference logic.
 //
 // Split for testability: PlanMove is PURE (LibrarianModel.SelfTest exercises it
 // off-hardware); only ApplyMoveAsync talks to the instrument, through IMoveExecutor.
@@ -141,7 +139,7 @@ static class LibRefs
     const int Timbre0Bank = 4803;   // timbre 0 program BANK byte (internal linear)
     const int TimbreStride = 188;
 
-    // Set-list slot layout mirrors SetListData (hardware-confirmed).
+    // Set-list slot layout mirrors SetListData.
     const int SlBase = 24, SlStride = 542;
     const int SlTypeOfs = 24, SlBankOfs = 25, SlIndexOfs = 26;
     public const int SlSlotCount = 128;
@@ -504,8 +502,8 @@ static class Librarian
         Check("prog-no-int-g", KronosBanks.Func33ToObjBank(1, 6) == 0x10);            // idx 6 is GM, not "I-G"
         Check("prog-gm-boundary", KronosBanks.ObjBankToFunc33(1, 0x10) == 6);
         Check("prog-user-a-starts-at-17", KronosBanks.Func33ToObjBank(1, 17) == 0x40); // U-A
-        Check("prog-real-byte-28-is-u-ee", KronosBanks.Func33ToObjBank(1, 28) == 0x4B); // U-EE, confirmed on real hardware data
-        Check("prog-real-byte-26-is-u-cc", KronosBanks.Func33ToObjBank(1, 26) == 0x49); // U-CC, confirmed on real hardware data
+        Check("prog-real-byte-28-is-u-ee", KronosBanks.Func33ToObjBank(1, 28) == 0x4B); // U-EE
+        Check("prog-real-byte-26-is-u-cc", KronosBanks.Func33ToObjBank(1, 26) == 0x49); // U-CC
 
         // 3. Combi timbre reference patch round-trip + timbre-15 offset.
         var combi = new byte[7810];

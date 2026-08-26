@@ -3,14 +3,14 @@ namespace KronosScreenRemote;
 using System.IO;
 using System.Text;
 
-// Off-hardware self-test for Phase 4: PcgFile/PcgObjectExtractor/PcgLibraryView. Builds a
+// Off-hardware self-test for PcgFile/PcgObjectExtractor/PcgLibraryView. Builds a
 // synthetic minimal .pcg buffer in-memory (no sample .pcg file ships in this repo) and
 // asserts extraction correctness against it, plus the shared-decoder proof (a PCG-sliced
 // Set List body decodes identically to an equivalent live-dump-shaped wire message).
 //
 // IMPORTANT: this proves internal self-consistency of THIS parser's assumed header
 // layout - it does not, and cannot, prove that layout matches a real Kronos-exported .pcg
-// file. That still needs a real file (see the plan's Phase 4 manual verification step).
+// file. That still needs a real file.
 static class PcgFileSelfTests
 {
     public static List<string> SelfTest()
@@ -80,9 +80,28 @@ static class PcgFileSelfTests
         // Not a valid PCG file at all (bad magic) -> Open returns null, not an exception.
         Check("rejects-non-pcg", PcgFile.Open(new byte[] { 1, 2, 3, 4, 5, 6, 7, 8 }) == null);
 
-        // Real-file bank-id encoding (confirmed against an actual factory PRELOAD.PCG, and -
-        // critically - against a real user file with confirmed U-GG content; see
-        // PcgObjectExtractor's class comment). Program: literal 0..4 for I-A..I-E, a
+        // §12 checksum: a well-formed bank whose checksum byte doesn't match its payload must
+        // still be extracted (advisory only, not rejected - see PcgChecksumWarning's comment
+        // for why: on a read-only import path, silently dropping a structurally valid bank
+        // over a stale/wrong checksum is worse than loading it and flagging the mismatch).
+        var corrupted = (byte[])buffer.Clone();
+        corrupted[16 + 11] ^= 0xFF;   // flip the MBK1 chunk's checksum byte (offset+11)
+        var corruptFile = PcgFile.Open(corrupted);
+        Check("checksum-corrupt-file-opens", corruptFile != null);
+        if (corruptFile != null)
+        {
+            Check("checksum-mismatch-still-extracts-bank",
+                new PcgLibraryView(corruptFile).GetName(progLoc) == programName);
+            Check("checksum-mismatch-surfaced",
+                corruptFile.ChecksumWarnings.Any(w => w.Tag == "MBK1" && w.Offset == 16));
+            Check("checksum-good-banks-not-flagged",
+                corruptFile.ChecksumWarnings.All(w => w.Tag == "MBK1"));
+        }
+        // The untouched fixture must never warn - proves the fixture builder's own checksums
+        // (ChunkChecksum) are correct, not just that the mismatch path fires on demand.
+        Check("checksum-good-file-has-no-warnings", file.ChecksumWarnings.Count == 0);
+
+        // Real-file bank-id encoding (see PcgObjectExtractor's class comment). Program: literal 0..4 for I-A..I-E, a
         // dedicated 0x8000 flag for I-F, then 0x20000+N (N=0..13) directly for U-A..U-GG -
         // NO "I-G" slot (Program has only 6 int banks, unlike Combi's 7). This pins the exact
         // regression that silently dropped U-GG: an earlier version routed Program through
@@ -109,9 +128,23 @@ static class PcgFileSelfTests
             Check("bankid-combi-I-G", bankIdView.GetName(new ObjLoc(LibObj.Combi, 0x06, 0)) == "I-G COMBI");
             Check("bankid-combi-U-A-via-0x20000", bankIdView.GetName(new ObjLoc(LibObj.Combi, 0x40, 0)) == "U-A COMBI");
             Check("bankid-combi-U-G-via-0x20006", bankIdView.GetName(new ObjLoc(LibObj.Combi, 0x46, 0)) == "U-G COMBI");
+            Check("bankid-file-checksums-clean", bankIdFile.ChecksumWarnings.Count == 0);
         }
 
         return fails;
+    }
+
+    // Mirrors PcgObjectExtractor's §12 checksum: sum of the count/itemSize/bankId sub-header
+    // bytes plus every record byte, mod 256. `records` must be exactly count*itemSize bytes.
+    // Internal (not private) so other synthetic-.pcg-fixture self-tests (PcgPaneLoadSelfTests)
+    // can reuse it instead of re-deriving the same algorithm.
+    internal static int ChunkChecksum(int count, int itemSize, int bankId, byte[] records)
+    {
+        int sum = 0;
+        void Add(int v) { sum = (sum + (byte)(v >> 24) + (byte)(v >> 16) + (byte)(v >> 8) + (byte)v) & 0xFF; }
+        Add(count); Add(itemSize); Add(bankId);
+        foreach (byte b in records) sum = (sum + b) & 0xFF;
+        return sum;
     }
 
     static byte[] BuildBankIdEncodedPcg()
@@ -125,9 +158,13 @@ static class PcgFileSelfTests
         {
             var record = new byte[itemSize];
             Encoding.ASCII.GetBytes(name).CopyTo(record, 0);
+            const int count = 1;   // 1 record per bank, enough to prove bank assignment
+            // Reserved field's low byte doubles as the §12 checksum (offset+11) - set it to the
+            // real sum so these fixtures don't spuriously report as checksum-mismatched.
+            int checksum = ChunkChecksum(count, itemSize, bankId, record);
             WriteAscii(tag);
-            WriteBE32(0); WriteBE32(0);
-            WriteBE32(1);          // count = 1 record per bank, enough to prove bank assignment
+            WriteBE32(0); WriteBE32(checksum);
+            WriteBE32(count);
             WriteBE32(itemSize);
             WriteBE32(bankId);
             ms.Write(record);
@@ -178,7 +215,9 @@ static class PcgFileSelfTests
         {
             WriteAscii(tag);
             WriteBE32(0);           // chunk length - not read by the extractor
-            WriteBE32(0);           // reserved/meta
+            // Reserved field's low byte doubles as the §12 checksum (offset+11) - real sum,
+            // so these fixtures don't spuriously report as checksum-mismatched.
+            WriteBE32(ChunkChecksum(count, itemSize, bankId, record));
             WriteBE32(count);
             WriteBE32(itemSize);
             WriteBE32(bankId);

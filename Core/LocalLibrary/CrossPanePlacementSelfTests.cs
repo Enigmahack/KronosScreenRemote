@@ -4,7 +4,7 @@ using System.IO;
 using System.Text;
 using KronosScreenRemote.ViewModels;
 
-// Off-hardware self-test for Phase 6's cross-pane placement (PCG -> local), the logic
+// Off-hardware self-test for cross-pane placement (PCG -> local), the logic
 // living in LibrarianShellViewModel.PlaceFromPcg/BatchPlaceFromPcg. Constructs the
 // ViewModel directly against FakeMoveExecutor and a synthetic in-memory PCG buffer -
 // PcgPaneViewModel.LoadForTesting sidesteps the file-dialog/FTP-picker paths, which need a
@@ -20,20 +20,15 @@ static class CrossPanePlacementSelfTests
         if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
 
         // Storage.SaveProgramBankTypes persists to a REAL, GLOBAL, host-keyed file next to the
-        // running exe - not scratch state under `root` like everything else here. The
-        // bank-type test below writes fake data under this ViewModel's own host key, which every
-        // OTHER self-test file that also constructs a ViewModel with the SAME key would otherwise
-        // load right back out via Storage.LoadProgramBankTypes at construction - exactly the
-        // cross-test pollution that broke DependencyResolutionSelfTests the first time this was
-        // written. Two independent defences, because one wasn't enough:
-        //   • a UNIQUE host key (below), so nothing else can ever read what this test wrote - the
-        //     empty host "" this used to share with DependencyResolutionSelfTests is the same
-        //     mistake the type-change tests already fixed by naming their own hosts;
-        //   • snapshot + verbatim restore of the file, so nothing is left behind at all.
-        // The restore alone was insufficient: it only puts back what was there when THIS test
-        // started, so a stale "" entry written by an earlier build (before the unique-host fix)
-        // survived every subsequent run and kept refusing every EXi placement - the failure was
-        // reproducible on a completely clean checkout, since it lived in the exe's data dir.
+        // running exe - not scratch state under `root` like everything else here. The bank-type
+        // test below writes fake data under this ViewModel's own host key, which any OTHER
+        // self-test file that constructs a ViewModel with the SAME key would otherwise load
+        // right back out via Storage.LoadProgramBankTypes at construction. Two independent
+        // defences guard against that cross-test pollution:
+        //   • a UNIQUE host key (below), so nothing else can ever read what this test wrote;
+        //   • snapshot + verbatim restore of the file, so nothing is left behind at all - restore
+        //     alone isn't enough, since it only reverts to what was there when THIS run started,
+        //     not to a clean slate.
         const string bankTypesHost = "selftest-crosspane-host";
         string bankTypesCachePath = Path.Combine(Storage.DataDir, "program_bank_types_cache.json");
         string? bankTypesCacheBackup = File.Exists(bankTypesCachePath) ? File.ReadAllText(bankTypesCachePath) : null;
@@ -130,7 +125,7 @@ static class CrossPanePlacementSelfTests
             Check("place-exact-dirty", cache.IsDirty(destLoc.ObjType, destLoc.Bank, destLoc.Number));
 
             // Placing a Combi that references a Program not present locally must populate
-            // the session dependency clipboard (requirement 13/14).
+            // the session dependency clipboard.
             Check("dependency-tracked", vm.SessionClipboardRows.Count > 0);
 
             // Auto-fill (drop on a bank) - next free slot in a fresh bank is 0.
@@ -142,15 +137,15 @@ static class CrossPanePlacementSelfTests
             var (ok3, msg3) = vm.BatchPlaceFromPcg(LibObj.Combi, new[] { pcgCombiLoc }, 0x41);
             Check("place-batch-advances-slot", ok3 && cache.GetDisplayName(LibObj.Combi, 0x41, 1) == combiName);
 
-            // ── Fresh-placement bank-type check (end-to-end): a real hardware write got
-            // rejected because nothing ever verified a fresh Program placement's wire-format
-            // size against what its destination bank is ACTUALLY configured as. Wire a fake
-            // "real hardware" answer through FakeMoveExecutor.ProgramBankTypesToReturn and
-            // confirm LibrarianShellViewModel.WarmProgramBankTypesAsync/BankTypeOf/
-            // PlanBatchMove's new check actually catch it - every prior test in this file ran
-            // with ProgramBankTypesToReturn still null (BankTypeOf returns null for every
-            // bank, CHECK-only, never refuses), confirming this whole feature is opt-in and
-            // doesn't disturb any of the above.
+            // ── Fresh-placement bank-type check (end-to-end): verifies a fresh Program
+            // placement's wire-format size against what its destination bank is ACTUALLY
+            // configured as. Wire a fake "real hardware" answer through
+            // FakeMoveExecutor.ProgramBankTypesToReturn and confirm
+            // LibrarianShellViewModel.WarmProgramBankTypesAsync/BankTypeOf/PlanBatchMove's check
+            // actually catches it - every prior test in this file ran with
+            // ProgramBankTypesToReturn still null (BankTypeOf returns null for every bank,
+            // CHECK-only, never refuses), confirming this feature is opt-in and doesn't disturb
+            // any of the above.
             int bankTypeBit = KronosBanks.ProgramBankTypeBitIndex(0x46)!.Value;   // U-G
             var mismatchedTypes = new bool[bankTypeBit + 1];
             mismatchedTypes[bankTypeBit] = false;   // "hardware" says U-G is HD-1

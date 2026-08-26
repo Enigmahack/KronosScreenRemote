@@ -10,9 +10,6 @@ namespace KronosScreenRemote;
 // state - every method is a pure function of its arguments - so this is genuinely
 // static, unlike the persistent-connection CtrlClient (which owns a socket + send
 // loop + the "reset on endpoint change" invariant and is therefore an instance).
-//
-// Split out of the old static CtrlClient so the two responsibilities no longer
-// share a type: persistent stateful sending vs. stateless querying.
 static class CtrlQuery
 {
     public const int CtrlPort = 7374;

@@ -173,7 +173,7 @@ public static class AppMessages
         public static string FailedItem(string name, string detail) => $"Failed {name}: {detail}";
 
         // ── Upload ──
-        public const string SelectLocalFilesToUpload = "Select one or more local files to upload.";
+        public const string SelectLocalFilesToUpload = "Select one or more local files or folders to upload.";
         public static string Uploading(int count) => $"Uploading {count} file(s)...";
         public static string UploadIncomplete(string name, object status) =>
             $"Upload of {name} did not complete ({status}) - source kept";
@@ -183,7 +183,7 @@ public static class AppMessages
         public static string FolderSomeFailedUpload(string name) => $"{name}: some files failed to upload - source kept";
 
         // ── Download ──
-        public const string SelectKronosFilesToDownload = "Select one or more Kronos files to download.";
+        public const string SelectKronosFilesToDownload = "Select one or more Kronos files or folders to download.";
         public static string Downloading(int count) => $"Downloading {count} file(s)...";
         public static string DownloadIncomplete(string name, object status) =>
             $"Download of {name} did not complete ({status}) - source kept";
@@ -387,6 +387,7 @@ public static class AppMessages
             public static string NotRecognizedPcg(string fileName) => $"{fileName} is not a recognizable Kronos .pcg file.";
             public static string Loaded(string fileName, int count) => $"Loaded {fileName} - {count} object(s).";
             public static string RejectedBanksSuffix(int count) => $" ({count} bank chunk(s) couldn't be read - see log)";
+            public static string ChecksumWarningsSuffix(int count) => $" ({count} bank chunk(s) failed their checksum - see log)";
             public const string FtpLoginFailedOrCancelled = "FTP login failed or was cancelled.";
             public const string LoadFromKronosCancelled =
                 "Load from Kronos cancelled - the previously loaded file (if any) is unchanged.";
@@ -492,7 +493,7 @@ public static class AppMessages
             // the sound the referrer wants. See ProgramBody.IsInit.
             public const string InitPlaceholderSuffix = "(INIT placeholder)";
 
-            // ── Properties dialog: dependency lists + "Scan PCG..." (requirements 1 and 2) ──
+            // ── Properties dialog: dependency lists + "Scan PCG..." ──
             public const string DependenciesHeader   = "Dependencies";
             public const string RequiresHeader       = "Requires (what this object needs)";
             public const string UsedByHeader         = "Used by (what needs this object)";
@@ -655,6 +656,19 @@ public static class AppMessages
         public static string ItemCount(int count) => $"{count} item(s)";
         public static string Error(string detail) => $"Error: {detail}";
         public static string Downloading(string name) => $"Downloading {name}...";
+        public static string DownloadFailed(string detail) => $"Download failed: {detail}";
+    }
+
+    /// <summary>Remote sample picker (SampleRemoteBrowserDialog) status line.</summary>
+    public static class RemoteSamplePicker
+    {
+        public const string Connecting = "Connecting...";
+        public static string ConnectFailed(string detail) => $"Connect failed: {detail}";
+        public const string Loading = "Loading...";
+        public static string ItemCount(int count) => $"{count} item(s)";
+        public static string Error(string detail) => $"Error: {detail}";
+        public static string Downloading(string name) => $"Downloading {name}...";
+        public static string PullingClosure(string name) => $"Downloading {name} and its referenced files...";
         public static string DownloadFailed(string detail) => $"Download failed: {detail}";
     }
 

@@ -96,6 +96,16 @@ partial class PcgPaneViewModel : ObservableObject
             foreach (var r in file.RejectedBanks)
                 AppLog.Warn($"  {r.Tag} @0x{r.Offset:X} count={r.Count} itemSize={r.ItemSize} bankId=0x{r.BankIdRaw:X} - {r.Reason}");
         }
+        if (file.ChecksumWarnings.Count > 0)
+        {
+            // Advisory only (PcgChecksumWarning) - the bank still loaded and is still usable,
+            // this just means its on-disk bytes no longer match what the Kronos itself wrote
+            // (truncated download, hand-edited file, a tool that doesn't recompute checksums).
+            StatusText += AppMessages.Librarian.Pcg.ChecksumWarningsSuffix(file.ChecksumWarnings.Count);
+            AppLog.Warn($"PCG load '{fileName}': {file.ChecksumWarnings.Count} bank chunk(s) failed their checksum (loaded anyway):");
+            foreach (var w in file.ChecksumWarnings)
+                AppLog.Warn($"  {w.Tag} @0x{w.Offset:X} expected=0x{w.Expected:X2} actual=0x{w.Actual:X2}");
+        }
     }
 
     void ClearLoaded(string statusText)

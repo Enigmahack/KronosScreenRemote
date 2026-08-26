@@ -2,8 +2,8 @@ namespace KronosScreenRemote;
 
 // Builds a ChangesetPlan from whatever's currently dirty in the local cache - the Push
 // half of the Sync/Commit pipeline. In order:
-//  1. Dependency-completeness gate (requirement 14): REFUSE outright if the session
-//     clipboard still has unresolved placements.
+//  1. Dependency-completeness gate: REFUSE outright if the session clipboard still has
+//     unresolved placements.
 //  2. Conflict pre-scan: re-check each distinct (type,bank) containing a dirty object
 //     against hardware's CURRENT digest. A mismatch excludes every dirty object in that
 //     bank from this push (flagged Conflicted, same marker Pull uses) instead of silently
@@ -29,9 +29,9 @@ static class ChangesetBuilder
             return (plan, conflicted);
         }
 
-        // Delete supersedes edit (requirement 2): an object marked for deletion is erased and
-        // removed, never written as a normal edit - so drop any pending-delete from the dirty
-        // set before assembling writes.
+        // Delete supersedes edit: an object marked for deletion is erased and removed, never
+        // written as a normal edit - so drop any pending-delete from the dirty set before
+        // assembling writes.
         var pendingDeletes = cache.PendingDeleteObjects().ToList();
         var pendingDeleteSet = new HashSet<ObjLoc>(pendingDeletes);
         var dirty = cache.DirtyObjects().Where(d => !pendingDeleteSet.Contains(d)).ToList();
@@ -86,8 +86,8 @@ static class ChangesetBuilder
                 plan.Warnings.Add(AppMessages.Librarian.Sync.RefuseMissingReference(loc.Label(), missingRef.Label(), kind));
         }
 
-        // Whole-bank type changes (requirement 4): a Program bank the user staged an HD-1/EXi
-        // change for, AND which we're actually writing this push, gets a func 0x7C emitted
+        // Whole-bank type changes: a Program bank the user staged an HD-1/EXi change for, AND
+        // which we're actually writing this push, gets a func 0x7C emitted
         // before its writes. Filtered to banks with surviving writes so a bank we're NOT
         // rewriting is never erased. Safe even when the live type query below is unavailable -
         // 0x7C is a no-op on the instrument if the bank is already that type.
@@ -104,8 +104,8 @@ static class ChangesetBuilder
         // to a non-blocking CHECK and letting a genuine mismatch reach hardware as a Reply
         // Code 3 ("short or otherwise mangled message"). Querying fresh here - the one place
         // guaranteed to run right before the write - closes that gap regardless of timing.
-        // ONE REFUSE per bank, not per Program (issue 3b): every program in a mismatched bank is
-        // the same wrong format, so 128 identical REFUSE lines were just noise. A bank whose type
+        // ONE REFUSE per bank, not per Program: every program in a mismatched bank is the same
+        // wrong format, so 128 identical REFUSE lines would just be noise. A bank whose type
         // change was intentionally staged (in plan.BankTypeChanges above) is skipped - the 0x7C
         // reformats it first.
         if (surviving.Any(l => l.ObjType == LibObj.Program))
@@ -147,9 +147,9 @@ static class ChangesetBuilder
             plan.TargetsOnSuccess.Add(loc);
         }
 
-        // Step 4b: committed deletions (requirement 2). An object that exists on hardware (has a
-        // baseline) is overwritten with a blank/INIT body (EraseBody) + Stored, then removed
-        // locally on success; a local-only object (never pushed - no baseline) is just removed
+        // Step 4b: committed deletions. An object that exists on hardware (has a baseline) is
+        // overwritten with a blank/INIT body (EraseBody) + Stored, then removed locally on
+        // success; a local-only object (never pushed - no baseline) is just removed
         // locally, with no hardware write. Either way its loc goes in Deletes, never
         // TargetsOnSuccess - a deleted object's baseline is dropped, not advanced.
         var blankTemplates = new BlankTemplateStore(cache.Root);
@@ -177,9 +177,9 @@ static class ChangesetBuilder
             // template is captured ONCE from a single donor slot (Set List 127) and reused for every
             // erase - so writing it verbatim stamps the donor's "Set List 127" onto whatever slot
             // we're erasing (a real bug: it renamed live hardware set-list slots to "Set List 127").
-            // Re-stamp THIS slot's own default name so the reverted slot reads as itself (requirement
-            // 2: "revert to init, but with the name of the slot it occupies"). Programs/Combis have
-            // no slot-numbered default, so their INIT name from the template/EraseBody stands.
+            // Re-stamp THIS slot's own default name so the reverted slot reads as itself - "revert
+            // to init, but with the name of the slot it occupies". Programs/Combis have no
+            // slot-numbered default, so their INIT name from the template/EraseBody stands.
             if (loc.ObjType == LibObj.SetList)
                 eraseBody = SetListBody.WriteName(eraseBody, SetListData.DefaultName(loc.Number));
 
@@ -187,7 +187,7 @@ static class ChangesetBuilder
             plan.PreImages.Add(new WriteOp(loc.ObjType, loc.Bank, loc.Number, version.Value, baselineBody, "original"));
             if (!plan.Stores.Contains((loc.ObjType, loc.Bank))) plan.Stores.Add((loc.ObjType, loc.Bank));
             // Revert-to-blank, NOT remove: on success the local slot advances to this same blank
-            // body so it stays in the tree as the init object at its address (requirement 2).
+            // body so it stays in the tree as the init object at its address.
             plan.Erasures.Add((loc, version.Value, eraseBody));
         }
 

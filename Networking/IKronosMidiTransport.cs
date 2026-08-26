@@ -36,13 +36,12 @@ interface IKronosMidiTransport : IDisposable
     // the dump collector can tell a slowly-arriving large object from a stall.
     event Action? SysExActivity;
 
-    // Open the transport (connect the stream / open the device). Idempotent.
+    // Idempotent.
     void Start();
 
-    // Close it and release resources.
     void Stop();
 
-    // Whether the live inbound stream is currently active. Bulk dumps require it.
+    // Bulk dumps require this to be true.
     bool CanStream { get; }
 
     // Enable/disable the live inbound stream. TCP: connect/disconnect the 9875

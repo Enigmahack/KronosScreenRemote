@@ -1,0 +1,34 @@
+<local:ThemedWindow x:Class="KronosScreenRemote.SampleNormalizationReportWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:KronosScreenRemote"
+        Title="Normalization Report" Width="720" Height="480" MinWidth="480" MinHeight="300"
+        WindowStartupLocation="CenterOwner">
+    <DockPanel Margin="10">
+        <TextBlock DockPanel.Dock="Top" x:Name="SummaryText" Margin="0 0 0 8" TextWrapping="Wrap"
+                   Foreground="{StaticResource MutedTextBrush}"/>
+        <DataGrid x:Name="Grid" AutoGenerateColumns="False" IsReadOnly="True"
+                  CanUserAddRows="False" CanUserDeleteRows="False"
+                  GridLinesVisibility="Horizontal" HeadersVisibility="Column"
+                  RowBackground="Transparent" Background="{StaticResource PanelBackgroundBrush}"
+                  BorderThickness="0">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Location" Binding="{Binding Location}" Width="220"/>
+                <DataGridTextColumn Header="Sample Name" Binding="{Binding SampleName}" Width="160"/>
+                <DataGridTextColumn Header="Rate" Binding="{Binding SampleRate}" Width="70"/>
+                <DataGridTextColumn Header="Bits" Binding="{Binding Bits}" Width="50"/>
+                <DataGridTextColumn Header="Ch" Binding="{Binding Channels}" Width="40"/>
+                <DataGridTextColumn Header="Flag" Binding="{Binding FlagText}" Width="*"/>
+            </DataGrid.Columns>
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding Flagged}" Value="True">
+                            <Setter Property="Foreground" Value="{StaticResource DangerTextBrush}"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </DataGrid.RowStyle>
+        </DataGrid>
+    </DockPanel>
+</local:ThemedWindow>

@@ -34,8 +34,6 @@
                     <MenuItem x:Name="MNU_NoRecentHosts" Header="(none)" IsEnabled="False"/>
                 </MenuItem>
                 <MenuItem x:Name="MNU_CopyIP" Header="Copy _IP Address"/>
-                <Separator/>
-                <MenuItem x:Name="MNU_FileManager" Header="File _Manager..." InputGestureText="M"/>
             </MenuItem>
             <MenuItem x:Name="MENU_View" Header="_View">
                 <MenuItem x:Name="MNU_Zoom"          Header="_Zoom Window"      IsCheckable="True" InputGestureText="Z"/>
@@ -74,7 +72,6 @@
                 </MenuItem>
             </MenuItem>
             <MenuItem x:Name="MENU_Tools" Header="_Tools">
-                <!-- Display &amp; touch calibration -->
                 <MenuItem x:Name="MNU_CalMode"    Header="_Calibration"      IsCheckable="True" InputGestureText="C"/>
                 <MenuItem x:Name="MNU_KbdWarp"    Header="Enable _Warp Mode" IsCheckable="True"/>
                 <MenuItem x:Name="MENU_CalGrid"   Header="Calibration _Grid Size">
@@ -83,17 +80,17 @@
                     <MenuItem x:Name="MNU_CalGrid5" Header="_5×5" IsCheckable="True"/>
                 </MenuItem>
                 <Separator/>
-                <!-- MIDI / SysEx -->
-                <MenuItem x:Name="MNU_SysExTool"    Header="Open _MIDI Monitor" InputGestureText="M"/>
+                <MenuItem x:Name="MNU_SysExTool"    Header="_MIDI Monitor..." InputGestureText="M"/>
                 <MenuItem x:Name="MNU_Librarian"    Header="_Librarian..." InputGestureText="L"
                           ToolTip="Local editable library copy - Sync/Commit with the Kronos, load a .pcg file to compare and drag objects in, edit names/categories/Set List slots."/>
+                <MenuItem x:Name="MNU_SampleEditor" Header="Sample _Editor..." InputGestureText="E"
+                          ToolTip="View/edit .KSC/.KMP/.KSF sample content on disk - key range, loop points, sample rate."/>
+                <MenuItem x:Name="MNU_FileManager" Header="_File Manager..." InputGestureText="F"/>
                 <Separator/>
-                <!-- Diagnostics -->
                 <MenuItem x:Name="MNU_KeyboardInfo" Header="_Keyboard Info..."/>
                 <MenuItem x:Name="MNU_InputTester"  Header="_Input Tester..." Visibility="Collapsed"/>
                 <MenuItem x:Name="MNU_TestMode"     Header="Enter Kronos _Test Mode"/>
                 <Separator/>
-                <!-- Keyboard input -->
                 <MenuItem x:Name="MNU_DisableKbd"   Header="_Disable Typing Send" IsCheckable="True" ToolTip="Disable sending keystrokes to the Kronos. All keyboard input remains local."/>
             </MenuItem>
             <MenuItem x:Name="MENU_ModeSelect" Header="_Mode Select">
@@ -254,7 +251,6 @@
                            ToolTip="Streaming mode (Pull = server pushes every frame; Change = server pushes on screen change)"/>
             </StatusBarItem>
             <Separator DockPanel.Dock="Right" Margin="2 4" Background="#FF444444" Width="1"/>
-            <!-- VU meter -->
             <StatusBarItem DockPanel.Dock="Right" Padding="2 0" VerticalContentAlignment="Center">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <local:VuMeterBar x:Name="VuMeter"
@@ -394,7 +390,6 @@
                 </Button>
             </StatusBarItem>
             <Separator DockPanel.Dock="Right" Margin="2 4" Background="#FF444444" Width="1"/>
-            <!-- Left items -->
             <StatusBarItem Padding="8 0 4 0">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <StackPanel.ContextMenu>
@@ -646,7 +641,6 @@
                 <Viewbox x:Name="ControlViewbox" Stretch="Uniform">
                     <Grid Width="800" Height="600">
 
-                        <!-- Background image -->
                         <Image x:Name="DataInput"
                            Stretch="Fill"
                            RenderOptions.BitmapScalingMode="HighQuality"

@@ -108,8 +108,6 @@ sealed class CalMesh
         (NatX(col, w) + _offX[col, row],
          NatY(row, h) + _offY[col, row]);
 
-    // ── Forward map: natural coords → warped coords ───────────────────────────
-
     public (int x, int y) Apply(int px, int py, int w, int h)
     {
         var (rx, ry) = ApplyF(px, py, w, h);
@@ -136,8 +134,6 @@ sealed class CalMesh
         return (Bilerp(tlx, trx, blx, brx, tx, ty),
                 Bilerp(tly, ry0, bly, bry, tx, ty));
     }
-
-    // ── Inverse map: warped coords → natural coords ───────────────────────────
 
     public (int x, int y) InverseApply(int px, int py, int w, int h)
     {

@@ -5,7 +5,7 @@ namespace KronosScreenRemote;
 // Maps printable ASCII (+ Tab/Enter/Backspace) to Kronos KEY command sequences.
 // Derived from KeyMap.cs remaps - captures which linux keycode + shift state produces each char.
 //
-// Eva (Kronos UI) text-field case behavior (confirmed via inject_test 2026-06-09):
+// Eva (Kronos UI) text-field case behavior:
 //   unshifted letter key → UPPERCASE in Eva text field
 //   Shift + letter key   → lowercase in Eva text field
 // This is the OPPOSITE of standard keyboard convention. All letter entries reflect this.
@@ -34,10 +34,10 @@ static class CharMap
         { ' ',  new(57,  false) },  // Space      KEY_SPACE
         { '!',  new(2,   true)  },  // Shift+1
         // '"' - Shift+26 triggers Kronos character picker; no direct Eva key confirmed
-        { '#',  new(43,  false) },  // KEY_BACKSLASH - confirmed via inject_test
+        { '#',  new(43,  false) },  // KEY_BACKSLASH
         { '$',  new(5,   true)  },  // Shift+4
         { '%',  new(6,   true)  },  // Shift+5
-        { '&',  new(8,   true)  },  // Shift+7 - confirmed Eva UI
+        { '&',  new(8,   true)  },  // Shift+7
         // '\'' - Shift+43 gives ' on console but NOT in Eva; no direct Eva key confirmed
         { '(',  new(10,  true)  },  // Shift+9
         { ')',  new(11,  true)  },  // Shift+0
@@ -57,7 +57,7 @@ static class CharMap
         { '=',  new(13,  false) },  // OemPlus → KEY_EQUAL
         { '>',  new(52,  true)  },  // Shift+OemPeriod
         { '?',  new(13,  true)  },  // shifted override: KEY_EQUAL + Shift
-        { '@',  new(3,   true)  },  // Shift+2 - confirmed Eva UI
+        { '@',  new(3,   true)  },  // Shift+2
         // Uppercase letters: unshifted key → uppercase in Eva (inverted case convention)
         { 'A',  new(30,  false) }, { 'B',  new(48, false) }, { 'C',  new(46, false) },
         { 'D',  new(32,  false) }, { 'E',  new(18, false) }, { 'F',  new(33, false) },

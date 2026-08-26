@@ -25,8 +25,7 @@ static class RawKeyMap
     // File I/O + lock are owned by the shared helper; RawKeyMap keeps its OWN JsonNode
     // (de)serializers (Serialize/Deserialize below) so the on-disk shape - a snake_cased,
     // WriteIndented JSON array with the Key as a string - and its per-row skip-bad-entry
-    // resilience stay byte-for-byte identical to the old hand-rolled version. Previously
-    // this file did its I/O completely unlocked; folding it in fixes that for free.
+    // resilience are preserved exactly.
     //
     // MUST be declared before Entries: static field initializers run in textual order, and
     // `Entries = Load()` reads through this field at type load - declared after, it'd NRE.

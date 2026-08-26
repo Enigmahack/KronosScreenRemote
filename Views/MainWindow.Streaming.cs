@@ -153,10 +153,9 @@ public partial class MainWindow
             if (_editCtx.Active) ExitProgramEditContext();
 
             // STATE is authoritative and exact (eva_mode.ko or, at worst, the daemon's own
-            // pixel fallback) - unlike the old client-side pixel/SysEx heuristics this
-            // replaced, there's no stale/false reading to hold off for. Apply it as soon as
-            // it disagrees with what's currently shown, so a button press lights up as fast
-            // as the daemon itself confirms the change (one poll interval, not an added grace).
+            // pixel fallback), so there's no stale/false reading to hold off for. Apply it as
+            // soon as it disagrees with what's currently shown, so a button press lights up as
+            // fast as the daemon itself confirms the change (one poll interval, not an added grace).
             if (mode != Mode.Unknown && mode != _currentMode)
                 SetModeButton(mode);
             return;
@@ -228,7 +227,6 @@ public partial class MainWindow
         ButtonForMode(_currentMode)?.Activate();
     }
 
-    // The mode-key control that lights for a given operating mode (null for Unknown).
     KronosButton? ButtonForMode(Mode mode) => mode switch
     {
         Mode.Setlist  => BTN_Setlist,
@@ -403,8 +401,6 @@ public partial class MainWindow
         }
     }
 
-    // Push the configured upscale filter onto FrameImage.  Called at startup (the XAML no longer
-    // hard-codes a mode) and whenever the setting changes via the menus or Settings dialog.
     void ApplyScalingMode()
     {
         var mode = _settings.ImageScalingMode switch
@@ -424,7 +420,7 @@ public partial class MainWindow
         double imgW = FrameImage.ActualWidth, imgH = FrameImage.ActualHeight;
 
         // Aspect lock is permanent: the screen is always letterboxed to the Kronos' native
-        // ratio, never stretched to fill. There is no longer a toggle for it anywhere.
+        // ratio, never stretched to fill.
         FrameImage.Stretch = Stretch.Uniform;
         double scale = Math.Min(imgW / _frameW, imgH / _frameH);
         double cw = _frameW * scale, ch = _frameH * scale;
@@ -433,8 +429,8 @@ public partial class MainWindow
             origin.Y + (imgH - ch) / 2,
             cw, ch);
 
-        // Idempotent: this now runs on FrameImage's own resizes as well as the window's, so bail
-        // out when nothing actually moved rather than invalidating the overlay every time.
+        // Idempotent: RefreshFrameRect runs on FrameImage's own resizes as well as the window's,
+        // so bail out when nothing actually moved rather than invalidating the overlay every time.
         if (rect == _frameRect) return;
         _frameRect = rect;
         OverlayLayer.InvalidateVisual();

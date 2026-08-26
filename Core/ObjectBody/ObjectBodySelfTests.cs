@@ -1,9 +1,9 @@
 namespace KronosScreenRemote;
 
-// Off-hardware self-test for Phase 0 of the Librarian rebuild: the object-type
-// registry and the shared raw-body decoders (Core/ObjectBody). Same convention as
-// Librarian.SelfTest/BatchLibrarian.SelfTest - pure, synchronous, returns failing
-// check names (empty = all passed). Invoked from App.xaml.cs's --librarian-selftest.
+// Off-hardware self-test for the object-type registry and the shared raw-body decoders
+// (Core/ObjectBody). Same convention as Librarian.SelfTest/BatchLibrarian.SelfTest - pure,
+// synchronous, returns failing check names (empty = all passed). Invoked from App.xaml.cs's
+// --librarian-selftest.
 static class ObjectBodySelfTests
 {
     public static List<string> SelfTest()

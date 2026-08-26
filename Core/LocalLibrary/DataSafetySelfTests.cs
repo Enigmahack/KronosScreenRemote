@@ -3,9 +3,9 @@ namespace KronosScreenRemote;
 using System.IO;
 
 // Off-hardware self-test focused on the ONE thing that can lose a user's data: the Librarian's
-// push safety net and its crash-durability contract. The existing Phase 1-3 self-tests already
-// cover pull/push happy paths, conflict pre-scan, version-fix and bank-type gates; this file
-// deliberately does NOT re-cover those. It fills three gaps nothing else asserts:
+// push safety net and its crash-durability contract. Other self-tests already cover pull/push
+// happy paths, conflict pre-scan, version-fix and bank-type gates; this file deliberately does
+// NOT re-cover those. It fills three gaps nothing else asserts:
 //
 //   A. The pre-write BACKUP. ApplyMoveAsync backs up the pre-image of every object it is about
 //      to overwrite BEFORE touching hardware (restore = replay that .syx). No other test opens
@@ -221,8 +221,8 @@ static class DataSafetySelfTests
                 Check("c1-fold-reflects-discard", foldedBody2 != null && ProgramBody.ReadName(foldedBody2) == "BASE-FOLD");
 
                 // A committed deletion (RemoveObject) tombstones the slot - the fold, replaying
-                // the whole log, must DROP it, not resurrect it from its last real hash
-                // (requirement 2). Without the DeletedTombstone, recovery would bring it back.
+                // the whole log, must DROP it, not resurrect it from its last real hash.
+                // Without the DeletedTombstone, recovery would bring it back.
                 cache.RemoveObject(loc.ObjType, loc.Bank, loc.Number, utc);
                 var folded3 = LocalLibraryIndex.RebuildCurrentFromOpLog(OpLog.ReadAll(root));
                 Check("c1-fold-reflects-delete", !folded3.ContainsKey(key));

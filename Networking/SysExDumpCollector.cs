@@ -139,10 +139,9 @@ sealed class SysExDumpCollector
     // Pull a whole bank's names one object at a time via func 0x72 (single Object
     // Dump Request), for WRITABLE banks whose func-0x77 whole-bank name ENUM the
     // firmware rejects. That enum is preset-only (INT/GM); it returns Reply code 4
-    // for every user bank. But a per-object func-0x72 name fetch works for EVERY
-    // bank - confirmed on hardware at a full 128/128 for USER-A, with no per-object
-    // session throttle (the old "~13 banks/session" ceiling was the preset-only
-    // enum rejecting user banks, not a real cap).
+    // for every user bank. A per-object func-0x72 name fetch works for every bank
+    // instead, with no per-object session throttle - the old "~13 banks/session"
+    // ceiling was the preset-only enum rejecting user banks, not a real cap.
     //
     // PACED, never bursted: firing requests back-to-back overruns the Kronos MIDI-in
     // - it drops every reply AND can corrupt a request (losing its F7), popping a
@@ -197,7 +196,7 @@ sealed class SysExDumpCollector
                 // object (which hammers the tiny on-Kronos daemon). Drain each batch
                 // before the next: a back-to-back flood overruns the Kronos MIDI-in,
                 // drops every reply, and can corrupt a request into a "MIDI Receiving
-                // Error" dialog. Batched-then-drained is HW-verified at a clean 128/128.
+                // Error" dialog.
                 for (int start = 0; start < missing.Count && !ct.IsCancellationRequested; start += batchSize)
                 {
                     int end = Math.Min(start + batchSize, missing.Count);

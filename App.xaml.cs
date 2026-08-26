@@ -15,7 +15,19 @@ public partial class App : Application
         // verify the reference/bank/plan logic off-hardware (no unit-test project here).
         if (e.Args.Contains("--librarian-selftest"))
         {
-            var fails = Librarian.SelfTest();
+            // Several Core/Sample/* self-tests drive a real SampleEditorViewModel
+            // through OpenCollection, which writes Recent Files to the REAL
+            // settings.json (Storage.SaveSettings has no test-injectable override).
+            // Snapshot/restore around the whole run (not per-test) so a person running
+            // --librarian-selftest on their own machine gets their real settings back
+            // untouched, however many self-tests end up touching it. Safe to wrap with
+            // a try/finally here specifically because Environment.Exit is called AFTER
+            // this block returns, not from inside it - Environment.Exit doesn't run
+            // pending finally blocks, so this only works because of that ordering.
+            List<string> fails = null!;
+            Storage.RunWithSettingsFileProtected(() =>
+            {
+            fails = Librarian.SelfTest();
             fails.AddRange(BatchLibrarian.SelfTest());
             fails.AddRange(ObjectBodySelfTests.SelfTest());
             fails.AddRange(LocalLibrarySelfTests.SelfTest());
@@ -43,6 +55,28 @@ public partial class App : Application
             fails.AddRange(LibrarianUndoSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(PlacementStalenessGateSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(SyncCancellationSelfTests.SelfTestAsync().GetAwaiter().GetResult());
+            fails.AddRange(SampleSelfTests.SelfTest());
+            fails.AddRange(SampleDspSelfTests.SelfTest());
+            fails.AddRange(SampleRemoteSelfTests.SelfTest());
+            fails.AddRange(SampleTranscodeSelfTests.SelfTest());
+            fails.AddRange(SampleStereoSelfTests.SelfTest());
+            fails.AddRange(SampleTreeSelectionSelfTests.SelfTest());
+            fails.AddRange(SamplePhase5SelfTests.SelfTest());
+            fails.AddRange(SamplePhase6SelfTests.SelfTest());
+            fails.AddRange(SamplePhase7SelfTests.SelfTest());
+            fails.AddRange(SamplePhase8SelfTests.SelfTest());
+            fails.AddRange(SamplePhase9SelfTests.SelfTest());
+            fails.AddRange(SamplePhase10SelfTests.SelfTest());
+            fails.AddRange(SamplePhase11SelfTests.SelfTest());
+            fails.AddRange(SamplePhase12SelfTests.SelfTest());
+            fails.AddRange(SamplePhase13SelfTests.SelfTest());
+            fails.AddRange(SamplePhase14SelfTests.SelfTest());
+            fails.AddRange(SamplePhase15SelfTests.SelfTest());
+            fails.AddRange(SamplePhase16SelfTests.SelfTest());
+            fails.AddRange(SamplePhase17SelfTests.SelfTest());
+            fails.AddRange(SamplePhase18SelfTests.SelfTest());
+            fails.AddRange(SamplePhase19SelfTests.SelfTest());
+            });
             var outPath = Path.Combine(Path.GetTempPath(), "kronos_librarian_selftest.txt");
             File.WriteAllText(outPath, fails.Count == 0 ? "OK" : "FAIL: " + string.Join(", ", fails));
             Environment.Exit(fails.Count == 0 ? 0 : 1);
@@ -64,6 +98,75 @@ public partial class App : Application
         {
             string? filter = dumpRefsIdx + 2 < e.Args.Length ? e.Args[dumpRefsIdx + 2] : null;
             PcgRefDump.Run(e.Args[dumpRefsIdx + 1], filter);
+        }
+
+        // Headless diagnostic: `--sample-format-fixture-check <folder>` - the runnable
+        // acceptance gate for the Core/Sample/* format-layer port (byte-identical
+        // round-trip against a local, gitignored folder of real Kronos fixtures).
+        int fixtureCheckIdx = Array.IndexOf(e.Args, "--sample-format-fixture-check");
+        if (fixtureCheckIdx >= 0 && fixtureCheckIdx + 1 < e.Args.Length)
+        {
+            SampleFormatFixtureCheck.Run(e.Args[fixtureCheckIdx + 1]);
+        }
+
+        // Headless diagnostic: `--sample-editor-smoketest <path-to.ksc>` - drives the
+        // real SampleEditorViewModel end-to-end against a real fixture (see
+        // Tools/SampleEditorSmokeTest.cs).
+        int sampleEditorSmokeIdx = Array.IndexOf(e.Args, "--sample-editor-smoketest");
+        if (sampleEditorSmokeIdx >= 0 && sampleEditorSmokeIdx + 1 < e.Args.Length)
+        {
+            SampleEditorSmokeTest.Run(e.Args[sampleEditorSmokeIdx + 1]);
+        }
+
+        // One-off visual verification, NOT a shipped feature: `--sample-editor-visual-check
+        // <path.ksc>` shows the real SampleEditorWindow and screenshots it through a few
+        // real selections (see Tools/SampleEditorVisualCheck.cs). Lets MainWindow's
+        // normal StartupUri open too rather than fighting it - harmless, and simpler.
+        int sampleEditorVisualIdx = Array.IndexOf(e.Args, "--sample-editor-visual-check");
+        if (sampleEditorVisualIdx >= 0 && sampleEditorVisualIdx + 1 < e.Args.Length)
+        {
+            SampleEditorVisualCheck.Schedule(e.Args[sampleEditorVisualIdx + 1]);
+        }
+
+        // Headless diagnostic: `--sample-ftp-pull-check <remote-path.KSC-or-.KMP>` - pulls
+        // that file plus its dependency closure from the configured Kronos over FTP (no
+        // Window, no dialog - uses settings.json's saved FtpUsername/Password/KronosHost),
+        // then re-opens everything from disk to confirm it parses. See
+        // Tools/SampleFtpPullCheck.cs; this is the real-hardware counterpart to
+        // --sample-format-fixture-check, which only ever reads already-local files.
+        int sampleFtpPullIdx = Array.IndexOf(e.Args, "--sample-ftp-pull-check");
+        if (sampleFtpPullIdx >= 0 && sampleFtpPullIdx + 1 < e.Args.Length)
+        {
+            var s = Storage.LoadSettings();
+            SampleFtpPullCheck.Run(s.KronosHost, s.FtpPort, s.FtpUsername, s.FtpPassword, e.Args[sampleFtpPullIdx + 1]);
+        }
+
+        // One-off diagnostic, NOT a shipped feature: `--sample-userbank-probe-build
+        // <outputDir>` (see Tools/SampleUserBankProbeBuild.cs) - builds a minimal mono
+        // multisample + its .KSC + _UserBank.KSC sibling via the real production writer
+        // path, for uploading to a real Kronos to test the doc's open "can a
+        // hand-authored _UserBank.KSC work at all" question.
+        int userBankProbeIdx = Array.IndexOf(e.Args, "--sample-userbank-probe-build");
+        if (userBankProbeIdx >= 0 && userBankProbeIdx + 1 < e.Args.Length)
+        {
+            SampleUserBankProbeBuild.Run(e.Args[userBankProbeIdx + 1]);
+        }
+
+        // `--sample-userbank-probe-build-multizone <outputDir>` - the second probe:
+        // one multisample, 32 zones spanning the full keyboard, 4 keys each.
+        int userBankProbeMultiIdx = Array.IndexOf(e.Args, "--sample-userbank-probe-build-multizone");
+        if (userBankProbeMultiIdx >= 0 && userBankProbeMultiIdx + 1 < e.Args.Length)
+        {
+            SampleUserBankProbeBuild.RunMultiZone(e.Args[userBankProbeMultiIdx + 1]);
+        }
+
+        // One-off reconnaissance, NOT a shipped feature: `--sample-stereo-scan <folder>`
+        // (see Tools/SampleStereoScan.cs) - grounds Phase 5's stereo-pair-creation work
+        // in what real Kronos-authored .KMP/.KSF fixtures actually do with -L/-R.
+        int stereoScanIdx = Array.IndexOf(e.Args, "--sample-stereo-scan");
+        if (stereoScanIdx >= 0 && stereoScanIdx + 1 < e.Args.Length)
+        {
+            SampleStereoScan.Run(e.Args[stereoScanIdx + 1]);
         }
 
         // Single source of truth for the app directory (settings, palette, cal, log all colocate).

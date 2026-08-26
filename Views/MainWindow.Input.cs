@@ -35,7 +35,7 @@ public partial class MainWindow
         _layoutPreset = _settings.LayoutPreset;
         ApplyLayoutPreset(_layoutPreset, saveSettings: false);
 
-        // The XAML no longer hard-codes FrameImage's scaling filter - apply the saved one now.
+        // FrameImage's scaling filter isn't set in XAML - apply the saved one now.
         ApplyScalingMode();
 
         Topmost = _settings.AlwaysOnTop;
@@ -147,6 +147,21 @@ public partial class MainWindow
                 _settings.WindowHeight = Height;
             }
             Storage.SaveSettings(_settings);
+        }
+
+        // SampleEditorWindow is deliberately NOT WPF-owned any more (see
+        // OpenSampleEditorWindow's own comment - an owned window is permanently kept
+        // above its owner in Win32 z-order, which was the "always on top of the main
+        // Kronos window" complaint) - so it no longer closes automatically when this
+        // window does. Close it explicitly here instead, past every cancellable point
+        // above, so the previous "closing Main closes everything" behavior still holds.
+        if (_sampleEditorWin != null && _sampleEditorWin.IsLoaded)
+        {
+            _sampleEditorWin.Close();
+            // Close() can be cancelled by the Sample Editor's own unsaved-changes prompt
+            // (SampleEditorWindow.OnWindowClosing) - if the user chose not to discard,
+            // IsLoaded is still true here, and Main must not tear down around it either.
+            if (_sampleEditorWin.IsLoaded) { e.Cancel = true; return; }
         }
 
         _trayIcon?.Dispose();
@@ -762,8 +777,6 @@ public partial class MainWindow
     }
 
     // ── Built-in macros ──────────────────────────────────────────────────────
-    // Resolve a key's Linux code the same way live dispatch does:
-    // raw map first, then KeyMap, then a hardcoded fallback.
     static int ResolveCode(Key k, int fallback)
         => RawKeyMap.Get(k, false)?.RawCode ?? KeyMap.ToLinux(k) ?? fallback;
 

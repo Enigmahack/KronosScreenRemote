@@ -25,26 +25,20 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- Subtitle -->
         <TextBlock Grid.Row="0" x:Name="SubtitleText" Foreground="{StaticResource MutedTextBrush}" FontSize="11"/>
 
-        <!-- Username -->
         <TextBlock Grid.Row="2" Text="Username"/>
         <TextBox   Grid.Row="4" x:Name="TxtUser"/>
 
-        <!-- Password -->
         <TextBlock Grid.Row="6" Text="Password"/>
         <PasswordBox Grid.Row="8" x:Name="PwdBox"/>
 
-        <!-- Save password -->
         <CheckBox Grid.Row="10" x:Name="ChkSave" Content="Save password" IsChecked="True"/>
 
-        <!-- Error -->
         <TextBlock Grid.Row="12" x:Name="ErrorText"
                    Foreground="{StaticResource DangerTextBrush}" TextWrapping="Wrap"
                    Visibility="Collapsed"/>
 
-        <!-- Buttons -->
         <DockPanel Grid.Row="14">
             <Button x:Name="BtnClear" Content="Clear" Click="OnClear" DockPanel.Dock="Left" Style="{StaticResource DialogButtonStyle}"
                     ToolTip="Clear both fields so you can enter fresh credentials"/>

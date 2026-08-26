@@ -33,6 +33,24 @@ static class Storage
     public static AppSettings LoadSettings() => LoadSettingsFrom(SettingsPath);
     public static void SaveSettings(AppSettings s) => SaveSettingsTo(s, SettingsPath);
 
+    // Guards a headless diagnostic that drives real production code (e.g. a
+    // SampleEditorViewModel self-test/smoketest calling OpenCollection, which writes
+    // Recent Files via Storage.SaveSettings) from ever leaving behind a mutated real
+    // settings.json - a person running --librarian-selftest on their own machine must
+    // get their real settings back untouched, not scratch-test paths or a settings.json
+    // that didn't previously exist. Snapshots (or notes the absence of) settings.json,
+    // runs `action`, then restores (or removes) it - even if `action` throws.
+    public static void RunWithSettingsFileProtected(Action action)
+    {
+        byte[]? backup = File.Exists(SettingsPath) ? File.ReadAllBytes(SettingsPath) : null;
+        try { action(); }
+        finally
+        {
+            if (backup != null) File.WriteAllBytes(SettingsPath, backup);
+            else if (File.Exists(SettingsPath)) File.Delete(SettingsPath);
+        }
+    }
+
     public static AppSettings LoadSettingsFrom(string path)
     {
         var s = new AppSettings();
@@ -46,7 +64,8 @@ static class Storage
             {
                 if (prop.Name == nameof(AppSettings.Keybinds)     ||
                     prop.Name == nameof(AppSettings.Macros)        ||
-                    prop.Name == nameof(AppSettings.RecentHosts)   || !prop.CanWrite) continue;
+                    prop.Name == nameof(AppSettings.RecentHosts)   ||
+                    prop.Name == nameof(AppSettings.SampleRecentFiles) || !prop.CanWrite) continue;
                 if (root[ToSnakeCase(prop.Name)] is not JsonNode node) continue;
                 try
                 {
@@ -66,6 +85,10 @@ static class Storage
             if (root["recent_hosts"] is JsonArray recentArr)
                 foreach (var rn in recentArr)
                     if (rn?.GetValue<string>() is string h) s.RecentHosts.Add(h);
+
+            if (root["sample_recent_files"] is JsonArray recentSampleArr)
+                foreach (var rn in recentSampleArr)
+                    if (rn?.GetValue<string>() is string p) s.SampleRecentFiles.Add(p);
 
             if (root["keybinds"] is JsonObject kb)
                 foreach (var kv in kb)
@@ -109,7 +132,8 @@ static class Storage
             {
                 if (prop.Name == nameof(AppSettings.Keybinds)     ||
                     prop.Name == nameof(AppSettings.Macros)        ||
-                    prop.Name == nameof(AppSettings.RecentHosts)   || !prop.CanRead) continue;
+                    prop.Name == nameof(AppSettings.RecentHosts)   ||
+                    prop.Name == nameof(AppSettings.SampleRecentFiles) || !prop.CanRead) continue;
                 root[ToSnakeCase(prop.Name)] = prop.GetValue(s) switch
                 {
                     string str => JsonValue.Create(str),
@@ -124,6 +148,10 @@ static class Storage
             var recentOut = new JsonArray();
             foreach (var h in s.RecentHosts) recentOut.Add(h);
             root["recent_hosts"] = recentOut;
+
+            var recentSampleOut = new JsonArray();
+            foreach (var p in s.SampleRecentFiles) recentSampleOut.Add(p);
+            root["sample_recent_files"] = recentSampleOut;
             var kb = new JsonObject();
             foreach (var kv in s.Keybinds)
                 kb[kv.Key] = kv.Value.Serialize();
@@ -256,14 +284,10 @@ static class Storage
     public static void SaveDumpedBanks(string host, HashSet<(int Type, int Bank)> set)
         => _dumpedBanks.Save(host, set.Select(k => $"{k.Type}:{k.Bank:X2}").ToList());
 
-    // ── Librarian reference-graph cache ───────────────────────────────────────
     // ── Librarian clipboard (Core/BatchMoveModel.cs's BatchClipboard) ───────────
     // A flat list, not a Dictionary<host,...> like the caches above - deliberately not
     // host-keyed, because the local library it belongs to (Core/LocalLibrary) is a single
-    // global store: the Kronos's IP can change but the objects don't. (The old per-host
-    // reference-graph cache and host-keyed clipboard this file used to also carry - for
-    // the classic, now-retired LibrarianWindow - were removed in the Phase 7 cutover, along
-    // with that window itself.)
+    // global store: the Kronos's IP can change but the objects don't.
 
     public sealed record ClipboardEntryDto(
         int ObjType, int OriginBank, int OriginNumber, byte Version, byte[] Body,
@@ -281,12 +305,11 @@ static class Storage
 
     // ── Program bank type cache ───────────────────────────────────────────────
     // Persists the func-0x61 Program Bank Types bitmap (HD-1 vs EXi) per host. Currently
-    // unused by the new Librarian (Views/LibrarianShellWindow.xaml) - its batch-place path
+    // unused by the Librarian (Views/LibrarianShellWindow.xaml) - its batch-place path
     // (ViewModels/LibrarianShellViewModel.cs's BatchPlaceFromPcg) doesn't yet gate on
-    // bank-type compatibility the way the old, now-retired LibrarianWindow's batch-move did
-    // (a known, flagged gap, not a silent regression). Left in place rather than deleted:
-    // ISysExService.RequestProgramBankTypesAsync and this cache are exactly what a future
-    // fix would need.
+    // bank-type compatibility (a known, flagged gap, not a silent regression). Left in
+    // place rather than deleted: ISysExService.RequestProgramBankTypesAsync and this
+    // cache are exactly what a future fix would need.
 
     static string ProgramBankTypesPath => Path.Combine(DataDir, "program_bank_types_cache.json");
     static readonly HostKeyedCache<bool[]> _programBankTypes = new(() => ProgramBankTypesPath, "program-bank-types");

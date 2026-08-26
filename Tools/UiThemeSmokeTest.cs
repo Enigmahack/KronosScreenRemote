@@ -85,12 +85,41 @@ static class UiThemeSmokeTest
                 ? "NOT FOUND via TryFindResource"
                 : $"FOUND, Setters={appWindowStyle.Setters.Count}, TargetType={appWindowStyle.TargetType}"));
 
+        // The stock TreeViewItem template pairs InactiveSelectionHighlightBrushKey
+        // (background) with InactiveSelectionHighlightTextBrushKey (foreground) - both must
+        // be overridden, or a selected tree row's text falls back to the un-overridden system
+        // default (near-black) the instant the window/TreeView loses focus. A screenshot can't
+        // prove IsSelectionActive was actually false at capture time - this checks the
+        // resource itself.
+        {
+            var inactiveTextBrush = Application.Current.TryFindResource(SystemColors.InactiveSelectionHighlightTextBrushKey) as SolidColorBrush;
+            bool isWhite = inactiveTextBrush?.Color == Colors.White;
+            results.Add(("  InactiveSelectionHighlightTextBrushKey resolves to white", isWhite,
+                isWhite ? null : $"resolved to {inactiveTextBrush?.Color.ToString() ?? "NOT FOUND"}"));
+        }
+
         Try("AboutWindow",            () => new AboutWindow(null, 0));
         Try("CommandPaletteWindow",   () => new CommandPaletteWindow(new List<CommandEntry> { new("test", "Test", "", () => { }) }));
         Try("FileManagerWindow",      () => new FileManagerWindow("", 21, "", ""));
         Try("HelpWindow",             () => new HelpWindow(settings));
         Try("InputTesterWindow",      () => new InputTesterWindow(fakeCtrl));
         Try("KeyboardInfoWindow",     () => new KeyboardInfoWindow("", 0, null));
+        Try("SampleEditorWindow",    () => new SampleEditorWindow());
+        Try("SampleNormalizationReportWindow", () => new SampleNormalizationReportWindow(new List<SampleNormalizationEntry>()));
+
+        // The "Keymap tab recovers after zone delete" regression check that used to live
+        // here is gone, not just passing now: it existed to pin a bug in RefreshDetail-
+        // Panels' TabControl reselect-fallback (SelectedItem getting stuck null after a
+        // zone delete transiently collapsed every tab). The Samples/Looping TabControl
+        // itself was removed from SampleEditorWindow (every tab's content became a flat,
+        // always-visible row inside the editing frame instead - Playback Format/DSP
+        // Edit/Repair/Loop, per an explicit "no more tabs" request) - there is no
+        // TabControl/SelectedItem left for that bug class to occur in at all. This test
+        // had been failing on every run since a still-uninvestigated regression
+        // reintroduced it sometime after it was first fixed (see this file's own history
+        // for the original fix and later re-break); removed along with the code path it
+        // was pinning rather than carried forward as permanently-red or rewritten to test
+        // something that no longer exists.
         Try("LibrarianShellWindow",   () =>
         {
             var scratch = Path.Combine(Path.GetTempPath(), "kronos_ui_smoketest_local_library");
@@ -209,6 +238,109 @@ static class UiThemeSmokeTest
         }
         Try("LoginDialog",            () => new LoginDialog("", 0));
         Try("PromptDialog",           () => new PromptDialog("test"));
+        Try("InsertSilenceDialog",    () => new InsertSilenceDialog(44100, 11025));
+        Try("CreateMultisampleDialog", () => new CreateMultisampleDialog(0));
+        // Loaded never fires for a constructed-but-unshown window (see Try's own body -
+        // it never calls Show/ShowDialog), so this never actually reaches out over the
+        // network despite taking connection args.
+        Try("SampleRemoteBrowserDialog", () => new SampleRemoteBrowserDialog("dummy-host", 21, "user", "pass", ".KSC", Path.GetTempPath()));
+        Try("SampleRemoteBrowserDialog (folder-push mode)", () => new SampleRemoteBrowserDialog("dummy-host", 21, "user", "pass", "dummy.KSC", new KscCollection()));
+        Try("RemoteFilePickerDialog",    () => new RemoteFilePickerDialog("dummy-host", 21, "user", "pass", ".PCG"));
+
+        // Behavioral: folder-push mode is a distinct constructor overload (see its own
+        // comment) that repurposes the SAME dialog for "pick a destination folder and
+        // upload" rather than "pick a file and download" - pins that it actually swaps
+        // the title/button text and starts with Select disabled (only RefreshAsync's
+        // first successful listing enables it - unreachable here with no live server,
+        // which is the point: Select must NOT be usable before a connection exists).
+        {
+            var pushDlg = new SampleRemoteBrowserDialog("dummy-host", 21, "user", "pass", "dummy.KSC", new KscCollection());
+            bool titleOk = pushDlg.Title == "Select Folder on Kronos";
+            var selectButton = (System.Windows.Controls.Button)pushDlg.FindName("BTN_Select");
+            bool contentOk = (string)selectButton.Content == "Select This Folder";
+            bool startsDisabled = !selectButton.IsEnabled;
+            pushDlg.Close();
+            bool ok = titleOk && contentOk && startsDisabled;
+            results.Add(("  SampleRemoteBrowserDialog folder-push mode UI", ok,
+                ok ? null : $"title={titleOk} buttonContent={contentOk} startsDisabled={startsDisabled}"));
+        }
+
+        // Behavioral: both dialogs used to truncate their status line
+        // (TextTrimming="CharacterEllipsis", no wrap), which silently cut off exactly
+        // the detail (host/path/errno) that makes a long connect/download failure
+        // message actionable. Pins the fix at the property level, not just "constructs
+        // without throwing".
+        {
+            var browser = new SampleRemoteBrowserDialog("dummy-host", 21, "user", "pass", ".KSC", Path.GetTempPath());
+            var browserWraps = ((System.Windows.Controls.TextBlock)browser.FindName("TXT_Status")).TextWrapping == TextWrapping.Wrap;
+            browser.Close();
+            results.Add(("  SampleRemoteBrowserDialog status wraps long errors", browserWraps,
+                browserWraps ? null : "TXT_Status.TextWrapping is not Wrap"));
+
+            var picker = new RemoteFilePickerDialog("dummy-host", 21, "user", "pass", ".PCG");
+            var pickerWraps = ((System.Windows.Controls.TextBlock)picker.FindName("TXT_Status")).TextWrapping == TextWrapping.Wrap;
+            picker.Close();
+            results.Add(("  RemoteFilePickerDialog status wraps long errors", pickerWraps,
+                pickerWraps ? null : "TXT_Status.TextWrapping is not Wrap"));
+        }
+
+        // Behavioral, not just XamlParseException-free: confirms the Frames/Seconds
+        // boxes actually stay linked both directions, not merely that the dialog
+        // constructs. Setting TextBox.Text raises TextChanged synchronously even on an
+        // unshown Window, so this needs no visible/modal window.
+        try
+        {
+            var dlg = new InsertSilenceDialog(44100, 11025); // seeded 0.25s @ 44100Hz
+            var framesBox = (System.Windows.Controls.TextBox)dlg.FindName("FramesBox");
+            var secondsBox = (System.Windows.Controls.TextBox)dlg.FindName("SecondsBox");
+            bool seededSecondsCorrect = secondsBox.Text == "0.25";
+
+            framesBox.Text = "22050";
+            bool framesToSeconds = secondsBox.Text == "0.5";
+
+            secondsBox.Text = "2";
+            bool secondsToFrames = framesBox.Text == "88200";
+
+            dlg.Close();
+            bool ok = seededSecondsCorrect && framesToSeconds && secondsToFrames;
+            results.Add(("  InsertSilenceDialog Frames<->Seconds link", ok,
+                ok ? null : $"seeded={seededSecondsCorrect} frames->seconds={framesToSeconds} seconds->frames={secondsToFrames}"));
+        }
+        catch (Exception ex)
+        {
+            results.Add(("  InsertSilenceDialog Frames<->Seconds link", false, ex.GetType().Name + ": " + ex.Message));
+        }
+
+        // The "Apply to: Left/Right" channel picker (explicit request) - hidden entirely
+        // for a mono sample (nothing to choose between) and defaults both channels
+        // checked for a stereo one (matches the old always-mirror-in-Combine behavior).
+        // OnOk's at-least-one-checked validation isn't exercised here - it sets
+        // DialogResult, which throws unless the window was shown via ShowDialog (not
+        // just constructed), and ShowDialog blocks the calling thread until closed -
+        // not worth the added complexity/risk for logic this simple.
+        try
+        {
+            var monoDlg = new InsertSilenceDialog(44100, 100);
+            var monoPanel = (System.Windows.FrameworkElement)monoDlg.FindName("ChannelPickerPanel");
+            bool hiddenForMono = monoPanel.Visibility == Visibility.Collapsed;
+            monoDlg.Close();
+
+            var stereoDlg = new InsertSilenceDialog(44100, 100, hasStereoPair: true);
+            var stereoPanel = (System.Windows.FrameworkElement)stereoDlg.FindName("ChannelPickerPanel");
+            var leftBox = (System.Windows.Controls.CheckBox)stereoDlg.FindName("ApplyLeftBox");
+            var rightBox = (System.Windows.Controls.CheckBox)stereoDlg.FindName("ApplyRightBox");
+            bool shownForStereo = stereoPanel.Visibility == Visibility.Visible;
+            bool bothCheckedByDefault = leftBox.IsChecked == true && rightBox.IsChecked == true;
+            stereoDlg.Close();
+
+            bool ok = hiddenForMono && shownForStereo && bothCheckedByDefault;
+            results.Add(("  InsertSilenceDialog Left/Right channel picker", ok,
+                ok ? null : $"hiddenForMono={hiddenForMono} shownForStereo={shownForStereo} bothChecked={bothCheckedByDefault}"));
+        }
+        catch (Exception ex)
+        {
+            results.Add(("  InsertSilenceDialog Left/Right channel picker", false, ex.GetType().Name + ": " + ex.Message));
+        }
         Try("PropertiesDialog (Program/Combi)", () => PropertiesDialog.ForProgramOrCombi("Test Properties", "Test Name", 0, 0));
         Try("PropertiesDialog (Set List)",      () => PropertiesDialog.ForSetList("Test Properties", "Test Name", new SetListData(0, "Test", Array.Empty<SetListSlot>())));
         Try("UnresolvedDependenciesDialog",     () => UnresolvedDependenciesDialog.For(new[]

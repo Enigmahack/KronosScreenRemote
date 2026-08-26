@@ -2,16 +2,13 @@ namespace KronosScreenRemote;
 
 using System.IO;
 
-// Durable store of a real "blank/initialized" object body per kind - the template written to a
-// slot when a pending-delete is committed (requirement 2). The Kronos protocol has no delete and
-// no "empty slot" encoding, so the only faithful way to blank a slot is to write back the exact
-// bytes the instrument itself uses for a blank object. Those bytes never change for a given
-// Kronos OS, so they're CAPTURED ONCE (from a currently-blank slot - via the already-synced local
-// body, or a fresh SysEx dump - see BlankTemplates.EnsureAsync) and reused forever.
+// Durable store of a "blank/initialized" object body per kind - the template written to a slot
+// when a pending-delete is committed. The Kronos protocol has no delete and no "empty slot"
+// encoding, so the only faithful way to blank a slot is to write back the exact bytes the
+// instrument itself uses for a blank object (see BlankTemplates.EnsureAsync).
 //
-// Rooted at the local library's own directory, so it inherits that dir's isolation: a temp dir in
-// the self-tests, {DataDir}/local_library in the app - never a process-wide global (which is how
-// the program-bank-types cache bit a self-test, see that cache's own history).
+// Rooted at the local library's own directory so it inherits that dir's isolation (a temp dir in
+// the self-tests, {DataDir}/local_library in the app) rather than a process-wide global.
 sealed class BlankTemplateStore
 {
     readonly string _dir;
@@ -68,36 +65,18 @@ sealed class BlankTemplateStore
 // silently become the "blank" template). Re-capture, if ever needed, is deleting the stored .bin.
 static class BlankTemplates
 {
-    // Factory INIT bodies SHIPPED WITH THE APP, as embedded resources (see the .csproj) - the
-    // real bytes, captured once from a real Kronos, version-controlled and reviewable.
+    // Factory INIT bodies shipped with the app as embedded resources (see the .csproj) - real
+    // bytes captured from a real Kronos, version-controlled and reviewable, rather than assumed
+    // blank from whatever a source slot currently holds (see SourceFor). A source slot is not
+    // guaranteed to stay blank on a live instrument, so relying on "capture it now" risks baking
+    // in a real patch as if it were blank and stamping it onto every future delete.
     //
-    // This exists because "capture it from a slot that's blank right now" is not a property any
-    // working instrument keeps. The Combi source used to be U-A:000, which on the reporting
-    // user's Kronos holds a real patch ("SCREAMING HEAD Gmin RIFF") - captured as "the blank
-    // Combi" and then stamped onto every committed Combi delete. Moving the source slot only
-    // moves the assumption; a shipped body removes it.
-    //
-    // All four were captured from one Kronos synced 2026-07 and verified against that library's
-    // own content-addressed blob store (each file's SHA-1 is its blob name), so they are the
-    // instrument's real bytes, not anything this app synthesized:
-    //
-    //   combi_init.bin       7810 B  "Init Combi"        from Combi I-E:005
-    //   program_hd1_init.bin 3706 B  "Init Program"      from Program U-GG:000
-    //   program_exi_init.bin 4960 B  "Init EXi Program"  from Program U-EE:000
-    //   setlist_init.bin    69416 B  "Set List 127"      from Set List 127
-    //
-    // Corroboration that each is the FACTORY init and not one slot's accident: Combi I-E:002..007
-    // are all byte-identical to combi_init.bin, and Set Lists 003 and 127 are byte-identical apart
-    // from the three name digits. Set List 002 was NOT used despite being init: it differs from
-    // 003/127 by one further byte (offset 69410 = 0x05 rather than 0x00), i.e. it carries some
-    // leftover state the other blank slots don't.
-    //
-    // A Set List's default name encodes its own slot number, so the donor's "Set List 127" would
+    // A Set List's default name encodes its own slot number, so the donor slot's name would
     // otherwise be stamped onto whatever slot is erased - ChangesetBuilder re-stamps the correct
     // per-slot name after this returns, which is why any blank donor slot will do.
     //
-    // These are specific to that instrument's OS revision. The fallback chain in EnsureAsync is
-    // what makes a mismatch degrade rather than break.
+    // These bytes are specific to the OS revision they were captured from; the fallback chain in
+    // EnsureAsync is what makes a mismatch on a different OS degrade rather than break.
     static readonly Dictionary<string, byte[]?> _baked = new();
 
     static byte[]? Baked(int objType, bool isExi)
@@ -130,12 +109,10 @@ static class BlankTemplates
         }
     }
 
-    // The slots each shipped body was captured FROM, kept live as a last-resort re-capture path if
-    // a shipped body ever fails its own blank check (see EnsureAsync step 3). Normal operation
-    // never reaches it - which is the whole point of baking the bodies in, since "this slot is
-    // still blank" is not a property any working instrument keeps. Bank numbers per KronosBanks
-    // (U-EE=0x4B, U-GG=0x4D, Combi I-E=0x04); slot numbers are 0-based, exactly as ObjLoc.Label()
-    // renders them, so I-E:005 is bank 0x04 number 5.
+    // The slots each shipped body was captured from, kept as a last-resort re-capture path if a
+    // shipped body ever fails its own blank check (see EnsureAsync step 3) - normal operation
+    // never reaches it. Bank numbers per KronosBanks (U-EE=0x4B, U-GG=0x4D, Combi I-E=0x04); slot
+    // numbers are 0-based, exactly as ObjLoc.Label() renders them, so I-E:005 is bank 0x04 number 5.
     static (int Bank, int Number)? SourceFor(int objType, bool isExi) => objType switch
     {
         LibObj.Program => isExi ? (0x4B, 0) : (0x4D, 0),
@@ -150,18 +127,15 @@ static class BlankTemplates
     //      controlled bytes beat anything discovered at runtime, and unlike a capture they don't
     //      depend on some slot still being blank. This is where every normal call ends.
     //   2. A previously STORED capture, re-validated (never trusted just for existing) and
-    //      discarded if it isn't blank. Now only reachable if step 1 has no body or fails its
-    //      check; it stays because an existing install can already hold a poisoned file, and this
-    //      is what stops that file from being resurrected if step 1 ever goes away.
+    //      discarded if it isn't blank. Only reachable if step 1 has no body or fails its check;
+    //      it stays so an already-poisoned install can self-heal even if step 1 ever goes away.
     //   3. A fresh capture from SourceFor's slot - the already-synced local body first (works
     //      offline), then a SysEx dump - validated before being stored.
     //   4. null: "no trustworthy blank available", and the caller falls back to EraseBody's
     //      derived blank.
     //
-    // Steps 2-4 are defence in depth, not the normal route. Before the bodies were baked in they
-    // WERE the whole mechanism, and that is exactly how a real patch ("SCREAMING HEAD Gmin RIFF",
-    // sitting in what used to be the Combi capture slot) became "the blank Combi" and got stamped
-    // onto every committed Combi delete.
+    // Steps 2-4 are defence in depth, not the normal route - before the bodies were baked in, they
+    // were the whole mechanism.
     public static async Task<byte[]?> EnsureAsync(
         ILibrarianService sysEx, LocalLibraryCache cache, BlankTemplateStore store, int objType, bool isExi)
     {
@@ -204,16 +178,13 @@ static class BlankTemplates
 
     // A cheap, reliable check that a captured body really is a blank of its kind. Structure
     // first (right wire length for the format), then INIT-ness via the same InitObjects
-    // predicates the dependency walker and the placement orphan gate already use - which is what
-    // makes InitObjects' own claim true, that "where a captured template DOES exist, its content
-    // hash necessarily satisfies these same checks."
+    // predicates the dependency walker and the placement orphan gate already use.
     //
-    // The length test alone was the bug: EVERY valid Combi is >= 7810 bytes and every valid
-    // Program is exactly its format's wire size, so the old check accepted any patch sitting in
-    // the source slot and enshrined it as "blank" (see SourceFor). Asking InitObjects means a
-    // source slot that isn't actually blank now falls through to null and the caller uses
-    // EraseBody's derived blank - a safe answer rather than a silently wrong one, which also
-    // means a mistaken source slot can no longer produce a mystery patch name on erase.
+    // Length alone isn't enough: every valid Combi is >= 7810 bytes and every valid Program is
+    // exactly its format's wire size, so a length-only check would accept any patch sitting in
+    // the source slot and enshrine it as "blank" (see SourceFor). Requiring InitObjects too means
+    // a source slot that isn't actually blank falls through to null instead, and the caller uses
+    // EraseBody's derived blank - a safe answer rather than a silently wrong one.
     static bool LooksBlank(int objType, bool isExi, byte[] body) => objType switch
     {
         LibObj.Program => body.Length == (isExi ? ProgramFormatConverter.WireSizeExi : ProgramFormatConverter.WireSizeHd1)

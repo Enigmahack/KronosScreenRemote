@@ -5,7 +5,7 @@ namespace KronosScreenRemote;
 // Generalizes Librarian.PlanMove's pairwise swap into an arbitrary N-item reassignment -
 // see PlanBatchMove's doc comment for why this can't be N independent PlanMove calls.
 //
-// Locked semantics (confirmed with the user, do not re-derive):
+// Locked semantics (do not re-derive):
 //   - Sequential fill always starts at destination-bank slot 0, no skipping.
 //   - A destination slot's current occupant is overwritten by default; a caller-supplied
 //     `divertDisplacedToClipboard` flag instead cuts it into the clipboard.
@@ -390,8 +390,7 @@ static class BatchLibrarian
 
     // The persisted pending-change clipboard is a single global store, not per-host - see
     // LocalLibraryCache's own doc comment for why (the Kronos's IP can change; the objects
-    // don't). The pre-Phase-7 host-keyed variant (for the classic, now-retired
-    // LibrarianWindow) has been removed along with that window.
+    // don't).
     public static BatchClipboard LoadClipboardGlobal()
     {
         var clip = new BatchClipboard();

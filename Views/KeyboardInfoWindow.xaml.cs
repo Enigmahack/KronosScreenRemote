@@ -137,7 +137,6 @@ public partial class KeyboardInfoWindow : ThemedWindow
 
     void ApplyInfo(SysInfo info)
     {
-        // CPU graph
         _cpuHistory[_cpuHistNext] = info.CpuPct >= 0 ? info.CpuPct : 0.0;
         _cpuHistNext = (_cpuHistNext + 1) % HistLen;
         if (!_histFull && _cpuHistNext == 0) _histFull = true;
@@ -147,13 +146,11 @@ public partial class KeyboardInfoWindow : ThemedWindow
 
         SetBar(OverallBarGrid, TXT_Overall, info.CpuPct);
 
-        // Per-core bars
         SetBar(BarGrid0, TXT_Core0, info.Cores.Length > 0 ? info.Cores[0] : -1);
         SetBar(BarGrid1, TXT_Core1, info.Cores.Length > 1 ? info.Cores[1] : -1);
         SetBar(BarGrid2, TXT_Core2, info.Cores.Length > 2 ? info.Cores[2] : -1);
         SetBar(BarGrid3, TXT_Core3, info.Cores.Length > 3 ? info.Cores[3] : -1);
 
-        // Memory
         if (info.MemTotalKb > 0)
         {
             long usedKb  = info.MemTotalKb - info.MemAvailKb;
@@ -162,7 +159,6 @@ public partial class KeyboardInfoWindow : ThemedWindow
             TXT_MemLabel.Text = $"{info.MemAvailKb / 1024} MB free / {info.MemTotalKb / 1024} MB";
         }
 
-        // Uptime, mode, load
         TXT_Uptime.Text = FormatUptime(info.Uptime);
         TXT_Mode.Text   = info.Mode >= 0 && info.Mode < ModeNames.Length
             ? ModeNames[info.Mode] : "?";

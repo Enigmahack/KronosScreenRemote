@@ -9,11 +9,13 @@ sealed class PcgFile
 {
     public IReadOnlyList<PcgObjectEntry> Objects { get; }
     public IReadOnlyList<PcgRejectedBank> RejectedBanks { get; }
+    public IReadOnlyList<PcgChecksumWarning> ChecksumWarnings { get; }
 
-    PcgFile(List<PcgObjectEntry> objects, List<PcgRejectedBank> rejectedBanks)
+    PcgFile(List<PcgObjectEntry> objects, List<PcgRejectedBank> rejectedBanks, List<PcgChecksumWarning> checksumWarnings)
     {
         Objects = objects;
         RejectedBanks = rejectedBanks;
+        ChecksumWarnings = checksumWarnings;
     }
 
     // Returns null if `data` isn't a recognizable Kronos .pcg file (bad magic/product id/
@@ -25,7 +27,7 @@ sealed class PcgFile
         if (Encoding.ASCII.GetString(data, 0, 4) != "KORG") return null;
         if (data[4] != 0x68) return null;   // Product ID: Kronos (other Korg models use a different id - out of scope)
         if (data[5] != 0x00) return null;   // File type: 00 = PCG (01 = SNG - Songs are out of scope, requirement 3)
-        var objects = PcgObjectExtractor.Extract(data, out var rejected);
-        return new PcgFile(objects, rejected);
+        var objects = PcgObjectExtractor.Extract(data, out var rejected, out var checksumWarnings);
+        return new PcgFile(objects, rejected, checksumWarnings);
     }
 }

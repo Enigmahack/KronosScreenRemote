@@ -3,17 +3,14 @@ using System.Windows.Controls;
 
 namespace KronosScreenRemote;
 
-// Step 4 of the auto-heal placement pipeline's own gate (LibrarianShellViewModel.
-// ConfirmContinueWithPendingDependencies) - replaces a plain MessageBox.Show, which grew
-// unboundedly tall with a large number of unresolved dependencies (e.g. a big Set List
-// missing many Combis/Programs) until its own Yes/No buttons scrolled off-screen and couldn't
-// be clicked at all. The list here is capped (XAML's Border MaxHeight) and scrolls instead,
-// with Continue/Cancel always pinned below it.
+// Invoked from LibrarianShellViewModel.ConfirmContinueWithPendingDependencies. Replaces a
+// plain MessageBox.Show, which grew unboundedly tall with a large number of unresolved
+// dependencies (e.g. a big Set List missing many Combis/Programs) until its own Yes/No
+// buttons scrolled off-screen and couldn't be clicked at all. The list here is capped
+// (XAML's Border MaxHeight) and scrolls instead, with Continue/Cancel always pinned below it.
 //
-// This used to be a dead end: a bare address per row ("I-C:008 - needed by 1 object" - Program or
-// Combi? in the PCG or in Local Library?) and exactly two ways out, neither of which fixed
-// anything. Now every row names the TYPE and the objects that need it, and right-clicking one
-// searches a .pcg for that specific object - the same recovery the Librarian's own "Scan PCG for
+// Every row names the TYPE and the objects that need it, and right-clicking one searches a
+// .pcg for that specific object - the same recovery the Librarian's own "Scan PCG for
 // dependencies..." offers, reachable from the moment the problem is actually reported.
 internal partial class UnresolvedDependenciesDialog : ThemedWindow
 {

@@ -93,6 +93,16 @@ public partial class SettingsWindow : ThemedWindow
         // Debug
         ChkDebugLogging.IsChecked = Result.DebugLogging;
 
+        // Sample Editor - Create Zone Preferences
+        (Result.SampleZoneCreatePosition == SampleZoneCreatePosition.Left ? RadZoneCreateLeft : RadZoneCreateRight).IsChecked = true;
+        TxtZoneCreateRange.Text = Result.SampleZoneCreateRange.ToString();
+        (Result.SampleZoneOriginalKeyPosition switch
+        {
+            SampleZoneOriginalKeyPosition.Center => RadOrigKeyCenter,
+            SampleZoneOriginalKeyPosition.Top => RadOrigKeyTop,
+            _ => RadOrigKeyBottom,
+        }).IsChecked = true;
+
         // MIDI / SysEx
         CMB_MidiTransport.SelectedIndex = Result.MidiTransport switch
         {
@@ -195,8 +205,6 @@ public partial class SettingsWindow : ThemedWindow
         if (TxtZoomWindowSizeLabel != null)
             TxtZoomWindowSizeLabel.Text = $"{v:F1}×";
     }
-
-    // ── Image tab ─────────────────────────────────────────────────────────────
 
     void SlBrightness_ValueChanged(object s, RoutedPropertyChangedEventArgs<double> e)
     { if (TxtBrightnessLabel != null) TxtBrightnessLabel.Text = ((int)SlBrightness.Value).ToString("+0;-0;0"); FireImagePreview(); }
@@ -337,6 +345,15 @@ public partial class SettingsWindow : ThemedWindow
         // Debug
         Result.DebugLogging = ChkDebugLogging.IsChecked == true;
 
+        // Sample Editor - Create Zone Preferences
+        Result.SampleZoneCreatePosition = RadZoneCreateLeft.IsChecked == true
+            ? SampleZoneCreatePosition.Left : SampleZoneCreatePosition.Right;
+        if (int.TryParse(TxtZoneCreateRange.Text, out int zr))
+            Result.SampleZoneCreateRange = Math.Clamp(zr, 1, 127);
+        Result.SampleZoneOriginalKeyPosition = RadOrigKeyCenter.IsChecked == true ? SampleZoneOriginalKeyPosition.Center
+            : RadOrigKeyTop.IsChecked == true ? SampleZoneOriginalKeyPosition.Top
+            : SampleZoneOriginalKeyPosition.Bottom;
+
         // MIDI / SysEx
         Result.MidiTransport = CMB_MidiTransport.SelectedIndex switch
         {
@@ -398,8 +415,6 @@ public partial class SettingsWindow : ThemedWindow
         if (_rawEdited && !_inputTesterOpened) RawKeyMap.Restore(_rawSnapshot);
         DialogResult = false;
     }
-
-    // ── Macro tab ─────────────────────────────────────────────────────────────
 
     void OnMacroAdd(object s, RoutedEventArgs e)
     {
@@ -608,8 +623,6 @@ public partial class SettingsWindow : ThemedWindow
                                  && _selectedMacroRow?.Definition.Steps.Count > 0
                                  && !_macroRecording;
 
-    // ── Raw Key Map tab ───────────────────────────────────────────────────────
-
     void OnInputTesterClick(object s, RoutedEventArgs e)
     {
         // The Input Tester edits the same live RawKeyMap; once it's open we must not revert
@@ -695,12 +708,9 @@ public partial class SettingsWindow : ThemedWindow
         RawEditor.Visibility = Visibility.Collapsed;
     }
 
-    // ── MIDI / SysEx tab ─────────────────────────────────────────────────────
-
     void OnProactivePollChanged(object s, RoutedEventArgs e)
         => CMB_PollInterval.IsEnabled = ChkProactivePoll.IsChecked == true;
 
-    // One-line summary of USB-MIDI detection for the transport section.
     static string DescribeUsbDevices(string match)
     {
         try
@@ -719,15 +729,11 @@ public partial class SettingsWindow : ThemedWindow
         }
     }
 
-    // ── FTP credentials ─────────────────────────────────────────────────────
-
     void OnClearFtpCredentials(object s, RoutedEventArgs e)
     {
         TxtFtpUser.Text     = "";
         TxtFtpPass.Password = "";
     }
-
-    // ── Screenshot directory ──────────────────────────────────────────────────
 
     void OnBrowseScreenshotDir(object s, RoutedEventArgs e)
     {
@@ -743,8 +749,6 @@ public partial class SettingsWindow : ThemedWindow
         if (dlg.ShowDialog() == System.Windows.Forms.DialogResult.OK)
             TxtScreenshotDir.Text = dlg.SelectedPath;
     }
-
-    // ── Import / Export ───────────────────────────────────────────────────────
 
     void OnExport(object s, RoutedEventArgs e)
     {
@@ -792,8 +796,6 @@ public partial class SettingsWindow : ThemedWindow
                 AppMessages.Titles.ImportFailed, MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
-
-    // ── Reset settings ────────────────────────────────────────────────────────
 
     void OnResetSettings(object s, RoutedEventArgs e)
     {

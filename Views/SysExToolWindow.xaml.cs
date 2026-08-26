@@ -148,8 +148,6 @@ partial class SysExToolWindow : ThemedWindow
         _midiLitNotes.Clear();
     }
 
-    // ── Filter buttons ───────────────────────────────────────────────────────
-
     void InitFilterButton(Button btn, MidiMsgType type)
     {
         ApplyFilterStyle(btn, _filterStates[type]);
@@ -191,8 +189,6 @@ partial class SysExToolWindow : ThemedWindow
 
         return !_filterStates.TryGetValue(item.MsgType, out var s) || s != FilterState.Off;
     }
-
-    // ── Piano ────────────────────────────────────────────────────────────────
 
     void BuildPiano()
     {
@@ -337,8 +333,6 @@ partial class SysExToolWindow : ThemedWindow
         ReadOnlySpan<string> names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
         return $"{names[midi % 12]}{midi / 12 - 1}";
     }
-
-    // ── Traffic routing ──────────────────────────────────────────────────────
 
     // Called on a background thread (the MIDI consumer thread, or a TX caller).
     // Build the display row here - off the UI thread - and hand only the finished

@@ -1,9 +1,7 @@
 namespace KronosScreenRemote;
 
-// Generalized sibling of the classic, now-retired LibraryRepository.PlanScan - covers ALL
-// registry object types' banks uniformly (including Programs, which that scan never
-// fetched, since Programs were never referrers there; this cache needs every object's
-// body, not just referrers). Read-only GM/g program banks are excluded
+// Covers ALL registry object types' banks uniformly, including Programs - this cache needs
+// every object's body, not just referrers. Read-only GM/g program banks are excluded
 // (ObjectTypeRegistry's EditableBanks already scopes to the 21 writable program banks) -
 // GM/g factory-content browsing is explicitly future scope, not v1.
 static class LibraryPullPlanner

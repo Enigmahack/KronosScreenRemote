@@ -12,8 +12,8 @@ using System.Threading.Channels;
 // into the SAME MidiStreamParser the TCP monitor uses - so SysEx that spans
 // multiple driver buffers (a ~79 KB Set List dump) is reassembled to one F0...F7
 // message and the ~512 B activity pulses fire identically to the TCP backend.
-// NAudio 2.2.1 re-adds each SysEx buffer after MIM_LONGDATA (verified against the
-// shipped DLL), so long dumps aren't capped at the buffer count.
+// NAudio 2.2.1 re-adds each SysEx buffer after MIM_LONGDATA, so long dumps aren't
+// capped at the buffer count.
 //
 // Prerequisite on the Kronos: "Enable Exclusive" (SysEx Rx) plus MIDI transmit -
 // the same requirement as the TCP backend. If the Kronos doesn't route unsolicited

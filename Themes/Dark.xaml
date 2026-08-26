@@ -32,6 +32,29 @@
     <SolidColorBrush x:Key="DangerBorderBrush"         Color="#FF883333"/>
     <SolidColorBrush x:Key="DangerTextBrush"           Color="#FFDD6666"/>
 
+    <!-- Sample Editor waveform control (Views/SampleWaveformControl.cs) - deliberately
+         its own brushes, NOT AccentBrush/SelectionHighlightBrush: those two are already
+         the same color as each other on purpose (see SelectionHighlightBrush's own
+         comment below), which is exactly why the waveform trace and its drag-selection
+         fill used to be indistinguishable. Trace is a neutral near-white so it never
+         competes with any colored overlay; the other three are semi-transparent so the
+         trace stays visible underneath them. -->
+    <SolidColorBrush x:Key="WaveformTraceBrush"         Color="#FFD8D8D8"/>
+    <SolidColorBrush x:Key="WaveformSelectionBrush"     Color="#55E0A030"/>
+    <SolidColorBrush x:Key="WaveformLoopRegionBrush"    Color="#332E7FD6"/>
+    <!-- The loop region while Loop Lock is on (see SampleWaveformControl.
+         LoopLockEnabled) - draggable as a whole right now, so green to distinguish it
+         from both the faint blue informational-only loop tint and the amber
+         crop-selection fill. -->
+    <SolidColorBrush x:Key="WaveformLoopSelectedBrush"  Color="#5533CC55"/>
+    <SolidColorBrush x:Key="WaveformGridLineBrush"      Color="#1AFFFFFF"/>
+    <!-- Sample Start / Loop Start / Loop End marker LINES - matches the Kronos's own
+         on-screen coloring for these three points exactly (not app palette colors),
+         so the mapping is instantly familiar to anyone who's used the hardware. -->
+    <SolidColorBrush x:Key="WaveformSampleStartBrush"   Color="#FFFF0000"/>
+    <SolidColorBrush x:Key="WaveformLoopStartBrush"     Color="#FF00FF00"/>
+    <SolidColorBrush x:Key="WaveformLoopEndBrush"       Color="#FF0000FF"/>
+
     <!-- ══════════════════════════════════════════════════════════════════
          Window - NOTE: unlike every other implicit style in this file, WPF does
          NOT auto-apply an implicit TargetType="Window" style to the Window element
@@ -532,33 +555,36 @@
     <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}"              Color="#FFFFFFFF"/>
     <SolidColorBrush x:Key="{x:Static SystemColors.ControlBrushKey}"                    Color="#FF232323"/>
     <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightBrushKey}" Color="#FF1A4E6E"/>
+    <!-- Foreground counterpart of the brush directly above - the stock TreeViewItem
+         template pairs InactiveSelectionHighlightBrushKey (background) with
+         InactiveSelectionHighlightTextBrushKey (text) for a selected-but-unfocused row.
+         Only the background half was overridden here, so a selected tree row's text
+         switched from HighlightTextBrushKey's white to this key's un-overridden (near-
+         black) system default the instant the window/TreeView lost focus - reported as
+         "clicking elsewhere changes the font color used in the tree view." -->
+    <SolidColorBrush x:Key="{x:Static SystemColors.InactiveSelectionHighlightTextBrushKey}" Color="#FFFFFFFF"/>
 
     <!-- Named for direct use by custom (non-native) selection highlighting - e.g. the
          Librarian's TV_Local/TV_Pcg (Views/LibrarianShellWindow.xaml), which drive their own
          IsSelected-bound highlight (shared TreeNodeSelectionStyle, that file's Resources) instead
          of relying on TreeViewItem.IsSelected (that native, single-item-only highlight is
          deliberately neutralized for those trees). Deliberately the SAME color as AccentBrush
-         above, not just "a blue" - user feedback (2026-07-20) was that the previous dark navy
-         (#FF1A4E6E, still used by the raw SystemColors.HighlightBrushKey override below for
-         native controls elsewhere) barely read as a highlight at all, and didn't match the blue
+         above rather than the raw dark navy SystemColors.HighlightBrushKey override below (still
+         used for native controls elsewhere), to read clearly as a highlight and match the blue
          used for text (StatusText etc.) elsewhere in the app. TreeNodeSelectionStyle also flips
          selected-row text to a dark color for contrast against this lighter fill. -->
     <SolidColorBrush x:Key="SelectionHighlightBrush" Color="#FF88AADD"/>
 
     <!-- Git-style staging color for the Librarian's local pane (TV_Local in Views/
          LibrarianShellWindow.xaml) - Committed/green = this session's Sync/Commit wrote it.
-         (The Staged/red counterpart, for a local edit that hasn't been pushed yet, used to
-         live here as a whole-row Background fill - StagedHighlightBrush - but that fought
-         with the row's own selection highlight; IsDirty now drives a small red dot using
-         DangerTextBrush instead, so it no longer needs its own brush.) Same content-level-
-         Border technique as SelectionHighlightBrush, for the same reason (the stock
-         TreeViewItem template's own IsSelected trigger would otherwise win). -->
+         Same content-level-Border technique as SelectionHighlightBrush, for the same reason
+         (the stock TreeViewItem template's own IsSelected trigger would otherwise win). -->
     <SolidColorBrush x:Key="CommittedHighlightBrush" Color="#FF1A6E2A"/>
 
-    <!-- New Librarian rebuild (Views/LibrarianShellWindow.xaml): a local edit whose bank
-         changed on hardware since baseline - flagged, distinct from the plain "dirty/
-         uncommitted" state above, since it needs the user's attention before it can push.
-         Same content-level-Border technique, same reason. -->
+    <!-- Views/LibrarianShellWindow.xaml: a local edit whose bank changed on hardware since
+         baseline - flagged, distinct from the plain "dirty/uncommitted" state above, since it
+         needs the user's attention before it can push. Same content-level-Border technique,
+         same reason. -->
     <SolidColorBrush x:Key="ConflictHighlightBrush" Color="#FFC08A20"/>
 
     <!-- Local-only "marked for deletion, pending Commit" (Views/LibrarianShellWindow.xaml,

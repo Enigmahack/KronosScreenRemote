@@ -20,3 +20,6 @@ codesign.pfx
 publish/
 /Documentation/MIDI implementation
 /Documentation/api.md
+SampleFixtures/
+/.claude/agent-memory/re-decompiler
+/Commit Notes.md

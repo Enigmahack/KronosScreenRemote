@@ -102,7 +102,6 @@ internal partial class InputTesterWindow : ThemedWindow
 
     // ── Observed combo box ────────────────────────────────────────────────────
 
-    // Commit whatever is currently in the combo box text to the selected entry.
     void CommitObserved()
     {
         if (EntryGrid.SelectedItem is TestEntry entry)
@@ -281,7 +280,6 @@ internal partial class InputTesterWindow : ThemedWindow
             if (map.TryGetValue((int)entry.Ch, out var obs))
                 entry.Observed = obs;
 
-        // Refresh the combo box for the currently selected row.
         if (EntryGrid.SelectedItem is TestEntry sel)
             CboObserved.Text = sel.Observed;
 

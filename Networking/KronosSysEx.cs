@@ -365,12 +365,10 @@ sealed class KronosSysEx
     //   Documented (KRONOS_MIDI_SysEx.txt func 33):
     //       F0 42 3g 68 33  type bank numMSB numLSB  F7                       (4-byte payload)
     //
-    //   Extended (Kronos OS 3.x hardware, verified 2026-07):
+    //   Extended (seen on Kronos OS 3.x hardware):
     //       F0 42 3g 68 33  type 68 33 type bank numMSB numLSB bank numMSB numLSB  F7
     //                                                                         (10-byte payload)
     //     e.g. Program I-B:043 → F0 42 30 68 33 01 68 33 01 01 00 2B 01 00 2B F7.
-    //     The old code read bank from payload[1] (0x68=104) and number from
-    //     payload[2..3] (0x33,type → 6529), rendering garbage like "?104:6529".
     //
     // Parsed fields are range-checked (IsValidPerformance) so a spurious header
     // match or an unknown layout yields null (display hidden) rather than junk.
@@ -664,10 +662,9 @@ sealed class KronosSysEx
     // Delegates to KronosBanks.Func33ToObjBank + ProgramLabel/CombiLabel - the
     // hardware-validated linear↔objbank mapping the move engine itself uses - so a
     // func-33 bank index can never LABEL one bank while the Librarian's reference
-    // math TARGETS another. This file previously carried its own label tables with
-    // seven internal program banks; Program has no real I-G (see KronosBanks'
-    // header), which shifted every program label from GM onward one bank off.
-    // Combi genuinely has I-G at linear index 6 and is unaffected.
+    // math TARGETS another. Program has no real I-G (see KronosBanks' header), which
+    // shifts every program label from GM onward one bank off; Combi genuinely has
+    // I-G at linear index 6 and is unaffected.
     public static string ResolveBankLabel(int type, int bank)
     {
         if (type == 2) return "";
