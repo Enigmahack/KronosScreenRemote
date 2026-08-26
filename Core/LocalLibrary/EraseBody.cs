@@ -1,6 +1,6 @@
 namespace KronosScreenRemote;
 
-// FALLBACK blank-body builder for a committed pending-delete (requirement 2), used only when no
+// FALLBACK blank-body builder for a committed pending-delete, used only when no
 // REAL captured blank template is available (offline AND never captured - see
 // BlankTemplates/ChangesetBuilder, which prefer the instrument's own blank bytes). This derives a
 // best-effort blank from the object's existing body.

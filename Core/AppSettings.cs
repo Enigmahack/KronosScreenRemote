@@ -119,7 +119,7 @@ public class AppSettings
     // Core/Sample/SampleZoneCreatePreferences.cs and AddPlaceholderZone's own comment
     // for what each one actually does to a newly created zone's key range.
     public SampleZoneCreatePosition SampleZoneCreatePosition { get; set; } = SampleZoneCreatePosition.Right;
-    public int SampleZoneCreateRange { get; set; } = 12; // 1..127, matches the old hardcoded cap
+    public int SampleZoneCreateRange { get; set; } = 12; // 1..127
     public SampleZoneOriginalKeyPosition SampleZoneOriginalKeyPosition { get; set; } = SampleZoneOriginalKeyPosition.Bottom;
 
     public static readonly (string Action, string Label, Key DefaultKey)[] Rebindable =
@@ -188,9 +188,8 @@ public class AppSettings
 
     public string GetKeyName(string action) => GetKeybind(action).ToDisplayString();
 
-    // Deep copy of every setting.  Reflection over all read/write properties means a newly
-    // added setting is copied automatically - no more silently-dropped pass-through fields
-    // (FocusedDataExpanded/FocusedValueExpanded were lost this way before Settings used Clone()).
+    // Deep copy of every setting. Reflection over all read/write properties means a newly
+    // added setting is copied automatically - no more silently-dropped pass-through fields.
     // Mutable collections are copied by value so edits to the clone never mutate the original.
     public AppSettings Clone()
     {

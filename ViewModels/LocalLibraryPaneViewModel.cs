@@ -533,9 +533,6 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         if (ok > 0) RefreshTree();
     }
 
-    // Backing data for PropertiesDialog - a single body read (not a bulk operation), so
-    // this is fine to call once when the dialog opens (unlike the tree-building path,
-    // which must never touch a blob per slot).
     // "Clear Changes" - reverts EVERY pending local edit back to baseline and clears every
     // pending-delete flag, in one action. Confirmation lives in code-behind (destructive, same
     // split as ClearHistory/Clear Merge). Each object still goes through the same Discard/
@@ -557,6 +554,8 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         RefreshTree();
     }
 
+    // A single body read (not a bulk operation), so this is fine to call once when the dialog
+    // opens (unlike the tree-building path, which must never touch a blob per slot).
     public ObjectDump? GetObjectDump(ObjLoc loc) => LocalEditOps.GetObjectDump(_cache, loc);
 
     // Human-readable descriptions of every Combi timbre / Set List slot that currently points at

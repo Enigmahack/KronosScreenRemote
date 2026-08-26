@@ -4,8 +4,7 @@ using System.IO;
 using KronosScreenRemote.ViewModels;
 using NAudio.Wave;
 
-// Off-hardware checks for two real bugs found by the 2026-08-22 Opus redundancy review
-// (neither had ANY prior test coverage - the review's own finding #16):
+// Off-hardware checks for two real bugs, neither with prior test coverage:
 //
 //  1. AssignExistingKsfToZone's stereo dual-assign picked BOTH the target multisamples
 //     AND the source samples off the SAME discriminator (the clicked zone's own

@@ -11,7 +11,6 @@
 
     <DockPanel>
 
-        <!-- Bottom panel -->
         <Border DockPanel.Dock="Bottom"
                 BorderBrush="{StaticResource DividerBrush}" BorderThickness="0,1,0,0"
                 Background="{StaticResource WindowBackgroundBrush}" Padding="10,8">
@@ -24,7 +23,6 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <!-- Row 0: Observed + Send  |  Raw KEY + host-key capture -->
                 <Grid Grid.Row="0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -32,7 +30,6 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <!-- Observed + Send -->
                     <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock Text="Observed: " Foreground="{StaticResource MutedTextBrush}" VerticalAlignment="Center"/>
                         <ComboBox x:Name="CboObserved" Width="200" Margin="0,0,10,0"
@@ -48,7 +45,6 @@
                                 Click="BtnSend_Click"/>
                     </StackPanel>
 
-                    <!-- Raw KEY + host key capture -->
                     <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                         <TextBlock Text="Raw KEY:" Foreground="{StaticResource MutedTextBrush}"
                                    VerticalAlignment="Center" Margin="0,0,6,0"/>
@@ -77,7 +73,6 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- Row 2: status + Save/Load -->
                 <Grid Grid.Row="2">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -94,7 +89,6 @@
                     </StackPanel>
                 </Grid>
 
-                <!-- Row 4: Custom key mappings -->
                 <Grid Grid.Row="4">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -144,7 +138,6 @@
             </Grid>
         </Border>
 
-        <!-- Main character grid -->
         <DataGrid x:Name="EntryGrid"
                   AutoGenerateColumns="False"
                   CanUserAddRows="False" CanUserDeleteRows="False"

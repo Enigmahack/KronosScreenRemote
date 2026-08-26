@@ -1,9 +1,9 @@
 namespace KronosScreenRemote;
 
 // One RLP1 record (18 bytes) inside a .KMP - a single keymap zone. Field offsets
-// hardware-confirmed 2026-08-19 (see kronosology/docs/interfaces/
-// ksc_kmp_ksf_file_format.md §2.1); OriginalKey/TopKey correct an earlier decompiled
-// guess ("key-range high"/"mUnknownLow") that a controlled hardware test disproved.
+// documented at kronosology/docs/interfaces/ksc_kmp_ksf_file_format.md §2.1;
+// OriginalKey/TopKey correct an earlier decompiled guess ("key-range high"/
+// "mUnknownLow").
 sealed class KmpZone
 {
     public byte OriginalKey = 60;  // RLP1 record offset 0 - root/tracking key

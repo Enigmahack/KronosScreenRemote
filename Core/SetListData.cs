@@ -16,10 +16,9 @@ using System.Text.Json.Serialization;
 //
 // NOTE: the Set List slot Type field is 0=COMBI, 1=PROGRAM, 2=song - the SAME
 // convention as func 0x33 (KronosSysEx.ResolveBankLabel), NOT the "prog/combi/song"
-// order the SetList.txt doc lists. Hardware-confirmed against a Set List dump +
-// func-33 log: slot type-field 0 → func-33 COMBI (e.g. I-G:007 ACCORDION), slot
-// type-field 1 → func-33 PROGRAM (e.g. I-B:043 "3 Way Stereo Grand"). Each type
-// uses its OWN bank numbering (combi: I-A...I-G,U-A...U-G; program: I-A...I-F,GM/g,U-A...).
+// order the SetList.txt doc lists: slot type-field 0 → func-33 COMBI, slot
+// type-field 1 → func-33 PROGRAM. Each type uses its OWN bank numbering
+// (combi: I-A...I-G,U-A...U-G; program: I-A...I-F,GM/g,U-A...).
 readonly record struct SetListSlot(
     int Number, string Name, int Type, int Bank, int Index,
     int Color, int HoldTime, int Volume, string Comments)
@@ -74,9 +73,9 @@ sealed record SetListData(int Number, string Name, IReadOnlyList<SetListSlot> Sl
     [JsonIgnore]
     public bool IsEmpty => Slots.Count == 0 || Slots.All(s => s.IsEmpty);
 
-    // The Kronos's factory-default name for set-list slot N - verified against a full hardware
-    // dump, where every untouched slot comes back as "Set List 000".."Set List 127" (zero-padded
-    // to three digits). Used to name a slot reverted-to-blank on a committed delete (requirement 2:
+    // The Kronos's factory-default name for set-list slot N: every untouched slot comes back
+    // as "Set List 000".."Set List 127" (zero-padded to three digits). Used to name a slot
+    // reverted-to-blank on a committed delete (requirement 2:
     // "revert to the init configuration but with the name of the slot it occupies"), so an erased
     // Set List reads as its own slot instead of inheriting the shared blank template's name - that
     // template is captured ONCE from Set List 127, so reusing it verbatim would stamp "Set List 127"

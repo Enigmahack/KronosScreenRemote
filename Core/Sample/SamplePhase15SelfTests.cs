@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using KronosScreenRemote.ViewModels;
 
-// Off-hardware checks for "Save as..." (2026-08-24, tree right-click). The one real risk
+// Off-hardware checks for "Save as..." (tree right-click). The one real risk
 // in this feature, per its own design comment (SampleEditorViewModel.SaveCollectionAs):
 // an edit made BEFORE Save As runs must survive at the NEW path once actually saved, and
 // the ORIGINAL file must never be touched, in either direction - copy-first, then re-key
@@ -29,16 +29,16 @@ static class SamplePhase15SelfTests
         vm.NewCollection(oldKscPath);
         vm.NewMultisampleInCollection("Kick", 0);
 
-        // NewMultisampleInCollection now names a fresh .KMP via AutoFileName too (fixed
-        // 2026-08-25, same round as the rename cascade) - "Kick" (4 chars) pads to
+        // NewMultisampleInCollection names a fresh .KMP via AutoFileName too -
+        // "Kick" (4 chars) pads to
         // "KICK_" (AutoFileName's own underscore-padding for short names), not a bare
         // "Kick.KMP" - computed here rather than hardcoded so this test can't silently
         // go vacuous (checking a file that was never created either way) the next time
         // that naming rule changes.
         var initialKmpPath = Path.Combine(KscCollection.ContentDirFor(oldKscPath), KmpMultisample.AutoFileName("Kick", 0));
 
-        // A pending, unsaved edit - made BEFORE Save As runs. Renaming now moves the
-        // .KMP file/folder IMMEDIATELY (2026-08-25, not deferred like the Name field
+        // A pending, unsaved edit - made BEFORE Save As runs. Renaming moves the
+        // .KMP file/folder IMMEDIATELY (not deferred like the Name field
         // itself) - "Kick" (Mno1=0) becomes KICKR000.KMP right away, matching the
         // Kronos naming scheme (SampleEditorViewModel.ComputeKmpBaseName). Only the
         // .KMP's own CONTENT (the Name bytes) stays a pending edit, same as before.

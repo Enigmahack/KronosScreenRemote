@@ -25,8 +25,7 @@ static class AudioImport
 
     // Cheap peek at the source's own channel count (opens the container/header only, no
     // decode) - lets a caller decide mono vs. stereo import BEFORE committing to either
-    // decode path, rather than always downmixing (added 2026-08-22 for the repository's
-    // auto stereo L/R handling).
+    // decode path, rather than always downmixing.
     public static int GetSourceChannelCount(string path)
     {
         using WaveStream reader = Path.GetExtension(path).Equals(".wav", StringComparison.OrdinalIgnoreCase)

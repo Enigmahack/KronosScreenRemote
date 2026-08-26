@@ -5,15 +5,12 @@ using KronosScreenRemote.Tools;
 
 namespace KronosScreenRemote;
 
-// Double-click properties editor for a Program/Combi/Set List (item 3 of the rebuild:
-// "edit its properties that we have control over"). Two shapes, chosen by which factory
-// method constructed the dialog:
+// Double-click properties editor for a Program/Combi/Set List. Two shapes, chosen by which
+// factory method constructed the dialog:
 //   ForProgramOrCombi - Name + Category/Sub-Category (numeric only; no name table exists
 //     anywhere in the documented format for these values).
 //   ForSetList - the Set List's own Name, plus its slot list; selecting a slot exposes
-//     that slot's Name/Color/Comments for editing. This absorbs Views/SetListWindow's
-//     functionality (Phase 6 of the rebuild) into one dialog instead of a separate window
-//     plus a second per-slot edit dialog (the retired SetListSlotEditDialog).
+//     that slot's Name/Color/Comments for editing.
 internal partial class PropertiesDialog : ThemedWindow
 {
     // 16-slot color palette (Kronos Set List slot colors) - sourced from SetListColors
@@ -54,7 +51,7 @@ internal partial class PropertiesDialog : ThemedWindow
         Loaded += (_, _) => { TXT_Name.SelectAll(); TXT_Name.Focus(); };
     }
 
-    // objType + names (requirement 4): the two category fields are plain numbers in the body, but
+    // objType + names: the two category fields are plain numbers in the body, but
     // the instrument shows the user-editable NAMES its Global object holds for them ("Guitar /
     // Acoustic", not "5 / 2"). `names` is never null - CategoryNames.Numeric() supplies the old
     // numeric labels when nothing has been synced yet or the Kronos is unreachable - so there's no
@@ -151,7 +148,7 @@ internal partial class PropertiesDialog : ThemedWindow
         TXT_SlotComments.IsEnabled = enabled;
     }
 
-    // ── Dependencies (requirement 1) + "Scan PCG for missing..." (requirement 2) ──────────────
+    // ── Dependencies + "Scan PCG for missing..." ──────────────────────────────────────────────
     // Both lists are plain pre-formatted strings supplied by the caller: deciding what "requires"
     // and "used by" MEAN (transitive walks, ROM/INIT labelling, the referrer catalog) is
     // ViewModel work - this dialog only displays it, same split as everything else here.

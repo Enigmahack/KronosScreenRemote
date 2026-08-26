@@ -11,7 +11,6 @@ sealed class TopLeftOcr
 
     byte[]? _last;
 
-    // Returns true when the top-left region differs from the previous call.
     // Always updates the internal snapshot, so stable frames return false after the first.
     public bool HasChanged(byte[] frame, int frameW)
     {

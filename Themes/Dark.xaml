@@ -569,27 +569,22 @@
          IsSelected-bound highlight (shared TreeNodeSelectionStyle, that file's Resources) instead
          of relying on TreeViewItem.IsSelected (that native, single-item-only highlight is
          deliberately neutralized for those trees). Deliberately the SAME color as AccentBrush
-         above, not just "a blue" - user feedback (2026-07-20) was that the previous dark navy
-         (#FF1A4E6E, still used by the raw SystemColors.HighlightBrushKey override below for
-         native controls elsewhere) barely read as a highlight at all, and didn't match the blue
+         above rather than the raw dark navy SystemColors.HighlightBrushKey override below (still
+         used for native controls elsewhere), to read clearly as a highlight and match the blue
          used for text (StatusText etc.) elsewhere in the app. TreeNodeSelectionStyle also flips
          selected-row text to a dark color for contrast against this lighter fill. -->
     <SolidColorBrush x:Key="SelectionHighlightBrush" Color="#FF88AADD"/>
 
     <!-- Git-style staging color for the Librarian's local pane (TV_Local in Views/
          LibrarianShellWindow.xaml) - Committed/green = this session's Sync/Commit wrote it.
-         (The Staged/red counterpart, for a local edit that hasn't been pushed yet, used to
-         live here as a whole-row Background fill - StagedHighlightBrush - but that fought
-         with the row's own selection highlight; IsDirty now drives a small red dot using
-         DangerTextBrush instead, so it no longer needs its own brush.) Same content-level-
-         Border technique as SelectionHighlightBrush, for the same reason (the stock
-         TreeViewItem template's own IsSelected trigger would otherwise win). -->
+         Same content-level-Border technique as SelectionHighlightBrush, for the same reason
+         (the stock TreeViewItem template's own IsSelected trigger would otherwise win). -->
     <SolidColorBrush x:Key="CommittedHighlightBrush" Color="#FF1A6E2A"/>
 
-    <!-- New Librarian rebuild (Views/LibrarianShellWindow.xaml): a local edit whose bank
-         changed on hardware since baseline - flagged, distinct from the plain "dirty/
-         uncommitted" state above, since it needs the user's attention before it can push.
-         Same content-level-Border technique, same reason. -->
+    <!-- Views/LibrarianShellWindow.xaml: a local edit whose bank changed on hardware since
+         baseline - flagged, distinct from the plain "dirty/uncommitted" state above, since it
+         needs the user's attention before it can push. Same content-level-Border technique,
+         same reason. -->
     <SolidColorBrush x:Key="ConflictHighlightBrush" Color="#FFC08A20"/>
 
     <!-- Local-only "marked for deletion, pending Commit" (Views/LibrarianShellWindow.xaml,

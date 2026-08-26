@@ -51,7 +51,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     // Size SetWindowSize last applied, so a subsequent manual resize can be told apart from
     // one we caused. NaN = SetWindowSize has not run yet.
     double _scaledW = double.NaN, _scaledH = double.NaN;
-    Rect   _frameRect;           // screen rect of displayed frame
+    Rect   _frameRect;
 
     // ── Data wheel drag / animation ──────────────────────────────────────────
     readonly WheelState _wheel = new();
@@ -138,7 +138,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
 
     // Frame classification - read by mode + combi + help detection.
     bool _detectedModeEver = false;  // set by SetModeButton
-    bool _daemonBooting    = true;   // daemon's own authoritative BOOT= field (STATE poll) - fail-safe default until the first poll response, mirroring the daemon's own fail-safe default
+    bool _daemonBooting    = true;   // mirrors the daemon's own fail-safe default until the first STATE poll response
     readonly TopLeftOcr _topLeftOcr = new();
     readonly HelpDetector _helpDetector = new();
 
@@ -166,7 +166,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         _ctrlPort = _settings.CtrlPort;
         _pullMode = _settings.PullMode;
         _fps      = _settings.MaxFps;
-        ParseArgs();  // CLI args still win
+        ParseArgs();
 
         // Kick off the Local Library's one-time referrer-catalog build (LocalLibraryCache.
         // BuildCatalogAsync - see its own comment for why this is otherwise a real 10-20s
@@ -295,7 +295,6 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         };
     }
 
-    // Records a user-requested mode and starts the confirmation timeout.
     // The button icon changes only when SetModeButton() is called by detection; if
     // detection never confirms within PendingModeTimeoutSec, RenderTick applies the fallback.
     void SetPendingMode(Mode mode)
@@ -343,11 +342,9 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         WireCommand(BTN_Global,   "Mode Global");
         WireCommand(BTN_Disk,     "Mode Disk");
 
-        // Toggle buttons
         BTN_Help.Click    += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Help));
         BTN_Compare.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Compare));
 
-        // Number pad (no animation, but sends packet)
         BTN_data_dash.Click   += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.NumDash));
         BTN_data0.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(0));
         BTN_data_period.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.NumDot));
@@ -361,11 +358,9 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         BTN_data8.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(8));
         BTN_data9.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(9));
 
-        // Exit / Enter
         BTN_Exit.Click  += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Exit));
         BTN_Enter.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Enter));
 
-        // Value Inc / Dec
         BTN_Inc.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Inc));
         BTN_Dec.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Dec));
 
@@ -378,7 +373,6 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         WireCommand(BTN_SeqPause,  "Seq Pause");
         WireCommand(BTN_TapTempo,  "Tap Tempo");   // global (not seq-mode gated) - see command registry
 
-        // Right-click context menus on mode and toggle buttons
         foreach (var btn in new KronosButton[] { BTN_Setlist, BTN_Combi, BTN_Program, BTN_Sequence,
                                                   BTN_Sampling, BTN_Global, BTN_Disk, BTN_Help, BTN_Compare })
             AddButtonContextMenu(btn);
@@ -670,7 +664,6 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         MNU_CommandPalette.Click += (sender, e) => OpenCommandPalette();
         MNU_About.Click          += (sender, e) => OpenAboutWindow();
 
-        // Layout presets
         MENU_LayoutPreset.SubmenuOpened += (sender, e) =>
         {
             MNU_PresetFull.IsChecked    = _layoutPreset == LayoutPreset.Full;
@@ -729,7 +722,6 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         }
         MENU_BankSelect.Items.Add(bankUUser);
 
-        // Mode Select
         WireCommand(MNU_Mode_Setlist,  "Mode Setlist");
         WireCommand(MNU_Mode_Combi,    "Mode Combi");
         WireCommand(MNU_Mode_Program,  "Mode Program");
@@ -738,7 +730,6 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         WireCommand(MNU_Mode_Global,   "Mode Global");
         WireCommand(MNU_Mode_Disk,     "Mode Disk");
 
-        // Calibration grid size
         MENU_CalGrid.SubmenuOpened += (sender, e) =>
         {
             MNU_CalGrid3.IsChecked = _cal.Mesh.Cols == 3;
@@ -762,7 +753,6 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             Ctrl(DaemonCommand.EnterTestMode);
         };
 
-        // Screenshot and frame operations
         MNU_Screenshot.Click            += (sender, e) => SaveScreenshot();
         MNU_QuickSave.Click             += (sender, e) => QuickSaveScreenshot();
         MNU_CopyFrame.Click             += (sender, e) => CopyFrameToClipboard();
@@ -779,7 +769,6 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             catch { }
         };
 
-        // Frame context menu
         CTX_Screenshot.Click     += (sender, e) => SaveScreenshot();
         CTX_QuickSave.Click      += (sender, e) => QuickSaveScreenshot();
         CTX_CopyFrame.Click      += (sender, e) => CopyFrameToClipboard();
@@ -806,11 +795,9 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             CTX_ScaleHQ.IsChecked     = _settings.ImageScalingMode == ScalingQuality.HighQuality;
         };
 
-        // Wheel context menu
         CTX_WheelSensitivity.Click += (sender, e) => OpenSettingsDialog(SettingsTab.View);
         CTX_WheelReset.Click       += (sender, e) => { SetWheelAngle(0); _wheel.AnimState = 0; };
 
-        // Status bar context menus
         CTX_StatusReconnect.Click  += (sender, e) => UserInitiatedReconnect();
         CTX_StatusDisconnect.Click += (sender, e) => Disconnect();
         CTX_StatusCopyIP.Click      += (sender, e) => { if (!string.IsNullOrEmpty(_host)) Clipboard.SetText(_host); };
@@ -894,7 +881,6 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         catch (Exception ex) { SetNotification(AppMessages.Notify.ScreenshotFailed(ex.Message), isError: true); }
     }
 
-    // Encode a frame as PNG and write it to path.
     static void SaveFramePng(BitmapSource frame, string path)
     {
         var encoder = new PngBitmapEncoder();

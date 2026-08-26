@@ -85,13 +85,12 @@ static class UiThemeSmokeTest
                 ? "NOT FOUND via TryFindResource"
                 : $"FOUND, Setters={appWindowStyle.Setters.Count}, TargetType={appWindowStyle.TargetType}"));
 
-        // Pins the tree-focus-loss text color fix (2026-08-24): the stock TreeViewItem
-        // template pairs InactiveSelectionHighlightBrushKey (background - already
-        // overridden) with InactiveSelectionHighlightTextBrushKey (foreground). Only the
-        // background half was overridden before this fix, so a selected tree row's text
-        // fell back to the un-overridden system default (near-black) the instant the
-        // window/TreeView lost focus. A screenshot can't prove IsSelectionActive was
-        // actually false at capture time - this checks the resource itself.
+        // The stock TreeViewItem template pairs InactiveSelectionHighlightBrushKey
+        // (background) with InactiveSelectionHighlightTextBrushKey (foreground) - both must
+        // be overridden, or a selected tree row's text falls back to the un-overridden system
+        // default (near-black) the instant the window/TreeView loses focus. A screenshot can't
+        // prove IsSelectionActive was actually false at capture time - this checks the
+        // resource itself.
         {
             var inactiveTextBrush = Application.Current.TryFindResource(SystemColors.InactiveSelectionHighlightTextBrushKey) as SolidColorBrush;
             bool isWhite = inactiveTextBrush?.Color == Colors.White;

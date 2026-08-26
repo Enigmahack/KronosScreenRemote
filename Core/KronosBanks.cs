@@ -11,11 +11,9 @@ namespace KronosScreenRemote;
 //   Program : bb 00-06 → INT-A..G (bb 06/"I-G" unused - Program has no real I-G;
 //             see PcgObjectExtractor's own hardware-confirmed finding), bb 08-15 → USER-A..GG.
 //   Combi   : bb 00-06 → INT-A..G,  bb 08-0E → USER-A..G.
-//   Confirmed against real hardware CC/PC traffic (2026-07-22): I-F, GM, g(d), U-A, U-G,
-//   U-AA (Program) and I-G, U-A (Combi) all decode correctly via ProgramObjBank/CombiObjBank
-//   below as currently written - unlike Func33ToObjBank's reference encoding, this bb-based
-//   scheme separates INT/GM/g/USER by MSB rather than a single cascading linear index, so
-//   the unused Program bb=06 slot doesn't shift anything after it.
+//   Unlike Func33ToObjBank's reference encoding, this bb-based scheme separates INT/GM/g/USER
+//   by MSB rather than a single cascading linear index, so the unused Program bb=06 slot
+//   doesn't shift anything after it.
 //
 // ObjBank is the object-dump bank number (KRONOS_MIDI_SysEx.txt *2), used to
 // bulk-dump that bank's names via func 0x77; it doubles as the canonical cache key.
@@ -131,8 +129,8 @@ static class KronosBanks
     // Object-dump name banks to sweep for a full "Sync Names" (type, objBank).
     //
     // The func-0x77 whole-bank name ENUM (obj 0x13/0x12) is firmware-limited to the
-    // PRESET banks (INT, GM/g); it returns Reply code 4 for every USER-writable bank
-    // - confirmed on hardware. The sweep handles that split by bank kind: preset banks
+    // PRESET banks (INT, GM/g); it returns Reply code 4 for every USER-writable bank.
+    // The sweep handles that split by bank kind: preset banks
     // use the fast 0x77 enum; writable banks (objBank >= 0x40) fall back to a paced
     // per-object func-0x72 fetch (SysExDumpCollector.CollectPerObjectNamesAsync),
     // which DOES work for user banks (128/128 on HW). So every bank here is now

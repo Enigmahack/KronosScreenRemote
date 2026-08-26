@@ -39,7 +39,7 @@ static class ObjectReferenceWalker
 
         foreach (var slot in decoded.Slots)
         {
-            // Blank slot, or a Song ref (out of scope, req. 3) - Songs will walk through this
+            // Blank slot, or a Song ref (out of scope) - Songs will walk through this
             // exact same yield once supported, just with slot.Type == 2 handled like the other
             // two instead of skipped, and a LibObj.Song constant to yield instead of Program/Combi.
             if (slot.IsEmpty || slot.Type == 2) continue;
@@ -60,9 +60,8 @@ static class ObjectReferenceWalker
     // Without this, every such reference read as a permanently-unresolvable dependency: a red dot on
     // the Combi forever, a pending session-clipboard entry that no retry could ever clear, and -
     // worst - a hard REFUSE of the whole push from ChangesetBuilder's step-3 referential check. GM
-    // references are extremely common (factory Combis use them, and any timbre left pointing at a
-    // GM program does too), which is exactly why "many GM banks appear as unresolved dependencies
-    // in almost all cases."
+    // references are extremely common - factory Combis use them, and any timbre left pointing at a
+    // GM program does too.
     //
     // Deliberately a CLASSIFIER, not a filter inside Walk: the dependency panels still want to SHOW
     // these references (labelled as ROM/always-available), they just must never be treated as

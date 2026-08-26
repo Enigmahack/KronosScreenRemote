@@ -184,9 +184,7 @@ sealed class StreamReceiver : IStreamReceiver
                     // immediately on connect in change mode (screenremote.c's
                     // client_just_connected path), and it never reads from the client
                     // socket in this mode, so a 0xFF here would sit unread in the
-                    // daemon's recv buffer forever. (An earlier version sent exactly
-                    // that, under a comment claiming it pulled the first frame - it
-                    // never did anything.) A forced resync after drift is what the
+                    // daemon's recv buffer forever. A forced resync after drift is what the
                     // REFRESH ctrl command is for.
                     if (!Poll(sock, 5000)) continue; // idle gap is normal - Kronos screen unchanged
                     // Dead-connection detection is handled entirely by TCP keepalive (set in

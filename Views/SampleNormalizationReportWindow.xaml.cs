@@ -1,8 +1,8 @@
 namespace KronosScreenRemote;
 
-// Read-only report window (Phase 5 "polish" - sample-rate/bit-depth normalization
-// report across a collection). No commands, no editing - SampleNormalizationReport
-// already did all the real work; this just displays it.
+// Read-only report window: sample-rate/bit-depth normalization report across a collection.
+// No commands, no editing - SampleNormalizationReport already did all the real work; this
+// just displays it.
 public partial class SampleNormalizationReportWindow : ThemedWindow
 {
     // A UI-only display row - keeps the "flag text" formatting decision out of the

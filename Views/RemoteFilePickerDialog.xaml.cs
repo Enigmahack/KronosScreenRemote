@@ -5,10 +5,10 @@ using FluentFTP;
 
 namespace KronosScreenRemote;
 
-// Minimal single-purpose remote file picker over FTP, for "Load PCG... From Kronos"
-// (Phase 6 of the Librarian rebuild). Deliberately much smaller than FileManagerWindow
-// (dual-pane, transfers, rename/delete/drag-drop) - this only needs to browse, pick, and
-// download ONE file matching an extension, not manage the whole SD card.
+// Minimal single-purpose remote file picker over FTP, for "Load PCG... From Kronos".
+// Deliberately much smaller than FileManagerWindow (dual-pane, transfers, rename/delete/
+// drag-drop) - this only needs to browse, pick, and download ONE file matching an
+// extension, not manage the whole SD card.
 //
 // Downloads the selected file itself (over the SAME connection used to browse) before
 // closing, rather than handing back a path for the caller to open a SECOND connection to

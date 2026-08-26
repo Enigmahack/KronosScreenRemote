@@ -3,13 +3,9 @@ namespace KronosScreenRemote;
 using System.Text;
 
 // Raw-body decode/mutate for a Set List object (obj 0x0D) - decoded body only, no
-// wire-format/8-to-7 knowledge. FromRawBody holds the field-walk logic that used to
-// live inline in SetListData.FromObjectDump; that method now just validates the
-// wire header, runs KronosSysEx.Decode8to7, and delegates here - so a .pcg-sourced
-// raw body (byte-identical layout; slot fields at +24/+25/+26 corpus-verified against
-// 32 real Kronos-written .pcg files, see kronosology/docs/interfaces/pcg_file_format.md
-// §5 and pcg_corpus_verification_2026-08.md) reuses the exact same decoder as a live
-// dump, never a second copy.
+// wire-format/8-to-7 knowledge. A .pcg-sourced raw body has the same slot layout
+// (fields at +24/+25/+26; see kronosology/docs/interfaces/pcg_file_format.md §5) as a
+// live dump, so both reuse this same decoder rather than each keeping a copy.
 static class SetListBody
 {
     public const int NameLen    = 24;
@@ -17,7 +13,6 @@ static class SetListBody
     public const int SlotSize   = 542;
     public const int CommentLen = 512;
 
-    // Moved verbatim (behavior-preserving) out of the old SetListData.FromObjectDump.
     public static SetListData? FromRawBody(int number, byte[] bin)
     {
         if (bin.Length < SlotBase) return null;

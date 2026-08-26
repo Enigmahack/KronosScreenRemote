@@ -284,14 +284,10 @@ static class Storage
     public static void SaveDumpedBanks(string host, HashSet<(int Type, int Bank)> set)
         => _dumpedBanks.Save(host, set.Select(k => $"{k.Type}:{k.Bank:X2}").ToList());
 
-    // ── Librarian reference-graph cache ───────────────────────────────────────
     // ── Librarian clipboard (Core/BatchMoveModel.cs's BatchClipboard) ───────────
     // A flat list, not a Dictionary<host,...> like the caches above - deliberately not
     // host-keyed, because the local library it belongs to (Core/LocalLibrary) is a single
-    // global store: the Kronos's IP can change but the objects don't. (The old per-host
-    // reference-graph cache and host-keyed clipboard this file used to also carry - for
-    // the classic, now-retired LibrarianWindow - were removed in the Phase 7 cutover, along
-    // with that window itself.)
+    // global store: the Kronos's IP can change but the objects don't.
 
     public sealed record ClipboardEntryDto(
         int ObjType, int OriginBank, int OriginNumber, byte Version, byte[] Body,
@@ -309,12 +305,11 @@ static class Storage
 
     // ── Program bank type cache ───────────────────────────────────────────────
     // Persists the func-0x61 Program Bank Types bitmap (HD-1 vs EXi) per host. Currently
-    // unused by the new Librarian (Views/LibrarianShellWindow.xaml) - its batch-place path
+    // unused by the Librarian (Views/LibrarianShellWindow.xaml) - its batch-place path
     // (ViewModels/LibrarianShellViewModel.cs's BatchPlaceFromPcg) doesn't yet gate on
-    // bank-type compatibility the way the old, now-retired LibrarianWindow's batch-move did
-    // (a known, flagged gap, not a silent regression). Left in place rather than deleted:
-    // ISysExService.RequestProgramBankTypesAsync and this cache are exactly what a future
-    // fix would need.
+    // bank-type compatibility (a known, flagged gap, not a silent regression). Left in
+    // place rather than deleted: ISysExService.RequestProgramBankTypesAsync and this
+    // cache are exactly what a future fix would need.
 
     static string ProgramBankTypesPath => Path.Combine(DataDir, "program_bank_types_cache.json");
     static readonly HostKeyedCache<bool[]> _programBankTypes = new(() => ProgramBankTypesPath, "program-bank-types");

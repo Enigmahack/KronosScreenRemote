@@ -27,17 +27,12 @@ public partial class SampleEditorWindow : ThemedWindow
     // Cached per session, keyed by ksfPath; cleared wherever a zone's .KSF content or
     // Name could actually change (Import Sample, Rename Sample) rather than re-derived
     // from scratch on every refresh. Also backs the repository (bare .KSF) scan
-    // RefreshIndexAndSampleCombo does - added 2026-08-22 per the Opus performance
-    // review, which found that scan was reading and fully re-parsing (KsfSample.Open,
-    // including its PCM body) EVERY bare .KSF in the whole collection on every single
-    // RefreshDetailPanels call, unbounded in collection size and independent of the
-    // currently-loaded sample. Only Name/Suffix are ever needed from either a zone's own
-    // sample or a repository entry, so this caches just that pair rather than the full
-    // decoded KsfSample. (A separate _sampleNameCache existed here briefly during that
-    // same performance pass, storing only Name for the zone-only case - removed
-    // 2026-08-22, Opus redundancy review, once this cache's own Name/Suffix pair made
-    // it redundant: its one remaining caller was a fallback branch that could never
-    // actually be reached differently from this cache's own miss path.)
+    // RefreshIndexAndSampleCombo does, which would otherwise read and fully re-parse
+    // (KsfSample.Open, including its PCM body) EVERY bare .KSF in the whole collection
+    // on every single RefreshDetailPanels call, unbounded in collection size and
+    // independent of the currently-loaded sample. Only Name/Suffix are ever needed from
+    // either a zone's own sample or a repository entry, so this caches just that pair
+    // rather than the full decoded KsfSample.
     readonly Dictionary<string, (string Name, string Suffix)> _repositorySampleCache = new(StringComparer.OrdinalIgnoreCase);
 
     // Returns null for anything unreadable rather than throwing - a bad/missing file is
@@ -233,7 +228,7 @@ public partial class SampleEditorWindow : ThemedWindow
         var dlg = new CreateMultisampleDialog(previewSlot) { Owner = this };
         if (dlg.ShowDialog() != true) return;
 
-        // BUG FIX 2026-08-22 (Opus redundancy review): a stereo pair needs 2
+        // A stereo pair needs 2
         // CONTIGUOUS slots (MNO1 and MNO1+1 - NewStereoMultisamplePairInCollection's own
         // convention), but this always computed `previewSlot` with the default
         // slotsNeeded=1. If a lower slot had freed up (e.g. a multisample was deleted)
@@ -433,11 +428,10 @@ public partial class SampleEditorWindow : ThemedWindow
         _vm.CurrentMultisampleZones is { } zones && _vm.SelectedZoneObject is { } sel && zones.IndexOf(sel) >= 0
             ? zones.IndexOf(sel) + 1 : 1;
 
-    // Sample dropdown - redesigned 2026-08-22 per explicit feedback: this used to
-    // navigate to a different zone by its sample name; it's now the ASSIGNMENT control
-    // instead ("the repository listing should be available immediately when the user
-    // clicks the dropdown for the sample selection", replacing the separate "Assign
-    // from Repository..." button/dialog entirely). Zone navigation is still available
+    // Sample dropdown is the ASSIGNMENT control, not zone navigation: the repository
+    // listing is available immediately when the user clicks the dropdown for the sample
+    // selection, replacing a separate "Assign from Repository..." button/dialog.
+    // Zone navigation is still available
     // via the Index box, the tree, and the Keymap piano - this dropdown now answers
     // "what does the CURRENT zone play", same as typing into Orig.Key/Top Key answers
     // "what key range does it own".
@@ -461,14 +455,14 @@ public partial class SampleEditorWindow : ThemedWindow
         if (msNode != null && zoneIndex >= 0 && zoneIndex < msNode.Children.Count) SelectTreeNode(msNode.Children[zoneIndex]);
     }
 
-    // One entry in the (redesigned) Sample combo: either the CURRENTLY assigned sample
+    // One entry in the Sample combo: either the CURRENTLY assigned sample
     // (first entry, whether or not it happens to also be a bare repository file) or a
     // repository sample not yet assigned to this zone. ToString() override is
-    // deliberate, not decorative - WPF's SelectionBoxItem/closed-combo display fell
+    // deliberate, not decorative - WPF's SelectionBoxItem/closed-combo display falls
     // back to the record's own default ToString() ("ZoneSampleOption { Path = ... }")
     // for the currently-selected item even with DisplayMemberPath set on the ComboBox
-    // in XAML (bug found 2026-08-22); overriding ToString() directly is a guaranteed
-    // fix regardless of which internal WPF path was actually consulting it.
+    // in XAML; overriding ToString() directly is a guaranteed fix regardless of which
+    // internal WPF path is actually consulting it.
     sealed record ZoneSampleOption(string Path, string DisplayName)
     {
         public override string ToString() => DisplayName;
@@ -492,8 +486,7 @@ public partial class SampleEditorWindow : ThemedWindow
     // Takes the already-enumerated node list rather than calling AllMultisampleNodes()
     // itself - that walks the WHOLE tree (every multisample AND every zone under it),
     // and RefreshDetailPanels used to call it here AND again inside
-    // RefreshMultisampleCombo, i.e. twice per keystroke (Opus performance review,
-    // 2026-08-22). One walk, shared.
+    // RefreshMultisampleCombo, i.e. twice per keystroke. One walk, shared.
     static SampleTreeNode? FindCurrentMultisampleNode(List<SampleTreeNode> allMsNodes, List<KmpZone>? zones)
     {
         if (zones == null) return null;
@@ -536,13 +529,13 @@ public partial class SampleEditorWindow : ThemedWindow
             }
 
             // Group repository stereo pairs (same Name, opposite -L/-R Suffix - written
-            // together by ImportSamplesToCollection's own stereo path, 2026-08-22) into
+            // together by ImportSamplesToCollection's own stereo path) into
             // ONE entry - picking either half auto-assigns both channels
             // (AssignExistingKsfToZone), so listing them as two separate rows would just
             // be two confusing routes to the identical result. "(S)"/"(M)" tag (not
             // "(Stereo)") per explicit feedback. Routed through GetRepositorySampleInfo's
             // cache (not a fresh KsfSample.Open per entry per refresh) - see that
-            // cache's own comment (Opus performance review, 2026-08-22).
+            // cache's own comment.
             var repoInfo = _vm.BareSampleEntries()
                 .Select(p => (Path: p, Info: GetRepositorySampleInfo(p)))
                 .Where(t => t.Info != null)
@@ -553,14 +546,13 @@ public partial class SampleEditorWindow : ThemedWindow
                 if (alreadyGrouped.Contains(path)) continue;
                 // Excludes by IDENTITY (Name, and Suffix for a mono sample; Name alone
                 // for a stereo pair, since assigning EITHER repository half reassigns
-                // BOTH channels anyway) - NOT by path. Bug fix 2026-08-22: assigning a
+                // BOTH channels anyway) - NOT by path. Assigning a
                 // repository sample copies its audio into the zone's own file rather
                 // than referencing the repository file directly (AssignExistingKsfToZone/
                 // WriteAssignedSample), so "this zone's own file" and "the repository
                 // entry it came from" are two different paths with identical content -
                 // an exact-path check let the exact same sample show up TWICE (once as
-                // "own", once as a still-present, now-redundant repository entry),
-                // reported as "shows both samples for L and R".
+                // "own", once as a still-present, now-redundant repository entry).
                 if (ownInfo != null && info!.Value.Name == ownInfo.Value.Name
                     && (info.Value.Suffix == ownInfo.Value.Suffix
                         || (ownInfo.Value.Suffix is "-L" or "-R" && info.Value.Suffix is "-L" or "-R")))
@@ -594,12 +586,6 @@ public partial class SampleEditorWindow : ThemedWindow
         }
         else ZoneRangeText.Text = "";
     }
-
-    // GetSampleDisplayName / TryOpenRepositoryKsf removed 2026-08-22 (Opus redundancy
-    // review): GetSampleDisplayName's only remaining caller was a fallback that could
-    // never actually diverge from GetRepositorySampleInfo's own miss path, and
-    // TryOpenRepositoryKsf had exactly one caller (that same method) once the
-    // performance pass's repository cache subsumed it - both are now inlined there.
 
     // "(S)" for one half of a stereo pair (Suffix -L/-R), "(M)" otherwise - explicit
     // feedback's exact requested tag, replacing the earlier "(Stereo)"/plain-name
@@ -675,10 +661,9 @@ public partial class SampleEditorWindow : ThemedWindow
         bool committed = _vm.SetMarker(SampleMarkerKind.LoopStart, v);
         RefreshDetailPanels();
         UpdateStatus();
-        // Only on an actual commit (bug fix 2026-08-22, Opus redundancy review: this
-        // used to fire on every LostFocus regardless of whether SetMarker changed
-        // anything, so tabbing through the field with nothing typed could yank a
-        // manually-zoomed view back to the loop region) and only on LostFocus/Enter,
+        // Only on an actual commit (otherwise tabbing through the field with nothing
+        // typed could yank a manually-zoomed view back to the loop region) and only on
+        // LostFocus/Enter,
         // not every live TextChanged keystroke (panning the view on every digit typed
         // would be far more disruptive than helpful mid-edit).
         if (committed && e is not TextChangedEventArgs) EnsureLoopVisible();
@@ -815,11 +800,9 @@ public partial class SampleEditorWindow : ThemedWindow
         // MUST be "!= null" (a multisample is in context), NOT "is { Count: > 0 }" (has
         // at least one zone) - the two conditions differ EXACTLY for a brand-new,
         // just-created multisample (Create Multisample button), which has a real
-        // CurrentMultisampleZones list that's simply empty. The Count>0 form (bug, fixed
-        // 2026-08-22) collapsed this whole panel - and the keymap below - for that one
-        // case, with no way to reach "Create Zone"/"Import Sample..." to populate it;
-        // the comment above already documented the INTENDED "!= null" behavior, the
-        // code just didn't match it.
+        // CurrentMultisampleZones list that's simply empty. A Count>0 check would
+        // collapse this whole panel - and the keymap below - for that one case, with no
+        // way to reach "Create Zone"/"Import Sample..." to populate it.
         ZonePanel.Visibility = _vm.CurrentMultisampleZones != null ? Visibility.Visible : Visibility.Collapsed;
         var sampleTabs = _vm.HasSampleLoaded ? Visibility.Visible : Visibility.Collapsed;
         EditingFrame.Visibility = sampleTabs;
@@ -1043,7 +1026,7 @@ public partial class SampleEditorWindow : ThemedWindow
         MNU_SaveChanges.IsEnabled = _vm.HasUnsavedChanges;
     }
 
-    // ── Waveform editing (Phase 3) ──────────────────────────────────────────────
+    // ── Waveform editing ─────────────────────────────────────────────────────────
 
     // Combine mode shows the SAME selection on both panes (a single logical stereo
     // view - see RefreshDetailPanels), and Split mode only ever shows one pane at all,
@@ -1574,7 +1557,7 @@ public partial class SampleEditorWindow : ThemedWindow
         UpdateStatus();
     }
 
-    // ── Waveform right-click context menu (Phase 6) ─────────────────────────────
+    // ── Waveform right-click context menu ────────────────────────────────────────
 
     // Shared between WaveformLeft and WaveformRight (same ContextMenu resource) - all
     // its actions target the primary (tree-selected) sample regardless of which pane
@@ -1717,7 +1700,7 @@ public partial class SampleEditorWindow : ThemedWindow
         base.OnClosed(e);
     }
 
-    // ── Remote (FTP) pull/push (Phase 2) ────────────────────────────────────────
+    // ── Remote (FTP) pull/push ───────────────────────────────────────────────────
 
     // KronosRemoteSampleSource is built fresh per call rather than cached - it just
     // captures owner/settings/host, all of which can change between calls (host
@@ -1774,7 +1757,7 @@ public partial class SampleEditorWindow : ThemedWindow
         UpdateStatus();
     }
 
-    // ── Import / Export (Phase 4) ───────────────────────────────────────────────
+    // ── Import / Export ──────────────────────────────────────────────────────────
 
     void OnImportAudio(object sender, RoutedEventArgs e)
     {
@@ -1846,11 +1829,9 @@ public partial class SampleEditorWindow : ThemedWindow
         return null;
     }
 
-    // Redesigned 2026-08-22 per explicit feedback: this now ALWAYS populates the
-    // repository (Un-referenced Samples) too, not just the selected zone - folding in
-    // what the separate "Import to Repository..."/"Assign from Repository..." buttons
-    // used to do (removed as redundant - the whole point was "importing a sample
-    // should already make it available to be used as an assignable sample"). Multi-
+    // Always populates the repository (Un-referenced Samples) too, not just the
+    // selected zone - the whole point is that importing a sample should already make
+    // it available to be used as an assignable sample elsewhere. Multi-
     // select: every chosen file joins the repository, the first is assigned to the
     // selected zone (the rest are pickable afterward via the Sample combo).
     void OnImportSampleIntoZone(object sender, RoutedEventArgs e)
@@ -1959,7 +1940,7 @@ public partial class SampleEditorWindow : ThemedWindow
         }
     }
 
-    // ── Normalization report + Recent Files (Phase 5) ───────────────────────────
+    // ── Normalization report + Recent Files ──────────────────────────────────────
 
     void OnNormalizationReport(object sender, RoutedEventArgs e)
     {

@@ -31,5 +31,5 @@ public class MacroStep
     };
 
     public string Name    => _names.TryGetValue(Code, out var n) ? n : $"k{Code}";
-    public string Display => $"{Name}{(Down ? "↓" : "↑")}";  // ↓ / ↑
+    public string Display => $"{Name}{(Down ? "↓" : "↑")}";
 }

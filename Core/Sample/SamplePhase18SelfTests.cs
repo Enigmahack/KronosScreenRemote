@@ -4,7 +4,7 @@ using System.IO;
 using System.Linq;
 using KronosScreenRemote.ViewModels;
 
-// Off-hardware checks for the Multisample rename cascade (2026-08-25): renaming a
+// Off-hardware checks for the Multisample rename cascade: renaming a
 // multisample now moves its .KMP file + zone-content folder to match the Kronos naming
 // scheme (SampleEditorViewModel.ComputeKmpBaseName/MoveMultisampleFilesIfNeeded, both
 // verified against real MASTER-LIBRARY content over FTP - see that method's own
@@ -35,8 +35,7 @@ static class SamplePhase18SelfTests
 
         // ── NextKsfFilename/NextFreeZoneFileName at Mno1 >= 1000 - hardware-confirmed
         //    "M<mno1:D4><zone:D3>.KSF" tier (24K_1028/'s own zones: M1028000.KSF etc.),
-        //    fixed 2026-08-25 (previously hardcoded MS<mno1:D3>, silently WRONG - never
-        //    9-character-safe - for any Mno1 past 999). ──
+        //    not MS<mno1:D3> (never 9-character-safe for any Mno1 past 999). ──
         {
             var m = new KmpMultisample { Name = "Test", Mno1 = 1028 };
             Check("ksf-filename-tier2-empty", m.NextKsfFilename() == "M1028000.KSF");
@@ -110,7 +109,7 @@ static class SamplePhase18SelfTests
         // created) must show up as a graceful Check() failure here, not an unhandled
         // FileNotFoundException that crashes the whole --librarian-selftest run and
         // takes every OTHER phase's checks down with it (caught exactly this way while
-        // negative-controlling this file, 2026-08-25).
+        // negative-controlling this file).
         if (File.Exists(newLeftKmp))
         {
             var kmpAtNewPathBeforeSave = KmpMultisample.Open(File.ReadAllBytes(newLeftKmp));
@@ -156,9 +155,9 @@ static class SamplePhase18SelfTests
             File.WriteAllBytes(Path.Combine(contentDir, "CCCCC001.KMP"), [1, 2, 3]);
             vm2.RenameSelectedMultisample("CCCCC");
             Check("collision-guard-refuses-when-target-file-exists", nodeB.MultisampleRef!.Value.Multisample.Name == "BBBBB");
-            // NewMultisampleInCollection now names a fresh .KMP via AutoFileName too
-            // (fixed 2026-08-25, same round) - B's own file is "BBBBB001.KMP" from
-            // creation, matching what a subsequent rename would also compute.
+            // NewMultisampleInCollection names a fresh .KMP via AutoFileName too - B's
+            // own file is "BBBBB001.KMP" from creation, matching what a subsequent
+            // rename would also compute.
             Check("collision-guard-leaves-original-kmp-in-place", File.Exists(Path.Combine(contentDir, "BBBBB001.KMP")));
         }
 

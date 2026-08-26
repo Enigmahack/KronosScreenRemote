@@ -3,9 +3,9 @@ namespace KronosScreenRemote;
 using System.IO;
 using KronosScreenRemote.ViewModels;
 
-// Off-hardware checks for the bug-sweep round (see Commit Notes.md entry 21). Every
-// block here pins a bug that was live in the shipped editor, so a regression on any of
-// them is a return to real, previously-observed misbehaviour rather than a hypothetical:
+// Off-hardware checks for the bug-sweep round. Every block here pins a bug that was live
+// in the shipped editor, so a regression on any of them is a return to real,
+// previously-observed misbehaviour rather than a hypothetical:
 //
 //  1. Unsaved sample edits used to be destroyed by clicking another tree node -
 //     SelectNode re-read the .KSF from disk with nothing holding the edit.

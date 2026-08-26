@@ -32,8 +32,7 @@ static class DependencyResolutionSelfTests
             // A UNIQUE host key, never the empty one: LibrarianShellViewModel's constructor seeds
             // its Program bank types from the REAL, global, host-keyed cache file next to the exe,
             // so sharing a key with another self-test means loading whatever that test persisted -
-            // an all-HD-1 answer here would REFUSE every EXi placement below. See
-            // CrossPanePlacementSelfTests' own comment for the full history.
+            // an all-HD-1 answer here would REFUSE every EXi placement below.
             var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), "selftest-depresolution-host");
 
             var pcgBuffer = BuildSyntheticPcg(out var progABody, out var combiXBody, out var combiZBody);

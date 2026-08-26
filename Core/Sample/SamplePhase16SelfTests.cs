@@ -1,6 +1,6 @@
 namespace KronosScreenRemote;
 
-// Off-hardware checks for the keymap-piano playback round (2026-08-25):
+// Off-hardware checks for keymap-piano playback:
 //
 //  1. The Reverse flag (SMD1 flags bit 0x40, hardware-confirmed via the Sample Editor's
 //     own tooltip - "reverses playback direction of the whole sample," unconditional on

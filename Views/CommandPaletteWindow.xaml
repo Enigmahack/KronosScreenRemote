@@ -14,7 +14,6 @@
         Topmost="True">
 
     <Window.Resources>
-        <!-- Item container: dark highlight on hover/selection -->
         <Style x:Key="PaletteItemStyle" TargetType="ListBoxItem">
             <Setter Property="Background"  Value="Transparent"/>
             <Setter Property="Foreground"  Value="#FFDDDDDD"/>
@@ -52,7 +51,6 @@
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
-            <!-- Search box row -->
             <Border Grid.Row="0"
                     Background="#FF252525"
                     BorderBrush="#FF444444"
@@ -87,7 +85,6 @@
                 </Grid>
             </Border>
 
-            <!-- Results list -->
             <ListBox x:Name="ResultsList"
                      Grid.Row="2"
                      Background="Transparent"

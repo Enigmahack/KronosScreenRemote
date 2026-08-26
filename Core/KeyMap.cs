@@ -54,7 +54,6 @@ static class KeyMap
     // Kronos layout differs from US.  Code = Linux keycode to send.  KeepShift = whether
     // to leave Shift held when sending Code (true) or bracket it with Shift release/re-press (false).
     //
-    // Discovered via inject_test on the Kronos:
     //   No Shift needed (KeepShift=false): * via KEY_KPASTERISK(55), + via KEY_KPPLUS(78)
     //   Shift kept (KeepShift=true):       ? = Shift+KEY_EQUAL(13)
     //

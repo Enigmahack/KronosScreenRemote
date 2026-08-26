@@ -40,18 +40,12 @@ namespace KronosScreenRemote.Tools
         public static readonly SetListColors Silver = new(14, 0x80, 0x80, 0x80, "Silver");
         public static readonly SetListColors Slate = new(15, 0x62, 0x62, 0x62, "Slate");
 
-        /// <summary>
-        /// All color palette entries in index order.
-        /// </summary>
         private static readonly SetListColors[] AllColors = new[]
         {
             Default, Charcoal, Brick, Burgundy, Ivy, Olive, Gold, Cacao,
             Indigo, Navy, Rose, Lavender, Azure, Denim, Silver, Slate,
         };
 
-        /// <summary>
-        /// Try to get a color by its index (0-15).
-        /// </summary>
         public static bool TryGetByIndex(int index, out SetListColors color)
         {
             if (index >= 0 && index < AllColors.Length)
@@ -63,15 +57,9 @@ namespace KronosScreenRemote.Tools
             return false;
         }
 
-        /// <summary>
-        /// Get a color by index, returning Default as fallback for out-of-range values.
-        /// </summary>
         public static SetListColors GetByIndexOrDefault(int index)
             => TryGetByIndex(index, out var c) ? c : Default;
 
-        /// <summary>
-        /// Convert to System.Drawing.Color.
-        /// </summary>
         public Color ToDrawingColor() => Color.FromArgb(R, G, B);
 
         public override string ToString() => $"{DisplayName} (#{R:X2}{G:X2}{B:X2})";

@@ -44,14 +44,11 @@ static class SamplePhase8SelfTests
         }
 
         // ── LoopingSampleProvider: reverse=true - the intro ALSO reads backward ──
-        // CORRECTED 2026-08-25 (Commit Notes.md entry 48): this test used to assert the
-        // intro stayed forward with only the loop itself reversing - a real, reported
-        // bug ("plays forward, and then reverses at the loop"), not the intended
-        // hardware behavior. The intro now mirrors the FORWARD intro's own span
-        // [sampleStart, loopEnd) backward - from the buffer's true last frame down to
-        // Loop Start - before handing off to the loop-repeat (unchanged below).
-        // sampleStartFrame plays no role in the reverse case (there's no "where reverse
-        // audio begins" marker on real hardware).
+        // The intro mirrors the FORWARD intro's own span [sampleStart, loopEnd) backward
+        // - from the buffer's true last frame down to Loop Start - before handing off to
+        // the loop-repeat (unchanged below). sampleStartFrame plays no role in the
+        // reverse case (there's no "where reverse audio begins" marker on real
+        // hardware).
         {
             short[] samples = [0, 10, 20, 30, 40, 50]; // frames 0..5, loop = frames [2,5)
             var provider = new LoopingSampleProvider(samples, null, 44100, sampleStartFrame: 0, loopStartFrame: 2, loopEndFrame: 5, reverse: true);

@@ -27,9 +27,9 @@ interface IRemoteSampleSource
 
     // Let the user browse and pick a remote DESTINATION FOLDER, then upload the whole
     // collection at localKscPath (itself + every listed .KMP + every non-skipped zone's
-    // .KSF) into it (2026-08-24, tree right-click "Push to Kronos..."). Unlike PushAsync
-    // above, this has no pull-provenance requirement - it can target any folder the user
-    // navigates to, not just wherever a file was originally pulled from.
+    // .KSF) into it. Unlike PushAsync above, this has no pull-provenance requirement - it
+    // can target any folder the user navigates to, not just wherever a file was originally
+    // pulled from.
     Task<RemoteCollectionPushResult> PickFolderAndPushCollectionAsync(string localKscPath, KscCollection collection);
 }
 

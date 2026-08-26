@@ -51,14 +51,13 @@ partial class SampleEditorViewModel : ObservableObject
     [ObservableProperty] int sampleSampleStart;
     [ObservableProperty] int sampleLoopStart;
     [ObservableProperty] int sampleLoopEnd;
-    // Hardware-confirmed 2026-08-22 (kronosology doc §3.1a) - the REAL Kronos Reverse/
-    // +12dB flags (SMD1 flags byte bits 0x40/0x01). Reverse is distinct from the
-    // pre-existing "Reverse" BUTTON (destructive PCM Array.Reverse, ReverseEffect.cs -
-    // a totally different DSP operation that just happens to share the English word),
-    // but it IS what the "Reverse Loop" checkbox drives (SampleEditorWindow.xaml.cs's
-    // OnLoopReverseChanged calls SetReversed) - one flag, one checkbox, both preview
-    // and persist together. SampleLoopTune is SMD1 offset 5, -99..+99 (KsfSample.
-    // LoopTune enforces the clamp).
+    // The REAL Kronos Reverse/+12dB flags (SMD1 flags byte bits 0x40/0x01). Reverse is
+    // distinct from the pre-existing "Reverse" BUTTON (destructive PCM Array.Reverse,
+    // ReverseEffect.cs - a totally different DSP operation that just happens to share
+    // the English word), but it IS what the "Reverse Loop" checkbox drives
+    // (SampleEditorWindow.xaml.cs's OnLoopReverseChanged calls SetReversed) - one flag,
+    // one checkbox, both preview and persist together. SampleLoopTune is SMD1 offset 5,
+    // -99..+99 (KsfSample.LoopTune enforces the clamp).
     [ObservableProperty] bool sampleReverseEnabled;
     [ObservableProperty] bool sample12dbBoostEnabled;
     [ObservableProperty] int sampleLoopTune;
@@ -105,15 +104,7 @@ partial class SampleEditorViewModel : ObservableObject
     // line) rather than the raw dragged/typed frame - avoids audible clicks at loop/
     // playback boundaries. "Loop Lock": editing one loop edge shifts the OTHER edge by
     // the same amount, preserving loop length - see SetMarker's own comment for how the
-    // two interact when both are on. There used to be a third, separate
-    // LoopReverseEnabled property here for the "Reverse Loop" checkbox's own preview
-    // playback - removed 2026-08-22 (Opus redundancy review) once the 2026-08-22 UI
-    // merge (see SampleReverseEnabled's own comment) made it a pure, provably-always-
-    // equal alias of SampleReverseEnabled: same value written in the same place
-    // (LoadSampleDetailState), same UI checkbox reading it, no XAML binding on either
-    // (this window has no DataContext - the whole detail panel is driven imperatively
-    // by RefreshDetailPanels). PlaySelectedSample's preview now reads
-    // SampleReverseEnabled directly.
+    // two interact when both are on.
     [ObservableProperty] bool useZeroCrossing;
     [ObservableProperty] bool loopLockEnabled;
 
@@ -206,9 +197,9 @@ partial class SampleEditorViewModel : ObservableObject
         if (_dirtySamples.ContainsKey(_selectedSamplePath)) { StatusText = "Save the sample locally first (use Save Sample), then push."; return; }
         if (!_remoteMap.TryGetValue(_selectedSamplePath, out var remotePath))
         { StatusText = "This sample wasn't pulled from the Kronos - nowhere to push it back to."; return; }
-        // Hardware-confirmed failure mode (doc §3.3): Eva's own Save can write a
-        // zero-frame .KSF for a sample that was loaded but never fully read. Pushing
-        // one of those over a good on-Kronos sample would silently destroy it.
+        // Eva's own Save can write a zero-frame .KSF for a sample that was loaded but
+        // never fully read. Pushing one of those over a good on-Kronos sample would
+        // silently destroy it.
         if (_selectedSample.IsHeaderOnly)
         { StatusText = "Refusing to push: this sample has no audio data (header-only)."; return; }
 
@@ -234,7 +225,7 @@ partial class SampleEditorViewModel : ObservableObject
         StatusText = result.StatusMessage;
     }
 
-    // Tree right-click "Push to Kronos..." (2026-08-24) - uploads the WHOLE active
+    // Tree right-click "Push to Kronos..." - uploads the WHOLE active
     // collection to a folder the user navigates to over FTP, unlike PushSelected*Async
     // above (which push a single already-pulled file back to where it came from and
     // have no "arbitrary destination" concept at all). Same "save locally first" guard
@@ -246,9 +237,9 @@ partial class SampleEditorViewModel : ObservableObject
     // importing to the repository, retiring a consumed entry, creating/deleting a
     // multisample) keeps the two in sync, per explicit request ("every time the user
     // updates the main .KSC file, whether locally or pushed to Kronos"). SaveUserBank's
-    // own writer only ever reflects "the collection's own on-disk entries" (hardware-
-    // confirmed 2026-08-24, see its own doc comment) - exactly what just changed
-    // whenever this runs. The push side (SampleFtpPush.PushClosureAsync) uploads
+    // own writer only ever reflects "the collection's own on-disk entries" (see its own
+    // doc comment) - exactly what just changed whenever this runs. The push side
+    // (SampleFtpPush.PushClosureAsync) uploads
     // whatever this already wrote locally, so pushing never needs its own separate
     // regeneration step.
     static void SaveCollectionWithUserBank(KscCollection collection, string path)
@@ -797,8 +788,7 @@ partial class SampleEditorViewModel : ObservableObject
         return (null, null);
     }
 
-    // Live-sibling-first, disk-fallback second - extracted 2026-08-22 (Opus redundancy
-    // review) from four identical copies of this exact two-step lookup. Prefer the LIVE
+    // Live-sibling-first, disk-fallback second. Prefer the LIVE
     // in-tree sibling over SampleImportBuilder.FindStereoSibling's fresh disk read -
     // otherwise an unsaved key-range/content edit on either half makes the live object
     // stale relative to what a caller needs, and mutating a fresh disk copy instead of
@@ -844,8 +834,8 @@ partial class SampleEditorViewModel : ObservableObject
     }
 
     // reloadWaveform: whether to re-decode SampleWaveform from s.Samples() this call.
-    // Performance fix 2026-08-22 (Opus review): KsfSample.Samples() decodes a BRAND-NEW
-    // array from raw big-endian bytes every time it's called, with no caching - for a
+    // KsfSample.Samples() decodes a BRAND-NEW array from raw big-endian bytes every
+    // time it's called, with no caching - for a
     // real multi-minute 44.1kHz sample that's millions of iterations plus a large
     // allocation. Every header-only-field caller of this method (SetMarker,
     // SetLoopEnabled, SetReversed, Set12dbBoostEnabled, SetLoopTune, MoveLoopRegion) was
@@ -996,14 +986,12 @@ partial class SampleEditorViewModel : ObservableObject
 
     // The KMP's own on-disk base filename (no extension), for deriving its content
     // folder name (which must match exactly). Delegates entirely to
-    // KmpMultisample.AutoFileName - the SAME hardware-confirmed writer
+    // KmpMultisample.AutoFileName - the SAME writer
     // SampleImportBuilder.CreateStereoMultisamplePair/NewMultisampleInCollection
     // already use for a brand-new multisample, so a renamed one always agrees with a
     // freshly-created one instead of two naming implementations quietly drifting apart
-    // (a real bug this fixes 2026-08-25: this method used to have its own duplicate,
-    // un-padded tiering logic, disagreeing with AutoFileName's hardware-confirmed
-    // underscore-padding for short names - "GAGA LEAD" -> "GAGA_000.KMP", not
-    // "GAGA000.KMP" - the very case a Rename could have gotten wrong).
+    // (including AutoFileName's underscore-padding for short names - "GAGA LEAD" ->
+    // "GAGA_000.KMP", not "GAGA000.KMP").
     internal static string ComputeKmpBaseName(string name, uint mno1) =>
         Path.GetFileNameWithoutExtension(KmpMultisample.AutoFileName(name, mno1));
 
@@ -1019,9 +1007,9 @@ partial class SampleEditorViewModel : ObservableObject
     // edit early) - only the container moves; `m` itself becomes a pending dirty entry
     // at the NEW path the same way any other edit does.
     //
-    // In-keymap .KSF files inside the folder are NEVER renamed (hardware-confirmed:
-    // AIRTO097/BEER-000/24K_1028's own zone files are MS<Mno1><zoneIndex>-keyed, not
-    // name-keyed - matches KmpMultisample.NextKsfFilename's own existing convention).
+    // In-keymap .KSF files inside the folder are NEVER renamed - they're
+    // MS<Mno1><zoneIndex>-keyed, not name-keyed (matches KmpMultisample.NextKsfFilename's
+    // own existing convention).
     // Only the FOLDER containing them needs to move, to keep KmpZone.KsfPath (which
     // derives the folder name from the KMP's OWN basename) resolving correctly against
     // the new KMP path.
@@ -1216,9 +1204,7 @@ partial class SampleEditorViewModel : ObservableObject
 
     // Raising a zone's Top Key past the NEXT zone's own Top Key now pushes every zone
     // above it upward by the same amount, preserving each pushed zone's own width until
-    // it runs out of room at 127 (explicit user choice, 2026-08-24, replacing the entry-
-    // 21 ceiling clamp that used to silently cap a typed value at "next zone's TopKey -
-    // 1" instead). Lowering a Top Key never cascades - it just grows the next zone's low
+    // it runs out of room at 127. Lowering a Top Key never cascades - it just grows the next zone's low
     // edge for free (KmpZone's own convention: a zone's range runs from the previous
     // zone's TopKey + 1), no write to any other zone needed. Shared by ApplyZoneEdits
     // (the typed field) and MoveZoneBoundary (the keymap drag) below - same rule either
@@ -1471,11 +1457,7 @@ partial class SampleEditorViewModel : ObservableObject
         ApplyEffect(new GainAdjustEffect(decibels), $"Applied {(decibels >= 0 ? "+" : "")}{decibels:0.#} dB gain");
 
     // Fade In/Out on the current SELECTION - ramp gain across exactly the highlighted
-    // range, leaving everything outside it untouched. The ONLY fade path now (a
-    // separate whole-buffer-edges-by-typed-frame-count "Apply Fade" used to exist here
-    // too, wired to its own frame-count fields that ignored the waveform selection
-    // entirely - confusing and redundant with highlighting, per explicit feedback, so
-    // it was removed rather than kept alongside this one). Reachable from the Edit
+    // range, leaving everything outside it untouched. Reachable from the Edit
     // toolbar's Fade In/Fade Out buttons and the waveform's right-click context menu -
     // both call this same pair of methods.
     public void ApplyFadeInSelection() => ApplySelectionFade(fadeIn: true);
@@ -1799,10 +1781,7 @@ partial class SampleEditorViewModel : ObservableObject
     }
 
     // Loops on playback whenever the sample's own Loop Enabled flag (SampleLoopEnabled -
-    // how the Kronos itself will play it) is on - the separate "Loop Preview" checkbox
-    // this used to also check was removed as redundant (checking Loop Enabled itself
-    // already loops on Play with no second checkbox required, matching what a user
-    // checking "Loop Enabled" actually expects to hear). Plays TRUE stereo (both
+    // how the Kronos itself will play it) is on. Plays TRUE stereo (both
     // channels interleaved) whenever a stereo partner is resolved and actually has
     // audio - Split mode still plays only the tree-selected channel, matching what's
     // visible on screen.
@@ -2460,7 +2439,7 @@ partial class SampleEditorViewModel : ObservableObject
     // "add a new slot" (that's ImportAudioAsNewZone, right above).
     //
     // Returns the target multisample's .KMP path on success (null on failure) and sets
-    // LastImportedZoneIndex alongside it (bug fix 2026-08-22, same pattern
+    // LastImportedZoneIndex alongside it (same pattern
     // AddPlaceholderZone already uses) - RefreshTreeAfterMutation's rebuild replaces
     // every KmpZone with a fresh instance and clears selection, so the caller (the
     // window's code-behind) can't re-select by holding onto the original `zone`
@@ -2472,7 +2451,7 @@ partial class SampleEditorViewModel : ObservableObject
 
     // Decides whether `zone` can safely be given new audio by overwriting its OWN
     // current .KSF file in place, or needs a fresh, collision-free filename instead
-    // (bug fix 2026-08-22, shared by ImportSampleIntoZone and AssignExistingKsfToZone -
+    // (shared by ImportSampleIntoZone and AssignExistingKsfToZone -
     // both replace an EXISTING zone's audio, so both need the identical safety check).
     // A placeholder has no real file to overwrite - obviously needs a fresh name. Less
     // obvious: overwriting a REAL existing filename in place is only safe if nothing
@@ -2516,7 +2495,7 @@ partial class SampleEditorViewModel : ObservableObject
         return false;
     }
 
-    // Import Sample - redesigned 2026-08-22 per explicit feedback: every import now
+    // Import Sample: every import now
     // ALSO populates the repository (bare .KSF entries, "Un-referenced Samples"), not
     // just the one zone it's assigned to - "importing a sample (or multiple) should
     // generate .KSF for them, and make them available to multisamples within that
@@ -2605,7 +2584,7 @@ partial class SampleEditorViewModel : ObservableObject
     // caller can pass it straight to KsfSample.Open/AssignExistingKsfToZone/
     // AddZoneFromExistingKsf without re-deriving the folder convention itself.
     //
-    // Reads the FOLDER, not `_collection.Entries` (2026-08-23 fix): once a repository
+    // Reads the FOLDER, not `_collection.Entries`: once a repository
     // sample has been assigned into a real zone, AssignExistingKsfToZone retires its
     // Entries line (RetireConsumedRepositoryEntry) so the SAVED .KSC matches real
     // Kronos output - but the picker still needs to offer that same audio for reuse
@@ -2648,7 +2627,7 @@ partial class SampleEditorViewModel : ObservableObject
             {
                 var sampleName = Path.GetFileNameWithoutExtension(audioPath);
 
-                // Genuinely stereo source (2026-08-22, per explicit feedback): preserve
+                // Genuinely stereo source: preserve
                 // both channels as a matched -L/-R bare pair (same Name, opposite
                 // Suffix - the doc §2.2 convention every OTHER stereo pair in this app
                 // already uses), rather than always downmixing to mono. This is what
@@ -2660,7 +2639,7 @@ partial class SampleEditorViewModel : ObservableObject
                     var (left, right) = AudioImport.ImportStereoToLR44100(audioPath);
                     var leftFileName = UniqueBareKsfFileName($"{sampleName}-L");
                     var rightFileName = UniqueBareKsfFileName($"{sampleName}-R");
-                    // Sno1 must be collection-unique (hardware-confirmed 2026-08-24, see
+                    // Sno1 must be collection-unique (see
                     // KscCollection.NextFreeSno1) - re-derived AFTER saving the left half
                     // so the right half's scan sees it and can't collide with it.
                     var leftKsf = new KsfSample { Name = sampleName, Suffix = "-L", SampleRate = (uint)AudioImport.TargetSampleRate, Flags = 0x81, Sno1 = KscCollection.NextFreeSno1(kmpDir) };
@@ -2730,7 +2709,7 @@ partial class SampleEditorViewModel : ObservableObject
     void WriteAssignedSample(KmpMultisample m, string kmpPath, KmpZone zone, string name, string suffix, uint sampleRate, short[] pcm)
     {
         if (NeedsFreshFilename(m, kmpPath, zone)) zone.Filename = m.NextFreeZoneFileName();
-        // Sno1 must be collection-unique (hardware-confirmed 2026-08-24, see
+        // Sno1 must be collection-unique (see
         // KscCollection.NextFreeSno1) - never leave it at the field's default.
         var contentDir = Path.GetDirectoryName(kmpPath) is { Length: > 0 } d ? d : ".";
         var ksf = new KsfSample { Name = name, Suffix = suffix, SampleRate = sampleRate, Flags = 0x81, Sno1 = KscCollection.NextFreeSno1(contentDir) };
@@ -2740,7 +2719,7 @@ partial class SampleEditorViewModel : ObservableObject
         ksf.Save(ksfPath);
     }
 
-    // Repository stereo pairing (2026-08-22): a bare .KSF whose Suffix is -L/-R with a
+    // Repository stereo pairing: a bare .KSF whose Suffix is -L/-R with a
     // same-Name, opposite-Suffix sibling ALSO sitting bare in the repository (both
     // written together by ImportSamplesToCollection's own stereo path) is one stereo
     // sample, not two unrelated mono ones - same Name+opposite-Suffix matching
@@ -2784,7 +2763,7 @@ partial class SampleEditorViewModel : ObservableObject
     // own stub-safety logic exactly (NeedsFreshFilename) since this replaces an
     // existing zone's audio the same way.
     //
-    // Auto stereo dual-assign (2026-08-22, explicit feedback): if `sourceKsfPath` is
+    // Auto stereo dual-assign: if `sourceKsfPath` is
     // one half of a repository stereo pair AND `zone`'s own multisample resolves a
     // real stereo sibling (doc §2.2), both channels are assigned at once - the L half
     // to whichever multisample is "-L", the R half to whichever is "-R" - revealing
@@ -2811,9 +2790,9 @@ partial class SampleEditorViewModel : ObservableObject
                 var siblingZone = sibling != null && siblingPath != null ? ResolveCorrespondingZone(m, zone, sibling) : null;
                 if (sibling != null && siblingPath != null && siblingZone != null)
                 {
-                    // BUG FIX 2026-08-22 (Opus redundancy review): this used to pick
+                    // Sources and targets must be resolved independently: picking
                     // BOTH the target multisamples AND the source samples off the SAME
-                    // discriminator (m.Suffix) - but m.Suffix says which multisample the
+                    // discriminator (m.Suffix) is wrong - m.Suffix says which multisample the
                     // CLICKED zone belongs to, not which channel `src` (the repository
                     // file the user actually picked) is. Whenever `src` was the "-R"
                     // half and `m` was the "-L" multisample (a real, reachable case -
@@ -2862,13 +2841,9 @@ partial class SampleEditorViewModel : ObservableObject
     // Once a repository (bare) entry's audio has been copied into a real zone, it no
     // longer belongs in the SAVED .KSC's unreferenced-sample list (doc §1.2, "#>User."
     // companion lines) - a real Kronos-authored collection never carries a bare line
-    // for audio a keymap already owns (confirmed 2026-08-23 against a real Kronos-
-    // authored .KSC pulled over FTP: it listed only its .KMP files, never the bare
-    // .KSF names an equivalent editor-built collection was leaving behind). The extra
-    // bare lines this produced are suspected to confuse OA.ko's own array-sizing
-    // pre-scan on import (kronosology doc §1.5) - a real repro showed exactly this
-    // shape (3 .KMP + 3 bare .KSF lines) on a collection where only the mono
-    // multisample came in correctly on real hardware.
+    // for audio a keymap already owns. The extra bare lines this produced are
+    // suspected to confuse OA.ko's own array-sizing pre-scan on import (kronosology
+    // doc §1.5).
     //
     // The underlying .KSF file is left untouched on disk (not deleted) - only the
     // manifest line is retired - so BareSampleEntries()/the Sample combo (now folder-
@@ -2890,14 +2865,13 @@ partial class SampleEditorViewModel : ObservableObject
     // currently-loaded tree - i.e. genuinely dead weight, not a legitimate
     // "Un-referenced Sample" (those stay listed in Entries and are left alone).
     //
-    // Hardware-confirmed 2026-08-24 this is a real bug, not cosmetic: a collection
+    // This is a real bug, not cosmetic: a collection
     // built entirely through Import Sample (never touching the bare-repository picker
     // for reuse) still left these retired originals on disk - RetireConsumedRepository
     // Entry only ever removed the .KSC manifest line, by design, so the audio stays
     // available to assign into ANOTHER zone later this session. But nothing ever swept
-    // them back out afterward, so a real Kronos-authored equivalent collection (built by
-    // loading each .KMP by hand, verified via a live diff against this exact scenario)
-    // has NONE of these files, while this app's own output did. Called from
+    // them back out afterward, so a real Kronos-authored equivalent collection has NONE
+    // of these files, while this app's own output did. Called from
     // SaveAllChanges so the on-disk state matches real Kronos output by the time a bulk
     // folder push (File Manager) or FTP push picks it up - not from RetireConsumed
     // RepositoryEntry itself, which would break same-session reuse into a second zone.
@@ -2989,7 +2963,7 @@ partial class SampleEditorViewModel : ObservableObject
                 _collection, _collectionPath, baseName, mno1Left);
 
             // Auto-create the default first zone on BOTH halves (identical key range,
-            // required for stereo parity, doc §2.2) - user-specified 2026-08-22, so a
+            // required for stereo parity, doc §2.2), so a
             // freshly created multisample already has something the editor can show/
             // import into, without a separate manual Add Zone step. Deliberately NOT
             // inside CreateStereoMultisamplePair itself (Core builder primitive) -
@@ -3083,7 +3057,7 @@ partial class SampleEditorViewModel : ObservableObject
         }
     }
 
-    // Tree right-click "Save as..." (2026-08-24). Copies the ACTIVE collection's
+    // Tree right-click "Save as...". Copies the ACTIVE collection's
     // on-disk content - unedited, exactly as it sits on disk right now - to a brand-new
     // .KSC path/content folder, then switches the editor to treat that copy as the
     // active document (standard Save-As semantics: the original file is left untouched,
@@ -3210,10 +3184,10 @@ partial class SampleEditorViewModel : ObservableObject
         {
             var kmpDir = KscCollection.ContentDirFor(_collectionPath);
             Directory.CreateDirectory(kmpDir);
-            // AutoFileName, not a literal "<name>.KMP" (fixed 2026-08-25 - a real
-            // inconsistency with the stereo path, which already used AutoFileName via
-            // SampleImportBuilder.CreateStereoMultisamplePair; a mono Create Multisample
-            // never got a Kronos-correct filename until its first rename).
+            // AutoFileName, not a literal "<name>.KMP" - matches the stereo path, which
+            // already uses AutoFileName via SampleImportBuilder.CreateStereoMultisamplePair;
+            // a mono Create Multisample would otherwise never get a Kronos-correct
+            // filename until its first rename.
             var kmpFileName = KmpMultisample.AutoFileName(name, mno1);
             var kmpPath = Path.Combine(kmpDir, kmpFileName);
             var m = new KmpMultisample { Name = name, Mno1 = mno1 };
@@ -3388,7 +3362,7 @@ partial class SampleEditorViewModel : ObservableObject
     // next zone's own Top Key, though, the control now lets the drag go all the way to
     // 127 (see SampleKeymapControl's own comment) and this cascades every following
     // zone upward by the same amount, same rule and same CascadeTopKeys helper as
-    // ApplyZoneEdits' typed Top Key field (2026-08-24).
+    // ApplyZoneEdits' typed Top Key field.
     // Mirrored onto the stereo sibling's zone at the SAME INDEX (see ApplyZoneEdits'
     // own comment for why every key-range edit has to be) - a well-formed pair has
     // identical zone lists, so index is the right correspondence here, and the pair is
@@ -3538,7 +3512,7 @@ partial class SampleEditorViewModel : ObservableObject
     // - whether it came from dragging a marker line in the waveform or typing a new
     // value into a field. Clamp to the buffer happens first, unconditionally; which
     // FRAME actually gets snapped (if Use Zero is on) depends on Loop Lock and which
-    // edge was edited - explicit request (2026-08-25): with Loop Lock on, Loop Start is
+    // edge was edited: with Loop Lock on, Loop Start is
     // always the edge Use Zero snaps against, never Loop End, regardless of which of the
     // two was actually dragged/typed. So:
     //   - Sample Start: snaps itself (Loop Lock doesn't apply to it at all).
@@ -3556,8 +3530,7 @@ partial class SampleEditorViewModel : ObservableObject
     //     Loop Start specifically now instead of whichever edge was touched).
     // Commits through ApplySampleFieldsTo, which applies the final "Loop Start can never
     // precede Sample Start" clamp regardless of what the logic above computed.
-    // Returns whether anything was actually committed (added 2026-08-22, Opus
-    // redundancy review) - the code-behind's EnsureLoopVisible was firing even on a
+    // Returns whether anything was actually committed - the code-behind's EnsureLoopVisible was firing even on a
     // genuine no-op (e.g. LostFocus with nothing typed), which could yank a manually-
     // zoomed view back to the loop region despite that method's own documented
     // "never fights a manual zoom/pan for an unrelated reason" contract. Callers that
@@ -3650,7 +3623,7 @@ partial class SampleEditorViewModel : ObservableObject
         if (mirror)
             _partnerSample!.Flags = enabled ? (byte)(_partnerSample.Flags & ~0x80) : (byte)(_partnerSample.Flags | 0x80);
 
-        // Hardware-confirmed 2026-08-24: checking "Loop" alone, with no loop markers
+        // Checking "Loop" alone, with no loop markers
         // ever dragged, flips this flag correctly but leaves LoopStart==LoopEnd (both 0
         // on a fresh import) - a zero-length loop region, which plays as silent/no
         // audible loop on real hardware even though the flag itself is right. Default
@@ -3746,8 +3719,8 @@ partial class SampleEditorViewModel : ObservableObject
     // Reuses SampleWaveform/PartnerSampleWaveform (already-decoded, cached by
     // LoadSampleDetailState) instead of calling KsfSample.Samples() again - this runs
     // on every marker drag/typed-field commit that has Use Zero on, so a fresh decode
-    // here was a second full-buffer re-decode on top of LoadSampleDetailState's own
-    // (Opus performance review, 2026-08-22). Falls back to a real decode only if the
+    // here was a second full-buffer re-decode on top of LoadSampleDetailState's own.
+    // Falls back to a real decode only if the
     // cache is somehow unpopulated, so this can never regress to "wrong snap point".
     int SnapToNearestZeroCrossing(int proposedFrame)
     {

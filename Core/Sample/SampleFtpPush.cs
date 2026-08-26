@@ -8,7 +8,7 @@ using FluentFTP;
 // .KSF) to an arbitrary remote destination folder over an already-connected FTP client,
 // replaying the exact same folder convention SampleFtpClosure's pull side already relies
 // on (<dest>/<ksc-basename>/<kmp-name>, <dest>/<ksc-basename>/<kmp-basename>/<ksf-name>).
-// Used by the tree's right-click "Push to Kronos..." (2026-08-24) - a genuinely new
+// Used by the tree's right-click "Push to Kronos..." - a genuinely new
 // upload-to-a-chosen-folder action, distinct from IRemoteSampleSource.PushAsync's
 // existing single-file "push back to wherever this was pulled from" contract.
 static class SampleFtpPush
@@ -23,7 +23,7 @@ static class SampleFtpPush
 
         await UploadOneAsync(client, localKscPath, kscRemotePath, onProgress, failures);
 
-        // _UserBank.KSC (2026-08-25) - SaveCollectionWithUserBank already wrote this
+        // _UserBank.KSC - SaveCollectionWithUserBank already wrote this
         // sibling locally as part of any local save, so pushing just uploads whatever's
         // already there rather than regenerating it again. Derived from `localKscPath`
         // directly (mirrors KscCollection.UserBankPath's own logic) rather than reading

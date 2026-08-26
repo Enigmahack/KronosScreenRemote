@@ -34,19 +34,17 @@ sealed class SysExService : ISysExService
     readonly DumpGate _dumpGate = new();
     CancellationTokenSource? _cts;
     CancellationTokenSource? _perfPollDelayCts;
-    // These three used to be CancellationTokenSource-per-debounce, cancelling the PREVIOUS
-    // pending Task.Delay whenever a new event superseded it - correct, but a genuine
-    // TaskCanceledException THROW (caught, but still a real first-chance exception) on every
-    // single collision. Fine for light, human-interaction-paced events; catastrophic under a
-    // Sync's burst of passive stream traffic - a Full Sync's own bank-digest replies collide
-    // with DeferredRefreshAsync's 300ms window on nearly every one, and every newly-learned
-    // object name collides with SchedulePersist's 2s window on nearly every one, which is
-    // exactly the "thousands of TaskCanceledException, roughly one per synced object" symptom
-    // this was rewritten to fix (2026-08-10, diagnosed from a live repro: ~4386 exceptions
-    // against 4480 synced objects). An epoch counter is the non-throwing equivalent: bump it,
-    // start a plain (tokenless) Task.Delay, and after it elapses check whether a LATER call
-    // already bumped the epoch past this one - if so, a newer settle is already in flight and
-    // this one silently no-ops instead of doing the work AND instead of throwing to get there.
+    // A CancellationTokenSource-per-debounce approach - cancelling the PREVIOUS pending
+    // Task.Delay whenever a new event supersedes it - throws a genuine TaskCanceledException
+    // (caught, but still a real first-chance exception) on every collision. Fine for light,
+    // human-interaction-paced events; catastrophic under a Sync's burst of passive stream
+    // traffic, where a Full Sync's own bank-digest replies collide with DeferredRefreshAsync's
+    // 300ms window on nearly every one, and every newly-learned object name collides with
+    // SchedulePersist's 2s window on nearly every one. An epoch counter is the non-throwing
+    // equivalent: bump it, start a plain (tokenless) Task.Delay, and after it elapses check
+    // whether a LATER call already bumped the epoch past this one - if so, a newer settle is
+    // already in flight and this one silently no-ops instead of doing the work AND instead of
+    // throwing to get there.
     long _refreshEpoch;
     long _namePullEpoch;
     long _persistEpoch;
@@ -444,7 +442,7 @@ sealed class SysExService : ISysExService
     //     ~20 ms for 128 names. This enum is firmware-limited to preset banks.
     //   • WRITABLE banks (USER)   - the func-0x77 enum REJECTS them (Reply code 4),
     //     so pull each slot with a paced func-0x72 fetch (SysExDumpCollector
-    //     .CollectPerObjectNamesAsync). Confirmed on HW at 128/128 for user banks.
+    //     .CollectPerObjectNamesAsync).
     // There is NO per-object session throttle: the old "~13 banks/session then it
     // rejects everything" reading was a misdiagnosis - presets dumped and USER banks
     // rejected the *enum*, not a session cap. So a SINGLE Sync now pulls every bank.
@@ -503,8 +501,8 @@ sealed class SysExService : ISysExService
                 {
                     // WRITABLE bank (USER): the firmware REJECTS the func-0x77 name enum
                     // (preset-only), so pull each slot with a paced func-0x72 fetch -
-                    // works for every bank (128/128 on HW), no throttle. ParseIncoming
-                    // caches the names; mark done only when the pull converges (complete).
+                    // works for every bank, no throttle. ParseIncoming caches the names;
+                    // mark done only when the pull converges (complete).
                     var perObj = new Progress<int>(_ =>
                     {
                         int nd; lock (_dumpedBanks) nd = _dumpedBanks.Count;

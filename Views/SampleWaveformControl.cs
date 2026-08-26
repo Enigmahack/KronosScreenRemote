@@ -214,9 +214,9 @@ public sealed class SampleWaveformControl : FrameworkElement
 
     // Live crop-selection drag preview - separate from the committed SelectionStartFrame/
     // SelectionEndFrame DPs, which are now written ONCE at mouse-up instead of on every
-    // MouseMove (2026-08-23 perf complaint: continuous DP writes - doubled in stereo
-    // Combine mode, which mirrors them onto the sibling pane too - made drag-selecting
-    // feel laggy on a real multi-minute sample). null means "no drag in progress, draw
+    // MouseMove (continuous DP writes - doubled in stereo Combine mode, which mirrors
+    // them onto the sibling pane too - made drag-selecting feel laggy on a real
+    // multi-minute sample). null means "no drag in progress, draw
     // the committed selection"; OnRender and the mirrored sibling both read through
     // EffectiveSelectionStart/End rather than caring which one is live. Both DPs' own
     // registration clears this on ANY write, so a preview can never go stale and shadow
@@ -623,7 +623,7 @@ public sealed class SampleWaveformControl : FrameworkElement
 
     // Cache for the trace's min/max-per-pixel-column geometry - the one genuinely
     // O(viewLen) piece of OnRender (every other draw call here is O(width) or O(1)).
-    // Added 2026-08-22 (real perf complaint): PlayheadFrame updates 25x/sec during
+    // PlayheadFrame updates 25x/sec during
     // playback (the VU-meter timer, SampleEditorWindow.xaml.cs) via a DP with
     // AffectsRender, so OnRender was re-running this full bucketing pass over the
     // ENTIRE visible sample on every tick even though only the playhead line itself
@@ -784,8 +784,7 @@ public sealed class SampleWaveformControl : FrameworkElement
     // exactly at the view's own boundary (e.g. LoopEnd == FrameCount == viewEnd, a
     // completely normal "loop runs to the end of the sample" state, not an edge case)
     // draws as a fully visible line instead of being clipped away by ClipToBounds -
-    // bug fix 2026-08-22: every marker check below used to require frame < viewEnd
-    // (strict), which is false exactly when a marker sits AT the view's right edge -
-    // the reported "Loop End line is invisible" was this, not a z-order/covering issue.
+    // every marker check below used to require frame < viewEnd (strict), which is
+    // false exactly when a marker sits AT the view's right edge.
     double MarkerX(int frame, double w) => Math.Clamp(FrameToPixel(frame), 0.75, w - 0.75);
 }

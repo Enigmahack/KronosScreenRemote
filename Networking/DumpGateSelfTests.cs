@@ -1,10 +1,10 @@
 namespace KronosScreenRemote;
 
 // Deterministic, off-hardware self-test for DumpGate - the one part of the transport-lifecycle
-// race fix that's testable without a live stream (the CTS/monitor races are timing-bound and
-// are verified against real hardware). Locks in the two behaviors that were racy before:
-// same-generation overlap keeps the loop paused until the last dump ends, and an orphaned
-// old-generation End can't un-pause a fresh generation's dump. Wired into --librarian-selftest.
+// race fix that's testable without a live stream (the CTS/monitor races are timing-bound).
+// Locks in the two behaviors that were racy before: same-generation overlap keeps the loop
+// paused until the last dump ends, and an orphaned old-generation End can't un-pause a fresh
+// generation's dump. Wired into --librarian-selftest.
 static class DumpGateSelfTests
 {
     public static List<string> SelfTest()

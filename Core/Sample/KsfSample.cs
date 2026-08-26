@@ -6,15 +6,14 @@ using System.Text;
 // .KSF - single sample (binary, CKorgRiff-framed, big-endian, holds real PCM).
 // Chunk order: SMP1 -> SNO1 -> NAME -> SMD1. Direct port of Tools/sample_editor/
 // kronos_ksc_format.py's KsfSample, plus the loop-point fields that library predates
-// (hardware-confirmed 2026-08-19, see kronosology/docs/interfaces/
-// ksc_kmp_ksf_file_format.md §5.1).
+// (see kronosology/docs/interfaces/ksc_kmp_ksf_file_format.md §5.1).
 sealed class KsfSample
 {
     public string Name = "New Sample";
     public string Suffix = "";     // "", "-L", or "-R" - stereo channel marker
     public uint Sno1;
     public uint SampleRate = 44100;
-    // SMD1 sub-header offset 4, hardware-confirmed 2026-08-22 (kronosology doc §3.1a):
+    // SMD1 sub-header offset 4 (kronosology doc §3.1a):
     // bit 0x80 = one-shot (loop disabled, every real unlooped sample has it set),
     // bit 0x40 = Reverse (playback-direction flag - does NOT touch PCM data, unlike
     // ApplyReverse's destructive in-place Array.Reverse effect below; a totally
@@ -23,18 +22,17 @@ sealed class KsfSample
     // Bits 1-5 unobserved in any real sample checked so far.
     public byte Flags = 0x81;
     public byte Channels = 1;      // not code-confirmed as read back anywhere; always 1 in practice -
-                                    // and empirically confirmed 2026-08-22: a genuine stereo source's
-                                    // two channels still each land in a separate mono .KSF with this
-                                    // byte = 1, and a 24-bit source still shows Bits = 16 below - the
-                                    // Kronos has no on-disk representation for anything else.
+                                    // a genuine stereo source's two channels still each land in a
+                                    // separate mono .KSF with this byte = 1, and a 24-bit source still
+                                    // shows Bits = 16 below - the Kronos has no on-disk representation
+                                    // for anything else.
     public byte Bits = 16;         // the only value ever seen
 
-    // SMD1 sub-header offset 5 - hardware-confirmed 2026-08-22 (kronosology doc §3.1a,
-    // corrects its earlier "Unknown, 0x00" placeholder): Loop Tune, a signed byte, raw
-    // tune value written directly (+2 -> 0x02, independently re-confirmed via +99 ->
-    // 0x63). The setter clamps to the front-panel UI's own hard limit (-99..+99) even
-    // though the byte's own range is wider (-128..127) - values outside that clamp were
-    // never producible to test on real hardware, so writing them is not known-safe.
+    // SMD1 sub-header offset 5 (kronosology doc §3.1a): Loop Tune, a signed byte, raw
+    // tune value written directly (+2 -> 0x02). The setter clamps to the front-panel UI's
+    // own hard limit (-99..+99) even though the byte's own range is wider (-128..127) -
+    // values outside that clamp were never producible to test on real hardware, so
+    // writing them is not known-safe.
     // Reading from a file bypasses the clamp (direct field write in Open()) so an
     // out-of-clamp value already on disk round-trips instead of being silently altered.
     sbyte _loopTune;
@@ -44,12 +42,11 @@ sealed class KsfSample
         set => _loopTune = (sbyte)Math.Clamp(value, (sbyte)-99, (sbyte)99);
     }
 
-    // Bypasses the clamp above - same reason RestorePreservedLoopDuplicate exists
-    // (bug fix 2026-08-22, Opus redundancy review): SampleFieldSnapshot.ApplyTo restores
-    // undo/redo state, and until this existed it went through the clamping setter, so
-    // the first Ctrl+Z on one of the rare out-of-clamp-but-on-disk files (see this
-    // field's own comment above) would permanently rewrite a byte that had round-tripped
-    // byte-identical until then.
+    // Bypasses the clamp above - same reason RestorePreservedLoopDuplicate exists:
+    // SampleFieldSnapshot.ApplyTo restores undo/redo state, and going through the
+    // clamping setter there means the first Ctrl+Z on one of the rare
+    // out-of-clamp-but-on-disk files (see this field's own comment above) would
+    // permanently rewrite a byte that had round-tripped byte-identical until then.
     public void RestoreLoopTune(sbyte value) => _loopTune = value;
 
     // Bit-level helpers for the two Flags bits above - mutate through these rather than
@@ -69,28 +66,25 @@ sealed class KsfSample
     public byte[] Pcm = [];        // raw big-endian 16-bit signed samples - route through KsfPcm
     public string? Path;
 
-    // SMP1 offsets 16/20/28 (payload), hardware-confirmed 2026-08-19 via a matched
-    // LOOP/NOLOOP test pair built on a real Kronos: Sample Start=500, Loop Start=1000,
-    // Loop End=5000 round-tripped exactly. Offset 24 (a 4th slot) is handled by
+    // SMP1 offsets 16/20/28 (payload). Offset 24 (a 4th slot) is handled by
     // _preservedLoopDuplicate below.
     public uint SampleStart;
     public uint LoopStart;
     public uint LoopEnd;
 
-    // The offset-24 duplicate slot: mirrors LoopStart in every one of 73/75 real files
-    // examined, but NOT in 5 outlier files (unusual 27778 Hz sample rate, likely
-    // legacy/converted content - e.g. LoopStart=0xfffbed64, dup=1, clearly not a
+    // The offset-24 duplicate slot: mirrors LoopStart in the overwhelming majority of
+    // real files, but not in files with a distinct dup value (unusual sample rate,
+    // likely legacy/converted content - e.g. LoopStart=0xfffbed64, dup=1, clearly not a
     // mirror). Preserved verbatim when read, same as _smf1, rather than blindly
-    // overwritten - confirmed via byte diff that this is the ONLY field those 5 files
-    // fail to round-trip on. Null means "not read from a file" (a brand-new sample),
-    // in which case ToBytes falls back to mirroring LoopStart, matching the confirmed
-    // convention. A caller that edits LoopStart on an existing sample should treat
-    // this as stale and call ClearPreservedLoopDuplicate() to re-sync it.
+    // overwritten. Null means "not read from a file" (a brand-new sample), in which
+    // case ToBytes falls back to mirroring LoopStart. A caller that edits LoopStart on
+    // an existing sample should treat this as stale and call
+    // ClearPreservedLoopDuplicate() to re-sync it.
     uint? _preservedLoopDuplicate;
 
     // Exposed so undo/redo (SampleFieldSnapshot) can snapshot and restore this alongside
-    // SampleStart/LoopStart/LoopEnd/Flags - without this, undoing a field edit on one of
-    // the 5 outlier files would silently drop its non-mirroring dup value (ClearPreserved-
+    // SampleStart/LoopStart/LoopEnd/Flags - without this, undoing a field edit on an
+    // outlier file would silently drop its non-mirroring dup value (ClearPreserved-
     // LoopDuplicate falls back to mirroring LoopStart on next save, a real byte change on
     // a file that round-tripped byte-identical before any edit).
     public uint? PreservedLoopDuplicate => _preservedLoopDuplicate;
@@ -118,22 +112,21 @@ sealed class KsfSample
     // Public read of _smf1, decoded as the filename it holds when present - lets a
     // caller tell "this .KSF is a stub, its real audio lives in another file named X"
     // apart from "this is a resident file with its own real audio", without exposing
-    // the raw chunk bytes. Added 2026-08-22 for ImportSampleIntoZone/
-    // AssignExistingKsfToZone's own stub-safety check (see their comments) - overwriting
-    // a stub's target name in place would silently redirect every OTHER zone whose own
-    // stub still names it.
+    // the raw chunk bytes. Used by ImportSampleIntoZone/AssignExistingKsfToZone's own
+    // stub-safety check (see their comments) - overwriting a stub's target name in
+    // place would silently redirect every OTHER zone whose own stub still names it.
     public string? StubTargetFilename => _smf1 == null ? null
         : Encoding.ASCII.GetString(_smf1).TrimEnd('\0', ' ');
 
     // Returns null if `data` isn't a recognizable .KSF (first chunk isn't SMP1, or no
     // SMD1 chunk at all) rather than throwing - mirrors PcgFile.Open's contract for
     // "wrong kind of file" being expected file-picker input, not a bug. Requiring SMD1
-    // matters beyond format validation: a genuinely truncated download (Phase 2's FTP
-    // pull, cut off mid-transfer) must fail loudly here, not silently produce a
+    // matters beyond format validation: a genuinely truncated download (an FTP pull cut
+    // off mid-transfer) must fail loudly here, not silently produce a
     // default-SampleRate/Flags/empty-Pcm object indistinguishable from a real
-    // header-only-corrupted file (doc §3.3) - IsHeaderOnly is the predicate later
-    // phases gate a push/export guard on, and it must mean "corrupted on the Kronos",
-    // not "we only got 40 bytes over FTP."
+    // header-only-corrupted file (doc §3.3) - IsHeaderOnly is the predicate a
+    // push/export guard checks, and it must mean "corrupted on the Kronos", not "we
+    // only got 40 bytes over FTP."
     public static KsfSample? Open(byte[] data)
     {
         var chunks = KorgRiffChunk.ReadChunks(data);
@@ -146,12 +139,10 @@ sealed class KsfSample
             if (tag == "SMP1" && payload.Length >= 32)
             {
                 // Name/Suffix come from the 24-byte NAME chunk below, not this 16-byte
-                // short field - the two are NOT simple re-truncations of each other.
-                // A real fixture (SMPTEST/LOOP, name "ClaudeTestLoopOFF"+"-L") proved
-                // this: the 16-byte field can only hold 14 base chars ("ClaudeTestLoop"),
-                // while the 24-byte field holds the full 17-char base name. Deriving one
-                // from the other (as this port originally did, mirroring the Python
-                // reference) silently truncates real names on every save.
+                // short field - the two are NOT simple re-truncations of each other: the
+                // 16-byte field can only hold 14 base chars, while the 24-byte field
+                // holds the full name. Deriving one from the other silently truncates
+                // real names on every save.
                 s.SampleStart = KorgRiffChunk.ReadU32BE(payload, 16);
                 s.LoopStart   = KorgRiffChunk.ReadU32BE(payload, 20);
                 s._preservedLoopDuplicate = KorgRiffChunk.ReadU32BE(payload, 24);
@@ -190,12 +181,11 @@ sealed class KsfSample
     public byte[] ToBytes()
     {
         uint frameCountU = (uint)Math.Max(0, FrameCount);
-        // LoopEnd is written exactly as stored - NOT auto-recomputed from FrameCount.
-        // A real header-only-corrupted fixture (SMPTEST/NOLOOP/CLAUD001) proved that
-        // matters: it has FrameCount==0 but its SMP1 tail still carries the ORIGINAL
-        // sample's LoopEnd (235452, a stale pre-corruption value, not a fresh 0 or
-        // frame_count-1 sentinel) - serialization must be lossless pass-through.
-        // Callers that resize Pcm (WAV re-import, crop) own re-deriving LoopEnd/
+        // LoopEnd is written exactly as stored - NOT auto-recomputed from FrameCount. A
+        // header-only-corrupted file can have FrameCount==0 while its SMP1 tail still
+        // carries the ORIGINAL sample's LoopEnd (a stale pre-corruption value, not a
+        // fresh 0 or frame_count-1 sentinel) - serialization must be lossless
+        // pass-through. Callers that resize Pcm (WAV re-import, crop) own re-deriving LoopEnd/
         // LoopStart/SampleStart if they care about the "frame_count-1 when loop is
         // off" convention every intact real one-shot file happens to show - that's an
         // editing-time decision, not something ToBytes should impose.

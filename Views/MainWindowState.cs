@@ -3,11 +3,9 @@ using System.Windows.Threading;
 
 namespace KronosScreenRemote;
 
-// Cohesive state holders extracted from MainWindow's former flat field wall.  Each is a plain
-// reference type held in a single readonly MainWindow field, so closures that capture the holder
-// (timer ticks, event lambdas) stay valid.  Behaviour is unchanged - MainWindow's partial methods
-// now read/write `_group.Field` instead of a loose `_groupField`.  Only trivially-pure helper
-// logic (no WPF/UI/socket access) is moved in; UI-touching orchestration stays in MainWindow.
+// Plain reference types, each held in a single readonly MainWindow field, so closures that
+// capture the holder (timer ticks, event lambdas) stay valid. Only trivially-pure helper logic
+// (no WPF/UI/socket access) belongs here; UI-touching orchestration stays in MainWindow.
 
 // Rolling one-second FPS counter for the status bar.
 sealed class FpsCounter
@@ -61,7 +59,7 @@ sealed class DragState
 
     public bool           Pending;       // mouse down, not yet moved past StartThresh
     public (int x, int y) PendingPos;
-    public bool           Active;        // dragging
+    public bool           Active;
     public (int x, int y) Last;
     public (Point pos, DateTime t)? Marker;   // fading touch-tap marker
 }
@@ -74,7 +72,7 @@ sealed class CalibrationState
     public const double NodeHitRadius = 18.0;
     public const double DotHitRadius  = 12.0;
 
-    public bool             Mode;      // calibration mode active
+    public bool             Mode;
     public bool             Dirty;     // mesh has changes not yet written to disk
     public CalMesh          Mesh = new();
     public List<CalBiasDot> BiasDots = new();
@@ -88,8 +86,8 @@ sealed class CalibrationState
 
 // "Editing a Program from within a Combi/Sequence" (daemon EDITCTX) state + its
 // flashing-button animation. Driven directly by the daemon's STATE poll - EDITCTX is
-// exact per call, so (unlike the old pixel-badge heuristic this replaced) no holdoff
-// is needed: a failed poll just leaves the state unchanged until the next success.
+// exact per call, so no holdoff is needed: a failed poll just leaves the state unchanged
+// until the next success.
 sealed class EditContextState
 {
     public bool        Active;

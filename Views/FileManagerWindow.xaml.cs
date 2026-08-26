@@ -36,16 +36,16 @@ public partial class FileManagerWindow : ThemedWindow
     record ConflictResult(ConflictAction Action, string Name, bool ApplyToAll);
 
     // Per-pane state (Local vs Kronos): item list, sortable column refs, and current sort.
-    // Replaces the former twin _local*/_remote* fields and lets the identical sort/header/column
-    // logic be written once, parameterized by pane.  The divergent I/O (synchronous local FS vs
-    // async FTP) deliberately stays in separate methods that read this shared state.
+    // Lets the identical sort/header/column logic be written once, parameterized by pane. The
+    // divergent I/O (synchronous local FS vs async FTP) deliberately stays in separate methods
+    // that read this shared state.
     sealed class Pane(bool isRemote, string nameHeader, string dir)
     {
         public readonly bool   IsRemote   = isRemote;
-        public readonly string NameHeader = nameHeader;   // "Name (Local)" / "Name (Kronos)"
+        public readonly string NameHeader = nameHeader;
         public readonly ObservableCollection<FileEntry> Items = new();
 
-        public string        Dir = dir;                   // current directory shown in this pane
+        public string        Dir = dir;
         public ScrollViewer? ScrollViewer;                // cached in OnLoaded for drag-scroll
 
         public GridViewColumn NameCol = null!;
@@ -157,7 +157,6 @@ public partial class FileManagerWindow : ThemedWindow
         }
     }
 
-    // Rubber-band selection adorner
     sealed class RubberBandAdorner : Adorner
     {
         Rect _rect;
@@ -190,16 +189,13 @@ public partial class FileManagerWindow : ThemedWindow
     // EnsureConnectedAsync) must NEVER acquire it, or they'd deadlock when called from a worker.
     readonly SemaphoreSlim _ftpGate = new(1, 1);
 
-    // Clipboard (cut/copy/paste)
     ClipboardPayload? _clipboard;
 
-    // Drag-drop
     const string DragDataFormat = "KronosScreenRemote.FileEntries";
     ListView?    _dragSource;
     Point        _dragStart;
     FileEntry?   _deferredSelectEntry; // item to solo-select on mouseup when no drag occurred
 
-    // Rubber-band select
     bool               _rubberBanding;
     Point              _rubberOrigin;
     RubberBandAdorner? _rubberAdorner;
@@ -260,7 +256,6 @@ public partial class FileManagerWindow : ThemedWindow
         RemoteList.AddHandler(GridViewColumnHeader.ClickEvent,
             new RoutedEventHandler((s, e) => OnColumnHeaderClick(_remote, e)));
 
-        // Drag-scroll timer
         _dragScrollTimer.Interval = TimeSpan.FromMilliseconds(50);
         _dragScrollTimer.Tick    += OnDragScrollTick;
 
@@ -350,7 +345,6 @@ public partial class FileManagerWindow : ThemedWindow
 
     async Task RefreshBothAsync() { await RefreshRemoteAsync(); RefreshLocal(); }
 
-    // Serializes an FTP-initiating action so it never overlaps another (see _ftpGate).
     async Task RunExclusive(Func<Task> op)
     {
         await _ftpGate.WaitAsync();
@@ -359,7 +353,7 @@ public partial class FileManagerWindow : ThemedWindow
     }
 
     // Navigate the remote pane to a folder, rolling the path back if the listing fails so the
-    // path box and the shown contents never disagree (B10).  The path swap happens INSIDE the gate
+    // path box and the shown contents never disagree. The path swap happens INSIDE the gate
     // so two rapid navigations can't clobber each other's target/rollback.
     async Task NavigateRemoteAsync(string path)
     {
@@ -682,7 +676,6 @@ public partial class FileManagerWindow : ThemedWindow
 
         if (entry != null)
         {
-            // Any item click: set up potential file drag
             _dragSource = lv;
             _dragStart  = e.GetPosition(lv);
 
@@ -834,7 +827,6 @@ public partial class FileManagerWindow : ThemedWindow
                 e.Handled = true; break;
 
             case Key.Return when anyPane:
-                // Navigate into the selected folder (mirrors double-click)
                 if (lv!.SelectedItem is FileEntry { IsDirectory: true } dir)
                 {
                     if (isRemote) _ = NavigateRemoteAsync(dir.FullPath);
@@ -912,7 +904,6 @@ public partial class FileManagerWindow : ThemedWindow
         if (samePaneFolder) StartDwell(lv, hovered!); // hovered non-null when samePaneFolder
         else                CancelDwell();
 
-        // Drag-scroll: auto-scroll when mouse is near the top or bottom edge
         var pos = e.GetPosition(lv);
         var sv  = lv == LocalList ? _local.ScrollViewer : _remote.ScrollViewer;
         double h = lv.ActualHeight;
@@ -1230,7 +1221,6 @@ public partial class FileManagerWindow : ThemedWindow
     void PrepareContextMenu(ListView lv, bool isRemote, MouseButtonEventArgs e)
     {
         var entry = GetEntryAt(lv, e.GetPosition(lv));
-        // Right-click on an unselected item: select just that item
         if (entry != null && !lv.SelectedItems.Contains(entry))
             lv.SelectedItem = entry;
         lv.ContextMenu = BuildContextMenu(lv, isRemote, entry);
@@ -1244,7 +1234,6 @@ public partial class FileManagerWindow : ThemedWindow
 
         var cm = new ContextMenu();
 
-        // First item: "Open" for folders, transfer command otherwise
         if (onFolder)
         {
             cm.Items.Add(MakeItem("Open", true, async (_, _) =>
@@ -1289,7 +1278,7 @@ public partial class FileManagerWindow : ThemedWindow
     // ── Clipboard operations ──────────────────────────────────────────────────
     void DoCut(ListView lv, bool isRemote)
     {
-        var items = lv.SelectedItems.Cast<FileEntry>().ToList(); // files + dirs
+        var items = lv.SelectedItems.Cast<FileEntry>().ToList();
         if (items.Count == 0) return;
         _clipboard = new ClipboardPayload(IsCut: true, FromRemote: isRemote, Items: items);
         SetStatus(AppMessages.FileManager.CutToMove(items.Count));
@@ -1297,7 +1286,7 @@ public partial class FileManagerWindow : ThemedWindow
 
     void DoCopy(ListView lv, bool isRemote)
     {
-        var items = lv.SelectedItems.Cast<FileEntry>().ToList(); // files + dirs
+        var items = lv.SelectedItems.Cast<FileEntry>().ToList();
         if (items.Count == 0) return;
         _clipboard = new ClipboardPayload(IsCut: false, FromRemote: isRemote, Items: items);
         SetStatus(AppMessages.FileManager.CopiedToCopy(items.Count));

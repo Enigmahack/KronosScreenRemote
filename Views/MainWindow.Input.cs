@@ -35,7 +35,7 @@ public partial class MainWindow
         _layoutPreset = _settings.LayoutPreset;
         ApplyLayoutPreset(_layoutPreset, saveSettings: false);
 
-        // The XAML no longer hard-codes FrameImage's scaling filter - apply the saved one now.
+        // FrameImage's scaling filter isn't set in XAML - apply the saved one now.
         ApplyScalingMode();
 
         Topmost = _settings.AlwaysOnTop;
@@ -777,8 +777,6 @@ public partial class MainWindow
     }
 
     // ── Built-in macros ──────────────────────────────────────────────────────
-    // Resolve a key's Linux code the same way live dispatch does:
-    // raw map first, then KeyMap, then a hardcoded fallback.
     static int ResolveCode(Key k, int fallback)
         => RawKeyMap.Get(k, false)?.RawCode ?? KeyMap.ToLinux(k) ?? fallback;
 

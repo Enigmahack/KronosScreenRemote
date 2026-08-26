@@ -5,21 +5,15 @@ using System.Text;
 
 // .KSC - collection manifest (plain CRLF text, NOT chunked). Header
 // "#KORG Script Version 1.0" / "#v2" / "#uuid:<uuid>", then one plain line per owned
-// .KMP/.KSF filename, then (REQUIRED, hardware-confirmed) one "#>User.0.2.<filename>"
-// line per entry above, same order - omitting that block produces a file that loads
-// with no error but shows zero content in the sample browser (doc §1.2).
+// .KMP/.KSF filename, then (REQUIRED) one "#>User.0.2.<filename>" line per entry
+// above, same order - omitting that block produces a file that loads with no error
+// but shows zero content in the sample browser (doc §1.2).
 //
 // Read path stays permissive (must be able to open a real _UserBank.KSC for
 // inspection). ToBytes()/Save() (normal/"mFieldA==false" mode, doc §1.3) refuse to
 // target a _UserBank.KSC-suffixed filename - that mode's own plain-filename-list +
-// #uuid: format is real Kronos-generated output only. This comment previously claimed
-// hand-authoring a _UserBank.KSC was already hardware-confirmed to fail ("There is no
-// readable data") - no commit/doc record of that test's content was ever found, and it
-// predates the doc's own §1.3 format confirmation (2026-08-22/24), so it was very
-// likely a normal-mode file saved under a _UserBank-suffixed name, not the real
-// #>>uuid:-reference format - not a valid test of the actual open question. See
-// ToUserBankBytes() below for the dedicated, correctly-formatted writer and doc's Open
-// Questions for the real (still being tested) status.
+// #uuid: format is real Kronos-generated output only. See ToUserBankBytes() below for
+// the dedicated, correctly-formatted writer.
 sealed class KscCollection
 {
     public string? BankUuid;
@@ -84,38 +78,25 @@ sealed class KscCollection
     // Writes the OWN-BANK case of the _UserBank.KSC "reference-export" format (doc
     // §1.3, mFieldA==true): one "#>>uuid:<BankUuid>.MS<n>.1.0.<name>" line per .KMP
     // entry and one "#>>uuid:<BankUuid>.DS<n>.1.0.<name>" line per bare-.KSF entry (n =
-    // 0-based, separately counted per type - confirmed positional/emission-order, NOT
-    // tied to a multisample's own Mno1 or a sample's own Sno1, by cross-referencing
-    // real fixtures whose MS/DS indices run 0..N contiguously even where the
-    // referenced content's own Mno1/Sno1 values have gaps), followed by one closing
+    // 0-based, separately counted per type - positional/emission-order, NOT tied to a
+    // multisample's own Mno1 or a sample's own Sno1), followed by one closing
     // "#>uuid:<BankUuid>.<MsCount>.<DsCount>.<own .KSC base filename>" summary line -
     // the bare-filename form doc §1.3 specifies for a bank referencing itself (as
     // opposed to the "HDD:INTERNAL HD:..."/"EXs<N> ..." forms used for an external
     // dependency bank, which this writer doesn't produce). <name> is each referenced
-    // .KMP/.KSF's own 24-byte NAME chunk re-encoded via EncodeNameField - confirmed
-    // byte-for-byte against real _UserBank.KSC fixtures (space-padded, suffix
-    // right-aligned into the 24 bytes, e.g. "ClaudeTestLoopOFF     -L"), not a
+    // .KMP/.KSF's own 24-byte NAME chunk re-encoded via EncodeNameField (space-padded,
+    // suffix right-aligned into the 24 bytes, e.g. "ClaudeTestLoopOFF     -L"), not a
     // trimmed/re-derived string.
     //
     // Deliberately does NOT attempt to replicate a real Eva-generated _UserBank.KSC's
     // full contents: a real one reflects whatever the Kronos sampling engine currently
-    // has RESIDENT IN RAM at Save time (confirmed against a real hardware fixture,
-    // Test2-kronos_UserBank.KSC - it carried extra DS entries and duplicate-looking MS
-    // entries from unrelated, previously-loaded test collections that were never part
-    // of Test2-kronos.KSC's own file list). This writer only ever emits this
-    // collection's own on-disk entries - the "genuine disk-pointer/streaming" case the
-    // doc describes as the feature's actual point.
+    // has RESIDENT IN RAM at Save time, which can include extra MS/DS entries from
+    // unrelated, previously-loaded content never part of this .KSC's own file list.
+    // This writer only ever emits this collection's own on-disk entries - the "genuine
+    // disk-pointer/streaming" case the doc describes as the feature's actual point.
     //
-    // Hardware-confirmed 2026-08-24 - see kronosology doc's Open Questions ("Can a
-    // tool hand-author a working _UserBank.KSC?"). Two real probes built via this
-    // method (Tools/SampleUserBankProbeBuild.cs) and loaded on a real Kronos: a
-    // single-zone multisample, then a 32-zone multisample spanning the full keyboard -
-    // both played correctly via this _UserBank.KSC path and via the normal .KSC
-    // sibling. (The single-zone probe's first round had two real bugs - Original Key
-    // left at C-1, and the referenced .KSF's own LoopEnd left at 0 - but both were in
-    // the probe-building tool's own zone construction, not in this method or the
-    // format it writes; see Commit Notes entries 42a/42b and doc §5's corrected
-    // LoopEnd guidance.)
+    // See kronosology doc's Open Questions ("Can a tool hand-author a working
+    // _UserBank.KSC?") for this format's verification status.
     public byte[] ToUserBankBytes()
     {
         if (Path is null) throw new InvalidOperationException("ToUserBankBytes needs Path set to resolve entry files");
@@ -151,8 +132,7 @@ sealed class KscCollection
     }
 
     // <ksc-dir>/<ksc-basename>_UserBank.KSC - the sibling path a real Kronos always
-    // places this file at, next to the normal .KSC sharing the same #uuid: (doc §1.3,
-    // confirmed against the Test2-kronos.KSC / Test2-kronos_UserBank.KSC fixture pair).
+    // places this file at, next to the normal .KSC sharing the same #uuid: (doc §1.3).
     public string UserBankPath =>
         System.IO.Path.Combine(
             System.IO.Path.GetDirectoryName(Path) ?? "",
@@ -172,28 +152,21 @@ sealed class KscCollection
     }
 
     // <ksc-dir>/<ksc-basename>/ - the collection's own content folder, holding every
-    // .KMP/.KSF this .KSC's plain filename entries reference (confirmed by
-    // CKorgResourceFile::GetPathInSubdirectoryFromFileName, kronosology doc §1.5).
-    // Extracted 2026-08-22 (Opus redundancy review) from nine independent copies of this
-    // exact two-call expression spread across this file, SampleEditorViewModel, and
-    // SampleImportBuilder - one place to get the convention right.
+    // .KMP/.KSF this .KSC's plain filename entries reference
+    // (CKorgResourceFile::GetPathInSubdirectoryFromFileName, kronosology doc §1.5).
     public static string ContentDirFor(string kscPath) =>
         System.IO.Path.Combine(System.IO.Path.GetDirectoryName(kscPath) ?? "", System.IO.Path.GetFileNameWithoutExtension(kscPath));
 
     // Smallest Sno1 not currently used by any .KSF anywhere under `contentDir` (scanned
-    // recursively - zone subfolders and bare/repository files alike). Hardware-confirmed
-    // 2026-08-24: a .KSF's own SNO1 chunk is what CKorgFileKSF::GetSampleNumber actually
-    // reads (ground-truthed via objdump, kronosology doc §1.6) - every sample this app
-    // ever wrote left it at the field's own default (0), and a live test proved that's
-    // the real cause of a .KSC bulk-load silently dropping 2 of 3 identically-numbered
-    // zones' audio (only one "wins"), while a real Kronos (and a hand-corrected fixture
-    // giving each zone a distinct Sno1) loads all of them correctly. Every new sample this
-    // app writes must get a real, collection-unique value, not the field's default -
-    // callers pass `Path.GetDirectoryName(kmpPath)` or `ContentDirFor(collectionPath)`.
+    // recursively - zone subfolders and bare/repository files alike). A .KSF's own
+    // SNO1 chunk is what CKorgFileKSF::GetSampleNumber actually reads (kronosology doc
+    // §1.6); leaving it at the field's default (0) makes a .KSC bulk-load silently
+    // drop all but one of the identically-numbered zones' audio. Every new sample this
+    // app writes must get a real, collection-unique value - callers pass
+    // `Path.GetDirectoryName(kmpPath)` or `ContentDirFor(collectionPath)`.
     // Disk-scanning (not an in-memory counter) so it stays correct across app restarts
-    // and multi-session edits, matching NextFreeMno1's own "live state, not a running
-    // counter" reasoning in spirit, just sourced from disk instead of the loaded tree
-    // since Sno1 isn't otherwise held in memory (KmpZone/KmpMultisample never carry it).
+    // and multi-session edits - Sno1 isn't otherwise held in memory (KmpZone/
+    // KmpMultisample never carry it).
     public static uint NextFreeSno1(string contentDir)
     {
         uint? max = null;

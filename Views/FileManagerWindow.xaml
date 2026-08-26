@@ -16,7 +16,6 @@
             <Setter Property="Padding"         Value="0"/>
         </Style>
 
-        <!-- Name cell: folders get a bright blue tint, files stay white -->
         <DataTemplate x:Key="NameCell">
             <TextBlock Text="{Binding DisplayName}">
                 <TextBlock.Style>

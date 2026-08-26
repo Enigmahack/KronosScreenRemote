@@ -3,8 +3,8 @@ namespace KronosScreenRemote;
 using System.IO;
 using KronosScreenRemote.ViewModels;
 
-// Off-hardware checks for this round's UI feedback batch (see Commit Notes.md entry 19):
-// AddPlaceholderZone mirroring onto a resolved stereo sibling (previously only the
+// Off-hardware checks for this round's UI feedback batch: AddPlaceholderZone mirroring
+// onto a resolved stereo sibling (previously only the
 // primary half gained the new zone/shrunk last zone, silently breaking the exact-
 // key-range match stereo-partner resolution depends on and dropping the shared
 // waveform view back to mono); the Top Key floor on the manual key-range fields

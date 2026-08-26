@@ -493,7 +493,7 @@ public static class AppMessages
             // the sound the referrer wants. See ProgramBody.IsInit.
             public const string InitPlaceholderSuffix = "(INIT placeholder)";
 
-            // ── Properties dialog: dependency lists + "Scan PCG..." (requirements 1 and 2) ──
+            // ── Properties dialog: dependency lists + "Scan PCG..." ──
             public const string DependenciesHeader   = "Dependencies";
             public const string RequiresHeader       = "Requires (what this object needs)";
             public const string UsedByHeader         = "Used by (what needs this object)";

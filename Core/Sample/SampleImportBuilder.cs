@@ -48,8 +48,8 @@ static class SampleImportBuilder
         // imported audio, same as a real Kronos sampling a fresh WAV. NOT a copy of any
         // existing sample's state, so this can never accidentally carry over a Reverse/
         // boost/tune setting from whatever was previously loaded.
-        // Sno1 must be unique across the collection (hardware-confirmed 2026-08-24, see
-        // KscCollection.NextFreeSno1's own comment) - never leave it at the field's
+        // Sno1 must be unique across the collection (see KscCollection.NextFreeSno1's
+        // own comment) - never leave it at the field's
         // default, which silently breaks .KSC bulk loading for any zone that collides.
         var contentDir = Path.GetDirectoryName(kmpPath) is { Length: > 0 } d ? d : ".";
         var ksf = new KsfSample
@@ -78,8 +78,8 @@ static class SampleImportBuilder
     }
 
     // Default key range for a brand-new multisample's very first, auto-created zone -
-    // C-1 (MIDI 0) to C2 (MIDI 36), user-specified 2026-08-22 (matching what they've
-    // observed on real hardware) - deliberately NOT the same "full 0-127 keyboard"
+    // C-1 (MIDI 0) to C2 (MIDI 36), matching real Kronos hardware behavior -
+    // deliberately NOT the same "full 0-127 keyboard"
     // default AddPlaceholderZone gives a manually-added first zone; this is specifically
     // what Create Multisample (mono or stereo) auto-populates so the multisample editor
     // has something to select/import into immediately, without a separate "Add Zone"
@@ -88,7 +88,7 @@ static class SampleImportBuilder
     public static KmpZone MakeDefaultFirstZone() => new()
     {
         Filename = "SKIPPEDSAMPLE",
-        OriginalKey = 36, // C2 - explicit request 2026-08-25, was C-1
+        OriginalKey = 36, // C2
         TopKey = 36,      // C2
     };
 
@@ -108,8 +108,8 @@ static class SampleImportBuilder
         var left = new KmpMultisample { Name = baseName, Suffix = "-L", Mno1 = mno1Left };
         var right = new KmpMultisample { Name = baseName, Suffix = "-R", Mno1 = mno1Left + 1 };
 
-        // Hardware-confirmed 2026-08-24 (KmpMultisample.AutoFileName's own comment):
-        // the .KMP's own filename must follow Kronos's auto-naming convention (Name
+        // (KmpMultisample.AutoFileName's own comment): the .KMP's own filename must
+        // follow Kronos's auto-naming convention (Name
         // prefix + MNO1), NOT bake -L/-R into the filename - a real Kronos silently
         // fails to load the audio behind a "<Name>-L.KMP"/"-R.KMP" pair even though
         // every other byte is correct.
@@ -129,7 +129,7 @@ static class SampleImportBuilder
 
     // Finds `m`'s stereo-pair sibling within the same collection: same Name, opposite
     // Suffix ("-L"<->"-R"), AND adjacent MNO1 (m.Mno1 +/- 1). Name+Suffix alone isn't
-    // enough - real fixture data proved this: several unrelated, never-renamed
+    // enough: several unrelated, never-renamed
     // multisamples in the same collection all carry the Kronos's own unedited default
     // name ("NewMS______________000"), so Name-only matching would happily "pair" two
     // multisamples that were never a real stereo instrument together. Every genuine
@@ -139,8 +139,8 @@ static class SampleImportBuilder
     // found (including a lone "-L" with no "-R" counterpart - doc §2.2's NEWMS002/003
     // case - which is valid and just plays as mono). Known limitation, accepted rather
     // than engineered around: if an unrelated mono "-L"/"-R" multisample happens to
-    // land MNO1-adjacent to a real pair (confirmed possible in real fixture data -
-    // NEWMS002 sits at MNO1=2, one above the real NEWMS000/001 pair's MNO1=1), this can
+    // land MNO1-adjacent to a real pair (e.g. NEWMS002 sitting at MNO1=2, one above
+    // the real NEWMS000/001 pair's MNO1=1), this can
     // match the wrong sibling. The format has no stronger pairing signal to check
     // against (§2.2) - new pairs created via CreateStereoMultisamplePair always get
     // fresh, non-colliding IDs, so this only bites existing collections with pre-

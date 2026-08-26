@@ -85,16 +85,11 @@ sealed class KmpMultisample
     public byte[] ToBytes()
     {
         // MSP1's trailing 2 bytes (payload offset 16-17): the multisample's own zone
-        // count, little-endian u16 - hardware-confirmed 2026-08-24 by cross-referencing
-        // 4 independent real fixture pairs (8/8, 9/9, 2/2, 1/1 zones) and by a live
-        // re-save test: a KMP uploaded with this field left 0 (this class's old
-        // behavior) registered on a real Kronos as a zero-zone multisample - the
-        // underlying .KSF sample loaded fine as a standalone resource, but tapping the
-        // multisample itself triggered a "Create New Sample" prompt instead of
-        // selecting it. Korg's own Eva always recomputes this on save (confirmed: a
-        // re-saved file had it corrected from 0 to the real count with no other change),
-        // so this always derives it from Zones.Count rather than round-tripping
-        // whatever was read - never trust a stale/loaded value here.
+        // count, little-endian u16. Left at 0, a real Kronos treats the multisample as
+        // zero-zone and refuses to select it (a "Create New Sample" prompt instead),
+        // even though the underlying .KSF loads fine as a standalone resource. Always
+        // derive it from Zones.Count on save rather than round-tripping whatever was
+        // read - never trust a stale/loaded value here.
         var msp1Tail = new byte[2];
         msp1Tail[0] = (byte)Zones.Count;
         msp1Tail[1] = (byte)(Zones.Count >> 8);
@@ -146,23 +141,18 @@ sealed class KmpMultisample
 
     // <first 5 chars of the multisample's own Name, sanitized+uppercased,
     // underscore-padded><MNO1:03d>.KMP - the real Kronos auto-naming convention for a
-    // .KMP's own FILENAME, confirmed against 2 independent real fixture pairs: a
-    // multisample named "NewMS______________000" auto-files as "NEWMS000.KMP"/
-    // "NEWMS001.KMP", one named "GAGA LEAD" auto-files as "GAGA_000.KMP"/
-    // "GAGA_001.KMP" (space -> underscore, uppercased, truncated to 5 chars) - the file
-    // name derives from Name, NOT from Suffix. Hardware-confirmed 2026-08-24 this is
-    // NOT cosmetic: a stereo pair saved as "<Name>-L.KMP"/"<Name>-R.KMP" (this app's own
-    // prior behavior) registered its multisample entries correctly (once the MSP1 tail
-    // fix above landed) but still failed to actually load its audio on a real Kronos,
-    // while byte-identical content saved under this exact naming pattern loaded and
-    // played correctly - the L/R distinction belongs ONLY in the internal Suffix field
-    // (MSP1/NAME, doc §2.2), never baked into the .KMP's own filename.
-    // Tiered for MNO1 >= 1000 (2026-08-25, doc's own "max of 3999 possible keymaps"
-    // ceiling) - both tiers hardware-confirmed against real MASTER-LIBRARY content over
-    // FTP: AIRTO097.KMP/BEER-000.KMP at the original 5-char-name+3-digit tier,
-    // 24K_1028.KMP/24K_1029.KMP at the 4-char-name+4-digit tier once MNO1 reaches 1000.
-    // Name width shrinks from 5 to 4 characters, index width grows from 3 to 4 digits,
-    // always summing to the 8-character DOS 8.3 stem.
+    // .KMP's own FILENAME (e.g. "NewMS______________000" -> "NEWMS000.KMP", "GAGA LEAD"
+    // -> "GAGA_000.KMP": space -> underscore, uppercased, truncated to 5 chars). The
+    // file name derives from Name, NOT from Suffix - a stereo pair saved as
+    // "<Name>-L.KMP"/"<Name>-R.KMP" registers its multisample entries correctly but
+    // fails to actually load its audio on a real Kronos, while byte-identical content
+    // saved under this exact naming pattern loads and plays correctly. The L/R
+    // distinction belongs ONLY in the internal Suffix field (MSP1/NAME, doc §2.2), never
+    // baked into the .KMP's own filename.
+    // Tiered for MNO1 >= 1000 (the doc's own "max of 3999 possible keymaps" ceiling):
+    // name width shrinks from 5 to 4 characters, index width grows from 3 to 4 digits,
+    // always summing to the 8-character DOS 8.3 stem (e.g. AIRTO097.KMP below 1000,
+    // 24K_1028.KMP once MNO1 reaches 1000).
     public static string AutoFileName(string name, uint mno1)
     {
         // Clamp to the doc's own "max of 3999 possible keymaps" ceiling - the two-tier
@@ -178,19 +168,17 @@ sealed class KmpMultisample
     }
 
     // MS<multisample:03d><zone:03d>.KSF for MNO1 0-999, M<multisample:04d><zone:03d>.KSF
-    // for MNO1 1000-3999 (2026-08-25 - hardware-confirmed both tiers over FTP against
-    // real MASTER-LIBRARY content: AIRTO097/'s own zones are MS097000.KSF etc., while
-    // 24K_1028/'s are M1028000.KSF etc. - "MS"/"M" both keep the prefix+MNO1 portion at
-    // a fixed 5 characters, zone index always 3 digits either way, so
-    // NextFreeZoneFileName's own length check below needs no tier-specific change).
+    // for MNO1 1000-3999 (e.g. AIRTO097's zones are MS097000.KSF etc., 24K_1028's are
+    // M1028000.KSF etc.) - "MS"/"M" both keep the prefix+MNO1 portion at a fixed 5
+    // characters, zone index always 3 digits either way, so NextFreeZoneFileName's own
+    // length check below needs no tier-specific change.
     // The real naming convention, used when adding a brand-new zone. ONLY valid for
     // that case (appending) - Zones.Count is "the new zone's own future index" exactly
     // because the new zone hasn't been inserted yet. Do NOT reuse this for "replace an
     // EXISTING zone's sample": Count doesn't change across that operation, so calling
     // this for two different existing zones in the same session returns the SAME
     // string both times, and the second Save silently overwrites the first zone's own
-    // file - see NextFreeZoneFileName below for that case instead (fixed 2026-08-22,
-    // this was a real bug in KsfSample.ImportSampleIntoZone).
+    // file - see NextFreeZoneFileName below for that case instead.
     public string NextKsfFilename() => $"{ZoneFilePrefix}{Zones.Count:D3}.KSF";
 
     // "MS<mno1:D3>" for MNO1 0-999, "M<mno1:D4>" for MNO1 1000-3999 - both 5 characters,

@@ -3,14 +3,14 @@ namespace KronosScreenRemote;
 using System.IO;
 using System.Text;
 
-// Off-hardware self-test for Phase 4: PcgFile/PcgObjectExtractor/PcgLibraryView. Builds a
+// Off-hardware self-test for PcgFile/PcgObjectExtractor/PcgLibraryView. Builds a
 // synthetic minimal .pcg buffer in-memory (no sample .pcg file ships in this repo) and
 // asserts extraction correctness against it, plus the shared-decoder proof (a PCG-sliced
 // Set List body decodes identically to an equivalent live-dump-shaped wire message).
 //
 // IMPORTANT: this proves internal self-consistency of THIS parser's assumed header
 // layout - it does not, and cannot, prove that layout matches a real Kronos-exported .pcg
-// file. That still needs a real file (see the plan's Phase 4 manual verification step).
+// file. That still needs a real file.
 static class PcgFileSelfTests
 {
     public static List<string> SelfTest()
@@ -101,9 +101,7 @@ static class PcgFileSelfTests
         // (ChunkChecksum) are correct, not just that the mismatch path fires on demand.
         Check("checksum-good-file-has-no-warnings", file.ChecksumWarnings.Count == 0);
 
-        // Real-file bank-id encoding (confirmed against an actual factory PRELOAD.PCG, and -
-        // critically - against a real user file with confirmed U-GG content; see
-        // PcgObjectExtractor's class comment). Program: literal 0..4 for I-A..I-E, a
+        // Real-file bank-id encoding (see PcgObjectExtractor's class comment). Program: literal 0..4 for I-A..I-E, a
         // dedicated 0x8000 flag for I-F, then 0x20000+N (N=0..13) directly for U-A..U-GG -
         // NO "I-G" slot (Program has only 6 int banks, unlike Combi's 7). This pins the exact
         // regression that silently dropped U-GG: an earlier version routed Program through

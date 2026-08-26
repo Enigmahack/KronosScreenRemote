@@ -44,9 +44,8 @@ static class PcgPaneLoadSelfTests
         Check("failed-load-clears-content", pane.Get(new ObjLoc(LibObj.Program, 0x00, 0)) == null);
         Check("failed-load-clears-tree", pane.Roots.Count == 0);
 
-        // ── "Load from Kronos" now goes through IRemotePcgSource, so the login/browse/download
-        //    branch that used to build a Window + hit the FTP server inline is finally reachable
-        //    off-hardware via an in-memory fake source. ──
+        // "Load from Kronos" goes through IRemotePcgSource, so the login/browse/download branch
+        // is testable off-hardware via an in-memory fake source, with no Window or FTP server.
         var kpane = new PcgPaneViewModel();
 
         // A successful remote pick loads exactly what the source handed back.

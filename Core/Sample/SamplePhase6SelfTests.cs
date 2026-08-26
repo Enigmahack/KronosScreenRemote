@@ -35,7 +35,7 @@ static class SamplePhase6SelfTests
         void Check(string name, bool cond) { if (!cond) fails.Add(name); }
 
         // ── MidiNoteName: round-trip against the app's own established C4=60
-        //    convention (confirmed against real hardware this session) ──
+        //    convention ──
         {
             Check("note-c4-is-60", MidiNoteName.TryParse("C4") == 60);
             Check("note-60-is-c4", MidiNoteName.ToName(60) == "C4");

@@ -269,8 +269,7 @@ sealed class SamplePlayback : IDisposable
         // timer's own polling interval - trades a little more CPU/dropout risk for a
         // much shorter, still-inaudible-in-practice stop tail versus the previous 100ms.
         //
-        // useEventSync: true (2026-08-25, reported audible hiccups/stutters) - the
-        // (shareMode, latency) overload this used to call defaults to FALSE, which
+        // useEventSync: true - the (shareMode, latency) overload this used to call defaults to FALSE, which
         // makes WasapiOut refill the buffer by Thread.Sleep(latency/2)-ing between
         // polls instead of waiting on a real WASAPI-signaled event. Windows' default
         // ~15ms Sleep timer resolution is a significant fraction of a 40ms buffer, so a
@@ -322,7 +321,7 @@ sealed class SamplePlayback : IDisposable
 // for stereo, build a fully-interleaved short[] first) in the CONSTRUCTOR, which runs
 // synchronously on the UI thread from every Play/Rewind/Fast-Forward/scrub-click/
 // Pause-Resume - tens of MB re-copied per click for a real multi-minute stereo sample,
-// a real perf complaint (2026-08-23) once traced past the waveform-selection lag it was
+// a real perf complaint once traced past the waveform-selection lag it was
 // originally reported alongside. Converting only what's actually requested removes that
 // UI-thread stall entirely, and a Stop() partway through never pays for the unplayed
 // tail at all.

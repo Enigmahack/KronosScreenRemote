@@ -14,15 +14,15 @@ readonly struct SampleFieldSnapshot
     public uint LoopStart { get; }
     public uint LoopEnd { get; }
     public byte Flags { get; }
-    // SMD1 offset 5 (KsfSample.LoopTune, added 2026-08-22) - a persisted, independently
-    // mutable field same as Flags; must join this snapshot for the same reason
-    // PreservedLoopDuplicate does (below): otherwise undoing a Loop Tune edit restores
-    // the old Flags/loop points but leaves the just-set tune value in place.
+    // SMD1 offset 5 (KsfSample.LoopTune) - a persisted, independently mutable field
+    // same as Flags; must join this snapshot for the same reason PreservedLoopDuplicate
+    // does (below): otherwise undoing a Loop Tune edit restores the old Flags/loop
+    // points but leaves the just-set tune value in place.
     public sbyte LoopTune { get; }
-    // The offset-24 duplicate slot (KsfSample.PreservedLoopDuplicate) - null on 73/75
-    // real files (mirrors LoopStart on save), a distinct stale value on 5 outliers.
+    // The offset-24 duplicate slot (KsfSample.PreservedLoopDuplicate) - null on most
+    // real files (mirrors LoopStart on save), a distinct stale value on some outliers.
     // Must round-trip through undo/redo same as the other four fields, or restoring
-    // an edit on one of those 5 files silently changes bytes that used to be
+    // an edit on one of those files silently changes bytes that used to be
     // byte-identical (ApplyTo would otherwise always re-clear it to null).
     public uint? PreservedLoopDuplicate { get; }
 

@@ -292,11 +292,11 @@ static class SampleEditorSmokeTest
         // Edit + save + reopen round trip on the zone's key fields.
         //
         // Top Key is still floored at the previous zone's TopKey+1 (so this zone can't
-        // become inverted). There's no ceiling from the NEXT zone any more (2026-08-24,
-        // explicit user choice): raising a Top Key past it now cascades every following
-        // zone upward by the same amount instead of silently clamping below it - see the
-        // dedicated cascade check further down. A plain +1 here is far below any
-        // realistic next-zone boundary, so this round trip isn't expected to cascade.
+        // become inverted). There's no ceiling from the NEXT zone: raising a Top Key past
+        // it cascades every following zone upward by the same amount instead of silently
+        // clamping below it - see the dedicated cascade check further down. A plain +1
+        // here is far below any realistic next-zone boundary, so this round trip isn't
+        // expected to cascade.
         var editedZone = zoneNode.ZoneRef!.Value.Zone;
         var ownerZones = vm.CurrentMultisampleZones;
         int zoneIdx = ownerZones?.IndexOf(editedZone) ?? -1;

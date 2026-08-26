@@ -6,12 +6,9 @@ using System.IO;
 // NOT a shipped feature. Walks every real .KMP fixture through the actual format layer
 // (not a raw byte grep, which false-positives constantly against PCM data that happens
 // to contain "-L"/"-R" byte sequences) and reports the KMP-LEVEL pairing signal: two
-// multisamples sharing the same Name with opposite "-L"/"-R" Suffix. This is what
-// actually grounds the stereo-pair feature in real Kronos-authored data - an earlier
-// version of this tool paired by same-.KMP/same-key-range zone suffixes and found ZERO
-// pairs against these exact fixtures, because that model is wrong: real stereo content
-// is two SEPARATE .KMP files (see kronosology's ksc_kmp_ksf_file_format.md §2.2), not
-// two zones inside one.
+// multisamples sharing the same Name with opposite "-L"/"-R" Suffix - real stereo content
+// is two SEPARATE .KMP files (see kronosology's ksc_kmp_ksf_file_format.md §2.2), not two
+// zones inside one.
 static class SampleStereoScan
 {
     public static void Run(string folder)

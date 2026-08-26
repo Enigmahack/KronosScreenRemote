@@ -27,5 +27,4 @@ readonly record struct RemotePcgPick(RemotePcgFile? File, string StatusMessage)
     public static RemotePcgPick Failed(string statusMessage) => new(null, statusMessage);
 }
 
-// A downloaded remote file: its raw bytes plus a leaf name for display.
 readonly record struct RemotePcgFile(byte[] Bytes, string FileName);

@@ -26,23 +26,18 @@ sealed record PcgChecksumWarning(string Tag, long Offset, int Expected, int Actu
 
 // Extracts raw Program/Combi/Set List records directly from a .pcg file's bytes.
 //
-// Container format per kronosology/docs/interfaces/pcg_file_format.md §2.2/§2.3 (hardware-
-// verified against a real factory PRELOAD.PCG and a 32-file real-world corpus, 2026-08).
+// Container format per kronosology/docs/interfaces/pcg_file_format.md §2.2/§2.3.
 // "KORG" file header, a fixed-offset DIV1 chunk, then a flat top-level chunk walk (DIV1 ->
-// SLS1 -> PRG1 -> CMB1 -> DKT1 -> WSQ1 -> GLB1 -> DPI1, identical in all files checked) where
-// each top-level chunk has its own hand-written descent logic for its sub-chunks - PRG1
-// nests MBK1/PBK1, CMB1 nests CBK1, SLS1 nests SLD1 then STL1 (STL1 nests SBK1). The older
-// "SLS1-nested-in-PRG1" and "SLS1/SLD1/SDB1 vs STL1/SBK1 dual-encoding, relationship
-// unresolved" readings (from a third-party hand-notes doc) are both refuted/resolved by that
-// corpus: SLS1 is top-level, and SLD1 always precedes STL1/SBK1 in one fixed structure, not
-// two alternate encodings.
+// SLS1 -> PRG1 -> CMB1 -> DKT1 -> WSQ1 -> GLB1 -> DPI1) where each top-level chunk has its
+// own hand-written descent logic for its sub-chunks - PRG1 nests MBK1/PBK1, CMB1 nests CBK1,
+// SLS1 nests SLD1 then STL1 (STL1 nests SBK1).
 //
 // Rather than walk that outer structure level by level, this parser scans the file directly
 // for the four sub-chunk tags that carry real object data with a self-describing header -
 // MBK1/PBK1 (Program banks), CBK1 (Combi banks), SBK1 (Set List bank) - and validates each
-// candidate via its own declared count/item-size fields (and, since 2026-08, its stored
-// checksum - see PcgChecksumWarning) before trusting it, rather than trusting tag or position
-// alone. A stray 4-byte sequence matching a tag inside unrelated binary parameter data fails
+// candidate via its own declared count/item-size fields and its stored checksum (see
+// PcgChecksumWarning) before trusting it, rather than trusting tag or position alone. A
+// stray 4-byte sequence matching a tag inside unrelated binary parameter data fails
 // validation and is just skipped. This is a deliberate simplification, not a workaround for
 // an unresolved structure: DIV1 is itself "a redundant table-of-contents the loader doesn't
 // need" (§2.3) - the real Kronos firmware discovers banks the same way, by which sub-chunks
@@ -53,45 +48,30 @@ sealed record PcgChecksumWarning(string Tag, long Offset, int Expected, int Actu
 //   +0x0C count (BE)        +0x10 item size (BE)                  +0x14 bank id (BE, see below)
 //   +0x18 first record (raw body, `count` of them, `item size` bytes each)
 //
-// VERIFIED against a real factory PRELOAD.PCG (Z:\RestoreDVD_SystemMNT\...\FACTORY\PRELOAD.PCG):
-// header layout, itemSize (4960 Program / 7810 Combi / 69416 Set List), and the 24-byte
-// name field at each record's offset 0 all checked out against real, readable factory
-// program/combi/set-list names at the decoded locations.
-//
 // The `bankId` field (+0x14) is NOT a plain linear bank index - Korg's own on-disk encoding
 // only assigns literal 0..4 to Program banks I-A..I-E; I-F gets a dedicated flag value
 // (0x8000) instead of continuing the sequence; everything from there on (all 14 user banks)
 // resumes as 0x20000+N.
 //
-// CRITICAL ASYMMETRY, confirmed against real files: Program has only 6 int banks (I-A..I-F)
-// - there is NO Program "I-G". Combi genuinely has 7 int banks (I-A..I-G). This is NOT the
-// same thing as this codebase's KronosBanks/ObjectTypeRegistry model, which gives Program 7
-// "editable banks" (0x00-0x06) for the LIVE SysEx side - that's a separate concept (whatever
-// ObjBank 0x06 addresses over MIDI, if anything) and does not correspond to a real bankId
-// slot in the .pcg file's own numbering. An earlier version of this decoder routed Program
-// through that 7-int-bank EditableBanks() list, which silently shifted every user bank's
-// index down by one and dropped the LAST bank (U-GG) out of the valid range entirely -
-// caught by loading a real user file with confirmed U-GG content: bankId 0x2000D was present
-// in the file the whole time, just mis-decoded as U-FF. Confirmed via the reference PCG
-// Tools codebase's own Kronos model (KronosProgramBanks.CreateBanks() in
-// Z:\PCG Tools_enigmahack\PCG-Tools\KorgKronosTools\Model\KronosSpecific\Synth\
-// KronosProgramBanks.cs), which defines exactly 6 int Program banks before user banks begin
-// - and by the doc's own DIV1 bank-presence bitmap, which lists only I-A..I-F for Programs
-// (vs I-A..I-G for Combis). Program is decoded directly to an ObjBank value (DecodeProgramObjBank,
-// below) with no EditableBanks() indirection; Combi (7 int banks, matching its own
-// EditableBanks() list) is unaffected and still decodes via that indirection.
+// CRITICAL ASYMMETRY: Program has only 6 int banks (I-A..I-F) - there is NO Program "I-G".
+// Combi genuinely has 7 int banks (I-A..I-G). This is NOT the same thing as this codebase's
+// KronosBanks/ObjectTypeRegistry model, which gives Program 7 "editable banks" (0x00-0x06)
+// for the LIVE SysEx side - that's a separate concept (whatever ObjBank 0x06 addresses over
+// MIDI, if anything) and does not correspond to a real bankId slot in the .pcg file's own
+// numbering. Routing Program through that 7-int-bank EditableBanks() list here would
+// silently shift every user bank's index down by one and drop the LAST bank (U-GG) out of
+// the valid range entirely. Program is decoded directly to an ObjBank value
+// (DecodeProgramObjBank, below) with no EditableBanks() indirection; Combi (7 int banks,
+// matching its own EditableBanks() list) is unaffected and still decodes via that
+// indirection.
 //
 // PROGRAM FORMAT: every .pcg Program record is a fixed 4960-byte slot, whether the bank's
 // tag is MBK1 (EXi) or PBK1 (HD-1) - but that's the ON-DISK size, not necessarily the wire
-// SysEx Object Dump size for that program. Verified against ~1000 real hardware-pulled
-// Program bodies (this app's own local_library cache) cross-referenced by name against a
-// real factory PRELOAD.PCG: EXi programs dump over wire at the full 4960 bytes, byte-
-// identical to the .pcg slot (0 structural differences across 397 real same-named pairs);
-// HD-1 programs dump over wire at only 3706 bytes, which is an exact truncation of the
-// .pcg slot's first 3706 bytes (620/632 real same-named pairs matched exactly; the
-// remainder differed by ordinary patch-content edits, not a byte-offset pattern). See
-// ProgramFormatConverter for the actual PCG->wire conversion, and IsExi below for how each
-// record's bank type is captured (from which tag - MBK1 or PBK1 - governed its bank).
+// SysEx Object Dump size for that program: EXi programs dump over wire at the full 4960
+// bytes, byte-identical to the .pcg slot; HD-1 programs dump over wire at only 3706 bytes,
+// an exact truncation of the .pcg slot's first 3706 bytes. See ProgramFormatConverter for
+// the actual PCG->wire conversion, and IsExi below for how each record's bank type is
+// captured (from which tag - MBK1 or PBK1 - governed its bank).
 static class PcgObjectExtractor
 {
     const int HeaderSize = 24;
@@ -213,9 +193,8 @@ static class PcgObjectExtractor
         }
 
         // §12: checksum byte at offset+11 (last byte of the 12-byte chunk header) should equal
-        // sum(payload from offset+12 through recordsEnd) mod 256. Confirmed on real corpus data
-        // (BBPB-JULY-2026-WIP(DONE).PCG) that this span is exactly offset+12..recordsEnd for
-        // MBK1/PBK1/CBK1/SBK1 - i.e. the count/itemSize/bankId sub-header plus every record.
+        // sum(payload from offset+12 through recordsEnd) mod 256 - i.e. the count/itemSize/
+        // bankId sub-header plus every record, for MBK1/PBK1/CBK1/SBK1 alike.
         // Advisory only - see PcgChecksumWarning for why this doesn't reject the bank.
         int actualChecksum = data[offset + 11];
         int expectedChecksum = ComputeChecksum(data, offset + 12, recordsEnd);

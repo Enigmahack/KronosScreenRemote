@@ -2,7 +2,7 @@ namespace KronosScreenRemote;
 
 using NAudio.Wave;
 
-// Off-hardware checks for the pan-control round (2026-08-25): PanningSampleProvider's
+// Off-hardware checks for pan-control: PanningSampleProvider's
 // gain math and mono-upmix/stereo-balance Read() behavior. Deliberately does NOT drive
 // SamplePlayback.Pan or SamplePanControl's own mouse handling end-to-end - Play* still
 // opens a real WasapiOut device (see SamplePhase16SelfTests's own comment for why that's

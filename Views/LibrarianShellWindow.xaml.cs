@@ -6,9 +6,8 @@ using KronosScreenRemote.ViewModels;
 
 namespace KronosScreenRemote;
 
-// The Librarian UI (Views/LibrarianShellWindow.xaml) - the classic LibrarianWindow this
-// replaced (and its SetListWindow/SetListSlotEditDialog satellites) were deleted in the
-// Phase 7 cutover. Selection and context-menu wiring are plain code-behind (a per-item WPF
+// The Librarian UI (Views/LibrarianShellWindow.xaml). Selection and context-menu wiring are
+// plain code-behind (a per-item WPF
 // ContextMenu inside a HierarchicalDataTemplate is a well-known MVVM binding-scope friction
 // point - see LocalLibraryPaneViewModel's own comment) but every action itself is a call
 // straight into the ViewModel; no hardware access or business logic lives in this file.
@@ -26,8 +25,8 @@ internal partial class LibrarianShellWindow : ThemedWindow
 
     // One PaneSelection per tree (see the PaneSelection class below) - replaces what used to
     // be two near-identical duplicated selection blocks (Local, PCG) plus a third pane (Merge)
-    // with no selection tracking at all, which is exactly how issues #1/#2 (highlight doesn't
-    // clean up on deselect / doesn't match across panes) happened in the first place.
+    // with no selection tracking at all, which is exactly how selection used to get out of
+    // sync across panes (highlight not clearing on deselect, or not matching across panes).
     readonly PaneSelection _localSelection;
     readonly PaneSelection _pcgSelection;
     readonly PaneSelection _mergeSelection;

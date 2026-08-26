@@ -31,38 +31,21 @@ static class SampleUserBankProbeBuild
             var kmpPath = Path.Combine(KscCollection.ContentDirFor(kscPath), kmpFileName);
             Directory.CreateDirectory(Path.GetDirectoryName(kmpPath)!);
 
-            // 1 second, 440Hz mono tone at 44100Hz - same synthetic-sample recipe the
-            // kronosology doc's §5 external-construction recipe already hardware-confirmed
-            // end-to-end (a synthetic .KSF/.KMP/.KSC with zero real Korg-authored bytes
-            // loaded and played correctly), just reused here for the _UserBank case.
+            // 1 second, 440Hz mono tone at 44100Hz.
             const int sampleRate = 44100;
             const double freq = 440.0;
             var pcm = new short[sampleRate];
             for (int i = 0; i < pcm.Length; i++)
                 pcm[i] = (short)(Math.Sin(2 * Math.PI * freq * i / sampleRate) * 16000);
 
-            // Original Key = C4 (MIDI 60), Top Key = C9 (MIDI 120) - hardware-confirmed
-            // fix 2026-08-24: the first probe used Original Key = C-1 (MIDI 0), which put
-            // the root pitch ~60 semitones off from wherever it was actually played.
+            // Original Key = C4 (MIDI 60), Top Key = C9 (MIDI 120) - the root pitch must match
+            // wherever the tone is actually played.
             var zone = SampleImportBuilder.AddSampleZone(m, kmpPath, baseName, pcm, sampleRate, 60, 120);
             m.Save(kmpPath);
 
-            // LoopEnd = frame_count-1 fix (§ below, FixLoopEnd) - hardware-confirmed
-            // 2026-08-24 (round 2): the C4/C9 fix alone still left the real unit showing
-            // garbage Loop Start (2147483640) with Loop/Reverse both off. A byte-diff
-            // against the user's own hand-corrected re-save (UBPROBEFIX) found exactly
-            // ONE differing byte in the whole .KSF - the LAST byte of LoopEnd (file
-            // offset 39), 0x00 -> 0x08. LoopStart itself was 0 in BOTH files, unchanged -
-            // so the garbage "Loop Start" readout was never actually reading the
-            // LoopStart field; it's some display/computation involving LoopEnd, and
-            // LoopEnd=0 (KsfSample's own field default, left untouched by
-            // AddSampleZone) is what triggered it. This corrects an unqualified claim in
-            // kronosology's own format doc §5 that "0 for all four is a safe default...
-            // with loop off" (doc corrected) - AddSampleZone/KsfSample's field default of
-            // 0 is NOT safe for LoopEnd on a one-shot sample. Using frame_count-1 here
-            // rather than the user's own quick "8" test value because it matches the
-            // doc's own already-documented real-hardware one-shot convention (§3.1:
-            // "equals frame_count-1...in every intact one-shot file when loop is off").
+            // KsfSample/AddSampleZone default LoopEnd to 0, which reads back as garbage Loop
+            // Start on hardware for a one-shot sample with Loop off - LoopEnd must be
+            // frame_count-1 instead.
             FixLoopEnd(zone.KsfPath(kmpPath));
 
             var collection = new KscCollection
@@ -96,15 +79,13 @@ static class SampleUserBankProbeBuild
         ksf.Save(ksfPath);
     }
 
-    // Second probe (user-requested 2026-08-24): a single multisample with many zones
-    // spanning virtually the whole keyboard, to test multi-zone assignment/pitch-shift
-    // through both the normal .KSC and _UserBank.KSC load paths - the first probe only
-    // ever tested one zone. 32 zones x 4 keys/zone = exactly 128 (0-127), the full
-    // keyboard with no gaps or a stretched last zone. Each zone's Original Key is its
-    // own OWN lowest key (as requested), and its tone is synthesized AT that key's real
-    // pitch (A440 equal temperament) so playing up the keyboard should sound "in tune"
-    // at each zone's own root and pitch-shift up within its own 4-key range - lets a
-    // listener actually hear zone boundaries, not just trust the byte layout.
+    // A single multisample with many zones spanning virtually the whole keyboard, to test
+    // multi-zone assignment/pitch-shift through both the normal .KSC and _UserBank.KSC load
+    // paths. 32 zones x 4 keys/zone = exactly 128 (0-127), the full keyboard with no gaps or a
+    // stretched last zone. Each zone's Original Key is its own lowest key, and its tone is
+    // synthesized AT that key's real pitch (A440 equal temperament) so playing up the keyboard
+    // should sound "in tune" at each zone's own root and pitch-shift up within its own 4-key
+    // range - lets a listener actually hear zone boundaries, not just trust the byte layout.
     public static void RunMultiZone(string outputDir)
     {
         try
