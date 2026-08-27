@@ -192,6 +192,25 @@ static class KronosBanks
     // Object-dump program banks that can never be a move destination (read-only GM/g).
     public static bool IsReadOnlyProgramBank(int objBank) => objBank is >= 0x10 and <= 0x1A;
 
+    // KRONOS_MIDI_SysEx.txt *2: Drum Kit bank = 0 INT, 0x10 GM (read-only), 0x40-0x4D
+    // USER-A..GG (14). Wave Seq bank = 0 INT, 0x40-0x4D USER-A..GG (14, no GM).
+    public static string DrumKitLabel(int ob) => ob switch
+    {
+        0                    => "INT",
+        0x10                 => "GM",
+        >= 0x40 and <= 0x4D  => User(ob - 0x40),
+        _ => $"?{ob:X2}",
+    };
+
+    public static string WaveSeqLabel(int ob) => ob switch
+    {
+        0                    => "INT",
+        >= 0x40 and <= 0x4D  => User(ob - 0x40),
+        _ => $"?{ob:X2}",
+    };
+
+    public static bool IsReadOnlyDrumKitBank(int objBank) => objBank == 0x10;
+
     // Bit position of a program bank's HD-1/EXi type flag within func-0x61's Program
     // Bank Types bitmap (bit 0 = edit buffer, 1-6 = I-A..I-F, 7-13 = U-A..U-G,
     // 14-20 = U-AA..U-GG - KRONOS_MIDI_SysEx.txt func [61]). Null for banks the

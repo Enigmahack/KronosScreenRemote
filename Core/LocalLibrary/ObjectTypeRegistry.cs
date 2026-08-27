@@ -34,7 +34,12 @@ interface IObjectTypeDescriptor
     // scope only - never a write scope.
     IEnumerable<int> BrowsableBanks() => EditableBanks().Concat(ReadOnlyBanks());
 
-    int SlotCount { get; }
+    // Per-BANK, not per-type: Program/Combi/Set List happen to be a uniform 128 everywhere,
+    // but Drum Kit (Int=40/User=16) and Wave Sequence (Int=150/User=32) are not - a single
+    // type-wide count here would either miss real slots (undercount, silently truncating a
+    // sweep) or expose nonexistent slot numbers as legal write destinations (overcount - see
+    // DrumKitDescriptor/WaveSequenceDescriptor for why that's the unsafe direction).
+    int SlotCount(int bank);
 }
 
 static class ObjectTypeRegistry
@@ -60,7 +65,7 @@ static class ObjectTypeRegistry
 
         // GM, g(1)..g(9), g(d) - factory ROM programs. Browsable, never a destination.
         public IEnumerable<int> ReadOnlyBanks() => Enumerable.Range(0x10, 11);
-        public int SlotCount => 128;
+        public int SlotCount(int bank) => 128;
     }
 
     sealed class CombiDescriptor : IObjectTypeDescriptor
@@ -74,7 +79,7 @@ static class ObjectTypeRegistry
         // Combi genuinely has SEVEN internal banks (I-A..I-G) - see KronosBanks.Func33ToObjBank.
         public IEnumerable<int> EditableBanks() => Enumerable.Range(0x00, 7).Concat(Enumerable.Range(0x40, 7));
         public IEnumerable<int> ReadOnlyBanks() => Enumerable.Empty<int>();
-        public int SlotCount => 128;
+        public int SlotCount(int bank) => 128;
     }
 
     sealed class SetListDescriptor : IObjectTypeDescriptor
@@ -87,14 +92,52 @@ static class ObjectTypeRegistry
         public bool IsReadOnlyBank(int bank) => false;
         public IEnumerable<int> EditableBanks() => new[] { 0 };   // flat 128-slot pseudo-bank
         public IEnumerable<int> ReadOnlyBanks() => Enumerable.Empty<int>();
-        public int SlotCount => SetListData.MaxCount;
+        public int SlotCount(int bank) => SetListData.MaxCount;
+    }
+
+    // KRONOS_MIDI_SysEx.txt *2: bank 0 = INT, 0x10 = GM (read-only), 0x40-0x4D = USER-A..GG
+    // (14). Slot counts per bank are NOT stated in the MIDI doc - encoded here from
+    // kronosology's .pcg-corpus-confirmed DBK1 chunk counts (Int=40, each User=16), on the
+    // assumption the file's declared bank sizes match the live instrument's (unverified against
+    // real hardware, but itemSize already independently matches Korg's documented Object Version
+    // 3 dump size). GM's real slot count is unknown - never queried, since IsReadOnlyBank routes
+    // that bank through ReadOnlyNamesIn instead (see LocalLibraryPaneViewModel.BanksFor).
+    sealed class DrumKitDescriptor : IObjectTypeDescriptor
+    {
+        public int ObjType => LibObj.DrumKit;
+        public string DisplayName => "Drum Kit";
+        public bool IsReferrer => false;    // references samples (Bank UUID + Id), not other Librarian objects
+        public bool IsReferencable => false;
+        public string BankLabel(int bank) => KronosBanks.DrumKitLabel(bank);
+        public bool IsReadOnlyBank(int bank) => KronosBanks.IsReadOnlyDrumKitBank(bank);
+        public IEnumerable<int> EditableBanks() => new[] { 0 }.Concat(Enumerable.Range(0x40, 14));
+        public IEnumerable<int> ReadOnlyBanks() => new[] { 0x10 };
+        public int SlotCount(int bank) => bank == 0 ? 40 : 16;
+    }
+
+    // Same bank layout as Drum Kit, minus GM (Wave Seq has no read-only factory bank per
+    // KRONOS_MIDI_SysEx.txt *2). Slot counts likewise from .pcg-corpus WBK1 counts (Int=150,
+    // each User=32).
+    sealed class WaveSequenceDescriptor : IObjectTypeDescriptor
+    {
+        public int ObjType => LibObj.WaveSequence;
+        public string DisplayName => "Wave Sequence";
+        public bool IsReferrer => false;
+        public bool IsReferencable => false;
+        public string BankLabel(int bank) => KronosBanks.WaveSeqLabel(bank);
+        public bool IsReadOnlyBank(int bank) => false;
+        public IEnumerable<int> EditableBanks() => new[] { 0 }.Concat(Enumerable.Range(0x40, 14));
+        public IEnumerable<int> ReadOnlyBanks() => Enumerable.Empty<int>();
+        public int SlotCount(int bank) => bank == 0 ? 150 : 32;
     }
 
     static readonly Dictionary<int, IObjectTypeDescriptor> _byType = new()
     {
-        [LibObj.Program] = new ProgramDescriptor(),
-        [LibObj.Combi]   = new CombiDescriptor(),
-        [LibObj.SetList] = new SetListDescriptor(),
+        [LibObj.Program]      = new ProgramDescriptor(),
+        [LibObj.Combi]        = new CombiDescriptor(),
+        [LibObj.SetList]      = new SetListDescriptor(),
+        [LibObj.DrumKit]      = new DrumKitDescriptor(),
+        [LibObj.WaveSequence] = new WaveSequenceDescriptor(),
     };
 
     public static IObjectTypeDescriptor Get(int objType) => _byType[objType];

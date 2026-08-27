@@ -440,7 +440,7 @@ static class MergeAutoFillSelfTests
             // Combis fits there and the other has to find the next bank. Real content in every
             // filled slot (a non-default timbre reference), since an init placeholder reads as
             // free space, not as occupied.
-            int slotCount = ObjectTypeRegistry.Get(LibObj.Combi).SlotCount;
+            int slotCount = ObjectTypeRegistry.Get(LibObj.Combi).SlotCount(0x00);
             int refBank = KronosBanks.ObjBankToFunc33(1, 0x40);
             bool allSeeded = true;
             for (int n = 0; n < slotCount - 1; n++)

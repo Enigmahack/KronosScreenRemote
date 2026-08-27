@@ -15,34 +15,42 @@ namespace KronosScreenRemote;
 
 static class LibObj
 {
-    public const int Program = 0x00;
-    public const int Combi   = 0x01;
-    public const int SetList = 0x0D;
+    public const int Program      = 0x00;
+    public const int Combi        = 0x01;
+    public const int DrumKit      = 0x04;
+    public const int WaveSequence = 0x05;
+    public const int SetList      = 0x0D;
 
     // The instrument's single Global settings object (bank 0, index 0). NOT a Librarian object
     // type - it's never catalogued, moved, placed or pushed; the Librarian reads exactly one
     // thing out of it (the Category/Sub-Category names, see GlobalBody), which is why it has no
-    // ObjectTypeRegistry descriptor and no CurrentObjectVersion entry.
+    // ObjectTypeRegistry descriptor and no CurrentObjectVersion entry. PcgObjectExtractor DOES
+    // extract a Global entry (bank=0/index=0, checksum-checked, body otherwise unused - see its
+    // GLB1 branch), so an ObjLoc with this ObjType is reachable from a loaded .pcg file. Never
+    // hand one to ObjectTypeRegistry.Get - it would throw (no descriptor is registered).
     public const int Global  = 0x03;
 
     // The func-0x73 Object Dump "version" byte the CURRENT Kronos OS's documented structure
     // uses per type (Documentation/MIDI implementation/SysExDumps/{Prog_HD-1,
-    // Prog_EXi_Common,CombiAndSongTimbreSet,SetList}.txt, each headed "Object Version: N" -
-    // Program is 5 for both HD-1 and EXi, Combi is 3, Set List is 0). This is a fixed
-    // constant per type, not something a .pcg file carries (it has no such field) or that
-    // should be preserved from wherever an entry happened to originate - every PCG-import
-    // path (MergeCache.PullRecursive, LibrarianShellViewModel.PlaceFromPcg/BatchPlaceFromPcg)
-    // used to default this to a placeholder 0, which is wrong for Program (0 was coincidentally
-    // right only for Set List) and produced a func-0x24 Reply Code 3 ("short or otherwise
-    // mangled message") on a real hardware Program write despite a byte-perfect body. Null for
-    // object types outside the Librarian's 3 known ones (e.g. name-only sub-dumps), which keep
-    // whatever version they already carry.
+    // Prog_EXi_Common,CombiAndSongTimbreSet,SetList,DrumKit,WaveSequence}.txt, each headed
+    // "Object Version: N" - Program is 5 for both HD-1 and EXi, Combi is 3, Set List is 0,
+    // Drum Kit is 3, Wave Seq is 1). This is a fixed constant per type, not something a .pcg
+    // file carries (it has no such field) or that should be preserved from wherever an entry
+    // happened to originate - every PCG-import path (MergeCache.PullRecursive,
+    // LibrarianShellViewModel.PlaceFromPcg/BatchPlaceFromPcg) used to default this to a
+    // placeholder 0, which is wrong for Program (0 was coincidentally right only for Set List)
+    // and produced a func-0x24 Reply Code 3 ("short or otherwise mangled message") on a real
+    // hardware Program write despite a byte-perfect body. Null for object types outside the
+    // Librarian's known ones (e.g. name-only sub-dumps), which keep whatever version they
+    // already carry.
     public static byte? CurrentObjectVersion(int objType) => objType switch
     {
-        Program => 5,
-        Combi   => 3,
-        SetList => 0,
-        _       => null,
+        Program      => 5,
+        Combi        => 3,
+        SetList      => 0,
+        DrumKit      => 3,
+        WaveSequence => 1,
+        _            => null,
     };
 }
 
@@ -51,9 +59,11 @@ readonly record struct ObjLoc(int ObjType, int Bank, int Number)
 {
     public string Label() => ObjType switch
     {
-        LibObj.Program => $"{KronosBanks.ProgramLabel(Bank)}:{Number:D3}",
-        LibObj.SetList => $"Set List {Number:D2}",
-        _              => $"{KronosBanks.CombiLabel(Bank)}:{Number:D3}",
+        LibObj.Program      => $"{KronosBanks.ProgramLabel(Bank)}:{Number:D3}",
+        LibObj.SetList      => $"Set List {Number:D2}",
+        LibObj.DrumKit      => $"{KronosBanks.DrumKitLabel(Bank)}:{Number:D3}",
+        LibObj.WaveSequence => $"{KronosBanks.WaveSeqLabel(Bank)}:{Number:D3}",
+        _                   => $"{KronosBanks.CombiLabel(Bank)}:{Number:D3}",
     };
 }
 
@@ -65,7 +75,14 @@ readonly record struct RescanScope(int ObjType, int? Bank, int? Number)
 {
     public string Describe()
     {
-        string typeName = ObjType switch { LibObj.Program => "Program", LibObj.Combi => "Combi", _ => "Set List" };
+        string typeName = ObjType switch
+        {
+            LibObj.Program      => "Program",
+            LibObj.DrumKit      => "Drum Kit",
+            LibObj.WaveSequence => "Wave Sequence",
+            LibObj.SetList      => "Set List",
+            _                   => "Combi",
+        };
         if (Number is int n)
             return ObjType == LibObj.SetList ? $"Set List {n:D2}" : $"{typeName} {BankLabel()}:{n:D3}";
         if (Bank is int)
@@ -73,7 +90,13 @@ readonly record struct RescanScope(int ObjType, int? Bank, int? Number)
         return $"all {typeName}s";
     }
 
-    string BankLabel() => ObjType == LibObj.Program ? KronosBanks.ProgramLabel(Bank!.Value) : KronosBanks.CombiLabel(Bank!.Value);
+    string BankLabel() => ObjType switch
+    {
+        LibObj.Program      => KronosBanks.ProgramLabel(Bank!.Value),
+        LibObj.DrumKit      => KronosBanks.DrumKitLabel(Bank!.Value),
+        LibObj.WaveSequence => KronosBanks.WaveSeqLabel(Bank!.Value),
+        _                   => KronosBanks.CombiLabel(Bank!.Value),
+    };
 }
 
 // One reference site pointing at a movable object.

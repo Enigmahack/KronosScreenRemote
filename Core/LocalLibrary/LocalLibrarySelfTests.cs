@@ -83,8 +83,9 @@ static class LocalLibrarySelfTests
         //    five cases, generalized from "combi banks + 1 setlist" to "every registry bank" ──
         var allBanks = LibraryPullPlanner.AllBanks().ToList();
         // 20 program (I-A..I-F + U-A..U-GG; no I-G, and the read-only GM/g banks are browse-only
-        // and never pulled) + 14 combi (I-A..I-G + U-A..U-G) + 1 setlist pseudo-bank.
-        Check("registry-bank-count", allBanks.Count == 20 + 14 + 1);
+        // and never pulled) + 14 combi (I-A..I-G + U-A..U-G) + 1 setlist pseudo-bank + 15 drum
+        // kit (Int + U-A..U-GG; GM is browse-only) + 15 wave sequence (Int + U-A..U-GG).
+        Check("registry-bank-count", allBanks.Count == 20 + 14 + 1 + 15 + 15);
         Check("pull-scope-excludes-readonly-banks",
             !allBanks.Any(b => ObjectTypeRegistry.Get(b.ObjType).IsReadOnlyBank(b.Bank)));
 

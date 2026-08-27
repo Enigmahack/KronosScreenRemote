@@ -128,7 +128,7 @@ sealed class LocalLibraryCache
         var descriptor = ObjectTypeRegistry.Get(objType);
         int changed = 0;
         foreach (var bank in descriptor.EditableBanks())
-            for (int n = 0; n < descriptor.SlotCount; n++)
+            for (int n = 0; n < descriptor.SlotCount(bank); n++)
             {
                 string key = LocalLibraryIndex.Key(objType, bank, n);
                 string hash;

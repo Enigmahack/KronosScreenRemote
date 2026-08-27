@@ -851,7 +851,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         // startSlot+i walk would write over real patches sitting past the first placeholder.
         int startSlot = destSlot ?? FindNextFreeSlot(objType, destBank);
         var targetSlots = destSlot is { } fixedStart
-            ? Enumerable.Range(fixedStart, Math.Max(0, Math.Min(toPlace.Count, descriptor.SlotCount - fixedStart))).ToList()
+            ? Enumerable.Range(fixedStart, Math.Max(0, Math.Min(toPlace.Count, descriptor.SlotCount(destBank) - fixedStart))).ToList()
             : LocalEditOps.AvailableSlotsFrom(_cache, objType, destBank, startSlot, toPlace.Count);
         int take = targetSlots.Count;
         if (take <= 0)
@@ -1100,10 +1100,10 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         using var undo = _undo.Begin(AppMessages.Librarian.Shell.UndoCopiedBankWithTypeChange(descriptor.BankLabel(destBank)));
         var group = contentHashes.Select(h => MergePane.TryGet(h)).Where(e => e is { ObjType: LibObj.Program }).Select(e => e!).ToList();
         if (group.Count == 0) return (false, "nothing to place for this bank");
-        if (group.Count > descriptor.SlotCount) group = group.Take(descriptor.SlotCount).ToList();
+        if (group.Count > descriptor.SlotCount(destBank)) group = group.Take(descriptor.SlotCount(destBank)).ToList();
 
         // Replace the destination bank - the 0x7C erases everything in it on hardware anyway.
-        for (int n = 0; n < descriptor.SlotCount; n++)
+        for (int n = 0; n < descriptor.SlotCount(destBank); n++)
             if (_cache.Exists(LibObj.Program, destBank, n))
                 _cache.RemoveObject(LibObj.Program, destBank, n, DateTime.UtcNow);
 

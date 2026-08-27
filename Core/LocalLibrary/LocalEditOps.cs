@@ -205,7 +205,7 @@ static class LocalEditOps
     public static int FindNextFreeSlot(LocalLibraryCache cache, int objType, int bank)
     {
         var descriptor = ObjectTypeRegistry.Get(objType);
-        for (int i = 0; i < descriptor.SlotCount; i++)
+        for (int i = 0; i < descriptor.SlotCount(bank); i++)
             if (!cache.HasContent(objType, bank, i)) return i;
         return 0;
     }
@@ -220,7 +220,7 @@ static class LocalEditOps
     {
         var descriptor = ObjectTypeRegistry.Get(objType);
         var slots = new List<int>();
-        for (int i = Math.Max(0, startSlot); i < descriptor.SlotCount && slots.Count < max; i++)
+        for (int i = Math.Max(0, startSlot); i < descriptor.SlotCount(bank) && slots.Count < max; i++)
             if (!cache.HasContent(objType, bank, i)) slots.Add(i);
         return slots;
     }
@@ -231,7 +231,7 @@ static class LocalEditOps
     public static int? TryFindNextFreeSlot(LocalLibraryCache cache, int objType, int bank)
     {
         var descriptor = ObjectTypeRegistry.Get(objType);
-        for (int i = 0; i < descriptor.SlotCount; i++)
+        for (int i = 0; i < descriptor.SlotCount(bank); i++)
             if (!cache.HasContent(objType, bank, i)) return i;
         return null;
     }
@@ -279,7 +279,7 @@ static class LocalEditOps
         foreach (var bank in banks)
         {
             bool hasRoom = false;
-            for (int i = 0; i < descriptor.SlotCount && !hasRoom; i++)
+            for (int i = 0; i < descriptor.SlotCount(bank) && !hasRoom; i++)
                 if (!cache.HasContent(objType, bank, i)) hasRoom = true;
             if (!hasRoom) continue;
 
@@ -298,7 +298,7 @@ static class LocalEditOps
     public static bool? LocalProgramBankFormat(LocalLibraryCache cache, int bank)
     {
         var descriptor = ObjectTypeRegistry.Get(LibObj.Program);
-        for (int n = 0; n < descriptor.SlotCount; n++)
+        for (int n = 0; n < descriptor.SlotCount(bank); n++)
             if (cache.Exists(LibObj.Program, bank, n)) return cache.IsExi(LibObj.Program, bank, n);
         return null;
     }

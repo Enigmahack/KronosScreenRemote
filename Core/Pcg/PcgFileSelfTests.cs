@@ -128,7 +128,36 @@ static class PcgFileSelfTests
             Check("bankid-combi-I-G", bankIdView.GetName(new ObjLoc(LibObj.Combi, 0x06, 0)) == "I-G COMBI");
             Check("bankid-combi-U-A-via-0x20000", bankIdView.GetName(new ObjLoc(LibObj.Combi, 0x40, 0)) == "U-A COMBI");
             Check("bankid-combi-U-G-via-0x20006", bankIdView.GetName(new ObjLoc(LibObj.Combi, 0x46, 0)) == "U-G COMBI");
+
+            // Drum Kit/Wave Sequence share one bank-id scheme (Int=raw 0, User=0x20000+N),
+            // distinct from both Program's and Combi's above - see DecodeDrumKitOrWaveSeqBank.
+            Check("bankid-drumkit-int", bankIdView.GetName(new ObjLoc(LibObj.DrumKit, 0x00, 0)) == "INT DK");
+            Check("bankid-drumkit-U-A-via-0x20000", bankIdView.GetName(new ObjLoc(LibObj.DrumKit, 0x40, 0)) == "U-A DK");
+            Check("bankid-drumkit-U-GG-via-0x2000D", bankIdView.GetName(new ObjLoc(LibObj.DrumKit, 0x4D, 0)) == "U-GG DK");
+            Check("bankid-drumkit-N14-rejected", bankIdFile.RejectedBanks.Any(r => r.Tag == "DBK1" && r.BankIdRaw == 0x2000E));
+            Check("bankid-waveseq-int", bankIdView.GetName(new ObjLoc(LibObj.WaveSequence, 0x00, 0)) == "INT WS");
+            Check("bankid-waveseq-U-A-via-0x20000", bankIdView.GetName(new ObjLoc(LibObj.WaveSequence, 0x40, 0)) == "U-A WS");
+
+            // Global is a bank=0/index=0 singleton regardless of its header's own bankId field -
+            // same "always objBank 0" convention as Set List (see TryReadBank).
+            Check("bankid-global-singleton", bankIdView.GetBody(new ObjLoc(LibObj.Global, 0, 0)) != null);
+            Check("bankid-global-no-name", bankIdView.GetName(new ObjLoc(LibObj.Global, 0, 0)) == "");
+
             Check("bankid-file-checksums-clean", bankIdFile.ChecksumWarnings.Count == 0);
+        }
+
+        // WBK1's real Int bank count (150) exceeds the old MBK1/PBK1/CBK1/SBK1-tuned 1..128
+        // bound - pin that the widened bound actually admits it rather than silently rejecting
+        // the whole bank.
+        var wideCountBuffer = BuildWideCountWaveSeqPcg(out int wideCount);
+        var wideCountFile = PcgFile.Open(wideCountBuffer);
+        Check("widecount-file-opens", wideCountFile != null);
+        if (wideCountFile != null)
+        {
+            var wideView = new PcgLibraryView(wideCountFile);
+            Check("widecount-all-150-extracted",
+                Enumerable.Range(0, wideCount).All(n => wideView.GetBody(new ObjLoc(LibObj.WaveSequence, 0x00, n)) != null));
+            Check("widecount-not-rejected", !wideCountFile.RejectedBanks.Any(r => r.Tag == "WBK1"));
         }
 
         return fails;
@@ -185,6 +214,56 @@ static class PcgFileSelfTests
         WriteBank("CBK1", combiSize, 6, "I-G COMBI");
         WriteBank("CBK1", combiSize, 0x20000, "U-A COMBI");
         WriteBank("CBK1", combiSize, 0x20006, "U-G COMBI");
+
+        const int dkSize = 64, wsSize = 64, glbSize = 64;
+        WriteBank("DBK1", dkSize, 0, "INT DK");
+        WriteBank("DBK1", dkSize, 0x20000, "U-A DK");
+        WriteBank("DBK1", dkSize, 0x2000D, "U-GG DK");
+        WriteBank("DBK1", dkSize, 0x2000E, "OUT OF RANGE DK");   // N=14 -- must be rejected
+        WriteBank("WBK1", wsSize, 0, "INT WS");
+        WriteBank("WBK1", wsSize, 0x20000, "U-A WS");
+
+        // GLB1 has its own shorter header (tag + declared size + checksum dword, no
+        // count/itemSize/bankId) - see PcgObjectExtractor.TryReadGlobal, hex-verified against
+        // a real hardware-written file.
+        var globalPayload = new byte[glbSize];
+        int globalChecksum = ComputeChecksumForTest(globalPayload);
+        WriteAscii("GLB1");
+        WriteBE32(glbSize);
+        ms.WriteByte(0); ms.WriteByte(0); ms.WriteByte(0); ms.WriteByte((byte)globalChecksum);
+        ms.Write(globalPayload);
+
+        return ms.ToArray();
+    }
+
+    static int ComputeChecksumForTest(byte[] payload)
+    {
+        int sum = 0;
+        foreach (byte b in payload) sum = (sum + b) & 0xFF;
+        return sum;
+    }
+
+    static byte[] BuildWideCountWaveSeqPcg(out int count)
+    {
+        count = 150;   // real WBK1 Int bank count (pcg_file_format.md §7 corpus)
+        const int itemSize = 64;
+        var records = new byte[count * itemSize];
+
+        using var ms = new MemoryStream();
+        void WriteAscii(string s) => ms.Write(Encoding.ASCII.GetBytes(s));
+        void WriteBE32(int v) { ms.WriteByte((byte)(v >> 24)); ms.WriteByte((byte)(v >> 16)); ms.WriteByte((byte)(v >> 8)); ms.WriteByte((byte)v); }
+
+        WriteAscii("KORG");
+        ms.WriteByte(0x68); ms.WriteByte(0x00); ms.WriteByte(0x02); ms.WriteByte(0x01);
+        ms.Write(new byte[8]);
+
+        WriteAscii("WBK1");
+        WriteBE32(0);
+        WriteBE32(ChunkChecksum(count, itemSize, 0, records));
+        WriteBE32(count);
+        WriteBE32(itemSize);
+        WriteBE32(0);   // Int bank
+        ms.Write(records);
 
         return ms.ToArray();
     }

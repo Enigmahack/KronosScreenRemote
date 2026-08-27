@@ -174,7 +174,23 @@ static class ObjectBodySelfTests
         Check("registry-readonly-program",
             ObjectTypeRegistry.Get(LibObj.Program).IsReadOnlyBank(0x10) &&
             !ObjectTypeRegistry.Get(LibObj.Program).IsReadOnlyBank(0x00));
-        Check("registry-all-three", ObjectTypeRegistry.All.Count() == 3);
+
+        // KRONOS_MIDI_SysEx.txt *2: Drum Kit/Wave Seq bank = 0 INT, 0x40-0x4D USER-A..GG (14);
+        // Drum Kit additionally has a read-only GM bank at 0x10 (Wave Seq has none).
+        var expectedDkWsBanks = new[] { 0 }.Concat(Enumerable.Range(0x40, 14)).ToList();
+        Check("registry-drumkit-banks",
+            ObjectTypeRegistry.Get(LibObj.DrumKit).EditableBanks().SequenceEqual(expectedDkWsBanks));
+        Check("registry-waveseq-banks",
+            ObjectTypeRegistry.Get(LibObj.WaveSequence).EditableBanks().SequenceEqual(expectedDkWsBanks));
+        Check("registry-readonly-drumkit",
+            ObjectTypeRegistry.Get(LibObj.DrumKit).IsReadOnlyBank(0x10) &&
+            !ObjectTypeRegistry.Get(LibObj.WaveSequence).IsReadOnlyBank(0x10));
+        Check("registry-slotcount-per-bank",
+            ObjectTypeRegistry.Get(LibObj.DrumKit).SlotCount(0x00) == 40 &&
+            ObjectTypeRegistry.Get(LibObj.DrumKit).SlotCount(0x40) == 16 &&
+            ObjectTypeRegistry.Get(LibObj.WaveSequence).SlotCount(0x00) == 150 &&
+            ObjectTypeRegistry.Get(LibObj.WaveSequence).SlotCount(0x40) == 32);
+        Check("registry-all-five", ObjectTypeRegistry.All.Count() == 5);
 
         return fails;
     }

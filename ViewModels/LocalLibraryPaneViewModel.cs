@@ -171,7 +171,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
             }
             else
             {
-                for (int number = 0; number < descriptor.SlotCount; number++)
+                for (int number = 0; number < descriptor.SlotCount(bank); number++)
                     if (_cache.Exists(objType, bank, number))
                         locs.Add(new ObjLoc(objType, bank, number));
             }

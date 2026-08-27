@@ -100,6 +100,15 @@ public partial class App : Application
             PcgRefDump.Run(e.Args[dumpRefsIdx + 1], filter);
         }
 
+        // Headless diagnostic: `--dump-pcg-structure <path-to.pcg>` - see
+        // Tools/PcgStructureDump.cs for why this exists (validating the DBK1/WBK1/GLB1
+        // extractor additions against real hardware-written files).
+        int dumpStructureIdx = Array.IndexOf(e.Args, "--dump-pcg-structure");
+        if (dumpStructureIdx >= 0 && dumpStructureIdx + 1 < e.Args.Length)
+        {
+            PcgStructureDump.Run(e.Args[dumpStructureIdx + 1]);
+        }
+
         // Headless diagnostic: `--sample-format-fixture-check <folder>` - the runnable
         // acceptance gate for the Core/Sample/* format-layer port (byte-identical
         // round-trip against a local, gitignored folder of real Kronos fixtures).

@@ -61,7 +61,7 @@ static class LibraryPullPipeline
 
         var utcNow = DateTime.UtcNow;
         int fetched = 0, conflicts = 0, done = 0;
-        int total = plan.BanksToFetch.Sum(b => ObjectTypeRegistry.Get(b.ObjType).SlotCount);
+        int total = plan.BanksToFetch.Sum(b => ObjectTypeRegistry.Get(b.ObjType).SlotCount(b.Bank));
         // Accumulated in memory and written in ONE batch after the loop - see
         // LocalLibraryCache.RecordPullBaselines's own comment for why: appending one
         // op-log line per object (a full pull can mean thousands) meant thousands of
@@ -94,10 +94,10 @@ static class LibraryPullPipeline
             // genuinely fully-empty bank look identical at this layer - and fall back to a
             // full per-slot sweep only in that one case, same as if bulk didn't exist.
             progress?.Invoke(AppMessages.Librarian.Sync.BulkDumping(descriptor.DisplayName, descriptor.BankLabel(bankRef.Bank)));
-            var bulk = await sysEx.DumpBankBulkAsync(bankRef.ObjType, bankRef.Bank, descriptor.SlotCount).ConfigureAwait(false);
+            var bulk = await sysEx.DumpBankBulkAsync(bankRef.ObjType, bankRef.Bank, descriptor.SlotCount(bankRef.Bank)).ConfigureAwait(false);
             bool bulkWorked = bulk.Count > 0;
 
-            for (int number = 0; number < descriptor.SlotCount; number++)
+            for (int number = 0; number < descriptor.SlotCount(bankRef.Bank); number++)
             {
                 if (ct.IsCancellationRequested) break;
                 ObjectDump? dump = bulk.TryGetValue(number, out var bulkDump) ? bulkDump

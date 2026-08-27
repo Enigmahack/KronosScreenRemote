@@ -351,10 +351,24 @@ static class BatchLibrarian
         foreach (var w in plan.Writes)
             if (!plan.Stores.Contains((w.Obj, w.Bank))) plan.Stores.Add((w.Obj, w.Bank));
 
-        string typeTag = objType switch { LibObj.Program => "prog", LibObj.Combi => "combi", _ => "setlist" };
+        string typeTag = objType switch
+        {
+            LibObj.Program      => "prog",
+            LibObj.Combi        => "combi",
+            LibObj.DrumKit      => "drumkit",
+            LibObj.WaveSequence => "waveseq",
+            _                   => "setlist",
+        };
         plan.BackupLabel = $"batchmove_{typeTag}_{real.Count}items";
 
-        string typeNoun = objType switch { LibObj.Program => "programs", LibObj.Combi => "combis", _ => "set lists" };
+        string typeNoun = objType switch
+        {
+            LibObj.Program      => "programs",
+            LibObj.Combi        => "combis",
+            LibObj.DrumKit      => "drum kits",
+            LibObj.WaveSequence => "wave sequences",
+            _                   => "set lists",
+        };
         plan.Preview.Add($"BATCH MOVE  {real.Count} placement(s)  ({typeNoun})");
         if (skipped > 0) plan.Preview.Add($"  ({skipped} placement(s) already at their destination - skipped)");
         foreach (var p in real) plan.Preview.Add($"  {p.SourceLabel}  ->  {p.To.Label()}");

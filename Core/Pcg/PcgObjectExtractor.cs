@@ -24,7 +24,8 @@ sealed record PcgRejectedBank(string Tag, long Offset, int Count, int ItemSize, 
 // garbage into Local Library. Surfaced by PcgPaneViewModel.Load exactly like RejectedBanks.
 sealed record PcgChecksumWarning(string Tag, long Offset, int Expected, int Actual);
 
-// Extracts raw Program/Combi/Set List records directly from a .pcg file's bytes.
+// Extracts raw Program/Combi/Set List/Drum Kit/Wave Sequence/Global records directly from a
+// .pcg file's bytes.
 //
 // Container format per kronosology/docs/interfaces/pcg_file_format.md §2.2/§2.3.
 // "KORG" file header, a fixed-offset DIV1 chunk, then a flat top-level chunk walk (DIV1 ->
@@ -33,17 +34,18 @@ sealed record PcgChecksumWarning(string Tag, long Offset, int Expected, int Actu
 // SLS1 nests SLD1 then STL1 (STL1 nests SBK1).
 //
 // Rather than walk that outer structure level by level, this parser scans the file directly
-// for the four sub-chunk tags that carry real object data with a self-describing header -
-// MBK1/PBK1 (Program banks), CBK1 (Combi banks), SBK1 (Set List bank) - and validates each
-// candidate via its own declared count/item-size fields and its stored checksum (see
-// PcgChecksumWarning) before trusting it, rather than trusting tag or position alone. A
-// stray 4-byte sequence matching a tag inside unrelated binary parameter data fails
+// for the sub-chunk tags that carry real object data with a self-describing header -
+// MBK1/PBK1 (Program banks), CBK1 (Combi banks), SBK1 (Set List bank), DBK1 (Drum Kit banks),
+// WBK1 (Wave Sequence banks), GLB1 (Global, a singleton - see its own branch below) - and
+// validates each candidate via its own declared count/item-size fields and its stored
+// checksum (see PcgChecksumWarning) before trusting it, rather than trusting tag or position
+// alone. A stray 4-byte sequence matching a tag inside unrelated binary parameter data fails
 // validation and is just skipped. This is a deliberate simplification, not a workaround for
 // an unresolved structure: DIV1 is itself "a redundant table-of-contents the loader doesn't
 // need" (§2.3) - the real Kronos firmware discovers banks the same way, by which sub-chunks
 // it actually finds while descending, not by trusting DIV1's bitmap.
 //
-// Header shape common to all four (24 bytes):
+// Header shape common to all of these (24 bytes):
 //   +0x00 tag (4 ASCII)     +0x04 chunk length (BE, unused here)   +0x08 reserved/meta (BE)
 //   +0x0C count (BE)        +0x10 item size (BE)                  +0x14 bank id (BE, see below)
 //   +0x18 first record (raw body, `count` of them, `item size` bytes each)
@@ -93,12 +95,27 @@ static class PcgObjectExtractor
     static int DecodeCombiBankIndex(int bankIdRaw) =>
         bankIdRaw < 0x20000 ? bankIdRaw : bankIdRaw - 0x20000 + 7;
 
+    // Drum Kit and Wave Sequence share one bank-id scheme, distinct from both Program's and
+    // Combi's above: a single Int bank (raw 0) plus 14 User banks at 0x20000+N - see
+    // pcg_file_format.md §2.4. Decoded straight to the live obj-dump bank number
+    // (0=Int, 0x40+N=User) so ObjLoc matches what ObjectTypeRegistry's descriptors expect.
+    static int DecodeDrumKitOrWaveSeqBank(int bankIdRaw)
+    {
+        if (bankIdRaw == 0) return 0;
+        int n = bankIdRaw - 0x20000;
+        return n is >= 0 and <= 13 ? 0x40 + n : -1;
+    }
+
+    // GLB1 is NOT a bank chunk - see TryReadGlobal for its own (shorter, singleton) header
+    // shape, hex-verified against real hardware-written files.
     static readonly Dictionary<string, int> BankChunkObjType = new()
     {
         ["MBK1"] = LibObj.Program,
         ["PBK1"] = LibObj.Program,
         ["CBK1"] = LibObj.Combi,
         ["SBK1"] = LibObj.SetList,
+        ["DBK1"] = LibObj.DrumKit,
+        ["WBK1"] = LibObj.WaveSequence,
     };
 
     public static List<PcgObjectEntry> Extract(byte[] data) => Extract(data, out _, out _);
@@ -124,7 +141,16 @@ static class PcgObjectExtractor
         while (pos + HeaderSize <= data.Length)
         {
             string tag = Encoding.ASCII.GetString(data, pos, 4);
-            if (BankChunkObjType.TryGetValue(tag, out int objType))
+            if (tag == "GLB1")
+            {
+                if (TryReadGlobal(data, pos, results, checksumWarnings, out int consumed, out var reason))
+                {
+                    pos += consumed;
+                    continue;
+                }
+                if (reason != null) rejected.Add(reason);
+            }
+            else if (BankChunkObjType.TryGetValue(tag, out int objType))
             {
                 if (TryReadBank(data, pos, objType, tag == "MBK1", results, checksumWarnings, out int consumed, out var reason))
                 {
@@ -147,9 +173,12 @@ static class PcgObjectExtractor
         int itemSize = ReadBE32(data, offset + 0x10);
         int bankIdRaw = ReadBE32(data, offset + 0x14);
 
-        if (count is < 1 or > 128)
+        // Upper bound covers the largest real bank seen (WBK1 Int = 150) - still tight enough
+        // that a coincidental tag match needs a plausible count AND itemSize AND in-file
+        // records to slip through (see recordsEnd/itemSize checks below).
+        if (count is < 1 or > 200)
         {
-            rejected = new PcgRejectedBank(tag, offset, count, itemSize, bankIdRaw, $"count {count} out of range 1..128");
+            rejected = new PcgRejectedBank(tag, offset, count, itemSize, bankIdRaw, $"count {count} out of range 1..200");
             return false;
         }
         if (itemSize is < 64 or > 200_000)   // sane range for a Kronos object body
@@ -179,6 +208,16 @@ static class PcgObjectExtractor
                 return false;   // bankIdRaw doesn't resolve - not a real bank header
             }
         }
+        else if (objType == LibObj.DrumKit || objType == LibObj.WaveSequence)
+        {
+            objBank = DecodeDrumKitOrWaveSeqBank(bankIdRaw);
+            if (objBank < 0)
+            {
+                rejected = new PcgRejectedBank(tag, offset, count, itemSize, bankIdRaw,
+                    $"bankId 0x{bankIdRaw:X} didn't decode to a valid {(objType == LibObj.DrumKit ? "Drum Kit" : "Wave Sequence")} bank");
+                return false;
+            }
+        }
         else   // Combi - genuinely has 7 int banks, matching its own EditableBanks() list
         {
             int bankIndex = DecodeCombiBankIndex(bankIdRaw);
@@ -194,8 +233,8 @@ static class PcgObjectExtractor
 
         // §12: checksum byte at offset+11 (last byte of the 12-byte chunk header) should equal
         // sum(payload from offset+12 through recordsEnd) mod 256 - i.e. the count/itemSize/
-        // bankId sub-header plus every record, for MBK1/PBK1/CBK1/SBK1 alike.
-        // Advisory only - see PcgChecksumWarning for why this doesn't reject the bank.
+        // bankId sub-header plus every record. Advisory only - see PcgChecksumWarning for why
+        // this doesn't reject the bank.
         int actualChecksum = data[offset + 11];
         int expectedChecksum = ComputeChecksum(data, offset + 12, recordsEnd);
         if (actualChecksum != expectedChecksum)
@@ -215,11 +254,53 @@ static class PcgObjectExtractor
         return true;
     }
 
+    // GLB1 is not a bank chunk (see TryReadBank's 24-byte header) - it's a shorter 12-byte
+    // header (tag + declared size (BE) + reserved/checksum dword) immediately followed by the
+    // single Global payload, `size` bytes long. No count/itemSize/bankId sub-fields - Global
+    // is always exactly one record. Hex-verified against a real hardware-written file: bytes
+    // at offset+12 read `00 00 08 02...`, matching pcg_file_format.md §8's own quote of
+    // Global's payload start, which resolves that doc's "payload+0 vs +12 vs +16" open
+    // question - it's +12.
+    const int GlobalHeaderSize = 12;
+
+    static bool TryReadGlobal(byte[] data, int offset, List<PcgObjectEntry> results, List<PcgChecksumWarning> checksumWarnings, out int consumed, out PcgRejectedBank? rejected)
+    {
+        consumed = 0;
+        rejected = null;
+        int size = ReadBE32(data, offset + 4);
+
+        if (size is < 64 or > 200_000)
+        {
+            rejected = new PcgRejectedBank("GLB1", offset, 1, size, 0, $"declared size {size} out of range 64..200000");
+            return false;
+        }
+        long recordsEnd = (long)offset + GlobalHeaderSize + size;
+        if (recordsEnd > data.Length)
+        {
+            rejected = new PcgRejectedBank("GLB1", offset, 1, size, 0, "payload would run past end of file");
+            return false;
+        }
+
+        int actualChecksum = data[offset + 11];
+        int expectedChecksum = ComputeChecksum(data, offset + 12, recordsEnd);
+        if (actualChecksum != expectedChecksum)
+            checksumWarnings.Add(new PcgChecksumWarning("GLB1", offset, expectedChecksum, actualChecksum));
+
+        var body = new byte[size];
+        Array.Copy(data, offset + GlobalHeaderSize, body, 0, size);
+        results.Add(new PcgObjectEntry(new ObjLoc(LibObj.Global, 0, 0), body, "", false));
+
+        consumed = GlobalHeaderSize + size;
+        return true;
+    }
+
     static string ReadRecordName(int objType, byte[] body) => objType switch
     {
-        LibObj.Program => ProgramBody.ReadName(body),
-        LibObj.Combi   => CombiBody.ReadName(body),
-        LibObj.SetList => SetListBody.FromRawBody(0, body)?.Name ?? "",
+        LibObj.Program      => ProgramBody.ReadName(body),
+        LibObj.Combi        => CombiBody.ReadName(body),
+        LibObj.SetList      => SetListBody.FromRawBody(0, body)?.Name ?? "",
+        LibObj.DrumKit      => DrumKitBody.ReadName(body),
+        LibObj.WaveSequence => WaveSequenceBody.ReadName(body),
         _ => "",
     };
 
