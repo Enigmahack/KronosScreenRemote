@@ -450,6 +450,14 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     async Task SyncLibraryAsync()
     {
         IsBusy = true; WarningText = null; StatusIsSuccess = false;
+        // Same gate WarmCatalogAsync uses at startup, for the same reason: LibraryPullPipeline
+        // writes everything in ONE batch at the very end (see RecordPullBaselines), so a visible,
+        // interactive tree during the pull would just be showing whatever was there BEFORE this
+        // sync - never more misleading than for a brand-new type (Drum Kit/Wave Sequence on a
+        // library that never pulled them before shows an empty root that looks final, not "still
+        // coming"). Unlike Auto-Fill's IsInputLocked, nothing here writes progressively, so hiding
+        // behind the placeholder loses nothing worth watching.
+        LocalPane.IsIndexing = true;
         using var cts = new CancellationTokenSource();
         _syncCts = cts;
         try
@@ -502,6 +510,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
             // needs to be once a sync has already finished on its own.
             _syncCts = null;
             LocalPane.RefreshTree();
+            LocalPane.IsIndexing = false;
             RefreshHistory();
             IsBusy = false;
         }
