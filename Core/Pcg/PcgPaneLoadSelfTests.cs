@@ -27,6 +27,17 @@ static class PcgPaneLoadSelfTests
         Check("second-load-replaces-content", pane.Get(new ObjLoc(LibObj.Program, 0x00, 0))?.Name == "SECOND PROG");
         Check("second-load-one-program-root", pane.Roots.Count(r => r.Label == "Programs") == 1);
 
+        // Drum Kit/Wave Sequence tree roots (ObjectTreeScaffold) - regression coverage for the
+        // "no UI wiring yet" gap Phase 1 deliberately left, now closed.
+        var drumKitsRoot = pane.Roots.FirstOrDefault(r => r.Label == "Drum Kits");
+        Check("drumkits-root-present", drumKitsRoot != null);
+        Check("drumkits-leaf-named", drumKitsRoot?.Children.SingleOrDefault()?.Children
+            .Any(c => c.Label.Contains("SECOND DK")) == true);
+        var waveSeqRoot = pane.Roots.FirstOrDefault(r => r.Label == "Wave Sequences");
+        Check("waveseq-root-present", waveSeqRoot != null);
+        Check("waveseq-leaf-named", waveSeqRoot?.Children.SingleOrDefault()?.Children
+            .Any(c => c.Label.Contains("SECOND WS")) == true);
+
         // Set Lists have no bank concept (unlike Programs/Combis) - the "Set Lists" type root
         // must carry its own BankRef and nest Set List objects directly underneath, NOT through
         // a redundant inner "Set Lists" bank node repeating the same label a second time (a
@@ -83,7 +94,7 @@ static class PcgPaneLoadSelfTests
 
     static byte[] BuildMinimalPcg(string programName)
     {
-        const int programSize = ProgramFormatConverter.PcgSlotSize, setListSize = 700;
+        const int programSize = ProgramFormatConverter.PcgSlotSize, setListSize = 700, dkSize = 64, wsSize = 64;
         var programBody = new byte[programSize];
         Encoding.ASCII.GetBytes(programName).CopyTo(programBody, 0);
 
@@ -91,23 +102,30 @@ static class PcgPaneLoadSelfTests
         Encoding.ASCII.GetBytes("A SET LIST").CopyTo(setListBody, 0);
         setListBody = SetListBody.WriteSlotName(setListBody, 0, "SLOT ONE");   // non-blank -> not IsEmpty
 
+        var drumKitBody = new byte[dkSize];
+        Encoding.ASCII.GetBytes(programName.Replace("PROG", "DK")).CopyTo(drumKitBody, 0);
+        var waveSeqBody = new byte[wsSize];
+        Encoding.ASCII.GetBytes(programName.Replace("PROG", "WS")).CopyTo(waveSeqBody, 0);
+
         using var ms = new MemoryStream();
         void WriteAscii(string s) => ms.Write(Encoding.ASCII.GetBytes(s));
         void WriteBE32(int v) { ms.WriteByte((byte)(v >> 24)); ms.WriteByte((byte)(v >> 16)); ms.WriteByte((byte)(v >> 8)); ms.WriteByte((byte)v); }
+        void WriteBank(string tag, int itemSize, byte[] body)
+        {
+            WriteAscii(tag);
+            WriteBE32(0); WriteBE32(PcgFileSelfTests.ChunkChecksum(1, itemSize, 0, body));
+            WriteBE32(1); WriteBE32(itemSize); WriteBE32(0);
+            ms.Write(body);
+        }
 
         WriteAscii("KORG");
         ms.WriteByte(0x68); ms.WriteByte(0x00); ms.WriteByte(0x02); ms.WriteByte(0x01);
         ms.Write(new byte[8]);
 
-        WriteAscii("MBK1");
-        WriteBE32(0); WriteBE32(PcgFileSelfTests.ChunkChecksum(1, programSize, 0, programBody));
-        WriteBE32(1); WriteBE32(programSize); WriteBE32(0);
-        ms.Write(programBody);
-
-        WriteAscii("SBK1");
-        WriteBE32(0); WriteBE32(PcgFileSelfTests.ChunkChecksum(1, setListSize, 0, setListBody));
-        WriteBE32(1); WriteBE32(setListSize); WriteBE32(0);
-        ms.Write(setListBody);
+        WriteBank("MBK1", programSize, programBody);
+        WriteBank("SBK1", setListSize, setListBody);
+        WriteBank("DBK1", dkSize, drumKitBody);
+        WriteBank("WBK1", wsSize, waveSeqBody);
 
         return ms.ToArray();
     }

@@ -142,9 +142,11 @@ static class LocalEditOps
         {
             body = loc.ObjType switch
             {
-                LibObj.Program => ProgramBody.WriteName(body, name),
-                LibObj.Combi   => CombiBody.WriteName(body, name),
-                LibObj.SetList => SetListBody.WriteName(body, name),
+                LibObj.Program      => ProgramBody.WriteName(body, name),
+                LibObj.Combi        => CombiBody.WriteName(body, name),
+                LibObj.SetList      => SetListBody.WriteName(body, name),
+                LibObj.DrumKit      => DrumKitBody.WriteName(body, name),
+                LibObj.WaveSequence => WaveSequenceBody.WriteName(body, name),
                 _ => body,
             };
             changes.Add($"name to \"{name}\"");

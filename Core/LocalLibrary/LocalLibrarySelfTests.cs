@@ -1,6 +1,7 @@
 namespace KronosScreenRemote;
 
 using System.IO;
+using System.Text;
 
 // Off-hardware self-test for Phase 1 of the Librarian rebuild: the content-addressed blob
 // store, op-log, index, pull planner, and pull pipeline (against FakeMoveExecutor). Same
@@ -128,10 +129,16 @@ static class LocalLibrarySelfTests
             exec.Seed(LibObj.Program, 0x00, 0, 1, namedProgram);
             exec.Seed(LibObj.Combi, 0x00, 0, 1, new byte[7810]);
             exec.Seed(LibObj.SetList, 0, 0, 1, new byte[69416]);
+            var namedDrumKit = new byte[38424];
+            Encoding.ASCII.GetBytes("SEEDED DRUM KIT").CopyTo(namedDrumKit, 0);
+            exec.Seed(LibObj.DrumKit, 0x00, 0, 1, namedDrumKit);
+            var namedWaveSeq = new byte[2216];
+            Encoding.ASCII.GetBytes("SEEDED WAVE SEQ").CopyTo(namedWaveSeq, 0);
+            exec.Seed(LibObj.WaveSequence, 0x00, 0, 1, namedWaveSeq);
 
             var cache = new LocalLibraryCache(root);
             var result1 = await LibraryPullPipeline.PullAsync(exec, cache, full: true);
-            Check("pull-first-fetched-seeded", result1.ObjectsFetched == 3);
+            Check("pull-first-fetched-seeded", result1.ObjectsFetched == 5);
             Check("pull-first-no-conflicts", result1.Conflicts == 0);
             Check("pull-populates-cache", cache.GetCurrentBody(LibObj.Program, 0x00, 0) != null);
             Check("pull-not-dirty-after-pull", !cache.IsDirty(LibObj.Program, 0x00, 0));
@@ -145,7 +152,7 @@ static class LocalLibrarySelfTests
             Check("pull-writes-one-batched-oplog-entry",
                 oplogAfterPull.Count(e => e.OpKind == "PullBaseline") == 1);
             Check("pull-oplog-entry-covers-all-objects",
-                oplogAfterPull.First(e => e.OpKind == "PullBaseline").Targets.Count == 3);
+                oplogAfterPull.First(e => e.OpKind == "PullBaseline").Targets.Count == 5);
 
             // DisplayName is cached at pull time (never re-derived from a body read later -
             // see LocalIndexEntry's doc comment for why that matters) and Exists() answers
@@ -173,6 +180,18 @@ static class LocalLibrarySelfTests
             Check("dirty-leaf-bubbles-to-type-root", programsRoot.IsDirty);
             var combisRoot = localVm.Roots.First(n => n.Label == "Combis");
             Check("clean-type-root-stays-clean", !combisRoot.IsDirty);
+
+            // Regression: a Sync-pulled Drum Kit/Wave Sequence must actually show up in the
+            // Local pane tree (ObjectTreeScaffold), not just live invisibly in the cache -
+            // this is the gap Phase 1 deliberately left ("UI wiring deferred") and Phase 2 closes.
+            var drumKitsRoot = localVm.Roots.FirstOrDefault(n => n.Label == "Drum Kits");
+            Check("drumkits-root-present-in-local-pane", drumKitsRoot != null);
+            Check("drumkits-leaf-shows-seeded-name", drumKitsRoot?.Children.SingleOrDefault()?.Children
+                .Any(c => c.Label.Contains("SEEDED DRUM KIT")) == true);
+            var waveSeqRoot = localVm.Roots.FirstOrDefault(n => n.Label == "Wave Sequences");
+            Check("waveseq-root-present-in-local-pane", waveSeqRoot != null);
+            Check("waveseq-leaf-shows-seeded-name", waveSeqRoot?.Children.SingleOrDefault()?.Children
+                .Any(c => c.Label.Contains("SEEDED WAVE SEQ")) == true);
 
             var result2 = await LibraryPullPipeline.PullAsync(exec, cache, full: false);
             Check("unrelated-pull-preserves-edit",

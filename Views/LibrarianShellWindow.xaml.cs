@@ -258,6 +258,19 @@ internal partial class LibrarianShellWindow : ThemedWindow
             return;
         }
 
+        if (loc.ObjType is LibObj.DrumKit or LibObj.WaveSequence)
+        {
+            var nameDlg = PropertiesDialog.ForNameOnly($"{loc.Label()} Properties", currentName).OwnedBy(this);
+            AttachDependencies(nameDlg, loc);
+            if (nameDlg.ShowDialog() != true) return;
+            if (nameDlg.NewName != null && nameDlg.NewName != currentName)
+            {
+                _vm.LocalPane.EditProperties(loc, nameDlg.NewName, null, null);
+                _vm.NotifyLocalEditMade();
+            }
+            return;
+        }
+
         var (category, subCategory) = loc.ObjType == LibObj.Program
             ? ProgramBody.ReadCategory(dump.Body)
             : CombiBody.ReadCategory(dump.Body);

@@ -5,4 +5,5 @@ namespace KronosScreenRemote;
 static class WaveSequenceBody
 {
     public static string ReadName(byte[] body) => Librarian.ReadName(body);
+    public static byte[] WriteName(byte[] body, string name) => Librarian.BuildRenamedBody(body, name);
 }

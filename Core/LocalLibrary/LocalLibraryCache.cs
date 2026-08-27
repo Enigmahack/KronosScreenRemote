@@ -259,9 +259,11 @@ sealed class LocalLibraryCache
     // later, which is what makes GetDisplayName above free of blob reads.
     static string ExtractDisplayName(int objType, byte[] body) => objType switch
     {
-        LibObj.Program => ProgramBody.ReadName(body),
-        LibObj.Combi   => CombiBody.ReadName(body),
-        LibObj.SetList => SetListBody.FromRawBody(0, body)?.Name ?? "",
+        LibObj.Program      => ProgramBody.ReadName(body),
+        LibObj.Combi        => CombiBody.ReadName(body),
+        LibObj.SetList      => SetListBody.FromRawBody(0, body)?.Name ?? "",
+        LibObj.DrumKit      => DrumKitBody.ReadName(body),
+        LibObj.WaveSequence => WaveSequenceBody.ReadName(body),
         _ => "",
     };
 

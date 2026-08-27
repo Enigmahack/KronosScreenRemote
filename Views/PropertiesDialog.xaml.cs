@@ -95,6 +95,12 @@ internal partial class PropertiesDialog : ThemedWindow
         public override string ToString() => $"{Value:D2}  {Label}";
     }
 
+    // Drum Kit/Wave Sequence: Name only - neither has a Category/Sub-Category field in Korg's
+    // documented object format (unlike Program/Combi). PNL_Category stays at its default
+    // Collapsed visibility, so OnOk never sets NewCategory.
+    public static PropertiesDialog ForNameOnly(string heading, string currentName) =>
+        new(heading, currentName);
+
     public static PropertiesDialog ForSetList(string heading, string currentName, SetListData data)
     {
         var dlg = new PropertiesDialog(heading, currentName) { _isSetListMode = true, _slots = data.Slots };
