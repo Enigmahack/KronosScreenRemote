@@ -69,7 +69,76 @@ static class MergeTreeVisibilitySelfTests
             .Any(n => n.MergeContentHash == progAHash) == true;
         Check("progA-graduates-to-flat-display-after-combiX-removed", progAFlat);
 
+        // ── A Program's own Wave Sequence dependency must be reachable/placeable too (real bug:
+        // MergePaneViewModel never built a Drum Kit/Wave Sequence root at all, and gave Program
+        // entries plain MakeNode instead of MakeNodeWithChildren, so a pulled Program's Wave
+        // Sequence/Drum Kit reference had NO tree node anywhere - visible in Object Dependencies
+        // but with no way to actually place it). ─────────────────────────────────────────────
+        var wsPcgBuffer = BuildProgramWithWaveSeqPcg(out var progWsBody, out var waveBody);
+        var wsFile = PcgFile.Open(wsPcgBuffer);
+        Check("wspcg-opens", wsFile != null);
+        if (wsFile == null) return fails;
+        var wsPcg = new PcgLibraryView(wsFile);
+
+        var wsMerge = new MergePaneViewModel(new MergeCache(new InMemoryMergeCachePersistence()));
+        wsMerge.PullFromPcg(wsPcg, "test-ws.pcg", new ObjLoc(LibObj.Program, 0x01, 0));
+
+        string progWsHash = LocalObjectStore.ComputeHash(progWsBody);
+        string waveHash = LocalObjectStore.ComputeHash(waveBody);
+        Check("progWs-staged", wsMerge.TryGet(progWsHash) != null);
+        Check("wave-staged", wsMerge.TryGet(waveHash) != null);
+
+        var progWsNode = wsMerge.Roots.FirstOrDefault(r => r.Label == "Programs")?.Children
+            .SelectMany(b => b.Children).FirstOrDefault(n => n.MergeContentHash == progWsHash);
+        Check("wave-nested-under-program", progWsNode?.Children.Any(n => n.MergeContentHash == waveHash) == true);
+
+        // Placing the Program removes it from the cache - its Wave Sequence dependency must
+        // graduate to its own "Wave Sequences" root, exactly like Combi X/Program A did above.
+        wsMerge.Remove(new[] { progWsHash });
+        var waveSequencesRoot = wsMerge.Roots.FirstOrDefault(r => r.Label == "Wave Sequences");
+        bool waveFlat = waveSequencesRoot?.Children.SelectMany(b => b.Children).Any(n => n.MergeContentHash == waveHash) == true;
+        Check("wave-graduates-to-flat-display-after-program-removed", waveFlat);
+
         return fails;
+    }
+
+    // Program "PROG WS" (HD-1, I-B:000) with OSC1 Zone1 pointing at Wave Sequence linear index 0
+    // (Int:000, KronosBanks.WaveSeqLinearToLoc) -> Wave Sequence "WAVE FIVE". progWsBody comes
+    // back already truncated to the WIRE size (see below) - the same bytes MergeCache actually
+    // hashes/stages, not the on-disk .pcg slot size.
+    static byte[] BuildProgramWithWaveSeqPcg(out byte[] progWsBody, out byte[] waveBody)
+    {
+        const int programSize = ProgramFormatConverter.PcgSlotSize, waveSize = 2216;
+
+        var progOnDisk = new byte[programSize];
+        Encoding.ASCII.GetBytes("PROG WS").CopyTo(progOnDisk, 0);
+        progOnDisk[2774] = 2;   // OSC1 Zone1 MS Type = Wave Sequence
+        LibRefs.SetProgramZoneNumber(progOnDisk, 0, 0, 0);   // linear 0 -> Int:000
+        // PBK1 = HD-1 (see PcgObjectExtractor's own comment); MBK1 is EXi and would leave the
+        // OSC1/OSC2 zone layout ObjectReferenceWalker expects entirely unwritten-to for real
+        // hardware bytes, since a real EXi body's own layout there means something else.
+        progWsBody = progOnDisk[..ProgramFormatConverter.WireSizeHd1];
+
+        waveBody = new byte[waveSize];
+        Encoding.ASCII.GetBytes("WAVE FIVE").CopyTo(waveBody, 0);
+
+        using var ms = new MemoryStream();
+        void WriteAscii(string s) => ms.Write(Encoding.ASCII.GetBytes(s));
+        void WriteBE32(int v) { ms.WriteByte((byte)(v >> 24)); ms.WriteByte((byte)(v >> 16)); ms.WriteByte((byte)(v >> 8)); ms.WriteByte((byte)v); }
+        void WriteBank(string tag, int count, int itemSize, int bankId, byte[] record)
+        {
+            WriteAscii(tag); WriteBE32(0); WriteBE32(0); WriteBE32(count); WriteBE32(itemSize); WriteBE32(bankId);
+            ms.Write(record);
+        }
+
+        WriteAscii("KORG");
+        ms.WriteByte(0x68); ms.WriteByte(0x00); ms.WriteByte(0x02); ms.WriteByte(0x01);
+        ms.Write(new byte[8]);
+
+        WriteBank("PBK1", 1, programSize, 0x01, progOnDisk);   // I-B:000, see BuildSyntheticPcg
+        WriteBank("WBK1", 1, waveSize, 0, waveBody);           // Int:000
+
+        return ms.ToArray();
     }
 
     // Minimal fixture: Program A <- Combi X <- Set List S (a straight three-level chain).

@@ -176,6 +176,8 @@ partial class MergePaneViewModel : ObservableObject
         var setListsRoot = new ObjectTreeNode("Set Lists", bankRef: (LibObj.SetList, allBanksSentinel));
         var combisRoot = new ObjectTreeNode("Combis", bankRef: (LibObj.Combi, allBanksSentinel));
         var programsRoot = new ObjectTreeNode("Programs", bankRef: (LibObj.Program, allBanksSentinel));
+        var drumKitsRoot = new ObjectTreeNode("Drum Kits", bankRef: (LibObj.DrumKit, allBanksSentinel));
+        var waveSequencesRoot = new ObjectTreeNode("Wave Sequences", bankRef: (LibObj.WaveSequence, allBanksSentinel));
 
         // A Set List is always effectively "top-level" - nothing else in this reference
         // graph ever points at one (see ObjectReferenceWalker) - so every staged Set List
@@ -183,26 +185,32 @@ partial class MergePaneViewModel : ObservableObject
         foreach (var e in InDisplayOrder(_cache.Entries.Where(e => e.ObjType == LibObj.SetList)))
             setListsRoot.Children.Add(MakeNodeWithChildren(e, byHash));
 
-        // Combis/Programs show at THEIR OWN top-level section when the user explicitly pulled
-        // them, OR when nothing still staged references them anymore. That second case is what
-        // keeps a Set List's own dependencies from silently vanishing the moment the Set List
-        // itself gets placed and removed - they were never "top-level pulls," so without this
-        // they'd only ever have been reachable by nesting under the Set List, which no longer
-        // exists in the tree at all once it's placed: still fully staged, but with no way for
-        // the user to find or place them. A dependency that's still nested under something ELSE
-        // still staged is deliberately left nested-only here (no duplicate flat entry) - that's
-        // still a real referrer, and is what makes a genuinely-shared dependency's yellow
-        // marker show up wherever it's actually used.
+        // Combis/Programs/Drum Kits/Wave Sequences show at THEIR OWN top-level section when the
+        // user explicitly pulled them, OR when nothing still staged references them anymore. That
+        // second case is what keeps a Set List's (or Program's - a Drum Track/oscillator-zone
+        // reference) own dependencies from silently vanishing the moment their referrer gets
+        // placed and removed - they were never "top-level pulls," so without this they'd only
+        // ever have been reachable by nesting under that referrer, which no longer exists in the
+        // tree at all once it's placed: still fully staged, but with no way for the user to find
+        // or place them (see this session's bug report - a Program's Wave Sequence dependency had
+        // no tree node of its own at all until this section covered Drum Kit/Wave Sequence too).
+        // A dependency that's still nested under something ELSE still staged is deliberately left
+        // nested-only here (no duplicate flat entry) - that's still a real referrer, and is what
+        // makes a genuinely-shared dependency's yellow marker show up wherever it's actually used.
         //
         // Grouped by SOURCE bank (requirement 4) so a whole bank is a single selectable unit
         // that can be placed - or, for Programs, copied across an EXi/HD-1 boundary - in one
         // action. See AddBankGroups.
         AddBankGroups(combisRoot, LibObj.Combi, byHash);
         AddBankGroups(programsRoot, LibObj.Program, byHash);
+        AddBankGroups(drumKitsRoot, LibObj.DrumKit, byHash);
+        AddBankGroups(waveSequencesRoot, LibObj.WaveSequence, byHash);
 
         if (setListsRoot.Children.Count > 0) Roots.Add(setListsRoot);
         if (combisRoot.Children.Count > 0) Roots.Add(combisRoot);
         if (programsRoot.Children.Count > 0) Roots.Add(programsRoot);
+        if (drumKitsRoot.Children.Count > 0) Roots.Add(drumKitsRoot);
+        if (waveSequencesRoot.Children.Count > 0) Roots.Add(waveSequencesRoot);
         ObjectTreeNode.RestoreExpandedKeys(Roots, expandedKeys);
         TreeRefreshed?.Invoke();
     }
@@ -235,8 +243,12 @@ partial class MergePaneViewModel : ObservableObject
                 ? $"{descriptor.BankLabel(group.Key)} ({(group.First().Body.Length == ProgramFormatConverter.WireSizeExi ? "EXi" : "HD-1")})"
                 : descriptor.BankLabel(group.Key);
             var bankNode = new ObjectTreeNode(label, bankRef: (objType, group.Key));
+            // Combi (timbre -> Program) and Program (Drum Track -> Program; oscillator zone ->
+            // Wave Sequence/Drum Kit) are the only referrer types (ObjectTypeRegistry.IsReferrer) -
+            // Drum Kit/Wave Sequence never have children, so MakeNode alone is correct for them.
+            bool isReferrer = objType is LibObj.Combi or LibObj.Program;
             foreach (var e in group)
-                bankNode.Children.Add(objType == LibObj.Combi ? MakeNodeWithChildren(e, byHash) : MakeNode(e, byHash));
+                bankNode.Children.Add(isReferrer ? MakeNodeWithChildren(e, byHash) : MakeNode(e, byHash));
             root.Children.Add(bankNode);
         }
     }
@@ -268,9 +280,10 @@ partial class MergePaneViewModel : ObservableObject
         foreach (var site in entry.RefSites)
         {
             if (site.ResolvedContentHash == null || !byHash.TryGetValue(site.ResolvedContentHash, out var dep)) continue;
-            // A Combi child may itself have Program children (folder-within-folder); a
-            // Program child never does (ObjectReferenceWalker never yields refs for one).
-            node.Children.Add(dep.ObjType == LibObj.Combi ? MakeNodeWithChildren(dep, byHash) : MakeNode(dep, byHash));
+            // A Combi or Program child may itself have further children (folder-within-folder,
+            // e.g. a Program's own Drum Track pointing at another Program); Drum Kit/Wave
+            // Sequence never do (ObjectTypeRegistry.IsReferrer is false for both).
+            node.Children.Add(dep.ObjType is LibObj.Combi or LibObj.Program ? MakeNodeWithChildren(dep, byHash) : MakeNode(dep, byHash));
         }
         return node;
     }

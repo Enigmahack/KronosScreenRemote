@@ -824,6 +824,31 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     // cascade into placing dependencies either). Anything beyond the bank's remaining room
     // stays staged too (never lost), same "flag what didn't fit" convention BatchPlaceFromPcg
     // uses.
+    // Duplicate-content guard (same as PlaceFromMerge's single-item path): anything whose
+    // content already lives elsewhere in Local Library is repointed there instead of consuming
+    // a destination slot for a second copy - never needs a bank, let alone a free slot in one.
+    // Honours the per-type preserve-duplication toggles (FindExistingLocalCopy). Shared by
+    // PlaceMergeGroupSequentially and AutoFillFromMergeAsync so a duplicate is caught the same
+    // way regardless of which one is asking - see AutoFillFromMergeAsync's own comment for the
+    // real bug this split fixes (a fully-packed bank used to skip this check entirely for
+    // Auto-Fill, stranding pure duplicates in the Merge Window that a manual drag deduped fine).
+    (List<MergeEntry> ToPlace, int Deduped) DedupMergeGroup(int objType, IReadOnlyList<string> contentHashes)
+    {
+        var group = contentHashes.Select(h => MergePane.TryGet(h)).Where(e => e != null && e!.ObjType == objType).Select(e => e!).ToList();
+        var toPlace = new List<MergeEntry>();
+        int deduped = 0;
+        foreach (var entry in group)
+        {
+            if (FindExistingLocalCopy(entry) is { } existingLoc)
+            {
+                MergePane.CommitPlacement(entry.ContentHash, existingLoc);
+                deduped++;
+            }
+            else toPlace.Add(entry);
+        }
+        return (toPlace, deduped);
+    }
+
     public (bool Ok, string? Message) PlaceMergeGroupSequentially(int objType, int destBank, IReadOnlyList<string> contentHashes, int? destSlot = null)
     {
         var descriptor = ObjectTypeRegistry.Get(objType);
@@ -831,25 +856,9 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         // Merge Window is one Ctrl+Z, restoring both the staged entries and every local slot the
         // batch wrote (plus any occupant it overwrote).
         using var undo = _undo.Begin(AppMessages.Librarian.Shell.UndoPlacedGroup(contentHashes.Count, descriptor.BankLabel(destBank)));
-        var group = contentHashes.Select(h => MergePane.TryGet(h)).Where(e => e != null && e!.ObjType == objType).Select(e => e!).ToList();
-        if (group.Count == 0) return (false, "nothing to place for this bank's type");
-
-        // Duplicate-content guard (same as PlaceFromMerge's single-item path): anything whose
-        // content already lives elsewhere in Local Library is repointed there instead of
-        // consuming a destination slot for a second copy - never even reaches the sequential
-        // fill below. Honours the per-type preserve-duplication toggles (FindExistingLocalCopy).
-        var dedupedLocs = new List<ObjLoc>();
-        var toPlace = new List<MergeEntry>();
-        foreach (var entry in group)
-        {
-            if (FindExistingLocalCopy(entry) is { } existingLoc)
-            {
-                MergePane.CommitPlacement(entry.ContentHash, existingLoc);
-                dedupedLocs.Add(existingLoc);
-            }
-            else toPlace.Add(entry);
-        }
-        string dedupNote = dedupedLocs.Count > 0 ? AppMessages.Librarian.Shell.ReusedExistingContentCount(dedupedLocs.Count) : "";
+        var (toPlace, dedupedCount) = DedupMergeGroup(objType, contentHashes);
+        if (toPlace.Count + dedupedCount == 0) return (false, "nothing to place for this bank's type");
+        string dedupNote = dedupedCount > 0 ? AppMessages.Librarian.Shell.ReusedExistingContentCount(dedupedCount) : "";
 
         if (toPlace.Count == 0) return (true, dedupNote);
 
@@ -903,19 +912,22 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
 
     // ── Auto-Fill: place EVERYTHING staged into the next free slots ──────────────────────
     // One button for what the Merge Window otherwise costs a drag per type per bank: take every
-    // staged Set List / Combi / Program (top-level pulls AND the dependencies that came with
-    // them) and fill them into Local Library's next free slots of their own type. Purely LOCAL -
-    // it stages, exactly like every other placement in this pane; nothing reaches the instrument
-    // until Commit Changes. One Ctrl+Z undoes the whole sweep (LibrarianUndo's nested Begins
-    // join the outer step, so the per-bank scopes inside PlaceMergeGroupSequentially fold in).
+    // staged Set List / Combi / Program / Drum Kit / Wave Sequence (top-level pulls AND the
+    // dependencies that came with them) and fill them into Local Library's next free slots of
+    // their own type. Purely LOCAL - it stages, exactly like every other placement in this pane;
+    // nothing reaches the instrument until Commit Changes. One Ctrl+Z undoes the whole sweep
+    // (LibrarianUndo's nested Begins join the outer step, so the per-bank scopes inside
+    // PlaceMergeGroupSequentially fold in).
     //
-    // DEPENDENCIES FIRST, and that ordering is the whole reason this isn't just three loops in
+    // DEPENDENCIES FIRST, and that ordering is the whole reason this isn't just five loops in
     // any order: PlaceMergeGroupSequentially resolves each entry's outgoing references against
     // what is local AT PLACEMENT TIME (MergeCache.ResolveReferencesForPlacement), so a Combi
     // placed after its Programs gets repointed at where they actually landed, while a Combi
     // placed first can only be tracked as pending and repaired later, lazily, at Commit. Both
-    // paths are correct - one just leaves nothing to repair. Hence Programs, then Combis, then
-    // Set Lists: strictly referenced-before-referrer.
+    // paths are correct - one just leaves nothing to repair. Hence Drum Kits/Wave Sequences
+    // (referenced by a Program's oscillator zones, never referrers themselves), then Programs
+    // (also referenced by another Program's Drum Track), then Combis, then Set Lists: strictly
+    // referenced-before-referrer.
     //
     // Programs are additionally partitioned by WIRE FORMAT, and each partition placed into the
     // next free slots of a bank of ITS OWN format. Without that, a mixed EXi+HD-1 group makes
@@ -950,7 +962,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         int startCount = staged.Count;
         string? refusal = null, refusedWhat = null;
 
-        foreach (var objType in new[] { LibObj.Program, LibObj.Combi, LibObj.SetList })
+        foreach (var objType in new[] { LibObj.DrumKit, LibObj.WaveSequence, LibObj.Program, LibObj.Combi, LibObj.SetList })
         {
             var ofType = staged.Where(e => e.ObjType == objType).ToList();
             if (ofType.Count == 0) continue;
@@ -965,7 +977,14 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
 
             foreach (var (isExi, hashes) in partitions)
             {
-                var remaining = hashes;
+                // Dedup FIRST, before ever asking for a free bank: a pure duplicate is repointed
+                // to its existing address and needs no slot at all, so gating this behind "is
+                // there room somewhere" (as PlaceMergeGroupSequentially alone would, called only
+                // from inside the loop below) stranded every duplicate in a fully-packed bank -
+                // the exact bug report this fixes. A manual drag-drop already deduped fine
+                // (PlaceFromMerge checks unconditionally); Auto-Fill just never got there.
+                var (toPlace, _) = DedupMergeGroup(objType, hashes);
+                var remaining = toPlace.Select(e => e.ContentHash).ToList();
                 while (remaining.Count > 0)
                 {
                     // Re-asked every pass: the previous pass filled that bank up, so the next one
@@ -1184,7 +1203,11 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         if (WasStagedFromLocal(entry)) return null;
         if (PreserveDuplicationFor(entry.ObjType)) return null;
         if (_cache.FindByContentHash(entry.ObjType, entry.ContentHash) is { } raw) return raw;
-        if (entry.ObjType == LibObj.Combi && entry.RefSites.Count > 0)
+        // A Program can carry RefSites too now (Drum Track; HD-1 Wave Sequence/Drum Kit
+        // oscillator zones) - same reasoning as Combi: its RAW content may differ from an
+        // already-local twin only in an unresolved reference address, which resolving before
+        // re-hashing corrects for.
+        if (entry.ObjType is LibObj.Combi or LibObj.Program && entry.RefSites.Count > 0)
         {
             var (resolved, _) = MergePane.ResolveReferencesForPlacement(entry, LocalLookup);
             string resolvedHash = LocalObjectStore.ComputeHash(resolved);

@@ -168,7 +168,190 @@ static class MergeAutoFillSelfTests
         fails.AddRange(await SecondRunOrderingSelfTestAsync());
         fails.AddRange(await CombiScanAndReuseSelfTestAsync());
         fails.AddRange(await PreserveDuplicateProgramsSelfTestAsync());
+        fails.AddRange(await DrumWaveSelfTestAsync());
+        fails.AddRange(await DedupWithoutFreeSlotSelfTestAsync());
         return fails;
+    }
+
+    // ── Real bug: AutoFillFromMergeAsync used to check for a free bank BEFORE ever attempting
+    // a dedup pass, so once every editable bank of a type was completely full, a staged item
+    // that was actually a pure duplicate of existing local content got stranded in the Merge
+    // Window forever - it needed no new slot at all, but never got the chance to prove that.
+    // Dragging it out by hand deduped fine (PlaceFromMerge checks unconditionally); Auto-Fill
+    // just never got there. Fixed by dedup-ing every partition up front, before the free-bank
+    // search even starts (LibrarianShellViewModel.DedupMergeGroup).
+    static async Task<List<string>> DedupWithoutFreeSlotSelfTestAsync()
+    {
+        var fails = new List<string>();
+        void Check(string name, bool cond) { if (!cond) fails.Add(name); }
+
+        string root = Path.Combine(Path.GetTempPath(), "kronos_selftest_merge_autofill_dedup_full");
+        if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        try
+        {
+            var exec = new FakeMoveExecutor();
+            var cache = new LocalLibraryCache(root);
+            await LibraryPullPipeline.PullAsync(exec, cache, full: true);
+            var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), "selftest-mergeautofill-dedupfull-host");
+
+            // Fill EVERY Drum Kit slot - the smallest editable slot space of any registry type
+            // (Int 40 + 14 User banks x 16 = 264) - so FindBankWithFreeSlot has nowhere left to
+            // return for this type.
+            var descriptor = ObjectTypeRegistry.Get(LibObj.DrumKit);
+            var fillPlacements = new List<BatchPlacement>();
+            int n = 0;
+            foreach (var bank in descriptor.EditableBanks())
+                for (int slot = 0; slot < descriptor.SlotCount(bank); slot++)
+                {
+                    var filler = DrumKitBody.WriteName(new byte[38424], $"FILL{n}");
+                    fillPlacements.Add(new BatchPlacement(null, new ObjLoc(LibObj.DrumKit, bank, slot),
+                        new ObjectDump(LibObj.DrumKit, bank, slot, 3, filler), "filler"));
+                    n++;
+                }
+            var (fillOk, _, _) = LocalEditOps.BatchPlace(cache, LibObj.DrumKit, fillPlacements, divertDisplacedToClipboard: true, null, DateTime.UtcNow);
+            Check("dedupfull-fill-ok", fillOk);
+
+            // Staged from a PCG: byte-identical to Int:000's filler ("FILL0") - a pure duplicate
+            // that needs no new slot at all.
+            var dupeBody = DrumKitBody.WriteName(new byte[38424], "FILL0");
+            var pcgBuffer = BuildOneDrumKitPcg(dupeBody);
+            var file = PcgFile.Open(pcgBuffer);
+            Check("dedupfull-pcg-opens", file != null);
+            if (file == null) return fails;
+            vm.PcgPane.LoadForTesting(new PcgLibraryView(file));
+            vm.PullIntoMerge(new ObjLoc(LibObj.DrumKit, 0, 0));
+            string dupeHash = LocalObjectStore.ComputeHash(dupeBody);
+            Check("dedupfull-staged", vm.MergePane.TryGet(dupeHash) != null);
+
+            var (ok, _) = await vm.AutoFillFromMergeAsync();
+            Check("dedupfull-autofill-ok", ok);
+            Check("dedupfull-deduped-not-stranded", vm.MergePane.TryGet(dupeHash) == null);
+            Check("dedupfull-nothing-left-staged", vm.MergePane.Entries.Count == 0);
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+        return fails;
+    }
+
+    static byte[] BuildOneDrumKitPcg(byte[] drumKitBody)
+    {
+        using var ms = new MemoryStream();
+        void WriteAscii(string s) => ms.Write(Encoding.ASCII.GetBytes(s));
+        void WriteBE32(int v) { ms.WriteByte((byte)(v >> 24)); ms.WriteByte((byte)(v >> 16)); ms.WriteByte((byte)(v >> 8)); ms.WriteByte((byte)v); }
+        void WriteBank(string tag, int count, int itemSize, int bankId, byte[] record)
+        {
+            WriteAscii(tag); WriteBE32(0); WriteBE32(0); WriteBE32(count); WriteBE32(itemSize); WriteBE32(bankId);
+            ms.Write(record);
+        }
+        WriteAscii("KORG");
+        ms.WriteByte(0x68); ms.WriteByte(0x00); ms.WriteByte(0x02); ms.WriteByte(0x01);
+        ms.Write(new byte[8]);
+        WriteBank("DBK1", 1, drumKitBody.Length, 0, drumKitBody);   // Int:000
+        return ms.ToArray();
+    }
+
+    // ── Real bug: AutoFillFromMergeAsync's objType loop was hardcoded to Program/Combi/Set
+    // List, so a staged Drum Kit or Wave Sequence (or a Program pulled in only for one) was
+    // never iterated at all - "Placed 0 items" however much was actually staged. Also exercises
+    // property 1 (dependency order + repoint) for the new Program -> Wave Sequence edge: Wave
+    // Sequences/Drum Kits go first (nothing ever references THEM), same reasoning as Programs
+    // going before Combis.
+    static async Task<List<string>> DrumWaveSelfTestAsync()
+    {
+        var fails = new List<string>();
+        void Check(string name, bool cond) { if (!cond) fails.Add(name); }
+
+        string root = Path.Combine(Path.GetTempPath(), "kronos_selftest_merge_autofill_drumwave");
+        if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        try
+        {
+            var exec = new FakeMoveExecutor();
+            var cache = new LocalLibraryCache(root);
+            await LibraryPullPipeline.PullAsync(exec, cache, full: true);
+            var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), "selftest-mergeautofill-drumwave-host");
+
+            var pcgBuffer = BuildProgramWithWaveSeqPcg(out var progBody, out var waveBody);
+            var file = PcgFile.Open(pcgBuffer);
+            Check("dw-pcg-opens", file != null);
+            if (file == null) return fails;
+            vm.PcgPane.LoadForTesting(new PcgLibraryView(file));
+
+            // Pre-occupy the Wave Sequence's natural destination (Int:000, same as the PCG
+            // encodes) with unrelated real content, so the auto-filled copy is forced to Int:001
+            // and a repoint has something to prove - same technique as the main fixture above.
+            var seedWave = WaveSequenceBody.WriteName(new byte[2216], "SEED WAVE");
+            var (seeded, _, _) = LocalEditOps.PlaceObject(cache, new ObjLoc(LibObj.WaveSequence, 0, 0), LibObj.WaveSequence, 1, seedWave, "seedWave", true, DateTime.UtcNow);
+            Check("dw-seed-placed", seeded);
+
+            vm.PullIntoMerge(new ObjLoc(LibObj.Program, 0x01, 0));   // transitively pulls the Wave Sequence
+            string progHash = LocalObjectStore.ComputeHash(progBody);
+            string waveHash = LocalObjectStore.ComputeHash(waveBody);
+            Check("dw-both-staged", vm.MergePane.TryGet(progHash) != null && vm.MergePane.TryGet(waveHash) != null);
+
+            var (ok, message) = await vm.AutoFillFromMergeAsync();
+            Check("dw-autofill-ok", ok);
+            Check("dw-nothing-left-staged", vm.MergePane.Entries.Count == 0);
+
+            Check("dw-wave-landed-past-seed", cache.GetDisplayName(LibObj.WaveSequence, 0, 1) == "AF WAVE");
+            Check("dw-wave-seed-not-overwritten", cache.GetDisplayName(LibObj.WaveSequence, 0, 0) == "SEED WAVE");
+
+            // The Program's own OSC1 Zone1 reference now points at where the Wave Sequence
+            // ACTUALLY landed (Int:001), not the Int:000 the PCG encoded - proves dependency
+            // order (Wave Sequence before Program) and MergeCache.ResolveReferencesForPlacement
+            // both cover this new reference kind, not just Combi timbre/Set List slot refs.
+            var placedProg = cache.GetCurrentBody(LibObj.Program, 0x00, 0);
+            Check("dw-program-placed", cache.GetDisplayName(LibObj.Program, 0x00, 0) == "AF PROG WS");
+            Check("dw-program-repointed-at-actual-wave-destination",
+                placedProg != null && ObjectReferenceWalker.Walk(LibObj.Program, placedProg)
+                    .Any(r => r.Ref == new ObjLoc(LibObj.WaveSequence, 0, 1)));
+
+            Check("dw-autofill-is-one-undo-step", vm.UndoCommand.CanExecute(null));
+            vm.UndoCommand.Execute(null);
+            Check("dw-undo-restored-everything-to-merge", vm.MergePane.Entries.Count == 2);
+            Check("dw-undo-left-seed-alone", cache.GetDisplayName(LibObj.WaveSequence, 0, 0) == "SEED WAVE");
+        }
+        finally
+        {
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+        return fails;
+    }
+
+    // Program "AF PROG WS" (HD-1, I-B:000) with OSC1 Zone1 pointing at Wave Sequence linear
+    // index 0 (Int:000) -> "AF WAVE". progBody comes back already truncated to the wire size
+    // (PBK1 = HD-1, see PcgObjectExtractor) - the bytes MergeCache actually hashes/stages.
+    static byte[] BuildProgramWithWaveSeqPcg(out byte[] progBody, out byte[] waveBody)
+    {
+        const int programSize = ProgramFormatConverter.PcgSlotSize, waveSize = 2216;
+
+        var progOnDisk = new byte[programSize];
+        Encoding.ASCII.GetBytes("AF PROG WS").CopyTo(progOnDisk, 0);
+        progOnDisk[2774] = 2;   // OSC1 Zone1 MS Type = Wave Sequence
+        LibRefs.SetProgramZoneNumber(progOnDisk, 0, 0, 0);   // linear 0 -> Int:000
+        progBody = progOnDisk[..ProgramFormatConverter.WireSizeHd1];
+
+        waveBody = new byte[waveSize];
+        Encoding.ASCII.GetBytes("AF WAVE").CopyTo(waveBody, 0);
+
+        using var ms = new MemoryStream();
+        void WriteAscii(string s) => ms.Write(Encoding.ASCII.GetBytes(s));
+        void WriteBE32(int v) { ms.WriteByte((byte)(v >> 24)); ms.WriteByte((byte)(v >> 16)); ms.WriteByte((byte)(v >> 8)); ms.WriteByte((byte)v); }
+        void WriteBank(string tag, int count, int itemSize, int bankId, byte[] record)
+        {
+            WriteAscii(tag); WriteBE32(0); WriteBE32(0); WriteBE32(count); WriteBE32(itemSize); WriteBE32(bankId);
+            ms.Write(record);
+        }
+
+        WriteAscii("KORG");
+        ms.WriteByte(0x68); ms.WriteByte(0x00); ms.WriteByte(0x02); ms.WriteByte(0x01);
+        ms.Write(new byte[8]);
+
+        WriteBank("PBK1", 1, programSize, 0x01, progOnDisk);   // I-B:000
+        WriteBank("WBK1", 1, waveSize, 0, waveBody);           // Int:000
+
+        return ms.ToArray();
     }
 
     // ── Second Auto-Fill after re-copying the same PCG: order and duplication policy ─────
