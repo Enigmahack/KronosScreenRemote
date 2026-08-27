@@ -22,10 +22,12 @@ static class EraseBody
 {
     public static byte[] Build(int objType, byte[] existingBody) => objType switch
     {
-        LibObj.SetList => BuildSetList(existingBody),
-        LibObj.Combi   => BuildCombi(existingBody),
-        LibObj.Program => BuildProgram(existingBody),
-        _              => (byte[])existingBody.Clone(),
+        LibObj.SetList      => BuildSetList(existingBody),
+        LibObj.Combi        => BuildCombi(existingBody),
+        LibObj.Program      => BuildProgram(existingBody),
+        LibObj.DrumKit      => DrumKitBody.WriteName(existingBody, "Init Drum Kit"),
+        LibObj.WaveSequence => WaveSequenceBody.WriteName(existingBody, "Init Wave Sequence"),
+        _                   => (byte[])existingBody.Clone(),
     };
 
     // Empty Set List: blank the object's own name and every one of its 128 slot names + comments.

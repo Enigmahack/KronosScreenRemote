@@ -37,6 +37,8 @@ static class InitObjects
         // for why the name-blank one (SetListData.IsEmpty) can't carry this alone.
         LibObj.SetList => SetListBody.FromRawBody(0, body) is { } setList
                           && (setList.IsEmpty || AllSlotsAtDefault(setList)),
+        LibObj.DrumKit      => DrumKitBody.IsInit(body),
+        LibObj.WaveSequence => WaveSequenceBody.IsInit(body),
         _              => false,
     };
 
@@ -71,8 +73,10 @@ static class InitObjects
     // patch that does. Set Lists always return false here; only the body can answer for them.
     public static bool IsInitName(int objType, string name) => objType switch
     {
-        LibObj.Program => ProgramBody.IsInitName(name),
-        LibObj.Combi   => CombiBody.IsInitName(name),
+        LibObj.Program      => ProgramBody.IsInitName(name),
+        LibObj.Combi        => CombiBody.IsInitName(name),
+        LibObj.DrumKit      => DrumKitBody.IsInitName(name),
+        LibObj.WaveSequence => WaveSequenceBody.IsInitName(name),
         _              => false,
     };
 }

@@ -629,7 +629,7 @@ sealed class LocalLibraryCache
             foreach (var kv in _index.Entries)
             {
                 var loc = ParseKey(kv.Key);
-                if (loc.ObjType != LibObj.Combi && loc.ObjType != LibObj.SetList) continue;
+                if (loc.ObjType != LibObj.Combi && loc.ObjType != LibObj.SetList && loc.ObjType != LibObj.Program) continue;
                 snapshot.Add((loc, kv.Value.Version, kv.Value.CurrentHash));
             }
         }
@@ -640,7 +640,7 @@ sealed class LocalLibraryCache
             var body = LocalObjectStore.TryGet(Root, hash);
             if (body == null) continue;
             var dump = new ObjectDump(loc.ObjType, loc.Bank, loc.Number, version, body);
-            if (loc.ObjType == LibObj.Combi) cat.AddCombi(dump); else cat.AddSetlist(dump);
+            AddToCatalog(cat, loc.ObjType, dump);
         }
 
         // Replay any edits that landed while the loop above was still reading blobs (its
@@ -651,7 +651,7 @@ sealed class LocalLibraryCache
             foreach (var (objType, bank, number, version, body) in _pendingCatalogPatches)
             {
                 var dump = new ObjectDump(objType, bank, number, version, body);
-                if (objType == LibObj.Combi) cat.AddCombi(dump); else cat.AddSetlist(dump);
+                AddToCatalog(cat, objType, dump);
             }
             _pendingCatalogPatches.Clear();
             _catalog = cat;
@@ -659,20 +659,25 @@ sealed class LocalLibraryCache
         return cat;
     }
 
+    static void AddToCatalog(LibraryCatalog cat, int objType, ObjectDump dump)
+    {
+        if (objType == LibObj.Combi) cat.AddCombi(dump);
+        else if (objType == LibObj.Program) cat.AddProgram(dump);
+        else cat.AddSetlist(dump);
+    }
+
     // Keeps a not-yet-requested-this-session catalog cheap (still null, so still skipped)
     // and an already-built one accurate - called from every mutation path below whenever a
-    // Combi/SetList body changes, using the body already in hand (zero extra disk I/O).
-    // AddCombi/AddSetlist already no-op for the wrong ObjType; the guard here just skips the
-    // ObjectDump allocation for Program writes, which can never be referrers.
+    // Combi/SetList/Program body changes, using the body already in hand (zero extra disk I/O).
     void PatchCatalog(int objType, int bank, int number, byte version, byte[] body)
     {
-        if (objType != LibObj.Combi && objType != LibObj.SetList) return;
+        if (objType != LibObj.Combi && objType != LibObj.SetList && objType != LibObj.Program) return;
         lock (_lock)
         {
             if (_catalog != null)
             {
                 var dump = new ObjectDump(objType, bank, number, version, body);
-                if (objType == LibObj.Combi) _catalog.AddCombi(dump); else _catalog.AddSetlist(dump);
+                AddToCatalog(_catalog, objType, dump);
             }
             else if (_catalogBuildTask != null)
             {

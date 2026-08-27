@@ -6,4 +6,13 @@ static class DrumKitBody
 {
     public static string ReadName(byte[] body) => Librarian.ReadName(body);
     public static byte[] WriteName(byte[] body, string name) => Librarian.BuildRenamedBody(body, name);
+
+    public static bool IsInit(byte[] body) => IsInitName(ReadName(body));
+
+    public static bool IsInitName(string name)
+    {
+        string trimmed = name.Trim();
+        return trimmed.Contains("INIT", StringComparison.OrdinalIgnoreCase) &&
+               trimmed.Contains("DRUM", StringComparison.OrdinalIgnoreCase);
+    }
 }

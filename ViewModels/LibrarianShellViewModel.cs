@@ -1366,20 +1366,18 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
 
     // ── "Object Dependencies" panel (Views/LibrarianShellWindow.xaml's GroupBox, driven by
     // LibrarianShellWindow.xaml.cs's PaneSelection.SelectionChanged) - a live, read-only view
-    // of what the CURRENTLY SELECTED Combi(s)/Set List(s) reference, transitively (a Set
-    // List's Combis, and THEIR Programs in turn). A selected Program contributes nothing of
-    // its own here - Programs never reference anything - so a mixed Program+Combi selection
-    // only ever shows the Combis' own dependencies, never the Programs themselves, unless one
-    // of them also happens to BE a dependency of a selected Combi. Distinct from
-    // _sessionClipboard above: that tracks a placement's references that still need pushing;
-    // this is just "what does this object need," independent of placement history.
+    // of what the CURRENTLY SELECTED Program(s)/Combi(s)/Set List(s) reference, transitively (a
+    // Set List's Combis and their Programs; a Program's Drum Track and, for HD-1, its Wave
+    // Sequence/Drum Kit oscillator zones). Distinct from _sessionClipboard above: that tracks a
+    // placement's references that still need pushing; this is just "what does this object need,"
+    // independent of placement history.
 
     public void ShowLocalObjectDependencies(IReadOnlyList<ObjLoc> selectedLocs)
     {
         var seen = new HashSet<ObjLoc>();
         var rows = new List<ObjectDependencyRow>();
         foreach (var loc in selectedLocs)
-            if (loc.ObjType != LibObj.Program) CollectLocalDeps(loc, seen, rows);
+            CollectLocalDeps(loc, seen, rows);
         ReplaceObjectDependencies(rows);
     }
 
@@ -1415,7 +1413,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
             // instrument and can't be searched for), so it never enters `missing`.
             if (!found && missing != null && !ObjectReferenceWalker.IsAlwaysAvailable(refLoc))
                 missing.Add(new MissingDependency(refLoc, refKind, site, loc));
-            if (found && refLoc.ObjType != LibObj.Program) CollectLocalDeps(refLoc, seen, rows, missing);
+            if (found) CollectLocalDeps(refLoc, seen, rows, missing);
         }
     }
 
@@ -1426,7 +1424,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         {
             var seen = new HashSet<ObjLoc>();
             foreach (var loc in selectedLocs)
-                if (loc.ObjType != LibObj.Program) CollectPcgDeps(view, loc, seen, rows);
+                CollectPcgDeps(view, loc, seen, rows);
         }
         ReplaceObjectDependencies(rows);
     }
@@ -1446,7 +1444,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
             }
             var depEntry = view.Get(refLoc);
             rows.Add(new ObjectDependencyRow(DescribeDependency(refLoc, depEntry?.Name ?? "", depEntry != null, "in this PCG")));
-            if (depEntry != null && refLoc.ObjType != LibObj.Program) CollectPcgDeps(view, refLoc, seen, rows);
+            if (depEntry != null) CollectPcgDeps(view, refLoc, seen, rows);
         }
     }
 
@@ -1457,7 +1455,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         foreach (var hash in selectedHashes)
         {
             var entry = MergePane.TryGet(hash);
-            if (entry != null && entry.ObjType != LibObj.Program) CollectMergeDeps(entry, seen, rows);
+            if (entry != null) CollectMergeDeps(entry, seen, rows);
         }
         ReplaceObjectDependencies(rows);
     }
@@ -1477,7 +1475,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
             rows.Add(new ObjectDependencyRow(dep != null
                 ? $"{TypeName(dep.ObjType)}: {(string.IsNullOrEmpty(dep.DisplayName) ? "(unnamed)" : dep.DisplayName)}"
                 : $"{TypeName(site.TargetLoc.ObjType)}: {site.TargetLoc.Label()} - not found in any loaded PCG"));
-            if (dep != null && dep.ObjType != LibObj.Program) CollectMergeDeps(dep, seen, rows);
+            if (dep != null) CollectMergeDeps(dep, seen, rows);
         }
     }
 
@@ -1503,7 +1501,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     {
         var rows = new List<ObjectDependencyRow>();
         var missing = new List<MissingDependency>();
-        if (loc.ObjType != LibObj.Program) CollectLocalDeps(loc, new HashSet<ObjLoc>(), rows, missing);
+        CollectLocalDeps(loc, new HashSet<ObjLoc>(), rows, missing);
         return (rows.Select(r => r.Description).ToList(), missing);
     }
 

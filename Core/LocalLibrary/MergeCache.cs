@@ -34,7 +34,7 @@ sealed class MergeEntry
     public bool IsTopLevelPull { get; set; }     // the user explicitly pulled this, not just a dependency
     public List<MergeOrigin> Origins { get; } = new();
     public HashSet<string> ReferencedBy { get; } = new();   // >1 => shown as "shared" (yellow) in the UI
-    public List<MergeRefSite> RefSites { get; } = new();    // this entry's OWN outgoing references (empty for Programs)
+    public List<MergeRefSite> RefSites { get; } = new();    // this entry's OWN outgoing references
 
     public bool HasUnresolvedDependencies => RefSites.Any(s => s.ResolvedContentHash == null);
 }
@@ -189,10 +189,11 @@ sealed class MergeCache
 
     // Returns the content hash of whatever now represents `loc` (an existing deduped entry, a
     // freshly-added one, or null if it's a real gap - not found in `source`, or a malformed
-    // record). No cycle guard needed: a Program never references anything, a Combi
-    // only ever references Programs, and a Set List only ever references Combis/Programs -
-    // this reference graph is acyclic by construction (same assumption LibrarianModel.cs's
-    // own referrer-patch logic already relies on).
+    // record). No separate cycle guard needed even though a Program's Drum Track can reference
+    // another Program (possibly itself, or two Programs pointing at each other): `_byHash[hash]
+    // = entry` below is set BEFORE this recurses into that entry's own references, so a cycle's
+    // second encounter always hits the dedup check at the top and returns immediately instead of
+    // re-walking.
     string? PullRecursive(MergePullSource source, string sourceLabel, ObjLoc loc, bool isTopLevel,
                            List<MergeEntry> added, List<(ObjLoc, string)> gaps)
     {
@@ -334,12 +335,7 @@ sealed class MergeCache
 
             if (destLoc is { } d)
             {
-                int refType = d.ObjType == LibObj.Program ? 1 : 0;
-                int func33Bank = KronosBanks.ObjBankToFunc33(refType, d.Bank);
-                if (site.RefKind.StartsWith("timbre", StringComparison.Ordinal))
-                    LibRefs.SetCombiTimbreRef(body, site.Site, func33Bank, d.Number);
-                else
-                    LibRefs.SetSetListSlotRef(body, site.Site, func33Bank, d.Number, type: null);
+                LibRefs.ApplyResolvedRef(body, site.RefKind, site.Site, site.TargetLoc.ObjType, d.Bank, d.Number);
             }
             else
             {

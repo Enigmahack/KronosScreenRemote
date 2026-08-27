@@ -103,9 +103,14 @@ readonly record struct RescanScope(int ObjType, int? Bank, int? Number)
 readonly record struct ReferrerSite(
     string Kind, int RefObj, int RefBank, int RefIndex, int Site, int CurBank, int CurNumber)
 {
-    public string Describe() => Kind == "combi_timbre"
-        ? $"Combi {KronosBanks.CombiLabel(RefBank)}:{RefIndex:D3} timbre {Site + 1}"
-        : $"Set List {RefIndex:D3} slot {Site + 1}";
+    public string Describe() => Kind switch
+    {
+        "combi_timbre" => $"Combi {KronosBanks.CombiLabel(RefBank)}:{RefIndex:D3} timbre {Site + 1}",
+        "drum_track"   => $"Program {KronosBanks.ProgramLabel(RefBank)}:{RefIndex:D3} drum track",
+        _ when Kind.StartsWith("osc", StringComparison.Ordinal)
+                       => $"Program {KronosBanks.ProgramLabel(RefBank)}:{RefIndex:D3} {Kind.Replace('_', ' ')}",
+        _              => $"Set List {RefIndex:D3} slot {Site + 1}",
+    };
 }
 
 // A single re-addressed 0x73 Object Dump write (volatile until Stored).
@@ -220,6 +225,89 @@ static class LibRefs
             yield return (s, t, bk, ix);
         }
     }
+
+    // ── Program -> Drum Track (another Program) ── Prog_HD-1.txt/Prog_EXi_Common.txt agree on
+    // this offset - Drum Track lives in the Common section shared by both wire formats.
+    const int DrumTrackNum = 2688;
+    public const int ProgramDrumTrackBank = 2689;
+    const int DrumTrackOnByte = 1295, DrumTrackOnBit = 0x10;
+
+    // A freshly-created/never-touched Program's Drum Track Bank/Number bytes default to 0,0 -
+    // a technically valid-looking Program I-A:000 address, not an absent reference. Gating on
+    // "Drum Track On" (its own bit in the same Common byte) is what tells the two apart, the
+    // same way a blank Set List slot is skipped via SetListSlot.IsEmpty rather than walked.
+    public static bool ProgramDrumTrackOn(byte[] body) => (body[DrumTrackOnByte] & DrumTrackOnBit) != 0;
+
+    public static (int Bank, int Number) ProgramDrumTrackRef(byte[] body) => (body[ProgramDrumTrackBank], body[DrumTrackNum]);
+
+    public static void SetProgramDrumTrackRef(byte[] body, int func33Bank, int number)
+    {
+        body[DrumTrackNum]        = (byte)(number & 0x7F);
+        body[ProgramDrumTrackBank] = (byte)(func33Bank & 0x1F);
+    }
+
+    // ── HD-1 Program oscillator zone -> Wave Sequence / Drum Kit (linear-addressed) ── EXi
+    // Program bodies don't have this OSC1/OSC2 zone layout - callers gate on wire format
+    // (ProgramFormatConverter.WireSizeHd1) before iterating. See
+    // KronosBanks.DrumKitLinearToLoc/WaveSeqLinearToLoc for what the Number field means.
+    public const int ZonesPerOsc = 8;
+    const int Osc1ZoneBase = 2774, Osc2ZoneBase = 3240, ZoneStride = 22, ZoneNumOffset = 18;
+    const int OscModeOffset = 2558;
+
+    public static int ProgramOscillatorMode(byte[] body) => body[OscModeOffset] & 0x07;
+
+    public static IEnumerable<(int Osc, int Zone, int MsType, int Number)> IterProgramZoneRefs(byte[] body)
+    {
+        for (int osc = 0; osc < 2; osc++)
+        {
+            int oscBase = osc == 0 ? Osc1ZoneBase : Osc2ZoneBase;
+            for (int zone = 0; zone < ZonesPerOsc; zone++)
+            {
+                int typeOff = oscBase + zone * ZoneStride;
+                int numOff = typeOff + ZoneNumOffset;
+                if (numOff + 1 >= body.Length) yield break;
+                yield return (osc, zone, body[typeOff] & 0x03, body[numOff] | (body[numOff + 1] << 8));
+            }
+        }
+    }
+
+    public static void SetProgramZoneNumber(byte[] body, int osc, int zone, int newNumber)
+    {
+        int numOff = (osc == 0 ? Osc1ZoneBase : Osc2ZoneBase) + zone * ZoneStride + ZoneNumOffset;
+        body[numOff]     = (byte)(newNumber & 0xFF);
+        body[numOff + 1] = (byte)((newNumber >> 8) & 0xFF);
+    }
+
+    // Applies a resolved dependency's new (bank, number) at the site Walk/LibraryCatalog.
+    // ReferrersOf reported it from - the shared patch step DependencyScanner.
+    // RepointPcgReferences, MergeCache.ResolveReferencesForPlacement, Librarian.PlanMove and
+    // BatchMoveModel all need once a reference resolves to a real destination. Matches both
+    // ObjectReferenceWalker's RefKind vocabulary ("timbre 3", "drum track", "osc1 zone2") and
+    // ReferrerSite.Kind's ("combi_timbre", "drum_track", "osc1_zone2") - two independently-named
+    // but equivalent taggings of the same four reference shapes.
+    public static void ApplyResolvedRef(byte[] body, string refKind, int site, int targetObjType, int destBank, int destNumber)
+    {
+        if (refKind.StartsWith("timbre", StringComparison.Ordinal) || refKind == "combi_timbre")
+        {
+            SetCombiTimbreRef(body, site, KronosBanks.ObjBankToFunc33(1, destBank), destNumber);
+        }
+        else if (refKind is "drum track" or "drum_track")
+        {
+            SetProgramDrumTrackRef(body, KronosBanks.ObjBankToFunc33(1, destBank), destNumber);
+        }
+        else if (refKind.StartsWith("osc", StringComparison.Ordinal))
+        {
+            int? linear = targetObjType == LibObj.WaveSequence
+                ? KronosBanks.WaveSeqLocToLinear(destBank, destNumber)
+                : KronosBanks.DrumKitLocToLinear(destBank, destNumber);
+            if (linear is { } lin) SetProgramZoneNumber(body, site / ZonesPerOsc, site % ZonesPerOsc, lin);
+        }
+        else
+        {
+            int refType = targetObjType == LibObj.Program ? 1 : 0;   // a Set List slot can target either
+            SetSetListSlotRef(body, site, KronosBanks.ObjBankToFunc33(refType, destBank), destNumber, type: null);
+        }
+    }
 }
 
 // Full-body catalog of the referrer objects a specific move touches (re-dumped
@@ -228,29 +316,66 @@ sealed class LibraryCatalog
 {
     public readonly Dictionary<(int Bank, int Index), ObjectDump> Combis = new();
     public readonly Dictionary<int, ObjectDump> Setlists = new();
+    public readonly Dictionary<(int Bank, int Index), ObjectDump> Programs = new();
 
     public void AddCombi(ObjectDump d) { if (d.Obj == LibObj.Combi) Combis[(d.Bank, d.Index)] = d; }
     public void AddSetlist(ObjectDump d) { if (d.Obj == LibObj.SetList) Setlists[d.Index] = d; }
+    public void AddProgram(ObjectDump d) { if (d.Obj == LibObj.Program) Programs[(d.Bank, d.Index)] = d; }
 
     public List<ReferrerSite> ReferrersOf(ObjLoc loc)
     {
         var outp = new List<ReferrerSite>();
         if (loc.ObjType == LibObj.SetList) return outp;   // nothing ever references a Set List
 
-        int refType = loc.ObjType == LibObj.Program ? 1 : 0;
-        int wantBank = KronosBanks.ObjBankToFunc33(refType, loc.Bank);
-        if (wantBank < 0) return outp;
-
         if (loc.ObjType == LibObj.Program)
-            foreach (var ((bank, index), dump) in Combis)
-                foreach (var (t, fbank, num) in LibRefs.IterCombiTimbreRefs(dump.Body))
-                    if (fbank == wantBank && num == loc.Number)
-                        outp.Add(new ReferrerSite("combi_timbre", LibObj.Combi, bank, index, t, fbank, num));
+        {
+            int wantBank = KronosBanks.ObjBankToFunc33(1, loc.Bank);
+            if (wantBank >= 0)
+            {
+                foreach (var ((bank, index), dump) in Combis)
+                    foreach (var (t, fbank, num) in LibRefs.IterCombiTimbreRefs(dump.Body))
+                        if (fbank == wantBank && num == loc.Number)
+                            outp.Add(new ReferrerSite("combi_timbre", LibObj.Combi, bank, index, t, fbank, num));
 
-        foreach (var (number, dump) in Setlists)
-            foreach (var (s, type, fbank, idx) in LibRefs.IterSetListSlotRefs(dump.Body))
-                if (type == refType && fbank == wantBank && idx == loc.Number)
-                    outp.Add(new ReferrerSite("setlist_slot", LibObj.SetList, 0, number, s, fbank, idx));
+                foreach (var ((bank, index), dump) in Programs)
+                {
+                    if (dump.Body.Length <= LibRefs.ProgramDrumTrackBank || !LibRefs.ProgramDrumTrackOn(dump.Body)) continue;
+                    var (dtBank, dtNum) = LibRefs.ProgramDrumTrackRef(dump.Body);
+                    if (dtBank == wantBank && dtNum == loc.Number)
+                        outp.Add(new ReferrerSite("drum_track", LibObj.Program, bank, index, -1, dtBank, dtNum));
+                }
+            }
+        }
+        else if (loc.ObjType is LibObj.DrumKit or LibObj.WaveSequence)
+        {
+            int? wantLinear = loc.ObjType == LibObj.DrumKit
+                ? KronosBanks.DrumKitLocToLinear(loc.Bank, loc.Number)
+                : KronosBanks.WaveSeqLocToLinear(loc.Bank, loc.Number);
+            if (wantLinear is { } lin)
+                foreach (var ((bank, index), dump) in Programs)
+                {
+                    // HD-1 wire format only - see LibRefs.IterProgramZoneRefs.
+                    if (dump.Body.Length != ProgramFormatConverter.WireSizeHd1) continue;
+                    int oscMode = LibRefs.ProgramOscillatorMode(dump.Body);
+                    foreach (var (osc, zone, msType, number) in LibRefs.IterProgramZoneRefs(dump.Body))
+                    {
+                        bool match = loc.ObjType == LibObj.WaveSequence
+                            ? msType == 2 && number == lin
+                            : msType == 1 && oscMode is 4 or 5 && number == lin;
+                        if (match)
+                            outp.Add(new ReferrerSite($"osc{osc + 1}_zone{zone + 1}", LibObj.Program, bank, index,
+                                osc * LibRefs.ZonesPerOsc + zone, 0, number));
+                    }
+                }
+        }
+
+        int refType = loc.ObjType == LibObj.Program ? 1 : 0;
+        int wantSlBank = KronosBanks.ObjBankToFunc33(refType, loc.Bank);
+        if (wantSlBank >= 0)
+            foreach (var (number, dump) in Setlists)
+                foreach (var (s, type, fbank, idx) in LibRefs.IterSetListSlotRefs(dump.Body))
+                    if (type == refType && fbank == wantSlBank && idx == loc.Number)
+                        outp.Add(new ReferrerSite("setlist_slot", LibObj.SetList, 0, number, s, fbank, idx));
         return outp;
     }
 }
@@ -325,16 +450,22 @@ static class Librarian
         if (src.Equals(dst))
             plan.Warnings.Add(AppMessages.Librarian.Move.SameLocation);
 
-        int refType = src.ObjType == LibObj.Program ? 1 : 0;
-        int dstFunc33 = KronosBanks.ObjBankToFunc33(refType, dst.Bank);
-        int srcFunc33 = KronosBanks.ObjBankToFunc33(refType, src.Bank);
+        // func33-encoded, only for step (4)'s live-preview use below - combi_timbre referrers
+        // only ever exist when src/dst are Programs (combi timbres always reference Programs),
+        // so refType is always the Program table there regardless of what other referrer kinds
+        // this swap also turned up.
+        int dstFunc33 = KronosBanks.ObjBankToFunc33(1, dst.Bank);
+        int srcFunc33 = KronosBanks.ObjBankToFunc33(1, src.Bank);
 
         var srcReferrers = cat.ReferrersOf(src);   // → point to dst
         var dstReferrers = cat.ReferrersOf(dst);   // → point back to src
         plan.Referrers.AddRange(srcReferrers);
         plan.Referrers.AddRange(dstReferrers);
 
-        // Group site patches by referring object so each object is written once.
+        // Group site patches by referring object so each object is written once. Raw bank/number
+        // (not pre-encoded) - LibRefs.ApplyResolvedRef below encodes per-Kind (func33 for a
+        // Combi/Program target, linear for a Drum Kit/Wave Sequence one), and src/dst can be
+        // either depending on what's being swapped.
         var grouped = new Dictionary<(int, int, int), List<(int Site, string Kind, int NewBank, int NewNumber)>>();
         void AddPatch(ReferrerSite r, int newBank, int newNumber)
         {
@@ -342,8 +473,8 @@ static class Librarian
             if (!grouped.TryGetValue(key, out var list)) grouped[key] = list = new();
             list.Add((r.Site, r.Kind, newBank, newNumber));
         }
-        foreach (var r in srcReferrers) AddPatch(r, dstFunc33, dst.Number);
-        foreach (var r in dstReferrers) AddPatch(r, srcFunc33, src.Number);
+        foreach (var r in srcReferrers) AddPatch(r, dst.Bank, dst.Number);
+        foreach (var r in dstReferrers) AddPatch(r, src.Bank, src.Number);
 
         // (1) The two swapped objects (patched write to the OTHER location; pre-image
         //     records each at its ORIGINAL location for restore).
@@ -355,9 +486,12 @@ static class Librarian
         // (2) Patched referrer objects (pre-image = the unpatched original body).
         foreach (var ((refObj, refBank, refIndex), patches) in grouped)
         {
-            ObjectDump? baseDump = refObj == LibObj.Combi
-                ? (cat.Combis.TryGetValue((refBank, refIndex), out var c) ? c : null)
-                : (cat.Setlists.TryGetValue(refIndex, out var s) ? s : null);
+            ObjectDump? baseDump = refObj switch
+            {
+                LibObj.Combi   => cat.Combis.TryGetValue((refBank, refIndex), out var c) ? c : null,
+                LibObj.Program => cat.Programs.TryGetValue((refBank, refIndex), out var p) ? p : null,
+                _              => cat.Setlists.TryGetValue(refIndex, out var s) ? s : null,
+            };
             if (baseDump == null)
             {
                 plan.Warnings.Add(AppMessages.Librarian.Move.ReferringObjectMissing(refObj, refBank, refIndex));
@@ -367,10 +501,7 @@ static class Librarian
 
             var body = (byte[])baseDump.Body.Clone();
             foreach (var (site, kind, newBank, newNumber) in patches)
-            {
-                if (kind == "combi_timbre") LibRefs.SetCombiTimbreRef(body, site, newBank, newNumber);
-                else                         LibRefs.SetSetListSlotRef(body, site, newBank, newNumber, type: null);
-            }
+                LibRefs.ApplyResolvedRef(body, kind, site, src.ObjType, newBank, newNumber);
             plan.Writes.Add(new WriteOp(refObj, refBank, refIndex, baseDump.Version, body, $"fix {patches.Count} ref(s)"));
         }
 

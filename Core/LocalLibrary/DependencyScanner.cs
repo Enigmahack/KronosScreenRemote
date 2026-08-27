@@ -28,6 +28,34 @@ static class ObjectReferenceWalker
             yield break;
         }
 
+        if (objType == LibObj.Program)
+        {
+            if (body.Length > LibRefs.ProgramDrumTrackBank && LibRefs.ProgramDrumTrackOn(body))
+            {
+                var (dtBank, dtNumber) = LibRefs.ProgramDrumTrackRef(body);
+                int dtObjBank = KronosBanks.Func33ToObjBank(1, dtBank);
+                if (dtObjBank >= 0)
+                    yield return ("drum track", -1, new ObjLoc(LibObj.Program, dtObjBank, dtNumber));
+            }
+
+            // Wave Sequence / Drum Kit oscillator zones only exist in the HD-1 wire format -
+            // EXi Programs use this same byte range for their own per-slot instrument data.
+            if (body.Length == ProgramFormatConverter.WireSizeHd1)
+            {
+                int oscMode = LibRefs.ProgramOscillatorMode(body);
+                foreach (var (osc, zone, msType, number) in LibRefs.IterProgramZoneRefs(body))
+                {
+                    string refKind = $"osc{osc + 1} zone{zone + 1}";
+                    int site = osc * LibRefs.ZonesPerOsc + zone;
+                    if (msType == 2 && KronosBanks.WaveSeqLinearToLoc(number) is { } ws)
+                        yield return (refKind, site, new ObjLoc(LibObj.WaveSequence, ws.Bank, ws.Slot));
+                    else if (msType == 1 && oscMode is 4 or 5 && KronosBanks.DrumKitLinearToLoc(number) is { } dk)
+                        yield return (refKind, site, new ObjLoc(LibObj.DrumKit, dk.Bank, dk.Slot));
+                }
+            }
+            yield break;
+        }
+
         if (objType != LibObj.SetList) yield break;
 
         // Decode via SetListBody (not raw LibRefs iteration) specifically so we can skip
@@ -66,8 +94,13 @@ static class ObjectReferenceWalker
     // Deliberately a CLASSIFIER, not a filter inside Walk: the dependency panels still want to SHOW
     // these references (labelled as ROM/always-available), they just must never be treated as
     // something to resolve, pull, repoint, or block on.
+    //
+    // GM Drum Kit (object bank 0x10) is the same kind of factory ROM content as GM Programs -
+    // a Drums-mode oscillator zone pointing at linear 152..160 resolves on the instrument
+    // regardless of the local library.
     public static bool IsAlwaysAvailable(ObjLoc reference) =>
-        reference.ObjType == LibObj.Program && KronosBanks.IsReadOnlyProgramBank(reference.Bank);
+        (reference.ObjType == LibObj.Program && KronosBanks.IsReadOnlyProgramBank(reference.Bank)) ||
+        (reference.ObjType == LibObj.DrumKit && KronosBanks.IsReadOnlyDrumKitBank(reference.Bank));
 
     // Walk, minus the references nothing can ever resolve because they don't need resolving - the
     // shape every RESOLUTION path wants (DependencyScanner.Scan/HasAllDependencies/
@@ -129,12 +162,7 @@ static class DependencyScanner
             var foundLoc = expectedHash != null ? cache.FindByContentHash(refLoc.ObjType, expectedHash) : null;
             if (foundLoc is { } d)
             {
-                int refType = d.ObjType == LibObj.Program ? 1 : 0;
-                int func33Bank = KronosBanks.ObjBankToFunc33(refType, d.Bank);
-                if (refKind.StartsWith("timbre", StringComparison.Ordinal))
-                    LibRefs.SetCombiTimbreRef(patched, site, func33Bank, d.Number);
-                else
-                    LibRefs.SetSetListSlotRef(patched, site, func33Bank, d.Number, type: null);
+                LibRefs.ApplyResolvedRef(patched, refKind, site, refLoc.ObjType, d.Bank, d.Number);
             }
             else
             {

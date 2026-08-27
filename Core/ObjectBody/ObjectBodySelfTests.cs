@@ -162,6 +162,18 @@ static class ObjectBodySelfTests
         var (etBank, etNum) = LibRefs.CombiTimbreRef(combiErased, 0);
         Check("erase-combi-timbre-cleared", etBank == 0 && etNum == 0);
 
+        var dkForErase = DrumKitBody.WriteName(new byte[38424], "MY KIT");
+        var dkErased = EraseBody.Build(LibObj.DrumKit, dkForErase);
+        Check("erase-drumkit-length-preserved", dkErased.Length == dkForErase.Length);
+        Check("erase-drumkit-name-init", DrumKitBody.ReadName(dkErased) == "Init Drum Kit");
+        Check("erase-drumkit-is-init", InitObjects.IsInit(LibObj.DrumKit, dkErased));
+
+        var wsForErase = WaveSequenceBody.WriteName(new byte[2216], "MY WAVESEQ");
+        var wsErased = EraseBody.Build(LibObj.WaveSequence, wsForErase);
+        Check("erase-waveseq-length-preserved", wsErased.Length == wsForErase.Length);
+        Check("erase-waveseq-name-init", WaveSequenceBody.ReadName(wsErased) == "Init Wave Sequence");
+        Check("erase-waveseq-is-init", InitObjects.IsInit(LibObj.WaveSequence, wsErased));
+
         // ── Registry: bank enumeration matches the pre-existing hardcoded ranges ──
         // SIX internal Program banks (I-A..I-F), not seven - object-dump bank 0x06 is not a real
         // Program bank; see ProgramDescriptor.EditableBanks. Combi below genuinely has seven.
@@ -191,6 +203,43 @@ static class ObjectBodySelfTests
             ObjectTypeRegistry.Get(LibObj.WaveSequence).SlotCount(0x00) == 150 &&
             ObjectTypeRegistry.Get(LibObj.WaveSequence).SlotCount(0x40) == 32);
         Check("registry-all-five", ObjectTypeRegistry.All.Count() == 5);
+
+        // ── Drum Kit / Wave Sequence linear addressing (KRONOS_MIDI_SysEx.txt [0x71], see
+        // KronosBanks.DrumKitLinearToLoc) - table boundaries incl. the GM gap, round-tripped.
+        Check("drumkit-linear-int", KronosBanks.DrumKitLinearToLoc(0) == (0x00, 0) && KronosBanks.DrumKitLinearToLoc(39) == (0x00, 39));
+        Check("drumkit-linear-userA-g", KronosBanks.DrumKitLinearToLoc(40) == (0x40, 0) && KronosBanks.DrumKitLinearToLoc(151) == (0x46, 15));
+        Check("drumkit-linear-gm", KronosBanks.DrumKitLinearToLoc(152) == (0x10, 0) && KronosBanks.DrumKitLinearToLoc(160) == (0x10, 8));
+        Check("drumkit-linear-userAA-gg", KronosBanks.DrumKitLinearToLoc(161) == (0x47, 0) && KronosBanks.DrumKitLinearToLoc(272) == (0x4D, 15));
+        Check("drumkit-linear-roundtrip",
+            KronosBanks.DrumKitLocToLinear(0x40, 4) == 44 && KronosBanks.DrumKitLocToLinear(0x10, 3) == 155 &&
+            KronosBanks.DrumKitLocToLinear(0x4D, 15) == 272);
+        Check("waveseq-linear-int", KronosBanks.WaveSeqLinearToLoc(0) == (0x00, 0) && KronosBanks.WaveSeqLinearToLoc(149) == (0x00, 149));
+        Check("waveseq-linear-userA-g", KronosBanks.WaveSeqLinearToLoc(150) == (0x40, 0) && KronosBanks.WaveSeqLinearToLoc(373) == (0x46, 31));
+        Check("waveseq-linear-userAA-gg", KronosBanks.WaveSeqLinearToLoc(374) == (0x47, 0) && KronosBanks.WaveSeqLinearToLoc(597) == (0x4D, 31));
+        Check("waveseq-linear-roundtrip", KronosBanks.WaveSeqLocToLinear(0x00, 33) == 33 && KronosBanks.WaveSeqLocToLinear(0x47, 6) == 380);
+
+        // ── Program -> Drum Track / Wave Sequence / Drum Kit (ObjectReferenceWalker.Walk) ──
+        // Real-hardware-verified field shapes (Tools/PcgDrumWaveRefDump.cs) exercised against
+        // synthetic HD-1 bodies here, since real bytes aren't available off-hardware.
+        var progRef = new byte[ProgramFormatConverter.WireSizeHd1];
+        LibRefs.SetProgramDrumTrackRef(progRef, KronosBanks.ObjBankToFunc33(1, 0x40), 12);
+        progRef[1295] |= 0x10;   // Drum Track On
+        progRef[2774] = 2;                          // OSC1 Zone1 MS Type = Wave Sequence
+        LibRefs.SetProgramZoneNumber(progRef, 0, 0, 380);   // -> U-AA:006
+        progRef[2558] = 5;                           // Oscillator Mode = Double Drums
+        progRef[3240 + 22] = 1;                      // OSC2 Zone2 MS Type = Multisample
+        LibRefs.SetProgramZoneNumber(progRef, 1, 1, 44);    // -> U-A:004 (Drum Kit, via oscMode)
+        var progRefs = ObjectReferenceWalker.Walk(LibObj.Program, progRef).ToList();
+        Check("program-walk-drumtrack", progRefs.Any(r => r.RefKind == "drum track" && r.Ref == new ObjLoc(LibObj.Program, 0x40, 12)));
+        Check("program-walk-waveseq", progRefs.Any(r => r.Ref == new ObjLoc(LibObj.WaveSequence, 0x47, 6)));
+        Check("program-walk-drumkit", progRefs.Any(r => r.Ref == new ObjLoc(LibObj.DrumKit, 0x40, 4)));
+
+        var progRefOff = (byte[])progRef.Clone();
+        progRefOff[1295] &= unchecked((byte)~0x10);   // Drum Track Off - the 0,0 default must not walk as I-A:000
+        Check("program-walk-drumtrack-off-skipped",
+            !ObjectReferenceWalker.Walk(LibObj.Program, progRefOff).Any(r => r.RefKind == "drum track"));
+
+        Check("gm-drumkit-always-available", ObjectReferenceWalker.IsAlwaysAvailable(new ObjLoc(LibObj.DrumKit, 0x10, 0)));
 
         return fails;
     }

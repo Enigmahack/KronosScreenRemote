@@ -48,7 +48,7 @@ static class ObjectTypeRegistry
     {
         public int ObjType => LibObj.Program;
         public string DisplayName => "Program";
-        public bool IsReferrer => false;
+        public bool IsReferrer => true;    // Drum Track -> Program; HD-1 oscillator zones -> Drum Kit/Wave Sequence
         public bool IsReferencable => true;
         public string BankLabel(int bank) => KronosBanks.ProgramLabel(bank);
         public bool IsReadOnlyBank(int bank) => KronosBanks.IsReadOnlyProgramBank(bank);
@@ -107,7 +107,7 @@ static class ObjectTypeRegistry
         public int ObjType => LibObj.DrumKit;
         public string DisplayName => "Drum Kit";
         public bool IsReferrer => false;    // references samples (Bank UUID + Id), not other Librarian objects
-        public bool IsReferencable => false;
+        public bool IsReferencable => true;    // Drums-mode HD-1 oscillator zones reference these
         public string BankLabel(int bank) => KronosBanks.DrumKitLabel(bank);
         public bool IsReadOnlyBank(int bank) => KronosBanks.IsReadOnlyDrumKitBank(bank);
         public IEnumerable<int> EditableBanks() => new[] { 0 }.Concat(Enumerable.Range(0x40, 14));
@@ -123,7 +123,7 @@ static class ObjectTypeRegistry
         public int ObjType => LibObj.WaveSequence;
         public string DisplayName => "Wave Sequence";
         public bool IsReferrer => false;
-        public bool IsReferencable => false;
+        public bool IsReferencable => true;    // HD-1 oscillator zones reference these
         public string BankLabel(int bank) => KronosBanks.WaveSeqLabel(bank);
         public bool IsReadOnlyBank(int bank) => false;
         public IEnumerable<int> EditableBanks() => new[] { 0 }.Concat(Enumerable.Range(0x40, 14));

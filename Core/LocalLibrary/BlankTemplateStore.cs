@@ -113,6 +113,11 @@ static class BlankTemplates
     // shipped body ever fails its own blank check (see EnsureAsync step 3) - normal operation
     // never reaches it. Bank numbers per KronosBanks (U-EE=0x4B, U-GG=0x4D, Combi I-E=0x04); slot
     // numbers are 0-based, exactly as ObjLoc.Label() renders them, so I-E:005 is bank 0x04 number 5.
+    // No entry for Drum Kit/Wave Sequence: U-GG was blank in every real .pcg file checked
+    // (see obj04_init.bin/obj05_init.bin's own capture), but that was this project's files,
+    // not a guarantee about any given user's library - a production Kronos could have every
+    // bank filled, including the last one. Baked-in bytes only for these two; no live
+    // re-capture fallback (step 3 below just returns null, same as the "unknown type" case).
     static (int Bank, int Number)? SourceFor(int objType, bool isExi) => objType switch
     {
         LibObj.Program => isExi ? (0x4B, 0) : (0x4D, 0),
@@ -187,10 +192,12 @@ static class BlankTemplates
     // EraseBody's derived blank - a safe answer rather than a silently wrong one.
     static bool LooksBlank(int objType, bool isExi, byte[] body) => objType switch
     {
-        LibObj.Program => body.Length == (isExi ? ProgramFormatConverter.WireSizeExi : ProgramFormatConverter.WireSizeHd1)
-                          && InitObjects.IsInit(LibObj.Program, body),
-        LibObj.SetList => InitObjects.IsInit(LibObj.SetList, body),
-        LibObj.Combi   => body.Length >= 7810 && InitObjects.IsInit(LibObj.Combi, body),
-        _              => false,
+        LibObj.Program      => body.Length == (isExi ? ProgramFormatConverter.WireSizeExi : ProgramFormatConverter.WireSizeHd1)
+                                && InitObjects.IsInit(LibObj.Program, body),
+        LibObj.SetList      => InitObjects.IsInit(LibObj.SetList, body),
+        LibObj.Combi        => body.Length >= 7810 && InitObjects.IsInit(LibObj.Combi, body),
+        LibObj.DrumKit      => body.Length == 38424 && InitObjects.IsInit(LibObj.DrumKit, body),
+        LibObj.WaveSequence => body.Length == 2216 && InitObjects.IsInit(LibObj.WaveSequence, body),
+        _                   => false,
     };
 }

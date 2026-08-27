@@ -193,6 +193,17 @@ static class LocalLibrarySelfTests
             Check("waveseq-leaf-shows-seeded-name", waveSeqRoot?.Children.SingleOrDefault()?.Children
                 .Any(c => c.Label.Contains("SEEDED WAVE SEQ")) == true);
 
+            // Real hex-verified blank templates (Resources/InitBodies/obj04_init.bin,
+            // obj05_init.bin - captured from real hardware-written .pcg files, U-GG bank, every
+            // slot byte-identical) must actually load and validate as blank.
+            var blankStore = new BlankTemplateStore(root);
+            var dkBlank = await BlankTemplates.EnsureAsync(exec, cache, blankStore, LibObj.DrumKit, false);
+            Check("drumkit-blank-template-loads", dkBlank != null && dkBlank.Length == 38424);
+            Check("drumkit-blank-template-is-init", dkBlank != null && InitObjects.IsInit(LibObj.DrumKit, dkBlank));
+            var wsBlank = await BlankTemplates.EnsureAsync(exec, cache, blankStore, LibObj.WaveSequence, false);
+            Check("waveseq-blank-template-loads", wsBlank != null && wsBlank.Length == 2216);
+            Check("waveseq-blank-template-is-init", wsBlank != null && InitObjects.IsInit(LibObj.WaveSequence, wsBlank));
+
             var result2 = await LibraryPullPipeline.PullAsync(exec, cache, full: false);
             Check("unrelated-pull-preserves-edit",
                 cache.IsDirty(LibObj.Program, 0x00, 0) && !cache.IsConflicted(LibObj.Program, 0x00, 0));

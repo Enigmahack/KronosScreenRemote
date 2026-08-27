@@ -109,6 +109,33 @@ public partial class App : Application
             PcgStructureDump.Run(e.Args[dumpStructureIdx + 1]);
         }
 
+        // Headless diagnostic: `--dump-pcg-blanks <path-to.pcg>` - see
+        // Tools/PcgBlankTemplateDump.cs for why this exists (finding the real Drum Kit/Wave
+        // Sequence blank-template bytes from a real file instead of guessing).
+        int dumpBlanksIdx = Array.IndexOf(e.Args, "--dump-pcg-blanks");
+        if (dumpBlanksIdx >= 0 && dumpBlanksIdx + 1 < e.Args.Length)
+        {
+            PcgBlankTemplateDump.Run(e.Args[dumpBlanksIdx + 1]);
+        }
+
+        // Headless diagnostic: `--dump-pcg-osc-refs <path-to.pcg>` - see Tools/PcgOscRefDump.cs
+        // for why this exists (settling how an HD-1 Program's oscillator references a Wave
+        // Sequence/Drum Kit, undocumented in the text SysEx dump).
+        int dumpOscRefsIdx = Array.IndexOf(e.Args, "--dump-pcg-osc-refs");
+        if (dumpOscRefsIdx >= 0 && dumpOscRefsIdx + 1 < e.Args.Length)
+        {
+            PcgOscRefDump.Run(e.Args[dumpOscRefsIdx + 1]);
+        }
+
+        // Headless diagnostic: `--dump-pcg-drumwave-refs <path-to.pcg> <program-name-substring>`
+        // - see Tools/PcgDrumWaveRefDump.cs (verifies the linear Drum Kit/Wave Seq addressing
+        // from KRONOS_MIDI_SysEx.txt's [0x71] doc against real Program bytes).
+        int dumpDrumWaveIdx = Array.IndexOf(e.Args, "--dump-pcg-drumwave-refs");
+        if (dumpDrumWaveIdx >= 0 && dumpDrumWaveIdx + 2 < e.Args.Length)
+        {
+            PcgDrumWaveRefDump.Run(e.Args[dumpDrumWaveIdx + 1], e.Args[dumpDrumWaveIdx + 2]);
+        }
+
         // Headless diagnostic: `--sample-format-fixture-check <folder>` - the runnable
         // acceptance gate for the Core/Sample/* format-layer port (byte-identical
         // round-trip against a local, gitignored folder of real Kronos fixtures).

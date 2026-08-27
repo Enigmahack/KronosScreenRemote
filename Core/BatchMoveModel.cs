@@ -1,6 +1,6 @@
 namespace KronosScreenRemote;
 
-// Batch move: relocate MANY Programs or Combis (never mixed) into sequential slots of one
+// Batch move: relocate MANY objects of one type (never mixed) into sequential slots of one
 // destination bank, with a "clipboard" for objects displaced or that can't land there at all.
 // Generalizes Librarian.PlanMove's pairwise swap into an arbitrary N-item reassignment -
 // see PlanBatchMove's doc comment for why this can't be N independent PlanMove calls.
@@ -13,7 +13,8 @@ namespace KronosScreenRemote;
 //     bank-type mismatch ALWAYS auto-clipboard, regardless of that flag - there's no valid
 //     destination at all in either case.
 //   - A placement is a REFERENCE RELOCATION, not a swap: the source's own physical slot is
-//     NEVER written. Only referrers (Combi timbres / Set List slots) that pointed at the
+//     NEVER written. Only referrers (Combi timbres, Set List slots, a Program's Drum Track or Wave
+    //     Sequence/Drum Kit oscillator zone) that pointed at the
 //     source's OLD location get repointed to the NEW one. This is the only reading consistent
 //     with references needing to move at all - a hidden swap-back was never asked for and
 //     would silently duplicate/destroy data outside what was requested.
@@ -285,7 +286,8 @@ static class BatchLibrarian
         }
 
         // (3) Referrer collection + grouping - direct generalization of PlanMove's `grouped` dict.
-        int refType = objType == LibObj.Program ? 1 : 0;
+        // Raw bank/number (not pre-encoded) - LibRefs.ApplyResolvedRef in step (6) encodes
+        // per-Kind (func33 for a Combi/Program target, linear for a Drum Kit/Wave Sequence one).
         var grouped = new Dictionary<(int, int, int), List<(int Site, string Kind, int NewBank, int NewNumber)>>();
         void AddPatch(ReferrerSite r, int newBank, int newNumber)
         {
@@ -297,8 +299,7 @@ static class BatchLibrarian
         {
             var sites = cat.ReferrersOf(from);
             plan.Referrers.AddRange(sites);
-            int newFunc33 = KronosBanks.ObjBankToFunc33(refType, to.Bank);
-            foreach (var r in sites) AddPatch(r, newFunc33, to.Number);
+            foreach (var r in sites) AddPatch(r, to.Bank, to.Number);
         }
 
         // (4) Placement writes + pre-images. Source stays UNTOUCHED - no write at From, ever.
@@ -329,9 +330,12 @@ static class BatchLibrarian
         // (6) Grouped referrer-patch writes - identical shape to PlanMove's step 2.
         foreach (var ((refObj, refBank, refIndex), patches) in grouped)
         {
-            ObjectDump? baseDump = refObj == LibObj.Combi
-                ? (cat.Combis.TryGetValue((refBank, refIndex), out var c) ? c : null)
-                : (cat.Setlists.TryGetValue(refIndex, out var s) ? s : null);
+            ObjectDump? baseDump = refObj switch
+            {
+                LibObj.Combi   => cat.Combis.TryGetValue((refBank, refIndex), out var c) ? c : null,
+                LibObj.Program => cat.Programs.TryGetValue((refBank, refIndex), out var p) ? p : null,
+                _              => cat.Setlists.TryGetValue(refIndex, out var s) ? s : null,
+            };
             if (baseDump == null)
             {
                 plan.Warnings.Add(AppMessages.Librarian.Move.ReferringObjectMissing(refObj, refBank, refIndex));
@@ -341,10 +345,7 @@ static class BatchLibrarian
 
             var body = (byte[])baseDump.Body.Clone();
             foreach (var (site, kind, newBank, newNumber) in patches)
-            {
-                if (kind == "combi_timbre") LibRefs.SetCombiTimbreRef(body, site, newBank, newNumber);
-                else                         LibRefs.SetSetListSlotRef(body, site, newBank, newNumber, type: null);
-            }
+                LibRefs.ApplyResolvedRef(body, kind, site, objType, newBank, newNumber);
             plan.Writes.Add(new WriteOp(refObj, refBank, refIndex, baseDump.Version, body, $"fix {patches.Count} ref(s)"));
         }
 

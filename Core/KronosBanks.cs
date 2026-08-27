@@ -211,6 +211,47 @@ static class KronosBanks
 
     public static bool IsReadOnlyDrumKitBank(int objBank) => objBank == 0x10;
 
+    // KRONOS_MIDI_SysEx.txt [0x71] "Set Current Object": wherever an HD-1 Program references a
+    // Drum Kit or Wave Sequence (the oscillator zone's own "MS Number"), it uses LINEAR
+    // addressing instead of the bank+id scheme above - explicitly documented as "the same means
+    // of addressing... used by the HD-1 MS number parameter." Verified against real Program bytes
+    // (Tools/PcgDrumWaveRefDump.cs): "Rock Dry/Amb1 Kit" -> linear 44 -> U-A:004 "RockAmbi Kit
+    // SnOn Dry"; "Smoothie Motion" -> linear 33 -> Int:033 "Flute SEQ". GM sits between User-G
+    // and User-AA in the Drum Kit table (9 slots); Wave Seq has no GM gap.
+    public static (int Bank, int Slot)? DrumKitLinearToLoc(int linear) => linear switch
+    {
+        >= 0 and <= 39    => (0, linear),
+        >= 40 and <= 151  => (0x40 + (linear - 40) / 16, (linear - 40) % 16),
+        >= 152 and <= 160 => (0x10, linear - 152),
+        >= 161 and <= 272 => (0x47 + (linear - 161) / 16, (linear - 161) % 16),
+        _ => null,
+    };
+
+    public static int? DrumKitLocToLinear(int bank, int slot) => bank switch
+    {
+        0 when slot is >= 0 and <= 39                    => slot,
+        0x10 when slot is >= 0 and <= 8                  => 152 + slot,
+        >= 0x40 and <= 0x46 when slot is >= 0 and <= 15  => 40 + (bank - 0x40) * 16 + slot,
+        >= 0x47 and <= 0x4D when slot is >= 0 and <= 15  => 161 + (bank - 0x47) * 16 + slot,
+        _ => null,
+    };
+
+    public static (int Bank, int Slot)? WaveSeqLinearToLoc(int linear) => linear switch
+    {
+        >= 0 and <= 149   => (0, linear),
+        >= 150 and <= 373 => (0x40 + (linear - 150) / 32, (linear - 150) % 32),
+        >= 374 and <= 597 => (0x47 + (linear - 374) / 32, (linear - 374) % 32),
+        _ => null,
+    };
+
+    public static int? WaveSeqLocToLinear(int bank, int slot) => bank switch
+    {
+        0 when slot is >= 0 and <= 149                   => slot,
+        >= 0x40 and <= 0x46 when slot is >= 0 and <= 31  => 150 + (bank - 0x40) * 32 + slot,
+        >= 0x47 and <= 0x4D when slot is >= 0 and <= 31  => 374 + (bank - 0x47) * 32 + slot,
+        _ => null,
+    };
+
     // Bit position of a program bank's HD-1/EXi type flag within func-0x61's Program
     // Bank Types bitmap (bit 0 = edit buffer, 1-6 = I-A..I-F, 7-13 = U-A..U-G,
     // 14-20 = U-AA..U-GG - KRONOS_MIDI_SysEx.txt func [61]). Null for banks the
