@@ -142,20 +142,14 @@ static class UiThemeSmokeTest
         });
         try
         {
+            // No owner window here any more: LibrarianShellWindow is no longer WPF-owned by
+            // MainWindow (see MainWindow.OpenLibrarianShellWindow's own comment - an owned
+            // window is permanently kept above its owner in Win32 z-order, which was the
+            // "stays on top of the main Kronos window" complaint), so the owner-detach/
+            // reactivate checks this block used to pin no longer describe real behavior and
+            // were removed along with the code path they were pinning.
             var scratch = Path.Combine(Path.GetTempPath(), "kronos_ui_smoketest_librarian_owner");
             if (Directory.Exists(scratch)) Directory.Delete(scratch, recursive: true);
-            var owner = new Window
-            {
-                ShowInTaskbar = false,
-                ShowActivated = false,
-                Opacity = 0,
-                Width = 1,
-                Height = 1,
-                Left = -10_000,
-                Top = -10_000,
-            };
-            owner.Show();
-            owner.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
             // Seeded with one throwaway Combi purely so the Undo check below has something to
             // edit - a routed-command probe against an EMPTY undo stack can't tell "wired but
             // correctly refusing" from "not wired at all" (RoutedCommand.Execute skips the
@@ -164,8 +158,7 @@ static class UiThemeSmokeTest
             var seedLoc = new ObjLoc(LibObj.Combi, 0x00, 0);
             ownerCache.RecordEdits(new[] { (seedLoc.ObjType, seedLoc.Bank, seedLoc.Number, (byte)1, new byte[7810]) },
                 "SmokeTestSeed", "smoke-test seed", DateTime.UtcNow);
-            var librarian = new LibrarianShellWindow(fakeSysEx, ownerCache, settings, "")
-                .OwnedBy(owner);
+            var librarian = new LibrarianShellWindow(fakeSysEx, ownerCache, settings, "");
             librarian.ShowInTaskbar = false;
             librarian.Opacity = 0;
             librarian.Left = -10_000;
@@ -173,8 +166,6 @@ static class UiThemeSmokeTest
             librarian.Show();
             librarian.Activate();
             librarian.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
-            librarian.Closed += (_, _) => owner.Dispatcher.BeginInvoke(
-                owner.Activate, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
 
             // Undo (Ctrl+Z) wiring, on the one Librarian instance here that's actually shown.
             // Two halves, checked separately because only one of them is our code:
@@ -225,16 +216,10 @@ static class UiThemeSmokeTest
             results.Add(("  Librarian Undo command wiring", gestureDeclared && routed, undoDetail));
 
             librarian.Close();
-            owner.Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.ApplicationIdle);
-            results.Add(("  Librarian close detaches owner", librarian.Owner == null,
-                librarian.Owner == null ? null : "Owner remained attached after Closing"));
-            results.Add(("  Librarian close reactivates owner", owner.IsActive,
-                owner.IsActive ? null : "Owner did not regain activation after Librarian closed"));
-            owner.Hide();
         }
         catch (Exception ex)
         {
-            results.Add(("  Librarian close detaches owner", false, ex.GetType().Name + ": " + ex.Message));
+            results.Add(("  Librarian Undo command wiring", false, ex.GetType().Name + ": " + ex.Message));
         }
         Try("LoginDialog",            () => new LoginDialog("", 0));
         Try("PromptDialog",           () => new PromptDialog("test"));
@@ -347,6 +332,8 @@ static class UiThemeSmokeTest
         {
             new SessionDependencyEntry(new ObjLoc(LibObj.Program, 0x00, 0), "timbre 1", 0, new ObjLoc(LibObj.Combi, 0x00, 0), null),
         }));
+        Try("ObjectInfoDialog", () => new ObjectInfoDialog(
+            "Program: I-A:000 - TEST", "Combi: I-A:000 - TEST COMBI (via timbre 1)", new[] { "Wave Sequence: Int:000 - TEST WAVE (via osc1 zone1)" }));
         Try("SettingsWindow",         () => new SettingsWindow(settings));
         Try("SysExToolWindow",        () => new SysExToolWindow(fakeSysEx));
         // MainWindow deliberately excluded: parameterless ctor starts real timers/services/

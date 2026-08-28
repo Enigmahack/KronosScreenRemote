@@ -79,6 +79,11 @@ sealed class LocalLibraryCache
     public bool HasResolvedDependencies(int objType, int bank, int number) =>
         !_index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e) || e.HasResolvedDependencies;
 
+    // Cached at write time (LocalIndexEntry.HasSampleDependency) - index-only, no blob read,
+    // safe to call once per node on every tree refresh (LocalLibraryPaneViewModel.MakeLeafNode).
+    public bool HasSampleDependency(int objType, int bank, int number) =>
+        _index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e) && e.HasSampleDependency;
+
     // Which wire format a Program's body is in (EXi vs HD-1) - cached at write time (see
     // LocalIndexEntry's own doc comment), index-only, no blob read. Meaningless for Combi/
     // Set List; defaults to true there (never displayed).
@@ -283,6 +288,11 @@ sealed class LocalLibraryCache
     // per slot would make every drop pay for 128 of them.
     static bool ComputeIsInit(int objType, byte[] body) => InitObjects.IsInit(objType, body);
 
+    // Same "compute once, using the body already in hand" discipline as everything else here -
+    // backs the tree's yellow sample-dependency dot (LocalIndexEntry.HasSampleDependency's own
+    // comment has the full reasoning for why this one has no migration sweep).
+    static bool ComputeHasSampleDependency(int objType, byte[] body) => SampleReferenceWalker.Walk(objType, body).Count > 0;
+
     // ── Mutations ─────────────────────────────────────────────────────────────
 
     // Advances Baseline=Current=hash(freshBody) for every successfully re-dumped object from
@@ -311,7 +321,8 @@ sealed class LocalLibraryCache
                 _index.Entries[key] = new LocalIndexEntry(p.Version, hash, hash, ExtractDisplayName(p.ObjType, p.Body),
                     utcNow, prev?.LastPushedUtc, Conflicted: false,
                     ComputeHasResolvedDependencies(p.ObjType, p.Body), ComputeIsExi(p.ObjType, p.Body),
-                    IsInit: ComputeIsInit(p.ObjType, p.Body));
+                    IsInit: ComputeIsInit(p.ObjType, p.Body),
+                    HasSampleDependency: ComputeHasSampleDependency(p.ObjType, p.Body));
             }
             targets.Add(new OpLogTarget(p.ObjType, p.Bank, p.Number, hash));
             PatchCatalog(p.ObjType, p.Bank, p.Number, p.Version, p.Body);
@@ -342,7 +353,8 @@ sealed class LocalLibraryCache
                 _index.Entries[key] = new LocalIndexEntry(p.Version, hash, hash, ExtractDisplayName(p.ObjType, p.Body),
                     prev?.LastPulledUtc, utcNow, Conflicted: false,
                     ComputeHasResolvedDependencies(p.ObjType, p.Body), ComputeIsExi(p.ObjType, p.Body),
-                    IsInit: ComputeIsInit(p.ObjType, p.Body));
+                    IsInit: ComputeIsInit(p.ObjType, p.Body),
+                    HasSampleDependency: ComputeHasSampleDependency(p.ObjType, p.Body));
             }
             targets.Add(new OpLogTarget(p.ObjType, p.Bank, p.Number, hash));
             PatchCatalog(p.ObjType, p.Bank, p.Number, p.Version, p.Body);
@@ -391,7 +403,8 @@ sealed class LocalLibraryCache
                 _index.Entries[key] = new LocalIndexEntry(w.Version, baseline, hash, ExtractDisplayName(w.ObjType, w.Body),
                     existing?.LastPulledUtc, existing?.LastPushedUtc, Conflicted: false,
                     ComputeHasResolvedDependencies(w.ObjType, w.Body), ComputeIsExi(w.ObjType, w.Body),
-                    IsInit: ComputeIsInit(w.ObjType, w.Body));
+                    IsInit: ComputeIsInit(w.ObjType, w.Body),
+                    HasSampleDependency: ComputeHasSampleDependency(w.ObjType, w.Body));
             }
             targets.Add(new OpLogTarget(w.ObjType, w.Bank, w.Number, hash));
             PatchCatalog(w.ObjType, w.Bank, w.Number, w.Version, w.Body);
@@ -426,13 +439,14 @@ sealed class LocalLibraryCache
         bool baselineHasResolvedDeps = baselineBody != null ? ComputeHasResolvedDependencies(objType, baselineBody) : e.HasResolvedDependencies;
         bool baselineIsExi = baselineBody != null ? ComputeIsExi(objType, baselineBody) : e.IsExi;
         bool? baselineIsInit = baselineBody != null ? ComputeIsInit(objType, baselineBody) : e.IsInit;
+        bool baselineHasSampleDep = baselineBody != null ? ComputeHasSampleDependency(objType, baselineBody) : e.HasSampleDependency;
         lock (_lock)
         {
             _index.Entries[key] = e with
             {
                 CurrentHash = e.BaselineHash, DisplayName = baselineName, Conflicted = false,
                 HasResolvedDependencies = baselineHasResolvedDeps, IsExi = baselineIsExi,
-                IsInit = baselineIsInit,
+                IsInit = baselineIsInit, HasSampleDependency = baselineHasSampleDep,
             };
         }
         if (baselineBody != null) PatchCatalog(objType, bank, number, e.Version, baselineBody);

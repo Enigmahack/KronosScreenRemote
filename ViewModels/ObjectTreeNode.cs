@@ -38,10 +38,39 @@ partial class ObjectTreeNode : ObservableObject
     // destination. Distinct from IsPendingDelete, which fades a row for an unrelated reason.
     public bool IsReadOnly { get; }
 
+    // True when this object's own body references a sample (Sampling Mode/RAM, EXs, or a
+    // User/3rd-Party sample bank) - drives the yellow sample-dependency dot in all three
+    // Librarian trees (Views/LibrarianShellWindow.xaml). Set once at construction, same as
+    // IsReadOnly above: every RefreshTree() rebuild replaces every node from scratch, so this
+    // never needs to be observable. For the Local pane it comes from a bit cached at write
+    // time (LocalIndexEntry.HasSampleDependency - see that type's own comment for why); for
+    // the PCG/Merge panes the object's body is already fully in memory (a loaded .pcg file, or
+    // a staged MergeEntry), so it's computed directly via SampleReferenceWalker.Walk with no
+    // extra disk I/O.
+    public bool HasSampleDependency { get; }
+
+    // Case-insensitive search haystack for the PCG pane's live filter (LibrarianShellWindow.xaml's
+    // TV_Pcg, driven by PcgPaneViewModel.SearchText) - name, bank, category, engine type, and what
+    // this object references, built EAGERLY at construction (PcgPaneViewModel.MakeLeafNode).
+    // A Lazy<T> version of this was tried and reverted: measured against a real 5,343-object/45MB
+    // .pcg file, forcing every leaf's haystack to build costs ~120ms total - cheap enough that
+    // deferring it bought no real benefit, and a real multi-second freeze traced back to the FIRST
+    // search only (not the load) turned out not to be explained by lazy-vs-eager at all (a query
+    // that matches almost nothing was fast; a broad one typed right after was still slow the first
+    // time) - see the investigation in this feature's own PR history. Empty for Local/Merge, which
+    // have no search box.
+    public string SearchText { get; }
+
     [ObservableProperty] bool isDirty;
     [ObservableProperty] bool isConflicted;
     [ObservableProperty] bool isExpanded;
     [ObservableProperty] bool isSelected;
+
+    // Drives PcgTreeItemStyle's Visibility trigger (Views/LibrarianShellWindow.xaml) - a leaf is
+    // visible when SearchText matches the live query; a bank/type-root is visible when any
+    // descendant is (PcgPaneViewModel.FilterNode). Defaults true so every OTHER tree (Local, Merge)
+    // and an empty PCG search show everything, exactly as before this feature.
+    [ObservableProperty] bool isVisible = true;
 
     // Local-only "marked for removal, pending Commit" flag (see LocalLibraryCache.
     // SetPendingDelete) - a LEAF-only signal, distinct from IsDirty/IsConflicted, that drives
@@ -63,7 +92,7 @@ partial class ObjectTreeNode : ObservableObject
 
     public ObjectTreeNode(string label, ObjLoc? loc = null, (int ObjType, int Bank)? bankRef = null,
                           string? mergeContentHash = null, int? typeRootObjType = null,
-                          bool isReadOnly = false)
+                          bool isReadOnly = false, bool hasSampleDependency = false, string searchText = "")
     {
         Label = label;
         Loc = loc;
@@ -71,6 +100,8 @@ partial class ObjectTreeNode : ObservableObject
         MergeContentHash = mergeContentHash;
         TypeRootObjType = typeRootObjType;
         IsReadOnly = isReadOnly;
+        HasSampleDependency = hasSampleDependency;
+        SearchText = searchText;
     }
 
     // Every Loc among this node's own descendants (this node included) - the "expand a bank
@@ -78,9 +109,16 @@ partial class ObjectTreeNode : ObservableObject
     // Cut/Copy/Delete/drag/Move-to-Merge-Window pipelines a leaf selection already does (Local
     // and PCG panes only; Program/Combi banks and Set Lists are exactly one level deep, but this
     // recurses regardless so it stays correct if that ever changes).
+    //
+    // A leaf hidden by the PCG pane's live search filter (IsVisible false - see
+    // PcgPaneViewModel.FilterNode) is excluded here too, not just from the tree's own rendering:
+    // without this, dragging/right-clicking a bank or type-root node while filtered to e.g.
+    // "AL-1" would still act on every leaf underneath, including the ones the filter is hiding -
+    // "what you see is what you drag" would be a lie. A no-op everywhere else (Local/Merge, and
+    // an unfiltered PCG tree, always have IsVisible true).
     public IEnumerable<ObjLoc> LeafLocs()
     {
-        if (Loc is { } loc) { yield return loc; yield break; }
+        if (Loc is { } loc) { if (IsVisible) yield return loc; yield break; }
         foreach (var child in Children)
             foreach (var descendantLoc in child.LeafLocs())
                 yield return descendantLoc;
@@ -98,6 +136,20 @@ partial class ObjectTreeNode : ObservableObject
             if (BankRef is { } b) return b;
             if (MergeContentHash is { } h) return h;
             return Label;
+        }
+    }
+
+    // Backs the right-click "Expand/Collapse Selected/All" menu items (Views/LibrarianShellWindow.
+    // xaml, all three trees - LibrarianShellWindow.xaml.cs's shared ExpandAll/CollapseAll/
+    // ExpandSelected/CollapseSelected). Sets IsExpanded on every node passed in AND every
+    // descendant, not just the leaves that happen to have children - a leaf's own IsExpanded is
+    // meaningless (TreeViewItem has nothing to expand) but harmless to set.
+    public static void SetExpandedRecursive(IEnumerable<ObjectTreeNode> nodes, bool expanded)
+    {
+        foreach (var n in nodes)
+        {
+            n.IsExpanded = expanded;
+            SetExpandedRecursive(n.Children, expanded);
         }
     }
 

@@ -49,6 +49,27 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     // exists at all: PlanBatchMove's fresh-placement bank-type check needs it.
     ProgramBankTypes? _programBankTypes;
 
+    // Built once by an explicit user action (Views/LibrarianShellWindow.xaml.cs's "Resolve
+    // Sample Bank Names..." handler, which owns the live FTP connection - see ExsOptionIndex's
+    // own header comment for why this is never built automatically). Null means "not resolved
+    // this session" - every sample-dependency row then shows exactly what it always has
+    // (SampleReferenceWalker's own EXs<N>/raw-UUID label), never blocked or delayed by it.
+    ExsOptionIndex? _exsIndex;
+
+    // Re-runs whichever Show{Local,Pcg,Merge}ObjectDependencies call built the CURRENTLY shown
+    // panel, with the same selection - set by each of those three methods, invoked by
+    // ApplyExsOptionIndex once a name index becomes available so already-visible rows pick up
+    // resolved names without the user needing to re-click the selection.
+    Action? _refreshObjectDependencies;
+
+    public bool ExsNamesResolved => _exsIndex != null;
+
+    public void ApplyExsOptionIndex(ExsOptionIndex index)
+    {
+        _exsIndex = index;
+        _refreshObjectDependencies?.Invoke();
+    }
+
     public LocalLibraryPaneViewModel LocalPane { get; }
     public PcgPaneViewModel PcgPane { get; } = new();
     public MergePaneViewModel MergePane { get; }
@@ -169,6 +190,12 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
             ? CategoryNames.TryCreate(names.Program, names.ProgramSub, names.Combi, names.CombiSub)
             : null) ?? CategoryNames.Numeric();
         _ = WarmCategoryNamesAsync();
+        // Read lazily (a Func, not the value) so a category-name warm-up landing AFTER this pane
+        // is wired up still gets picked up the next time BuildSearchText runs (a load, or any
+        // other RefreshTree) - never the CategoryNames snapshot from the moment this line ran.
+        // NOT re-evaluated per keystroke: a search only filters the haystack each leaf's
+        // SearchText already has, it doesn't rebuild it - see PcgPaneViewModel.BuildSearchText.
+        PcgPane.GetCategoryNames = () => CategoryNames;
     }
 
     // ── Category names (requirement 4) ──────────────────────────────────────────────────────
@@ -1406,28 +1433,33 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
 
     public void ShowLocalObjectDependencies(IReadOnlyList<ObjLoc> selectedLocs)
     {
+        _refreshObjectDependencies = () => ShowLocalObjectDependencies(selectedLocs);
         var seen = new HashSet<ObjLoc>();
+        var sampleSeen = new HashSet<string>();
         var rows = new List<ObjectDependencyRow>();
         foreach (var loc in selectedLocs)
-            CollectLocalDeps(loc, seen, rows);
+            CollectLocalDeps(loc, seen, sampleSeen, rows);
         ReplaceObjectDependencies(rows);
     }
 
     // `missing` is optional: the selection-driven panel only wants display rows, while
     // InspectDependencies wants the gaps from the SAME walk rather than a second one.
-    void CollectLocalDeps(ObjLoc loc, HashSet<ObjLoc> seen, List<ObjectDependencyRow> rows,
+    void CollectLocalDeps(ObjLoc loc, HashSet<ObjLoc> seen, HashSet<string> sampleSeen, List<ObjectDependencyRow> rows,
                           List<MissingDependency>? missing = null)
     {
         if (_cache.GetCurrentBody(loc.ObjType, loc.Bank, loc.Number) is not { } body) return;
+        string parentName = _cache.GetDisplayName(loc.ObjType, loc.Bank, loc.Number);
+        AddSampleRows(loc.ObjType, body, DescribeParent(loc, parentName, "sample"), sampleSeen, rows);
         foreach (var (refKind, site, refLoc) in ObjectReferenceWalker.Walk(loc.ObjType, body))
         {
             if (!seen.Add(refLoc)) continue;
+            string parentInfo = DescribeParent(loc, parentName, refKind);
             // A ROM (GM/g) reference is shown, but never as missing - it resolves on the
             // instrument no matter what the local library holds (ObjectReferenceWalker.
             // IsAlwaysAvailable), and nothing can be pulled or placed to "fix" it.
             if (ObjectReferenceWalker.IsAlwaysAvailable(refLoc))
             {
-                rows.Add(new ObjectDependencyRow(DescribeRomDependency(refLoc)));
+                rows.Add(new ObjectDependencyRow(DescribeRomDependency(refLoc), parentInfo));
                 continue;
             }
             // Cached at write time (LocalIndexEntry.DisplayName) - never a blob read, same
@@ -1440,54 +1472,103 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
             rows.Add(new ObjectDependencyRow(
                 found && refLoc.ObjType == LibObj.Program && ProgramBody.IsInitName(name)
                     ? $"{TypeName(refLoc.ObjType)}: {refLoc.Label()} - {name} {AppMessages.Librarian.Shell.InitPlaceholderSuffix}"
-                    : DescribeDependency(refLoc, name, found, "locally")));
+                    : DescribeDependency(refLoc, name, found, "locally"),
+                parentInfo, found ? () => DescribeLocalChildren(refLoc) : null));
             // A ROM reference is listed but is never a gap (IsAlwaysAvailable - it resolves on the
             // instrument and can't be searched for), so it never enters `missing`.
             if (!found && missing != null && !ObjectReferenceWalker.IsAlwaysAvailable(refLoc))
                 missing.Add(new MissingDependency(refLoc, refKind, site, loc));
-            if (found) CollectLocalDeps(refLoc, seen, rows, missing);
+            if (found) CollectLocalDeps(refLoc, seen, sampleSeen, rows, missing);
         }
     }
 
+    // SAMPLE dependencies (Sampling Mode/RAM, EXs, User Sample Banks) for one object's own
+    // body - shared by the Local/PCG/Merge collectors below. Display-only rows: unlike an
+    // object reference, a sample bank can never be "found"/resolved locally, pulled, or
+    // repointed (SampleReferenceWalker's own header comment has the full reasoning), so there
+    // is no recursion, no "missing" tracking, and no child-describe callback - just a flat
+    // row per distinct bank this object references, deduped against `sampleSeen` the same way
+    // `seen` dedupes object refs across one panel population.
+    void AddSampleRows(int objType, byte[] body, string parentInfo, HashSet<string> sampleSeen, List<ObjectDependencyRow> rows)
+    {
+        foreach (var row in SampleReferenceWalker.Walk(objType, body))
+        {
+            if (!sampleSeen.Add(row.Key)) continue;
+            rows.Add(new ObjectDependencyRow(ResolveSampleDescription(row), parentInfo, sampleBucket: row.Bucket));
+        }
+    }
+
+    // Appends a resolved friendly name from _exsIndex when one's available - never changes the
+    // row's Bucket/color (that's fixed at classification time from the PCG bytes alone, so
+    // coloring stays deterministic and identical whether or not the user ever resolves names -
+    // see ExsOptionIndex's own header comment on why a raw-UUID bank found there isn't
+    // reclassified from UserOrThirdParty to Exs even when it turns out to be an EXs127+ pack).
+    // Falls back to the row's own description untouched when no index is loaded yet, or the
+    // bank isn't in it (not installed on this instrument, or genuinely unresolvable - e.g. the
+    // live Sampling Mode/RAM bucket, which SampleReferenceWalker's own comment explains has no
+    // persistent identity to look up at all).
+    string ResolveSampleDescription(SampleReferenceWalker.SampleDependencyRow row)
+    {
+        if (_exsIndex == null) return row.Description;
+        string? name = row.Bucket switch
+        {
+            SampleReferenceWalker.BankBucket.Exs when ParseExsNumber(row.Key) is { } n => _exsIndex.NameForExsNumber(n),
+            SampleReferenceWalker.BankBucket.UserOrThirdParty => _exsIndex.NameForUuidHex(row.Key),
+            _ => null,
+        };
+        return name == null ? row.Description : $"{row.Description} - {name}";
+    }
+
+    // Inverse of SampleReferenceWalker.ClassifyLegacyUuid's own "exs{exsNumber}" key format.
+    static int? ParseExsNumber(string key) =>
+        key.StartsWith("exs", StringComparison.Ordinal) && int.TryParse(key.AsSpan(3), out int n) ? n : null;
+
     public void ShowPcgObjectDependencies(IReadOnlyList<ObjLoc> selectedLocs)
     {
+        _refreshObjectDependencies = () => ShowPcgObjectDependencies(selectedLocs);
         var rows = new List<ObjectDependencyRow>();
         if (PcgPane.View is { } view)
         {
             var seen = new HashSet<ObjLoc>();
+            var sampleSeen = new HashSet<string>();
             foreach (var loc in selectedLocs)
-                CollectPcgDeps(view, loc, seen, rows);
+                CollectPcgDeps(view, loc, seen, sampleSeen, rows);
         }
         ReplaceObjectDependencies(rows);
     }
 
-    void CollectPcgDeps(PcgLibraryView view, ObjLoc loc, HashSet<ObjLoc> seen, List<ObjectDependencyRow> rows)
+    void CollectPcgDeps(PcgLibraryView view, ObjLoc loc, HashSet<ObjLoc> seen, HashSet<string> sampleSeen, List<ObjectDependencyRow> rows)
     {
         var entry = view.Get(loc);
         var body = entry == null ? null : ProgramFormatConverter.WireBodyFromPcgEntry(loc.ObjType, entry);
         if (body == null) return;
-        foreach (var (_, _, refLoc) in ObjectReferenceWalker.Walk(loc.ObjType, body))
+        AddSampleRows(loc.ObjType, body, DescribeParent(loc, entry!.Name, "sample"), sampleSeen, rows);
+        foreach (var (refKind, _, refLoc) in ObjectReferenceWalker.Walk(loc.ObjType, body))
         {
             if (!seen.Add(refLoc)) continue;
+            string parentInfo = DescribeParent(loc, entry!.Name, refKind);
             if (ObjectReferenceWalker.IsAlwaysAvailable(refLoc))   // see CollectLocalDeps
             {
-                rows.Add(new ObjectDependencyRow(DescribeRomDependency(refLoc)));
+                rows.Add(new ObjectDependencyRow(DescribeRomDependency(refLoc), parentInfo));
                 continue;
             }
             var depEntry = view.Get(refLoc);
-            rows.Add(new ObjectDependencyRow(DescribeDependency(refLoc, depEntry?.Name ?? "", depEntry != null, "in this PCG")));
-            if (depEntry != null) CollectPcgDeps(view, refLoc, seen, rows);
+            rows.Add(new ObjectDependencyRow(DescribeDependency(refLoc, depEntry?.Name ?? "", depEntry != null, "in this PCG"),
+                parentInfo, depEntry != null ? () => DescribePcgChildren(view, refLoc) : null));
+            if (depEntry != null) CollectPcgDeps(view, refLoc, seen, sampleSeen, rows);
         }
     }
 
     public void ShowMergeObjectDependencies(IReadOnlyList<string> selectedHashes)
     {
+        _refreshObjectDependencies = () => ShowMergeObjectDependencies(selectedHashes);
         var seen = new HashSet<string>();
+        var sampleSeen = new HashSet<string>();
         var rows = new List<ObjectDependencyRow>();
         foreach (var hash in selectedHashes)
         {
             var entry = MergePane.TryGet(hash);
-            if (entry != null) CollectMergeDeps(entry, seen, rows);
+            if (entry != null) CollectMergeDeps(entry, seen, sampleSeen, rows);
         }
         ReplaceObjectDependencies(rows);
     }
@@ -1495,19 +1576,25 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     // Merge entries are keyed by content hash, not address - RefSites already carry the
     // resolved-dependency lookup (or the original PCG address for a still-unresolved gap), so
     // this needs none of ObjectReferenceWalker's own byte-decoding, unlike the Local/PCG paths.
-    void CollectMergeDeps(MergeEntry entry, HashSet<string> seen, List<ObjectDependencyRow> rows)
+    // SAMPLE refs are the one thing still read straight off entry.Body (RefSites only carries
+    // OBJECT references - see MergeEntry's own field comments) via the shared AddSampleRows.
+    void CollectMergeDeps(MergeEntry entry, HashSet<string> seen, HashSet<string> sampleSeen, List<ObjectDependencyRow> rows)
     {
+        string parentName = string.IsNullOrEmpty(entry.DisplayName) ? "(unnamed)" : entry.DisplayName;
+        AddSampleRows(entry.ObjType, entry.Body, $"{TypeName(entry.ObjType)}: {parentName} (via sample, staged - not yet placed)", sampleSeen, rows);
         foreach (var site in entry.RefSites)
         {
             var dep = site.ResolvedContentHash is { } hash ? MergePane.TryGet(hash) : null;
             string key = site.ResolvedContentHash ?? site.TargetLoc.Label();
             if (!seen.Add(key)) continue;
+            string parentInfo = $"{TypeName(entry.ObjType)}: {parentName} (via {site.RefKind}, staged - not yet placed)";
             // No real address yet (Merge Window is bag-based, not addressed) - name is all
             // there is to show until it's actually placed.
             rows.Add(new ObjectDependencyRow(dep != null
                 ? $"{TypeName(dep.ObjType)}: {(string.IsNullOrEmpty(dep.DisplayName) ? "(unnamed)" : dep.DisplayName)}"
-                : $"{TypeName(site.TargetLoc.ObjType)}: {site.TargetLoc.Label()} - not found in any loaded PCG"));
-            if (dep != null) CollectMergeDeps(dep, seen, rows);
+                : $"{TypeName(site.TargetLoc.ObjType)}: {site.TargetLoc.Label()} - not found in any loaded PCG",
+                parentInfo, dep != null ? () => DescribeMergeChildren(dep) : null));
+            if (dep != null) CollectMergeDeps(dep, seen, sampleSeen, rows);
         }
     }
 
@@ -1533,7 +1620,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     {
         var rows = new List<ObjectDependencyRow>();
         var missing = new List<MissingDependency>();
-        CollectLocalDeps(loc, new HashSet<ObjLoc>(), rows, missing);
+        CollectLocalDeps(loc, new HashSet<ObjLoc>(), new HashSet<string>(), rows, missing);
         return (rows.Select(r => r.Description).ToList(), missing);
     }
 
@@ -1651,6 +1738,71 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         found
             ? $"{TypeName(loc.ObjType)}: {loc.Label()} - {(string.IsNullOrEmpty(name) ? "(unnamed)" : name)}"
             : $"{TypeName(loc.ObjType)}: {loc.Label()} - not found {whereMissing}";
+
+    // "Referenced by ..." line for the "More Info" popup - the object that pulled this row's
+    // own object into the walk, and which of its reference sites (timbre 4, drum track, osc1
+    // zone2, slot 9, ...) did it.
+    static string DescribeParent(ObjLoc parentLoc, string parentName, string refKind) =>
+        $"{TypeName(parentLoc.ObjType)}: {parentLoc.Label()} - {(string.IsNullOrEmpty(parentName) ? "(unnamed)" : parentName)} (via {refKind})";
+
+    // One level of a LOCAL object's own outgoing references, each annotated with which
+    // reference site it came from - the "More Info" popup's "References:" section. Deliberately
+    // NOT the transitive walk CollectLocalDeps does for the panel itself (that's for a whole
+    // selection's dependency list; this is "what does just THIS one object point at").
+    IReadOnlyList<string> DescribeLocalChildren(ObjLoc loc)
+    {
+        if (_cache.GetCurrentBody(loc.ObjType, loc.Bank, loc.Number) is not { } body) return Array.Empty<string>();
+        var lines = new List<string>();
+        foreach (var row in SampleReferenceWalker.Walk(loc.ObjType, body)) lines.Add(ResolveSampleDescription(row));
+        foreach (var (refKind, _, refLoc) in ObjectReferenceWalker.Walk(loc.ObjType, body))
+        {
+            string desc = ObjectReferenceWalker.IsAlwaysAvailable(refLoc)
+                ? DescribeRomDependency(refLoc)
+                : DescribeDependency(refLoc, _cache.Exists(refLoc.ObjType, refLoc.Bank, refLoc.Number)
+                    ? _cache.GetDisplayName(refLoc.ObjType, refLoc.Bank, refLoc.Number) : "",
+                    _cache.Exists(refLoc.ObjType, refLoc.Bank, refLoc.Number), "locally");
+            lines.Add($"{desc} (via {refKind})");
+        }
+        return lines;
+    }
+
+    // Same as DescribeLocalChildren, sourced from a loaded PCG instead of Local Library.
+    IReadOnlyList<string> DescribePcgChildren(PcgLibraryView view, ObjLoc loc)
+    {
+        var entry = view.Get(loc);
+        var body = entry == null ? null : ProgramFormatConverter.WireBodyFromPcgEntry(loc.ObjType, entry);
+        if (body == null) return Array.Empty<string>();
+        var lines = new List<string>();
+        foreach (var row in SampleReferenceWalker.Walk(loc.ObjType, body)) lines.Add(ResolveSampleDescription(row));
+        foreach (var (refKind, _, refLoc) in ObjectReferenceWalker.Walk(loc.ObjType, body))
+        {
+            var depEntry = view.Get(refLoc);
+            string desc = ObjectReferenceWalker.IsAlwaysAvailable(refLoc)
+                ? DescribeRomDependency(refLoc)
+                : DescribeDependency(refLoc, depEntry?.Name ?? "", depEntry != null, "in this PCG");
+            lines.Add($"{desc} (via {refKind})");
+        }
+        return lines;
+    }
+
+    // Same idea for a staged Merge Window entry - sourced from its own precomputed RefSites
+    // (see CollectMergeDeps's own comment for why that needs none of ObjectReferenceWalker's
+    // byte-decoding, unlike the Local/PCG variants above) plus SampleReferenceWalker straight
+    // off entry.Body for the same reason CollectMergeDeps does.
+    IReadOnlyList<string> DescribeMergeChildren(MergeEntry entry)
+    {
+        var lines = new List<string>();
+        foreach (var row in SampleReferenceWalker.Walk(entry.ObjType, entry.Body)) lines.Add(ResolveSampleDescription(row));
+        foreach (var site in entry.RefSites)
+        {
+            var dep = site.ResolvedContentHash is { } hash ? MergePane.TryGet(hash) : null;
+            string desc = dep != null
+                ? $"{TypeName(dep.ObjType)}: {(string.IsNullOrEmpty(dep.DisplayName) ? "(unnamed)" : dep.DisplayName)}"
+                : $"{TypeName(site.TargetLoc.ObjType)}: {site.TargetLoc.Label()} - not found in any loaded PCG";
+            lines.Add($"{desc} (via {site.RefKind})");
+        }
+        return lines;
+    }
 }
 
 // Display wrapper for one OpLogEntry, for the history list.
@@ -1682,9 +1834,31 @@ sealed class SessionClipboardRow
 }
 
 // Display wrapper for one entry in the "Object Dependencies" panel - see
-// LibrarianShellViewModel's ShowLocal/Pcg/MergeObjectDependencies.
+// LibrarianShellViewModel's ShowLocal/Pcg/MergeObjectDependencies. ParentInfo/DescribeChildren
+// back the "More Info..." popup (double-click or right-click a row) - who referenced this
+// object, and what it in turn references one level out. DescribeChildren is LAZY (a fresh
+// re-walk, not captured at panel-build time) so it reflects any edit made since the panel was
+// last populated, and so building the (possibly long) panel doesn't pay for detail nobody asks
+// to see.
 sealed class ObjectDependencyRow
 {
     public string Description { get; }
-    public ObjectDependencyRow(string description) => Description = description;
+    public string ParentInfo { get; }
+    public Func<IReadOnlyList<string>> DescribeChildren { get; }
+
+    // Set only for a SAMPLE dependency row (SampleReferenceWalker's own bucket) - null for a
+    // normal object-reference/ROM row, which the View colors with the panel's default text
+    // color. Drives the per-bucket text color in Views/LibrarianShellWindow.xaml's Object
+    // Dependencies list (Yellow=EXs, two blues=user-bank/live-RAM, orange=EXi external) so a
+    // sample dependency reads as a distinct kind of row at a glance, not just by its text.
+    public SampleReferenceWalker.BankBucket? SampleBucket { get; }
+
+    public ObjectDependencyRow(string description, string parentInfo = "", Func<IReadOnlyList<string>>? describeChildren = null,
+                                SampleReferenceWalker.BankBucket? sampleBucket = null)
+    {
+        Description = description;
+        ParentInfo = parentInfo;
+        DescribeChildren = describeChildren ?? (() => Array.Empty<string>());
+        SampleBucket = sampleBucket;
+    }
 }

@@ -91,12 +91,12 @@
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" x:Name="TXT_RequiresHeader" Margin="0 0 0 4"
+                <TextBlock Grid.Row="0" x:Name="TXT_RequiresHeader" Margin="4 0 0 4"
                            Foreground="{StaticResource MutedTextBrush}"/>
                 <ListBox Grid.Row="1" x:Name="LST_Requires" Height="88" FontFamily="Consolas" FontSize="11"
                          HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
 
-                <TextBlock Grid.Row="2" x:Name="TXT_UsedByHeader" Margin="0 10 0 4"
+                <TextBlock Grid.Row="2" x:Name="TXT_UsedByHeader" Margin="4 10 0 4"
                            Foreground="{StaticResource MutedTextBrush}"/>
                 <ListBox Grid.Row="3" x:Name="LST_UsedBy" Height="88" FontFamily="Consolas" FontSize="11"
                          HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Auto"/>

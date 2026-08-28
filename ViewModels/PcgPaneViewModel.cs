@@ -28,6 +28,52 @@ partial class PcgPaneViewModel : ObservableObject
     [ObservableProperty] string statusText = "";
     [ObservableProperty] string? loadedFileName;
 
+    // Live filter text for the top-right search box (LibrarianShellWindow.xaml, above the "Loaded
+    // PCG File" pane). Set on every keystroke (UpdateSourceTrigger=PropertyChanged) - ApplyFilter
+    // below is a single pass over an already-loaded tree (no disk/network I/O), so this stays cheap
+    // even on a large .pcg file.
+    [ObservableProperty] string searchText = "";
+
+    // Set by LibrarianShellViewModel (same "Func injected post-construction" pattern as LocalPane.
+    // BankTypeOf/ReadOnlyBankNames) so this pane can search Category/Sub-Category names without
+    // owning a CategoryNames of its own - that instance is shell-owned, seeded from disk and warmed
+    // from a live Global dump (LibrarianShellViewModel.WarmCategoryNamesAsync), and stays current
+    // automatically since this is read fresh on every tree rebuild rather than captured once.
+    public Func<CategoryNames>? GetCategoryNames { get; set; }
+
+    partial void OnSearchTextChanged(string value) => ApplyFilter();
+
+    // Re-applied after every RefreshTree() (a fresh load, or the tree rebuilding for any other
+    // reason) so a search typed before a reload - or a reload triggered while one is active -
+    // still filters the new tree instead of silently reverting to "show everything."
+    void ApplyFilter()
+    {
+        string query = SearchText.Trim();
+        foreach (var root in Roots) FilterNode(root, query);
+    }
+
+    // Leaf: visible iff its own SearchText contains the query (or the query is empty). Bank/
+    // type-root: visible iff any descendant is, matching the user's own framing ("searching I-A
+    // would start to show everything in the I-A banks") for free, since every leaf's SearchText
+    // already embeds its own bank label (see BuildSearchText). A group that gains a match is
+    // force-EXPANDED so the live result is never hidden behind a closed branch - but never force-
+    // COLLAPSED when it stops matching, so clearing the search doesn't fight a manual expand/
+    // collapse the user made along the way.
+    static bool FilterNode(ObjectTreeNode node, string query)
+    {
+        if (node.Children.Count == 0)
+        {
+            node.IsVisible = query.Length == 0 || node.SearchText.Contains(query, StringComparison.OrdinalIgnoreCase);
+            return node.IsVisible;
+        }
+        bool anyVisible = false;
+        foreach (var child in node.Children)
+            if (FilterNode(child, query)) anyVisible = true;
+        node.IsVisible = anyVisible;
+        if (anyVisible && query.Length > 0) node.IsExpanded = true;
+        return anyVisible;
+    }
+
     public void LoadFromComputer(Window owner)
     {
         var dlg = new OpenFileDialog { Title = "Load PCG... From Computer", Filter = "Korg PCG Files|*.pcg|All Files|*.*" };
@@ -77,6 +123,12 @@ partial class PcgPaneViewModel : ObservableObject
     // from Kronos silently does nothing" rather than "that specific attempt failed, see log."
     void Load(byte[] bytes, string fileName)
     {
+        // A leftover query from browsing the PREVIOUS file must not silently carry over and
+        // filter the new one - and just as important perf-wise, RefreshTree()'s own ApplyFilter()
+        // call would otherwise run a full non-empty-query filter pass (touching every leaf's
+        // IsVisible, not just building - see ApplyFilter's own comment) as part of EVERY load
+        // from here on, not only the load that's actually followed by a real search.
+        SearchText = "";
         var file = PcgFile.Open(bytes);
         if (file == null)
         {
@@ -152,6 +204,7 @@ partial class PcgPaneViewModel : ObservableObject
             makeLeaf: MakeLeafNode,
             bankLabel: BankNodeLabel,
             keepEmptyRoots: false);
+        ApplyFilter();
         TreeRefreshed?.Invoke();
     }
 
@@ -169,7 +222,62 @@ partial class PcgPaneViewModel : ObservableObject
     {
         string name = _view!.GetName(loc) ?? "";
         string label = string.IsNullOrEmpty(name) ? loc.Label() : $"{loc.Label()}  {name}";
-        return new ObjectTreeNode(label, loc);
+        // Unlike the Local pane (LocalLibraryCache.HasSampleDependency, a cached write-time bit -
+        // see its own comment for why), the whole .pcg file is already fully in memory here, so
+        // there's no blob-read cost to computing this fresh per leaf.
+        var entry = _view.Get(loc);
+        byte[]? body = entry == null ? null : ProgramFormatConverter.WireBodyFromPcgEntry(loc.ObjType, entry);
+        // Walked ONCE and shared with BuildSearchText below - this used to run SampleReferenceWalker.
+        // Walk twice per leaf (once here, once again inside BuildSearchText), doubling a walk that
+        // itself allocates a Dictionary + row list, across every Program/DrumKit/WaveSequence in the
+        // file on every load.
+        var sampleRows = body == null ? Array.Empty<SampleReferenceWalker.SampleDependencyRow>() : SampleReferenceWalker.Walk(loc.ObjType, body);
+        // Built eagerly, right here - see ObjectTreeNode.SearchText's own comment for why (the
+        // lazy version this replaced was measured at ~120ms total against a real 5,343-object
+        // file, and didn't fix the reported freeze anyway).
+        string searchText = BuildSearchText(loc, name, entry, body, sampleRows);
+        return new ObjectTreeNode(label, loc, hasSampleDependency: sampleRows.Count > 0, searchText: searchText);
+    }
+
+    // Everything searchable about one leaf (LibrarianShellWindow.xaml's PCG-pane search box),
+    // joined into one haystack: label already covers Name + Bank type (loc.Label() embeds the bank,
+    // e.g. "I-A:000", so "searching I-A" matches for free); Category/Sub-Category names when a
+    // CategoryNames source is wired up; the EXi engine name for an EXi Program (so "AL-1" matches
+    // both a NAME containing "AL-1" and a Program that IS one); and this object's own direct
+    // (one-hop, not transitive) dependencies - object references plus sample-bank references, the
+    // same two walkers the Object Dependencies panel itself uses. Deliberately excludes anything
+    // never shown in the Kronos UI (UUIDs, content hashes) - the user can't act on those anyway.
+    string BuildSearchText(ObjLoc loc, string name, PcgObjectEntry? entry, byte[]? body, IReadOnlyList<SampleReferenceWalker.SampleDependencyRow> sampleRows)
+    {
+        var parts = new List<string> { loc.Label(), name, ObjectTypeRegistry.Get(loc.ObjType).DisplayName };
+        if (body == null) return string.Join(" | ", parts);
+
+        if (loc.ObjType is LibObj.Program or LibObj.Combi && GetCategoryNames?.Invoke() is { } categoryNames)
+        {
+            var (category, sub) = loc.ObjType == LibObj.Program ? ProgramBody.ReadCategory(body) : CombiBody.ReadCategory(body);
+            parts.Add(categoryNames.CategoryLabel(loc.ObjType, category));
+            parts.Add(categoryNames.SubCategoryLabel(loc.ObjType, category, sub));
+        }
+
+        if (loc.ObjType == LibObj.Program && entry!.IsExi && LibRefs.ProgramEngineName(body) is { } engine)
+            parts.Add(engine);
+
+        // Deduped, same discipline as LibrarianShellViewModel.CollectPcgDeps's own `seen` set - a
+        // Combi has 16 timbres, and a Set List up to 128 slots; without this, every one of them
+        // pointing at the same Program/Combi (a common, even deliberate, real-world pattern) added
+        // its label+name again per SLOT, ballooning that leaf's haystack - and therefore every
+        // keystroke's Contains cost against it - by up to 16-128x for no additional search value.
+        var seenRefs = new HashSet<ObjLoc>();
+        foreach (var (_, _, refLoc) in ObjectReferenceWalker.Walk(loc.ObjType, body))
+        {
+            if (!seenRefs.Add(refLoc)) continue;
+            parts.Add(refLoc.Label());
+            if (_view!.GetName(refLoc) is { Length: > 0 } refName) parts.Add(refName);
+        }
+        foreach (var row in sampleRows)
+            parts.Add(row.Description);
+
+        return string.Join(" | ", parts);
     }
 
     // Program banks are stored in a .pcg file as one whole-bank chunk tagged either MBK1

@@ -1527,7 +1527,18 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         // calls BuildCatalogAsync() again, which is a no-op if that build already finished, or
         // just awaits whatever's left of it otherwise. Either way, opening the window no longer
         // depends on paying this cost cold.
-        _librarianShellWin = new LibrarianShellWindow(_sysExService, _localLibraryCache, _settings, _host).OwnedBy(this);
+        //
+        // Deliberately NOT .OwnedBy(this) - same reasoning as OpenSampleEditorWindow's own
+        // comment: a WPF/Win32 owned window is permanently kept ABOVE its owner in z-order for
+        // as long as both are visible, which was exactly the complaint (clicking back to
+        // MainWindow while the Librarian stays open didn't bring MainWindow to front). Centering
+        // and "closes when MainWindow closes" are reproduced manually - the Left/Top below and
+        // OnClosing's own explicit _librarianShellWin.Close() call.
+        var win = new LibrarianShellWindow(_sysExService, _localLibraryCache, _settings, _host)
+            { WindowStartupLocation = WindowStartupLocation.Manual };
+        win.Left = Left + (ActualWidth - win.Width) / 2;
+        win.Top = Top + (ActualHeight - win.Height) / 2;
+        _librarianShellWin = win;
         _librarianShellWin.Closed += (_, _) =>
         {
             _librarianShellWin = null;

@@ -30,6 +30,8 @@ public partial class App : Application
             fails = Librarian.SelfTest();
             fails.AddRange(BatchLibrarian.SelfTest());
             fails.AddRange(ObjectBodySelfTests.SelfTest());
+            fails.AddRange(SampleReferenceWalkerSelfTests.SelfTest());
+            fails.AddRange(ExsOptionFileSelfTests.SelfTest());
             fails.AddRange(LocalLibrarySelfTests.SelfTest());
             fails.AddRange(LocalLibrarySelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(LocalEditOpsSelfTests.SelfTestAsync().GetAwaiter().GetResult());
@@ -37,6 +39,7 @@ public partial class App : Application
             fails.AddRange(DataSafetySelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(PcgFileSelfTests.SelfTest());
             fails.AddRange(PcgPaneLoadSelfTests.SelfTest());
+            fails.AddRange(PcgSearchFilterSelfTests.SelfTest());
             fails.AddRange(CrossPanePlacementSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(LocalCutCopyPasteSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(ReadOnlyBankBrowseSelfTests.SelfTestAsync().GetAwaiter().GetResult());

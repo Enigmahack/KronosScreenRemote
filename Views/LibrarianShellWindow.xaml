@@ -8,8 +8,7 @@
         Width="1280" Height="800"
         MinWidth="900" MinHeight="560"
         ResizeMode="CanResize"
-        WindowStartupLocation="CenterOwner"
-        ShowInTaskbar="False">
+        ShowInTaskbar="True">
     <Window.CommandBindings>
         <CommandBinding Command="ApplicationCommands.Undo" Executed="OnUndoCommand" CanExecute="OnCanUndoCommand"/>
     </Window.CommandBindings>
@@ -23,6 +22,18 @@
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
 
         <Style x:Key="LibraryTreeStyle" TargetType="TreeView" BasedOn="{StaticResource {x:Type TreeView}}">
+            <!-- Virtualize container realization. Without this, a large .pcg (thousands of
+                 objects) realized one TreeViewItem per node, which froze the UI for ~10s on
+                 the FIRST broad search (FilterNode force-expands every matching branch, see
+                 PcgPaneViewModel.FilterNode) and again on the next load (ObjectTreeScaffold.
+                 Rebuild's roots.Clear() tears those containers down, then RestoreExpandedKeys
+                 re-expands them, so WPF re-realizes every one). Recycling bounds realized
+                 containers to the viewport, so broad-filter/expand-all/reload all stay
+                 O(visible) instead of O(total). Expansion/selection state already lives on the
+                 model (ObjectTreeNode.IsExpanded/IsSelected), never on the container, so
+                 virtualization can't lose it. -->
+            <Setter Property="VirtualizingStackPanel.IsVirtualizing" Value="True"/>
+            <Setter Property="VirtualizingStackPanel.VirtualizationMode" Value="Recycling"/>
             <Style.Resources>
                 <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="Transparent"/>
                 <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="#FFE0E0E0"/>
@@ -87,6 +98,11 @@
                                 <Separator x:Name="SEP_2"/>
                                 <MenuItem x:Name="MI_Delete" Header="Delete" InputGestureText="Del" Click="OnDeleteMenuItem"
                                           ToolTip="Removes this from your local library only - hardware is unaffected until Sync/Commit; Pull restores it."/>
+                                <Separator/>
+                                <MenuItem Header="Expand Selected" Click="OnLocalExpandSelectedMenuItem"/>
+                                <MenuItem Header="Collapse Selected" Click="OnLocalCollapseSelectedMenuItem"/>
+                                <MenuItem Header="Expand All" Click="OnLocalExpandAllMenuItem"/>
+                                <MenuItem Header="Collapse All" Click="OnLocalCollapseAllMenuItem"/>
                             </ContextMenu>
                         </TextBlock.ContextMenu>
                     </TextBlock>
@@ -106,7 +122,7 @@
                         </TextBlock.Style>
                     </TextBlock>
 
-                    <TextBlock Text="●" FontSize="9" Margin="5 0 0 0" VerticalAlignment="Center">
+                    <TextBlock Text="●" FontSize="9" FontWeight="Bold" Margin="5 0 0 0" VerticalAlignment="Center">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
                                 <Setter Property="Visibility" Value="Collapsed"/>
@@ -118,6 +134,7 @@
                                     </DataTrigger>
                                     <DataTrigger Binding="{Binding DependencyStatus}" Value="False">
                                         <Setter Property="Visibility" Value="Visible"/>
+                                        <Setter Property="Text" Value="!"/>
                                         <Setter Property="Foreground" Value="{StaticResource DangerTextBrush}"/>
                                         <Setter Property="ToolTip" Value="Missing one or more dependencies - place them locally before Commit."/>
                                     </DataTrigger>
@@ -125,24 +142,41 @@
                             </Style>
                         </TextBlock.Style>
                     </TextBlock>
+
+                    <TextBlock Text="●" FontSize="9" Margin="5 0 0 0" VerticalAlignment="Center"
+                               Foreground="{StaticResource SampleDependencyDotBrush}"
+                               Visibility="{Binding HasSampleDependency, Converter={StaticResource BoolToVis}}"
+                               ToolTip="References a sample (Sampling Mode/RAM, EXs, or a User/3rd-Party sample bank) - see Object Dependencies below for which."/>
                 </StackPanel>
             </Border>
         </HierarchicalDataTemplate>
 
         <HierarchicalDataTemplate x:Key="PcgNodeTemplate" DataType="{x:Type vm:ObjectTreeNode}" ItemsSource="{Binding Children}">
             <Border Padding="2 0" HorizontalAlignment="Stretch" Style="{StaticResource TreeNodeSelectionStyle}">
-                <TextBlock Text="{Binding Label}" FontFamily="Consolas" FontSize="12"
-                           PreviewMouseLeftButtonDown="OnPcgPreviewMouseDown"
-                           PreviewMouseLeftButtonUp="OnPcgNodeMouseUp"
-                           PreviewMouseRightButtonDown="OnPcgNodePreviewRightDown"
-                           PreviewMouseMove="OnPcgPreviewMouseMove"
-                           ContextMenuOpening="OnPcgContextMenuOpening">
-                    <TextBlock.ContextMenu>
-                        <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                            <MenuItem x:Name="MI_MoveToMerge" Header="Move to Merge Window" Click="OnMoveToMergeMenuItem"/>
-                        </ContextMenu>
-                    </TextBlock.ContextMenu>
-                </TextBlock>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="{Binding Label}" FontFamily="Consolas" FontSize="12"
+                               PreviewMouseLeftButtonDown="OnPcgPreviewMouseDown"
+                               PreviewMouseLeftButtonUp="OnPcgNodeMouseUp"
+                               PreviewMouseRightButtonDown="OnPcgNodePreviewRightDown"
+                               PreviewMouseMove="OnPcgPreviewMouseMove"
+                               ContextMenuOpening="OnPcgContextMenuOpening">
+                        <TextBlock.ContextMenu>
+                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                                <MenuItem x:Name="MI_MoveToMerge" Header="Move to Merge Window" Click="OnMoveToMergeMenuItem"/>
+                                <Separator/>
+                                <MenuItem Header="Expand Selected" Click="OnPcgExpandSelectedMenuItem"/>
+                                <MenuItem Header="Collapse Selected" Click="OnPcgCollapseSelectedMenuItem"/>
+                                <MenuItem Header="Expand All" Click="OnPcgExpandAllMenuItem"/>
+                                <MenuItem Header="Collapse All" Click="OnPcgCollapseAllMenuItem"/>
+                            </ContextMenu>
+                        </TextBlock.ContextMenu>
+                    </TextBlock>
+
+                    <TextBlock Text="●" FontSize="9" Margin="5 0 0 0" VerticalAlignment="Center"
+                               Foreground="{StaticResource SampleDependencyDotBrush}"
+                               Visibility="{Binding HasSampleDependency, Converter={StaticResource BoolToVis}}"
+                               ToolTip="References a sample (Sampling Mode/RAM, EXs, or a User/3rd-Party sample bank) - see Object Dependencies below for which."/>
+                </StackPanel>
             </Border>
         </HierarchicalDataTemplate>
 
@@ -158,17 +192,38 @@
                         <TextBlock.ContextMenu>
                             <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
                                 <MenuItem x:Name="MI_RemoveFromMerge" Header="Remove" Click="OnRemoveFromMergeMenuItem"/>
+                                <Separator/>
+                                <MenuItem Header="Expand Selected" Click="OnMergeExpandSelectedMenuItem"/>
+                                <MenuItem Header="Collapse Selected" Click="OnMergeCollapseSelectedMenuItem"/>
+                                <MenuItem Header="Expand All" Click="OnMergeExpandAllMenuItem"/>
+                                <MenuItem Header="Collapse All" Click="OnMergeCollapseAllMenuItem"/>
                             </ContextMenu>
                         </TextBlock.ContextMenu>
                     </TextBlock>
                     <TextBlock Text="●" FontSize="9" Margin="5 0 0 0" VerticalAlignment="Center" Foreground="#FFD4C020"
                                Visibility="{Binding SharedTooltip, Converter={StaticResource NullToCollapsed}}"
                                ToolTip="{Binding SharedTooltip}"/>
+                    <TextBlock Text="●" FontSize="9" Margin="5 0 0 0" VerticalAlignment="Center"
+                               Foreground="{StaticResource SampleDependencyDotBrush}"
+                               Visibility="{Binding HasSampleDependency, Converter={StaticResource BoolToVis}}"
+                               ToolTip="References a sample (Sampling Mode/RAM, EXs, or a User/3rd-Party sample bank) - see Object Dependencies below for which."/>
                 </StackPanel>
             </Border>
         </HierarchicalDataTemplate>
         <Style x:Key="LibraryTreeItemStyle" TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
             <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+        </Style>
+
+        <!-- PCG pane only (TV_Pcg) - collapses whatever the live search filter excludes
+             (PcgPaneViewModel.IsVisible/FilterNode). Local/Merge keep LibraryTreeItemStyle
+             unchanged: ObjectTreeNode.IsVisible defaults true, so this would be a no-op for them
+             anyway, but there's no reason for their trees to even carry the trigger. -->
+        <Style x:Key="PcgTreeItemStyle" TargetType="TreeViewItem" BasedOn="{StaticResource LibraryTreeItemStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding IsVisible}" Value="False">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                </DataTrigger>
+            </Style.Triggers>
         </Style>
     </Window.Resources>
     <Grid Margin="10">
@@ -178,32 +233,44 @@
             <RowDefinition Height="1*"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0 0 0 8">
-            <Button x:Name="BTN_Sync" Content="Sync Library" Width="120"
-                    Command="{Binding SyncLibraryCommand}"
-                    ToolTip="Pull the whole library (lazy digest-diff, or Force Full Sync below), then push every pending local change."/>
-            <CheckBox Content="Force Full Sync" VerticalAlignment="Center" Margin="10 0 0 0"
-                      IsChecked="{Binding ForceFullPull}"
-                      ToolTip="Instead of syncing changes, forces a complete sync for all programs/combis/set lists on the Kronos."/>
-            <Button x:Name="BTN_Undo" Content="Undo" Padding="10 2" Margin="16 0 0 0"
-                    Command="{Binding UndoCommand}" ToolTip="{Binding UndoLabel}"/>
-            <TextBlock VerticalAlignment="Center" Margin="16 0 0 0"
-                       TextTrimming="CharacterEllipsis" FontWeight="Bold"
-                       Text="{Binding StatusText}" ToolTip="{Binding StatusText, Converter={StaticResource EmptyToNull}}">
-                <TextBlock.Style>
-                    <Style TargetType="TextBlock">
-                        <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding StatusIsSuccess}" Value="True">
-                                <Setter Property="Foreground" Value="{StaticResource SuccessBrush}"/>
-                            </DataTrigger>
-                        </Style.Triggers>
-                    </Style>
-                </TextBlock.Style>
-            </TextBlock>
-        </StackPanel>
+        <DockPanel Grid.Row="0" Margin="0 0 0 8">
+            <!-- Docked Right so it sits at the top-right of the window, directly above the
+                 "Loaded PCG File" pane (Grid.Column="4" below) - a live filter over that pane's
+                 tree only (Local Library/Merge Window are untouched). -->
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="16 0 0 0">
+                <TextBlock Text="Search PCG:" VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                <TextBox x:Name="TXT_PcgSearch" Width="220" Margin="6 0 0 0"
+                         Text="{Binding PcgPane.SearchText, UpdateSourceTrigger=PropertyChanged, Delay=200}"
+                         ToolTip="Live filter for the Loaded PCG File tree below - matches name, bank (e.g. 'I-A'), category, EXi engine type (e.g. 'AL-1' matches both a name containing it and a Program that IS one), and what the object itself references. Case-insensitive."/>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal">
+                <Button x:Name="BTN_Sync" Content="Sync Library" Width="120"
+                        Command="{Binding SyncLibraryCommand}"
+                        ToolTip="Pull the whole library (lazy digest-diff, or Force Full Sync below), then push every pending local change."/>
+                <CheckBox Content="Force Full Sync" VerticalAlignment="Center" Margin="10 0 0 0"
+                          IsChecked="{Binding ForceFullPull}"
+                          ToolTip="Instead of syncing changes, forces a complete sync for all programs/combis/set lists on the Kronos."/>
+                <Button x:Name="BTN_Undo" Content="Undo" Padding="10 2" Margin="16 0 0 0"
+                        Command="{Binding UndoCommand}" ToolTip="{Binding UndoLabel}"/>
+                <TextBlock VerticalAlignment="Center" Margin="16 0 0 0"
+                           TextTrimming="CharacterEllipsis" FontWeight="Bold"
+                           Text="{Binding StatusText}" ToolTip="{Binding StatusText, Converter={StaticResource EmptyToNull}}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding StatusIsSuccess}" Value="True">
+                                    <Setter Property="Foreground" Value="{StaticResource SuccessBrush}"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StackPanel>
+        </DockPanel>
 
         <!-- Non-refusable ("CHECK:") or refusal ("REFUSE:") warnings from the last Sync/Commit. -->
         <Border Grid.Row="1" x:Name="BRD_Warning" Background="#FF4A3410" BorderBrush="#FFC08A20"
@@ -279,41 +346,53 @@
 
                     <Border Grid.Row="3" Margin="0 6 0 0" Padding="0 5 0 0"
                             BorderThickness="0 1 0 0" BorderBrush="{StaticResource MutedTextBrush}"
-                            ToolTip="Each row can show up to two dots: the FIRST is its edit state, the SECOND its dependency state. Row tints show conflict / pending-delete / read-only status.">
+                            ToolTip="A conflicted/pending-delete/read-only row is tinted instead of dotted. See the sample legend at the very bottom of the window for the blue sample-reference dot.">
                         <StackPanel Orientation="Vertical">
                             <WrapPanel Orientation="Horizontal">
-                                <TextBlock Text="●" FontSize="9" VerticalAlignment="Center"
-                                           Foreground="{StaticResource DangerTextBrush}"/>
-                                <TextBlock Text="1st: edited locally" FontSize="10" Margin="3 0 12 0"
-                                           VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                                <StackPanel Orientation="Horizontal" Margin="0 0 12 2">
+                                    <TextBlock Text="●" FontSize="9" VerticalAlignment="Center"
+                                               Foreground="{StaticResource DangerTextBrush}"/>
+                                    <TextBlock Text="edited locally" FontSize="10" Margin="4 0 0 0"
+                                               VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                                </StackPanel>
 
-                                <TextBlock Text="●" FontSize="9" VerticalAlignment="Center"
-                                           Foreground="{StaticResource CommittedHighlightBrush}"/>
-                                <TextBlock Text="2nd: dependencies OK" FontSize="10" Margin="3 0 12 0"
-                                           VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                                <StackPanel Orientation="Horizontal" Margin="0 0 12 2">
+                                    <TextBlock Text="●" FontSize="9" VerticalAlignment="Center"
+                                               Foreground="{StaticResource CommittedHighlightBrush}"/>
+                                    <TextBlock Text="dependencies OK" FontSize="10" Margin="4 0 0 0"
+                                               VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                                </StackPanel>
 
-                                <TextBlock Text="●" FontSize="9" VerticalAlignment="Center"
-                                           Foreground="{StaticResource DangerTextBrush}"/>
-                                <TextBlock Text="2nd: dependencies missing" FontSize="10" Margin="3 0 0 0"
-                                           VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                                <StackPanel Orientation="Horizontal" Margin="0 0 0 2">
+                                    <TextBlock Text="!" FontSize="11" FontWeight="Bold" VerticalAlignment="Center"
+                                               Foreground="{StaticResource DangerTextBrush}"/>
+                                    <TextBlock Text="dependencies missing" FontSize="10" Margin="4 0 0 0"
+                                               VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                                </StackPanel>
                             </WrapPanel>
 
                             <WrapPanel Orientation="Horizontal" Margin="0 4 0 0">
-                                <Border Width="11" Height="11" VerticalAlignment="Center"
-                                        BorderThickness="1" BorderBrush="{StaticResource MutedTextBrush}"
-                                        Background="{StaticResource ConflictHighlightBrush}"/>
-                                <TextBlock Text="conflicted" FontSize="10" Margin="3 0 12 0"
-                                           VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                                <StackPanel Orientation="Horizontal" Margin="0 0 12 2">
+                                    <TextBlock Text="⚠" FontSize="11" VerticalAlignment="Center"
+                                               Foreground="{StaticResource WarningTriangleBrush}"/>
+                                    <TextBlock Text="conflicted" FontSize="10" Margin="4 0 0 0"
+                                               VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                                </StackPanel>
 
-                                <Border Width="11" Height="11" VerticalAlignment="Center" Opacity="0.6"
-                                        BorderThickness="1" BorderBrush="{StaticResource MutedTextBrush}"
-                                        Background="{StaticResource PendingDeleteHighlightBrush}"/>
-                                <TextBlock Text="marked for deletion" FontSize="10" Margin="3 0 12 0"
-                                           VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
-                                <TextBlock Text="Aa" FontSize="10" FontFamily="Consolas" Opacity="0.6"
-                                           VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
-                                <TextBlock Text="read-only (GM/g)" FontSize="10" Margin="3 0 0 0"
-                                           VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                                <StackPanel Orientation="Horizontal" Margin="0 0 12 2">
+                                    <Border Width="11" Height="11" VerticalAlignment="Center" Opacity="0.6"
+                                            BorderThickness="1" BorderBrush="{StaticResource MutedTextBrush}"
+                                            Background="{StaticResource PendingDeleteHighlightBrush}"/>
+                                    <TextBlock Text="marked for deletion" FontSize="10" Margin="4 0 0 0"
+                                               VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                                </StackPanel>
+
+                                <StackPanel Orientation="Horizontal" Margin="0 0 0 2">
+                                    <TextBlock Text="Aa" FontSize="10" FontFamily="Consolas" Opacity="0.6"
+                                               VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                                    <TextBlock Text="read-only (GM/g)" FontSize="10" Margin="4 0 0 0"
+                                               VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                                </StackPanel>
                             </WrapPanel>
                         </StackPanel>
                     </Border>
@@ -326,6 +405,7 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     
                     <Grid Grid.Row="0" Margin="0 0 0 6">
@@ -375,6 +455,18 @@
                               ItemTemplate="{StaticResource MergeNodeTemplate}"
                               ItemContainerStyle="{StaticResource LibraryTreeItemStyle}"
                               AllowDrop="True" DragOver="OnMergeDragOver" Drop="OnMergeDrop"/>
+
+                    <Border Grid.Row="3" Margin="0 6 0 0" Padding="0 5 0 0"
+                            BorderThickness="0 1 0 0" BorderBrush="{StaticResource MutedTextBrush}"
+                            ToolTip="A dot marks an object staged/referenced more than once. See the sample legend at the very bottom of the window for the blue sample-reference dot.">
+                        <WrapPanel Orientation="Horizontal">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="●" FontSize="9" VerticalAlignment="Center" Foreground="#FFD4C020"/>
+                                <TextBlock Text="shared by multiple Combis/Songs" FontSize="10" Margin="4 0 0 0"
+                                           VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                            </StackPanel>
+                        </WrapPanel>
+                    </Border>
                 </Grid>
             </GroupBox>
 
@@ -402,7 +494,7 @@
                     <TreeView Grid.Row="2" x:Name="TV_Pcg" ItemsSource="{Binding PcgPane.Roots}"
                               Style="{StaticResource LibraryTreeStyle}"
                               ItemTemplate="{StaticResource PcgNodeTemplate}"
-                              ItemContainerStyle="{StaticResource LibraryTreeItemStyle}"/>
+                              ItemContainerStyle="{StaticResource PcgTreeItemStyle}"/>
                 </Grid>
             </GroupBox>
         </Grid>
@@ -445,15 +537,104 @@
             </GroupBox>
 
             <GroupBox Grid.Column="2" Header="Object Dependencies"
-                      ToolTip="Every Program/Combi the currently selected Combi(s) or Set List(s) reference, including nested dependencies.">
-                <ListBox Margin="6" ItemsSource="{Binding ObjectDependencyRows}" FontFamily="Consolas" FontSize="11"
-                         DisplayMemberPath="Description"
+                      ToolTip="Every Program/Combi/Drum Kit/Wave Sequence the currently selected object(s) reference, including nested dependencies. Double-click or right-click a row for more info.">
+              <Grid Margin="6">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <Button Grid.Row="0" x:Name="BTN_ResolveSampleNames" Content="Resolve Sample Bank Names..." Padding="10 2"
+                        Margin="0 0 0 6" HorizontalAlignment="Left" Click="OnResolveSampleNamesButton"
+                        ToolTip="Connects to the Kronos over FTP and reads /korg/rw/Options to turn a raw EXs number or 3rd-party sample bank shown below into its real name - e.g. 'EXs18' becomes 'EXs18 - Funk and Soul Brass'. Only covers banks actually installed on this instrument; a live Sampling Mode (RAM) reference can never be named (see the sample legend at the very bottom of the window)."/>
+
+                <ListBox Grid.Row="1" x:Name="LST_ObjectDependencies" ItemsSource="{Binding ObjectDependencyRows}" FontFamily="Consolas" FontSize="11"
                          Background="{StaticResource PanelBackgroundBrush}" Foreground="{StaticResource TextBrush}"
-                         BorderBrush="{StaticResource BorderBrush1}"/>
+                         BorderBrush="{StaticResource BorderBrush1}"
+                         MouseDoubleClick="OnObjectDependencyRowDoubleClick">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <!-- Color-codes a SAMPLE dependency row by its bucket (SampleBucket is
+                                 null for a normal object-reference/ROM row, which keeps this
+                                 ListBox's own default Foreground) - see ObjectDependencyRow's own
+                                 comment. -->
+                            <TextBlock Text="{Binding Description}">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding SampleBucket}" Value="Exs">
+                                                <Setter Property="Foreground" Value="{StaticResource SampleExsTextBrush}"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding SampleBucket}" Value="UserOrThirdParty">
+                                                <Setter Property="Foreground" Value="{StaticResource SampleUserBankTextBrush}"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding SampleBucket}" Value="SamplingModeRam">
+                                                <Setter Property="Foreground" Value="{StaticResource SampleRamTextBrush}"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding SampleBucket}" Value="ExiExternal">
+                                                <Setter Property="Foreground" Value="{StaticResource SampleExiExternalTextBrush}"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <EventSetter Event="PreviewMouseRightButtonDown" Handler="OnObjectDependencyRowRightDown"/>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem Header="More Info..." Click="OnObjectDependencyMoreInfo"/>
+                        </ContextMenu>
+                    </ListBox.ContextMenu>
+                </ListBox>
+              </Grid>
             </GroupBox>
         </Grid>
 
-        <DockPanel Grid.Row="4" Margin="0 8 0 0">
+        <!-- Shared sample-dependency legend - applies to every tree above (the blue dot) AND to
+             the Object Dependencies panel's own text colors, so it lives once here rather than
+             repeated per pane (it used to be, before the user asked for this consolidation). -->
+        <Border Grid.Row="4" Margin="0 8 0 0" Padding="0 5 0 0"
+                BorderThickness="0 1 0 0" BorderBrush="{StaticResource MutedTextBrush}"
+                ToolTip="Applies to every tree above (Local Library, Merge Window, Loaded PCG File) and to the Object Dependencies panel's own text colors.">
+            <WrapPanel Orientation="Horizontal">
+                <StackPanel Orientation="Horizontal" Margin="0 0 16 2">
+                    <TextBlock Text="●" FontSize="9" VerticalAlignment="Center"
+                               Foreground="{StaticResource SampleDependencyDotBrush}"/>
+                    <TextBlock Text="Sample Dependency" FontSize="10" Margin="4 0 0 0"
+                               VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                </StackPanel>
+
+                <TextBlock Text="Sample Dependency Type:" FontSize="10" Margin="0 0 6 2"
+                           VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                <StackPanel Orientation="Horizontal" Margin="0 0 12 2">
+                    <TextBlock Text="■" FontSize="10" VerticalAlignment="Center" Foreground="{StaticResource SampleExsTextBrush}"/>
+                    <TextBlock Text="EXs" FontSize="10" Margin="4 0 0 0"
+                               VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0 0 12 2">
+                    <TextBlock Text="■" FontSize="10" VerticalAlignment="Center" Foreground="{StaticResource SampleUserBankTextBrush}"/>
+                    <TextBlock Text="User/3rd-Party bank" FontSize="10" Margin="4 0 0 0"
+                               VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0 0 12 2">
+                    <TextBlock Text="■" FontSize="10" VerticalAlignment="Center" Foreground="{StaticResource SampleRamTextBrush}"/>
+                    <TextBlock Text="live Sampling Mode (RAM)" FontSize="10" Margin="4 0 0 0"
+                               VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Margin="0 0 0 2">
+                    <TextBlock Text="■" FontSize="10" VerticalAlignment="Center" Foreground="{StaticResource SampleExiExternalTextBrush}"/>
+                    <TextBlock Text="EXi (MOD-7/STR-1) external bank" FontSize="10" Margin="4 0 0 0"
+                               VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                </StackPanel>
+            </WrapPanel>
+        </Border>
+
+        <DockPanel Grid.Row="5" Margin="0 8 0 0">
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="16 0 0 0">
                 <Button x:Name="BTN_Cancel" Content="Cancel" Width="90" Margin="0 0 8 0"
                         Click="OnCancelButton"

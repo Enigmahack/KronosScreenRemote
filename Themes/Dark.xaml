@@ -593,6 +593,52 @@
          of just disappearing. Same content-level-Border technique, same reason. -->
     <SolidColorBrush x:Key="PendingDeleteHighlightBrush" Color="#FF3A3A3A"/>
 
+    <!-- Sample-dependency tree indicator dot (Views/LibrarianShellWindow.xaml's three
+         HierarchicalDataTemplates, ObjectTreeNode.HasSampleDependency) - a dedicated blue,
+         distinct from every other dot/swatch on the row (edit=red, dependency-ok=green,
+         dependency-missing=red "!", Merge's own pre-existing "shared referrer" dot=yellow) and
+         from both sample-bucket blues below (SampleUserBankTextBrush/SampleRamTextBrush) - this
+         is a generic "references a sample of SOME kind" signal, not tied to one bucket, so it
+         deliberately isn't yellow (which would read as "this is specifically an EXs") or either
+         bucket blue (which would read as "this is specifically that bucket"). See
+         Core/LocalLibrary/SampleReferenceWalker.cs for why a sample dependency can never be
+         resolved/repointed the way an object dependency can. -->
+    <SolidColorBrush x:Key="SampleDependencyDotBrush" Color="#FF4A90D9"/>
+
+    <!-- Legend-only "conflicted" warning glyph (Views/LibrarianShellWindow.xaml's per-pane
+         legends) - a bright, unambiguous warning yellow, deliberately far from every other
+         yellow/orange/amber on the row (ConflictHighlightBrush's own muted amber row-tint,
+         SampleExsTextBrush's gold, SampleExiExternalTextBrush's orange) so the legend's
+         conflicted marker is never confused with a nearby sample-bucket swatch. Paired with a
+         warning-triangle glyph (⚠) rather than a plain color swatch for the same reason - shape
+         is a second, color-independent signal. Legend-only: the actual conflicted ROW tint in
+         the tree is still ConflictHighlightBrush (a full-row background, not a small glyph, so a
+         triangle shape doesn't apply there). -->
+    <SolidColorBrush x:Key="WarningTriangleBrush" Color="#FFFFD400"/>
+
+    <!-- Sample-bank bucket colors for the Object Dependencies panel (ObjectDependencyRow.
+         SampleBucket, Views/LibrarianShellWindow.xaml's LST_ObjectDependencies) - one color per
+         SampleReferenceWalker.BankBucket, so the KIND of sample dependency is visible without
+         reading the text. Distinct from every dot/highlight brush above so a sample row never
+         gets mistaken for a conflict/committed/pending-delete row. -->
+    <!-- EXs (factory or 3rd-party expansion, EXs1-999) - resolvable to a real bank name via its
+         /korg/rw/Options/Sxxx option file (live instrument only; see ExsOptionIndex). -->
+    <SolidColorBrush x:Key="SampleExsTextBrush" Color="#FFD9C23A"/>
+    <!-- User/3rd-party .KSC sample bank - resolvable to a real name via its own #uuid: line
+         (Core/Sample/KscCollection.cs) once that lookup is wired up (not yet - see
+         SampleReferenceWalker's header comment). -->
+    <SolidColorBrush x:Key="SampleUserBankTextBrush" Color="#FF4FA3D8"/>
+    <!-- Live Sampling Mode (RAM) session ("Smp: Old RAM") - the ONE bucket with genuinely no
+         persistent identity by Kronos protocol design (whatever the sampling engine had loaded
+         at save time), so this can never resolve to a name offline OR online. A distinct, more
+         muted blue from the resolvable user-bank shade above signals "can't be named," not just
+         "not yet named." -->
+    <SolidColorBrush x:Key="SampleRamTextBrush" Color="#FF5C7FA3"/>
+    <!-- EXi (MOD-7/STR-1) PCM OSC external sample bank - the bank identity blob is EXi's own
+         undecoded internal binary encoding (see SampleReferenceWalker's header comment), so
+         there is no UUID to resolve at all today, factory or 3rd-party. -->
+    <SolidColorBrush x:Key="SampleExiExternalTextBrush" Color="#FFE0954A"/>
+
     <Style TargetType="TreeView">
         <Setter Property="Background"  Value="{StaticResource PanelBackgroundBrush}"/>
         <Setter Property="Foreground"  Value="{StaticResource TextBrush}"/>

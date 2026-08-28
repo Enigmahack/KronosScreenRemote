@@ -41,11 +41,24 @@ using System.IO;
 // LocalLibraryCache.IsInitSlot degrades those to the name-only check against the cached
 // DisplayName, which is EXACT for Programs and catches the named case for Combis - so an already-
 // synced library gets init-aware free slots immediately, with no re-Pull and no migration sweep.
+//
+// HasSampleDependency (Program/Drum Kit/Wave Sequence only) is the same "compute once at write
+// time" story again, backing the tree's yellow sample-dependency dot (Views/
+// LibrarianShellWindow.xaml, ObjectTreeNode.HasSampleDependency) via SampleReferenceWalker.Walk.
+// Defaults to false (no dot) so every existing/deserialized entry needs no value supplied - a
+// library synced before this field existed simply shows no dot until the object is next pulled/
+// pushed/edited (or a Force Full Sync re-pulls everything), same "no migration sweep" tradeoff
+// IsInit above already accepts, deliberately NOT given the same eager RecomputeXxx sweep
+// HasResolvedDependencies has: that sweep is scoped to the (small) dirty Combi/Set List set and
+// reuses bodies the catalog build already read for an unrelated reason: this bit instead applies
+// to potentially every Program/Drum Kit/Wave Sequence in the whole library, which no existing
+// pass already reads the body of - adding one would risk the exact whole-library blob-read stall
+// this file's own header comment describes.
 sealed record LocalIndexEntry(
     byte Version, string BaselineHash, string CurrentHash, string DisplayName,
     DateTime? LastPulledUtc, DateTime? LastPushedUtc, bool Conflicted,
     bool HasResolvedDependencies = true, bool IsExi = true, bool PendingDelete = false,
-    bool? IsInit = null);
+    bool? IsInit = null, bool HasSampleDependency = false);
 
 // Persisted at {root}/index.json. This is a CACHE, not a second source of truth:
 // CurrentHash is exactly "fold the op-log forward from Baseline" (RebuildCurrentFromOpLog

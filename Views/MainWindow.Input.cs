@@ -164,6 +164,14 @@ public partial class MainWindow
             if (_sampleEditorWin.IsLoaded) { e.Cancel = true; return; }
         }
 
+        // Same reasoning, same pattern - LibrarianShellWindow is no longer owned either (see
+        // OpenLibrarianShellWindow's own comment).
+        if (_librarianShellWin != null && _librarianShellWin.IsLoaded)
+        {
+            _librarianShellWin.Close();
+            if (_librarianShellWin.IsLoaded) { e.Cancel = true; return; }
+        }
+
         _trayIcon?.Dispose();
         CompositionTarget.Rendering -= RenderTick;
         _screenSession?.Dispose();

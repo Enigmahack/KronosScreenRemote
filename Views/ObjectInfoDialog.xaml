@@ -1,0 +1,36 @@
+<local:ThemedWindow x:Class="KronosScreenRemote.ObjectInfoDialog"
+        x:ClassModifier="internal"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:KronosScreenRemote"
+        Title="Object Info"
+        SizeToContent="Height" Width="510"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="12"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" x:Name="TXT_Self" TextWrapping="Wrap" FontWeight="Bold" FontSize="13" Margin="0 0 0 8"/>
+        <TextBlock Grid.Row="1" x:Name="TXT_Parent" TextWrapping="Wrap" Margin="0 0 0 12"/>
+
+        <TextBlock Grid.Row="2" Text="References:" FontWeight="Bold" Margin="0 0 0 4"/>
+        <Border Grid.Row="3" BorderBrush="{StaticResource BorderBrush1}" BorderThickness="1" MaxHeight="280">
+            <ListBox x:Name="LST_Children" FontFamily="Consolas" FontSize="12"
+                     Background="{StaticResource PanelBackgroundBrush}" Foreground="{StaticResource TextBrush}"
+                     BorderThickness="0" ScrollViewer.VerticalScrollBarVisibility="Auto"
+                     ScrollViewer.HorizontalScrollBarVisibility="Auto"/>
+        </Border>
+
+        <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="BTN_Close" Content="Close" IsCancel="True" IsDefault="True" Click="OnClose" Style="{StaticResource DialogButtonStyle}"/>
+        </StackPanel>
+    </Grid>
+</local:ThemedWindow>

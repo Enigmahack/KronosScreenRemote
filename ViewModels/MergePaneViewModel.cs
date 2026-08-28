@@ -298,7 +298,10 @@ partial class MergePaneViewModel : ObservableObject
         // referrer that's since been placed and removed must not keep this marked "shared"
         // (same staleness reasoning as RefreshTree's own HasCurrentReferrer).
         int currentReferrers = entry.ReferencedBy.Count(byHash.ContainsKey);
-        return new ObjectTreeNode($"{name}  [{originSummary}]", mergeContentHash: entry.ContentHash)
+        // entry.Body is already fully in memory (a staged MergeEntry) - same "no blob-read cost"
+        // reasoning as PcgPaneViewModel.MakeLeafNode, so this is computed fresh, not cached.
+        bool hasSampleDep = SampleReferenceWalker.Walk(entry.ObjType, entry.Body).Count > 0;
+        return new ObjectTreeNode($"{name}  [{originSummary}]", mergeContentHash: entry.ContentHash, hasSampleDependency: hasSampleDep)
         {
             SharedTooltip = currentReferrers > 1 ? "Shared by multiple Combis/Songs" : null,
         };

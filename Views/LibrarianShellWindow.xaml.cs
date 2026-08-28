@@ -21,6 +21,11 @@ namespace KronosScreenRemote;
 // action needs concrete ObjLocs (SelectedLocs/PcgSelectedLocs).
 internal partial class LibrarianShellWindow : ThemedWindow
 {
+    // Shown in the taskbar (see the XAML's ShowInTaskbar) so a minimize has somewhere to
+    // restore from - the "stranded title-bar stub" bug ThemedWindow's own default guards
+    // against only applies to a non-taskbar window, which this no longer is.
+    protected override bool AllowMinimize => true;
+
     readonly LibrarianShellViewModel _vm;
 
     // One PaneSelection per tree (see the PaneSelection class below) - replaces what used to
@@ -39,9 +44,18 @@ internal partial class LibrarianShellWindow : ThemedWindow
     readonly PaneInteraction _pcg;
     readonly PaneInteraction _merge;
 
+    // Held for OnResolveSampleNamesButton's own FTP connect (KronosFtpSession.EnsureLoginAsync
+    // needs both) - everything else in this window reaches the same values through the
+    // ViewModel instead, but that one stays a WPF-owned action (needs a Window for the login
+    // dialog), same split as every other confirmation callback wired up below.
+    readonly AppSettings _settings;
+    readonly string _host;
+
     public LibrarianShellWindow(ILibrarianService sysEx, LocalLibraryCache cache, AppSettings settings, string host)
     {
         InitializeComponent();
+        _settings = settings;
+        _host = host;
         _vm = new LibrarianShellViewModel(sysEx, cache, settings, host);
         // The Merge Window toolbar's duplication toggles double as persisted settings (they
         // mirror Settings > Librarian): flipping one writes through to the shared AppSettings
@@ -50,13 +64,12 @@ internal partial class LibrarianShellWindow : ThemedWindow
         _vm.PersistSettings = Storage.SaveSettings;
         DataContext = _vm;
 
-        // Break the Owner link before closing so WPF doesn't minimize the parent when this
-        // window had focus (known WPF owner-activation bug) - without it, closing a maximized
-        // Librarian would sometimes send MainWindow to the system tray. Same one-line fix
-        // FileManagerWindow.OnClosing already uses for the identical reason.
+        // No longer WPF-owned (see MainWindow.OpenLibrarianShellWindow's own comment) - the
+        // owner-activation bug this used to work around (closing a maximized Librarian
+        // sometimes sending MainWindow to the system tray) can't happen without an Owner.
         // Disposing the ViewModel here releases the undo recorder's subscriptions to the
         // LocalLibraryCache, which outlives this window (see LibrarianShellViewModel.Dispose).
-        Closing += (_, _) => { Owner = null; _vm.Dispose(); };
+        Closing += (_, _) => _vm.Dispose();
 
         // Step 4 of the auto-heal placement pipeline - the ViewModel stays free of WPF types
         // (same split as every other confirmation in this file), so it calls back into this
@@ -224,6 +237,65 @@ internal partial class LibrarianShellWindow : ThemedWindow
     void OnOpenProperties(object sender, RoutedEventArgs e)
     {
         if (((MenuItem)sender).DataContext is ObjectTreeNode { Loc: { } loc }) OpenProperties(loc);
+    }
+
+    // Object Dependencies panel: double-click or right-click "More Info..." on a row - bank +
+    // index are already in row.Description (ObjLoc.Label()), so this is what's not: who
+    // referenced it and what it in turn references, both formatted by the row itself at
+    // creation time (ObjectDependencyRow.ParentInfo/DescribeChildren).
+    void OnObjectDependencyRowDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (e.OriginalSource is not FrameworkElement fe || fe.DataContext is not ObjectDependencyRow row) return;
+        ShowObjectDependencyInfo(row);
+    }
+
+    void OnObjectDependencyRowRightDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is ListBoxItem item) item.IsSelected = true;
+    }
+
+    void OnObjectDependencyMoreInfo(object sender, RoutedEventArgs e)
+    {
+        if (LST_ObjectDependencies.SelectedItem is ObjectDependencyRow row) ShowObjectDependencyInfo(row);
+    }
+
+    void ShowObjectDependencyInfo(ObjectDependencyRow row) =>
+        new ObjectInfoDialog(row.Description, row.ParentInfo, row.DescribeChildren()).OwnedBy(this).ShowDialog();
+
+    // Builds the EXs/3rd-party sample-bank name index (Core/Sample/ExsOptionIndex.cs) from the
+    // live instrument over FTP - deliberately a manual, explicit action (see that class's own
+    // header comment for why this must never run automatically off the selection-change path).
+    // The FTP connect/login is WPF-owned code-behind, same split as every other confirmation
+    // callback in this file; the ViewModel only ever receives the finished index.
+    async void OnResolveSampleNamesButton(object sender, RoutedEventArgs e)
+    {
+        BTN_ResolveSampleNames.IsEnabled = false;
+        string previousStatus = _vm.StatusText;
+        _vm.StatusText = "Connecting to resolve sample bank names...";
+        try
+        {
+            if (!await KronosFtpSession.EnsureLoginAsync(this, _settings, _host))
+            {
+                _vm.StatusText = previousStatus;
+                return;
+            }
+            using var client = KronosFtpSession.CreateClient(_host, _settings.FtpPort, _settings.FtpUsername, _settings.FtpPassword);
+            await client.Connect();
+            var index = await ExsOptionIndex.BuildAsync(client);
+            _vm.ApplyExsOptionIndex(index);
+            _vm.StatusText = index.Count == 0
+                ? "No /korg/rw/Options sample bank files found on this instrument."
+                : $"Resolved {index.Count} sample bank name(s) from /korg/rw/Options.";
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"[librarian] resolve sample bank names failed: {ex.Message}");
+            _vm.StatusText = $"Couldn't resolve sample bank names: {ex.Message}";
+        }
+        finally
+        {
+            BTN_ResolveSampleNames.IsEnabled = true;
+        }
     }
 
     // Program/Combi: Name + Category/Sub-Category. Set List: Name + a browsable slot list
@@ -541,6 +613,32 @@ internal partial class LibrarianShellWindow : ThemedWindow
     void OnRenameMenuItem(object sender, RoutedEventArgs e) => DoRename(((MenuItem)sender).DataContext as ObjectTreeNode);
     void OnDeleteMenuItem(object sender, RoutedEventArgs e) { if (((MenuItem)sender).DataContext is ObjectTreeNode { Loc: { } } or ObjectTreeNode { BankRef: { } }) DoDelete(); }
 
+    // ── Expand/Collapse (Local/PCG/Merge context menus - "Selected"/"All") ───────────────────
+    // Shared across all three trees instead of 12 near-duplicate bodies, same rationale as
+    // PaneSelection's own header comment on why it's one class instead of three hand-copied ones.
+    // "Selected" is the pane's CURRENT selection (PaneSelection.Items - right-click already
+    // selects the target first per Explorer convention, or keeps an existing multi-select intact),
+    // not just the node that was clicked; a no-op on an empty selection.
+    static void ExpandAll(IEnumerable<ObjectTreeNode> roots) => ObjectTreeNode.SetExpandedRecursive(roots, true);
+    static void CollapseAll(IEnumerable<ObjectTreeNode> roots) => ObjectTreeNode.SetExpandedRecursive(roots, false);
+    static void ExpandSelected(PaneSelection selection) => ObjectTreeNode.SetExpandedRecursive(selection.Items, true);
+    static void CollapseSelected(PaneSelection selection) => ObjectTreeNode.SetExpandedRecursive(selection.Items, false);
+
+    void OnLocalExpandSelectedMenuItem(object sender, RoutedEventArgs e) => ExpandSelected(_localSelection);
+    void OnLocalCollapseSelectedMenuItem(object sender, RoutedEventArgs e) => CollapseSelected(_localSelection);
+    void OnLocalExpandAllMenuItem(object sender, RoutedEventArgs e) => ExpandAll(_vm.LocalPane.Roots);
+    void OnLocalCollapseAllMenuItem(object sender, RoutedEventArgs e) => CollapseAll(_vm.LocalPane.Roots);
+
+    void OnPcgExpandSelectedMenuItem(object sender, RoutedEventArgs e) => ExpandSelected(_pcgSelection);
+    void OnPcgCollapseSelectedMenuItem(object sender, RoutedEventArgs e) => CollapseSelected(_pcgSelection);
+    void OnPcgExpandAllMenuItem(object sender, RoutedEventArgs e) => ExpandAll(_vm.PcgPane.Roots);
+    void OnPcgCollapseAllMenuItem(object sender, RoutedEventArgs e) => CollapseAll(_vm.PcgPane.Roots);
+
+    void OnMergeExpandSelectedMenuItem(object sender, RoutedEventArgs e) => ExpandSelected(_mergeSelection);
+    void OnMergeCollapseSelectedMenuItem(object sender, RoutedEventArgs e) => CollapseSelected(_mergeSelection);
+    void OnMergeExpandAllMenuItem(object sender, RoutedEventArgs e) => ExpandAll(_vm.MergePane.Roots);
+    void OnMergeCollapseAllMenuItem(object sender, RoutedEventArgs e) => CollapseAll(_vm.MergePane.Roots);
+
     // Requirement 3: stage the selected local object(s) (a leaf, a multi-select, or a whole bank
     // via SelectedLocs()'s LeafLocs expansion) into the Merge Window - the same effective action
     // as dragging them onto it (OnMergeDrop's LocalDragFormat branch).
@@ -616,8 +714,15 @@ internal partial class LibrarianShellWindow : ThemedWindow
         bool hasTarget = (fe.DataContext is ObjectTreeNode { Loc: { } } or ObjectTreeNode { BankRef: { } })
             && _pcgSelection.Items.Count > 0;
         foreach (var item in menu.Items)
+        {
             if (item is MenuItem { Name: "MI_MoveToMerge" } mi)
                 mi.Visibility = hasTarget ? Visibility.Visible : Visibility.Collapsed;
+            // The Expand/Collapse group's own leading separator - same "match by type, not name"
+            // rule Local's OnLocalContextMenuOpening already uses, so it never dangles visible on
+            // its own when MI_MoveToMerge (the only other item above it) is hidden.
+            else if (item is Separator sep)
+                sep.Visibility = hasTarget ? Visibility.Visible : Visibility.Collapsed;
+        }
     }
 
     // Works for a single item, a multi-select, or a whole bank (BankRef expands to every leaf
@@ -900,8 +1005,14 @@ internal partial class LibrarianShellWindow : ThemedWindow
         bool hasTarget = (fe.DataContext is ObjectTreeNode { MergeContentHash: { } } or ObjectTreeNode { BankRef: { } })
             && _mergeSelection.Items.Count > 0;
         foreach (var item in menu.Items)
+        {
             if (item is MenuItem { Name: "MI_RemoveFromMerge" } mi)
                 mi.Visibility = hasTarget ? Visibility.Visible : Visibility.Collapsed;
+            // See OnPcgContextMenuOpening's identical comment - the Expand/Collapse group's own
+            // leading separator, toggled by type so it never dangles alone above it.
+            else if (item is Separator sep)
+                sep.Visibility = hasTarget ? Visibility.Visible : Visibility.Collapsed;
+        }
     }
 
     // Works for a single item, a multi-select, or a whole group (expands to every DIRECT child

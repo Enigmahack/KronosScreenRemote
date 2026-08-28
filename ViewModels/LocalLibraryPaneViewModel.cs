@@ -241,7 +241,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         // no blob read, same "cheap on every tree refresh" discipline as everything else here.
         bool showsDependencyDot = isDirty && loc.ObjType is LibObj.Combi or LibObj.SetList;
 
-        return new ObjectTreeNode(label, loc)
+        return new ObjectTreeNode(label, loc, hasSampleDependency: _cache.HasSampleDependency(loc.ObjType, loc.Bank, loc.Number))
         {
             IsDirty = isDirty,
             IsConflicted = _cache.IsConflicted(loc.ObjType, loc.Bank, loc.Number),
