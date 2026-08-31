@@ -8,7 +8,7 @@ namespace KronosScreenRemote;
 // decoded in exactly one place regardless of which cache is being checked against.
 static class ObjectReferenceWalker
 {
-    public static IEnumerable<(string RefKind, int Site, ObjLoc Ref)> Walk(int objType, byte[] body)
+    public static IEnumerable<(RefKind RefKind, int Site, ObjLoc Ref)> Walk(int objType, byte[] body)
     {
         // An INIT/placeholder object references nothing meaningful - its timbres still hold the
         // zero default, which encodes "nothing assigned", not a dependency on Program I-A:000.
@@ -23,7 +23,7 @@ static class ObjectReferenceWalker
             {
                 int objBank = KronosBanks.Func33ToObjBank(1, fbank);   // combi timbres always reference Programs
                 if (objBank < 0) continue;
-                yield return ($"timbre {t + 1}", t, new ObjLoc(LibObj.Program, objBank, num));
+                yield return (RefKind.CombiTimbre, t, new ObjLoc(LibObj.Program, objBank, num));
             }
             yield break;
         }
@@ -35,7 +35,7 @@ static class ObjectReferenceWalker
                 var (dtBank, dtNumber) = LibRefs.ProgramDrumTrackRef(body);
                 int dtObjBank = KronosBanks.Func33ToObjBank(1, dtBank);
                 if (dtObjBank >= 0)
-                    yield return ("drum track", -1, new ObjLoc(LibObj.Program, dtObjBank, dtNumber));
+                    yield return (RefKind.DrumTrack, -1, new ObjLoc(LibObj.Program, dtObjBank, dtNumber));
             }
 
             // Wave Sequence / Drum Kit oscillator zones only exist in the HD-1 wire format -
@@ -45,12 +45,11 @@ static class ObjectReferenceWalker
                 int oscMode = LibRefs.ProgramOscillatorMode(body);
                 foreach (var (osc, zone, msType, number) in LibRefs.IterProgramZoneRefs(body))
                 {
-                    string refKind = $"osc{osc + 1} zone{zone + 1}";
                     int site = osc * LibRefs.ZonesPerOsc + zone;
                     if (msType == 2 && KronosBanks.WaveSeqLinearToLoc(number) is { } ws)
-                        yield return (refKind, site, new ObjLoc(LibObj.WaveSequence, ws.Bank, ws.Slot));
+                        yield return (RefKind.OscZone, site, new ObjLoc(LibObj.WaveSequence, ws.Bank, ws.Slot));
                     else if (msType == 1 && oscMode is 4 or 5 && KronosBanks.DrumKitLinearToLoc(number) is { } dk)
-                        yield return (refKind, site, new ObjLoc(LibObj.DrumKit, dk.Bank, dk.Slot));
+                        yield return (RefKind.OscZone, site, new ObjLoc(LibObj.DrumKit, dk.Bank, dk.Slot));
                 }
             }
             yield break;
@@ -74,7 +73,7 @@ static class ObjectReferenceWalker
             int objBank = KronosBanks.Func33ToObjBank(slot.Type, slot.Bank);   // slot.Type: 0=combi,1=program - same convention as Func33ToObjBank
             if (objBank < 0) continue;
             var refObjType = slot.Type == 1 ? LibObj.Program : LibObj.Combi;
-            yield return ($"slot {slot.Number + 1}", slot.Number, new ObjLoc(refObjType, objBank, slot.Index));
+            yield return (RefKind.SetListSlot, slot.Number, new ObjLoc(refObjType, objBank, slot.Index));
         }
     }
 
@@ -105,7 +104,7 @@ static class ObjectReferenceWalker
     // Walk, minus the references nothing can ever resolve because they don't need resolving - the
     // shape every RESOLUTION path wants (DependencyScanner.Scan/HasAllDependencies/
     // RepointPcgReferences, MergeCache.PullRecursive). Display paths keep using Walk directly.
-    public static IEnumerable<(string RefKind, int Site, ObjLoc Ref)> WalkResolvable(int objType, byte[] body) =>
+    public static IEnumerable<(RefKind RefKind, int Site, ObjLoc Ref)> WalkResolvable(int objType, byte[] body) =>
         Walk(objType, body).Where(r => !IsAlwaysAvailable(r.Ref));
 }
 
@@ -114,9 +113,26 @@ static class ObjectReferenceWalker
 // which of those references don't resolve locally yet.
 static class DependencyScanner
 {
-    public static IEnumerable<(ObjLoc MissingRef, string RefKind)> Scan(LocalLibraryCache cache, int incomingObjType, byte[] incomingBody) =>
+    public static IEnumerable<(ObjLoc MissingRef, RefKind RefKind)> Scan(LocalLibraryCache cache, int incomingObjType, byte[] incomingBody) =>
         ObjectReferenceWalker.WalkResolvable(incomingObjType, incomingBody)
             .Where(r => cache.GetCurrentBody(r.Ref.ObjType, r.Ref.Bank, r.Ref.Number) == null)
+            .Select(r => (r.Ref, r.RefKind));
+
+    // Push-gate variant (ChangesetBuilder step 3). `beingErased` is what step 4b will blank in
+    // this same push: those slots still resolve right up until it runs, so a plain Scan can't
+    // see them going away. Deliberately a separate entry point rather than folding the rule
+    // into Scan/HasAllDependencies - Scan also serves the paste/drag-drop-import warnings
+    // (where a pending delete hasn't happened yet and shouldn't read as a missing dependency),
+    // and HasAllDependencies feeds the PERSISTED HasResolvedDependencies flag, which nothing
+    // recomputes when SetPendingDelete toggles, so teaching it about pending deletes would
+    // only make that cached flag go stale. Keeps Scan's GetCurrentBody test rather than the
+    // cheaper index-only Exists: this runs once per push, and Exists would stop catching an
+    // indexed slot whose blob has gone missing.
+    public static IEnumerable<(ObjLoc MissingRef, RefKind RefKind)> ScanForPush(
+        LocalLibraryCache cache, int incomingObjType, byte[] incomingBody, IReadOnlySet<ObjLoc> beingErased) =>
+        ObjectReferenceWalker.WalkResolvable(incomingObjType, incomingBody)
+            .Where(r => beingErased.Contains(r.Ref)
+                        || cache.GetCurrentBody(r.Ref.ObjType, r.Ref.Bank, r.Ref.Number) == null)
             .Select(r => (r.Ref, r.RefKind));
 
     // Index-only existence check (no blob reads) - for anything called once PER NODE across a
@@ -144,11 +160,11 @@ static class DependencyScanner
     //     so the caller can track it (LibrarianShellViewModel.TrackPcgDependencies) and, if the
     //     PCG DOES have it, auto-stage it into the Merge Window instead of leaving a silently
     //     wrong/missing reference.
-    public static (byte[] Body, List<(string RefKind, int Site, ObjLoc OriginalTarget, string? ExpectedHash)> Unresolved)
+    public static (byte[] Body, List<(RefKind RefKind, int Site, ObjLoc OriginalTarget, string? ExpectedHash)> Unresolved)
         RepointPcgReferences(LocalLibraryCache cache, PcgLibraryView pcg, int objType, byte[] body)
     {
         var patched = (byte[])body.Clone();
-        var unresolved = new List<(string, int, ObjLoc, string?)>();
+        var unresolved = new List<(RefKind, int, ObjLoc, string?)>();
         // WalkResolvable, not Walk: a GM/g reference is already correct exactly as the PCG encoded
         // it (the ROM bank exists on every Kronos) - repointing it is impossible and reporting it
         // unresolved would stage a dependency that can never be satisfied. See

@@ -417,6 +417,8 @@ Load a `.pcg` file to browse its banks. Pull objects into the Merge Window (righ
 - Pulling a **set list** transitively pulls the combis it references, which in turn pull their programs.
 - Pulling a **combi** pulls its programs.
 - References that don't resolve inside the loaded file are reported as gaps - they stay unresolved until a file that does contain them is loaded and pulled.
+- The search box above the tree matches name, bank (e.g. `I-A`), category, EXi engine type (e.g. `AL-1` matches both a name containing it and a program that *is* one), and what the object itself references. Case-insensitive.
+- Loading a `.pcg` also resolves EXs/3rd-party **sample bank names** from the shipped EXs catalog (a local read - no connection, no login). A catalog hit identifies the product; it is not proof the pack is installed on the instrument.
 
 ### Local Library (center)
 
@@ -431,7 +433,11 @@ A staging area between a loaded `.pcg` file / the local library and the instrume
 
 - Stage objects from the PCG pane or from Local Library ("Move to Merge Window").
 - **Auto-Fill** places everything staged into the next free slots of the correct type - dependencies are placed before their referrers, so a combi's timbres point at where its programs actually landed. Placement follows the Merge Window's own display order (source bank, then slot), so re-copying the same `.pcg` and auto-filling again lands in the same order every time.
+- Auto-Fill sends nothing to the Kronos - it only stages, exactly like dragging items across yourself. Review the result, then **Commit Changes** to push. Anything that doesn't fit (no bank of the matching type has room) stays staged.
 - Placing is address-sensitive (you choose the destination); dependencies are resolved automatically.
+- **Force Overwrite**: placing onto a slot another combi or set list still references normally refuses, to avoid silently breaking that reference. Force Overwrite places anyway - those referrers then resolve to the *new* object, and the old occupant is diverted to the session clipboard rather than lost.
+- **Object Dependencies** (bottom right): red rows at the top are dependencies nothing staged provides. Right-click one to search a `.pcg` for it; anything found is staged, so the gap can be filled before you Commit. Below them is every program/combi/drum kit/wave sequence the selection references, nested ones included - double-click a row for more info.
+- Tree dots and tints: a dot marks an object staged or referenced more than once, a blue dot marks a sample reference (legend at the bottom of the window), and a conflicted, pending-delete, or read-only row is tinted instead of dotted.
 - **Preserve duplicate Programs/Combis** (Merge Window toolbar, mirrored in Settings → Librarian): when checked, placing staged content that already exists in Local Library still writes a fresh copy ("preserve duplication"); when unchecked, the existing byte-identical copy is reused instead of consuming a slot. Combis are compared *after* their program references are re-pointed at local reality, so a re-copied chain still matches. Defaults: Programs reused (unchecked), Combis copied as-is (checked).
 - **Merge behavior** (Settings → Librarian): **Temporary Memory** clears the staging when the app closes; **Local Storage** persists it across sessions.
 

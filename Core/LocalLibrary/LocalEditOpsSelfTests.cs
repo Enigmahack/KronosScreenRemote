@@ -377,7 +377,7 @@ static class LocalEditOpsSelfTests
             // osc2 zone3 -> site 1*8+2 = 10; Drum Kit U-A:003 is linear 40+3 = 43, written LE
             // into the zone's 2-byte number field at 3240 + 2*22 + 18 = 3302.
             Check("repatch-osc-zone-drumkit", LocalEditOps.RepatchReference(
-                cache, hd1Loc, site: 10, "osc2 zone3", new ObjLoc(LibObj.DrumKit, 0x40, 3), utcNow));
+                cache, hd1Loc, site: 10, RefKind.OscZone, new ObjLoc(LibObj.DrumKit, 0x40, 3), utcNow));
             var zoneBody = cache.GetCurrentBody(hd1Loc.ObjType, hd1Loc.Bank, hd1Loc.Number);
             Check("repatch-osc-zone-wrote-linear",
                 zoneBody != null && zoneBody[3302] == 43 && zoneBody[3303] == 0);
@@ -389,7 +389,7 @@ static class LocalEditOpsSelfTests
             // threw. Site 2 writes at 24 + 2*542 + {24,25,26} = 1132/1133/1134 under the old
             // dispatch, so this case catches a mis-dispatch that never announces itself.
             Check("repatch-osc-zone-low-site-drumkit", LocalEditOps.RepatchReference(
-                cache, hd1Loc, site: 2, "osc1 zone3", new ObjLoc(LibObj.DrumKit, 0x40, 1), utcNow));
+                cache, hd1Loc, site: 2, RefKind.OscZone, new ObjLoc(LibObj.DrumKit, 0x40, 1), utcNow));
             var lowSiteBody = cache.GetCurrentBody(hd1Loc.ObjType, hd1Loc.Bank, hd1Loc.Number);
             // osc1 zone3 -> 2774 + 2*22 + 18 = 2836; Drum Kit U-A:001 is linear 40+1 = 41.
             Check("repatch-osc-zone-low-site-wrote-linear",
@@ -401,7 +401,7 @@ static class LocalEditOpsSelfTests
             // kit one: U-A:005 is 150 + 5 = 155 (0x9B), i.e. a genuinely different number for the
             // same (bank, slot) - so this also guards the targetObjType branch inside the encoder.
             Check("repatch-osc-zone-waveseq", LocalEditOps.RepatchReference(
-                cache, hd1Loc, site: 10, "osc2 zone3", new ObjLoc(LibObj.WaveSequence, 0x40, 5), utcNow));
+                cache, hd1Loc, site: 10, RefKind.OscZone, new ObjLoc(LibObj.WaveSequence, 0x40, 5), utcNow));
             zoneBody = cache.GetCurrentBody(hd1Loc.ObjType, hd1Loc.Bank, hd1Loc.Number);
             Check("repatch-osc-zone-waveseq-linear",
                 zoneBody != null && zoneBody[3302] == 155 && zoneBody[3303] == 0);
@@ -409,7 +409,7 @@ static class LocalEditOpsSelfTests
             // Drum Track is a Program->Program ref with no site at all (-1) - the old split sent
             // this to the set-list branch too, where -1 indexes BEFORE the body.
             Check("repatch-drum-track", LocalEditOps.RepatchReference(
-                cache, hd1Loc, site: -1, "drum track", new ObjLoc(LibObj.Program, 0x40, 12), utcNow));
+                cache, hd1Loc, site: -1, RefKind.DrumTrack, new ObjLoc(LibObj.Program, 0x40, 12), utcNow));
             var dtBody = cache.GetCurrentBody(hd1Loc.ObjType, hd1Loc.Bank, hd1Loc.Number);
             Check("repatch-drum-track-wrote-ref", dtBody != null
                 && LibRefs.ProgramDrumTrackRef(dtBody) == (KronosBanks.ObjBankToFunc33(1, 0x40), 12));
@@ -418,17 +418,17 @@ static class LocalEditOpsSelfTests
             // so it must report failure - otherwise ResolvePendingDependencies drops the entry as
             // "resolved" while the reference still dangles.
             Check("repatch-unencodable-target-reports-failure", !LocalEditOps.RepatchReference(
-                cache, hd1Loc, site: 10, "osc1 zone1", new ObjLoc(LibObj.DrumKit, 0x20, 0), utcNow));
+                cache, hd1Loc, site: 10, RefKind.OscZone, new ObjLoc(LibObj.DrumKit, 0x20, 0), utcNow));
 
             // The two kinds that always worked still do (combi timbre / set-list slot).
             Check("repatch-timbre-still-works", LocalEditOps.RepatchReference(
-                cache, new ObjLoc(LibObj.Combi, 0x00, 0), site: 3, "timbre 4", new ObjLoc(LibObj.Program, 0x40, 9), utcNow));
+                cache, new ObjLoc(LibObj.Combi, 0x00, 0), site: 3, RefKind.CombiTimbre, new ObjLoc(LibObj.Program, 0x40, 9), utcNow));
             var timbreBody = cache.GetCurrentBody(LibObj.Combi, 0x00, 0);
             Check("repatch-timbre-wrote-ref", timbreBody != null
                 && LibRefs.CombiTimbreRef(timbreBody, 3) == (KronosBanks.ObjBankToFunc33(1, 0x40), 9));
 
             Check("repatch-setlist-slot-still-works", LocalEditOps.RepatchReference(
-                cache, new ObjLoc(LibObj.SetList, 0, 0), site: 2, "setlist_slot", new ObjLoc(LibObj.Program, 0x40, 11), utcNow));
+                cache, new ObjLoc(LibObj.SetList, 0, 0), site: 2, RefKind.SetListSlot, new ObjLoc(LibObj.Program, 0x40, 11), utcNow));
             var slotBody = cache.GetCurrentBody(LibObj.SetList, 0, 0);
             Check("repatch-setlist-slot-wrote-ref", slotBody != null
                 && LibRefs.SetListSlotRef(slotBody, 2).Index == 11);
@@ -436,8 +436,8 @@ static class LocalEditOpsSelfTests
             // ── SessionDependencyClipboard: add/resolve ──
             var sessionClip = new SessionDependencyClipboard();
             var otherMissing = new ObjLoc(LibObj.Program, 0x41, 55);
-            sessionClip.Add(new SessionDependencyEntry(otherMissing, "timbre 1", 0, new ObjLoc(LibObj.Combi, 0x00, 0), null));
-            sessionClip.Add(new SessionDependencyEntry(otherMissing, "timbre 1", 0, new ObjLoc(LibObj.Combi, 0x00, 0), null));   // duplicate - must not double-add
+            sessionClip.Add(new SessionDependencyEntry(otherMissing, RefKind.CombiTimbre, 0, new ObjLoc(LibObj.Combi, 0x00, 0), null));
+            sessionClip.Add(new SessionDependencyEntry(otherMissing, RefKind.CombiTimbre, 0, new ObjLoc(LibObj.Combi, 0x00, 0), null));   // duplicate - must not double-add
             Check("session-clipboard-add-dedup", sessionClip.Pending.Count == 1);
             sessionClip.Resolve(otherMissing);
             Check("session-clipboard-resolve", sessionClip.Pending.Count == 0);
@@ -445,6 +445,73 @@ static class LocalEditOpsSelfTests
         finally
         {
             if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+        }
+
+        // ── Drum Kits / Wave Sequences: rename really writes, and a swap leaves Set Lists alone ──
+        // Two bugs in one fixture, both from these types becoming first-class late. Rename fell
+        // through to "body unchanged" for them while still reporting success and writing an op-log
+        // entry. And LibraryCatalog.ReferrersOf reported every Set List slot pointing at the COMBI
+        // that happens to share a kit's bank/number as a referrer OF THAT KIT - which PlanMove then
+        // PATCHED, silently repointing an unrelated Set List slot on any Drum Kit swap. Own scratch
+        // dir: the fixture above is shared by a long chain of checks that a Set List reference to a
+        // never-pulled Combi would perturb.
+        string kitRoot = ScratchRoot + "_kits";
+        if (Directory.Exists(kitRoot)) Directory.Delete(kitRoot, recursive: true);
+        try
+        {
+            var exec = new FakeMoveExecutor();
+            var kit5 = new byte[1000]; kit5[100] = 0xA5;   // marker outside the 24-byte name field
+            var kit6 = new byte[1000]; kit6[100] = 0xB6;
+            exec.Seed(LibObj.DrumKit, 0x00, 5, 0, kit5);
+            exec.Seed(LibObj.DrumKit, 0x00, 6, 0, kit6);
+            exec.Seed(LibObj.WaveSequence, 0x00, 3, 0, new byte[1000]);
+            exec.Seed(LibObj.Combi, 0x00, 5, 3, new byte[7810]);
+
+            // The collision the old code fell into: this slot addresses Combi I-A:005, which shares
+            // (bank 0, number 5) with Drum Kit INT:005.
+            var slCombiRef = new byte[69416];
+            LibRefs.SetSetListSlotRef(slCombiRef, 7, KronosBanks.ObjBankToFunc33(0, 0x00), 5, type: 0);
+            exec.Seed(LibObj.SetList, 0, 0, 0, slCombiRef);
+
+            var cache = new LocalLibraryCache(kitRoot);
+            await LibraryPullPipeline.PullAsync(exec, cache, full: true);
+            var utcNow = DateTime.UtcNow;
+
+            var kitLoc = new ObjLoc(LibObj.DrumKit, 0x00, 5);
+            var (kitRenOk, kitRenErr) = LocalEditOps.Rename(cache, kitLoc, "KIT-RENAMED", utcNow);
+            Check("drumkit-rename-ok", kitRenOk && kitRenErr == null);
+            var kitAfter = cache.GetCurrentBody(kitLoc.ObjType, kitLoc.Bank, kitLoc.Number);
+            Check("drumkit-rename-writes-name", kitAfter != null && DrumKitBody.ReadName(kitAfter) == "KIT-RENAMED");
+            Check("drumkit-rename-preserves-tail", kitAfter != null && kitAfter[100] == 0xA5);
+            Check("drumkit-rename-marks-dirty", cache.IsDirty(kitLoc.ObjType, kitLoc.Bank, kitLoc.Number));
+
+            var wsLoc = new ObjLoc(LibObj.WaveSequence, 0x00, 3);
+            var (wsRenOk, _) = LocalEditOps.Rename(cache, wsLoc, "WS-RENAMED", utcNow);
+            Check("waveseq-rename-ok", wsRenOk);
+            Check("waveseq-rename-writes-name",
+                cache.GetCurrentBody(wsLoc.ObjType, wsLoc.Bank, wsLoc.Number) is { } wsBody
+                && WaveSequenceBody.ReadName(wsBody) == "WS-RENAMED");
+
+            Check("drumkit-has-no-setlist-referrers", cache.BuildCatalog().ReferrersOf(kitLoc).Count == 0);
+            Check("waveseq-has-no-setlist-referrers",
+                cache.BuildCatalog().ReferrersOf(new ObjLoc(LibObj.WaveSequence, 0x00, 5)).Count == 0);
+            // ...while the Combi that slot actually addresses still resolves through the same scan.
+            Check("combi-setlist-referrer-still-found",
+                cache.BuildCatalog().ReferrersOf(new ObjLoc(LibObj.Combi, 0x00, 5)).Count == 1);
+
+            var slBefore = cache.GetCurrentBody(LibObj.SetList, 0, 0);
+            var (kitMoveOk, kitMoveErr) = LocalEditOps.Move(cache, kitLoc, new ObjLoc(LibObj.DrumKit, 0x00, 6), utcNow);
+            Check("drumkit-move-ok", kitMoveOk && kitMoveErr == null);
+            Check("drumkit-move-swaps-bodies",
+                cache.GetCurrentBody(LibObj.DrumKit, 0x00, 6) is { } landed && landed[100] == 0xA5);
+            var slAfterKitMove = cache.GetCurrentBody(LibObj.SetList, 0, 0);
+            Check("drumkit-move-leaves-setlist-bytes-untouched",
+                slBefore != null && slAfterKitMove != null && slAfterKitMove.SequenceEqual(slBefore));
+            Check("drumkit-move-leaves-setlist-clean", !cache.IsDirty(LibObj.SetList, 0, 0));
+        }
+        finally
+        {
+            if (Directory.Exists(kitRoot)) Directory.Delete(kitRoot, recursive: true);
         }
 
         return fails;

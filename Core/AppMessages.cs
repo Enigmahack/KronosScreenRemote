@@ -285,7 +285,7 @@ public static class AppMessages
             public const string NothingCutOrCopied = "nothing cut or copied";
             public const string TypeMismatch       = "can't paste here - object type doesn't match";
             public const string CutNeedsOccupiedSlot =
-                "Cut needs a specific occupied slot to swap into - drop directly onto one, or use Copy to fill empty slots.";
+                "Cut can only swap onto an occupied slot - use Copy for empty ones.";
             public const string SameLocation = "source and destination are the same location";
             public static string NotFoundLocally(string label) => $"{label} not found locally";
             public static string CopiedTo(string src, string dest) => $"Copied {src} to {dest}";
@@ -293,11 +293,11 @@ public static class AppMessages
             public static string Swapped(string src, string dest)  => $"Moved {src} ↔ {dest}";
             public static string MoveFailed(string? error)         => $"Move failed: {error}";
             public static string EmptySlotCut(string dest) =>
-                $"{dest} is empty - Cut can only be pasted onto an occupied slot (to swap). Use Copy to place a copy there instead.";
+                $"{dest} is empty - Cut swaps onto occupied slots only. Use Copy instead.";
             // A drop/paste aimed at a read-only factory bank (GM, g(1)-g(9), g(d)). Those banks are
             // shown so their content can be browsed, but the instrument has no way to write to them.
             public static string ReadOnlyBank(string bankLabel) =>
-                $"{bankLabel} is a read-only factory bank - it can be browsed but never written to. Choose a user or internal bank instead.";
+                $"{bankLabel} is a read-only factory bank - choose a user or internal bank.";
             // A drop/paste onto a type-root header ("Programs"/"Combis"/"Set Lists") found no bank
             // with a free slot at all - requirement 6's one genuine failure case.
             //
@@ -307,8 +307,8 @@ public static class AppMessages
             // so "every Program bank is full" looks wrong and the real reason stays invisible.
             public static string NoRoomInAnyBank(string typeName, bool? incomingIsExi = null) =>
                 incomingIsExi is bool exi
-                    ? $"every {(exi ? "EXi" : "HD-1")} {typeName} bank is full - free a slot in one, or drop onto a specific bank instead"
-                    : $"every {typeName} bank is full - free a slot, or drop onto a specific bank instead";
+                    ? $"every {(exi ? "EXi" : "HD-1")} {typeName} bank is full - free a slot or pick a bank"
+                    : $"every {typeName} bank is full - free a slot or pick a bank";
             // One specific bank was targeted and has no free slot - distinct from NoRoomInAnyBank,
             // which is about the header drop's library-wide search.
             public static string BankIsFull(string bankLabel) =>
@@ -344,13 +344,19 @@ public static class AppMessages
         public static class Merge
         {
             public static string PulledIntoMerge(int count) => $"Pulled {count} object(s) into the Merge Window.";
-            // "object(s)", not "dependency reference(s)": a gap is just as often a top-level pull
-            // whose slot the source doesn't have (MergeCache's Gaps carries RefKind "pull" for
+            // Deliberately says nothing about WHAT wasn't found: a gap is just as often a top-level
+            // pull whose slot the source doesn't have (MergeCache's Gaps carries Reason "pull" for
             // those) as it is an unresolved dependency of something that did come in.
             public static string PulledWithGapsInPcg(int staged, int gaps) =>
-                $"Pulled {staged} object(s); {gaps} object(s) not found in this PCG - load another PCG that has them and pull it in.";
+                $"Pulled {staged} object(s); {gaps} not found in this PCG.";
+            // Same report, split by whether the user can still satisfy the miss without hunting
+            // down another PCG - a gap whose address Local Library already fills needs no file at
+            // all, so lumping it in with the genuinely missing ones sends the user looking for
+            // objects they already have.
+            public static string PulledWithGapsPartlyLocal(int staged, int gaps, int inLibrary, int stillMissing) =>
+                $"Pulled {staged} object(s); {gaps} not found in this PCG. {inLibrary} found in Local Library, {stillMissing} still missing.";
             public static string PulledWithGapsLocally(int staged, int gaps) =>
-                $"Pulled {staged} object(s); {gaps} object(s) not found locally - pull them in too, or place from a PCG.";
+                $"Pulled {staged} object(s); {gaps} not found locally.";
             public const string Cleared    = "Merge Window cleared.";
             public const string RemovedOne = "Removed 1 item from the Merge Window.";
             public static string RemovedMany(int removed) => $"Removed {removed} item(s) from the Merge Window.";
@@ -369,8 +375,8 @@ public static class AppMessages
             // that item no longer needs a slot.
             public static string AutoFillResult(int resolved, int stillStaged)
             {
-                string msg = $"Auto-Fill placed {resolved} item(s) into Local Library - review, then Commit Changes to push.";
-                if (stillStaged > 0) msg += $" {stillStaged} could not be placed and are still staged (no matching bank has room).";
+                string msg = $"Auto-Fill placed {resolved} item(s) - review, then Commit Changes.";
+                if (stillStaged > 0) msg += $" {stillStaged} didn't fit and stay staged.";
                 return msg;
             }
             // Auto-Fill ran out of destination slots. Names the KIND that has nowhere to go (EXi
@@ -380,8 +386,7 @@ public static class AppMessages
             public static string AutoFillNoRoom(IReadOnlyList<(string What, int Count)> noRoom) =>
                 "Local Library has no free slots left for: " +
                 string.Join(", ", noRoom.Select(n => $"{n.Count} {n.What}(s)")) +
-                ". These are still staged in the Merge Window - free up slots in a bank of the " +
-                "matching type (delete or move objects), then run Auto-Fill again.";
+                ". These stay staged - free slots in a bank of the matching type, then run Auto-Fill again.";
 
             // A refusal partway through still leaves everything placed BEFORE it sitting in Local
             // Library as pending edits. Leading with that count is what tells the user whether to
@@ -523,7 +528,7 @@ public static class AppMessages
             public const string ScanPcgDialogTitle   = "Scan a PCG for missing dependencies";
             public const string ScanNothingMissing   = "Nothing missing - every dependency already resolves.";
             public static string ScanFoundInPcg(int found, int missing, string fileName) =>
-                $"Found {found} of {missing} missing dependency(ies) in {fileName} - staged in the Merge Window, ready to place.";
+                $"Found {found} of {missing} in {fileName} - staged in the Merge Window.";
             public static string ScanFoundNoneInPcg(int missing, string fileName) =>
                 $"{fileName} has none of the {missing} missing dependency(ies) - try another PCG.";
             public static string ScanFailed(string detail) => $"Scan failed: {detail}";
@@ -560,8 +565,8 @@ public static class AppMessages
             public static string UndoClearedChanges(int count)             => $"Cleared {count} pending change(s)";
         }
 
-        /// <summary>Pull/push pipeline (Core) - progress and referential REFUSE warnings.
-        /// The <c>"REFUSE:"</c> prefix is load-bearing (ChangesetModel.IsRefusable keys off it) - keep it.</summary>
+        /// <summary>Pull/push pipeline (Core) - progress strings, plus the plan warnings the
+        /// push gate raises. Severity is carried by PlanWarning, not by the message text.</summary>
         public static class Sync
         {
             public static string BulkDumping(string display, string bankLabel) =>
@@ -569,66 +574,67 @@ public static class AppMessages
             public static string Pulling(int done, int total, string display, string bankLabel, int number) =>
                 $"Pulling {done}/{total} - {display} {bankLabel}:{number:D3}";
 
-            public static string RefusePendingDependencies(int count) =>
-                $"REFUSE: {count} dependency(ies) still pending in the session clipboard - place them before pushing";
-            public static string RefuseMissingReference(string loc, string missingRef, object kind) =>
-                $"REFUSE: {loc} references {missingRef} ({kind}), which does not exist locally";
-            public static string RefuseBankTypeMismatch(string bankLabel, string bankType) =>
-                $"REFUSE: {bankLabel} is an {bankType} bank, " +
+            public static PlanWarning RefusePendingDependencies(int count) => PlanWarning.Refuse(
+                $"{count} dependency(ies) still pending in the session clipboard - place them before pushing");
+            public static PlanWarning RefuseMissingReference(string loc, string missingRef, object kind) => PlanWarning.Refuse(
+                $"{loc} references {missingRef} ({kind}), which does not exist locally");
+            public static PlanWarning RefuseBankTypeMismatch(string bankLabel, string bankType) => PlanWarning.Refuse(
+                $"{bankLabel} is an {bankType} bank, " +
                 $"but the pending Program(s) are not. Copy the whole bank with a type change " +
-                $"(drag the bank onto it), or place them in a matching bank.";
+                $"(drag the bank onto it), or place them in a matching bank.");
 
-            public const string CheckNothingToPush = "CHECK: nothing to push - no local changes are pending";
+            public static readonly PlanWarning CheckNothingToPush =
+                PlanWarning.Check("nothing to push - no local changes are pending");
             // The window closed (LibrarianShellViewModel.Dispose cancelling its sync token)
             // partway through the pull half - the push half never started, so nothing was
             // written. Only ever reaches AppLog; nothing renders WarningText once the window
             // that owned it is gone.
-            public const string CheckSyncCancelled = "CHECK: sync cancelled - the Librarian window closed before it finished";
-            public const string CheckEveryChangeConflicted =
-                "CHECK: every pending change conflicted or was rejected - nothing left to push";
+            public static readonly PlanWarning CheckSyncCancelled =
+                PlanWarning.Check("sync cancelled - the Librarian window closed before it finished");
+            public static readonly PlanWarning CheckEveryChangeConflicted =
+                PlanWarning.Check("every pending change conflicted or was rejected - nothing left to push");
         }
 
         /// <summary>Move/placement planner gate reasons (BatchMoveModel / LibrarianModel PlanMove).
-        /// Surfaced as pane status when a drag/paste is refused. The <c>"REFUSE:"</c> prefix is
-        /// load-bearing (ChangesetModel.IsRefusable / BatchMovePlan gating keys off it) - keep it.
+        /// Surfaced as pane status when a drag/paste is refused; severity is carried by PlanWarning.
         /// These are deliberately technical (they cite HD-1/EXi bank types, wire byte sizes, and
         /// func reply codes) because that detail is what tells the user how to fix the refusal.</summary>
         public static class Move
         {
-            public const string NoPlacements    = "REFUSE: no placements to perform";
-            public static string DuplicateDestination(string label, int count) =>
-                $"REFUSE: duplicate destination {label} targeted by {count} placement(s)";
-            public const string BatchTypeMismatch =
-                "REFUSE: batch contains an object of a different type than the batch's object type";
-            public const string DestinationReadOnly = "REFUSE: a destination bank is read-only (GM/g)";
-            public static string BankTypesDiffer(string fromLabel, string fromType, string toLabel, string toType) =>
-                $"REFUSE: {fromLabel} ({fromType}) cannot move to {toLabel} ({toType}) - bank types differ";
-            public static string CheckCrossBankUnverified(string fromLabel, string toLabel) =>
-                $"CHECK: {fromLabel} -> {toLabel} crosses banks whose HD-1/EXi type couldn't be fully verified - the write may be rejected (Reply 64).";
-            public static string WrongFormatForBank(string toLabel, string bankType, int expectedLen, string sourceLabel, int actualLen) =>
-                $"REFUSE: {toLabel} is a {bankType} bank ({expectedLen}-byte Programs), but {sourceLabel} is {actualLen} bytes - wrong format for this bank.";
-            public static string CheckDestTypeUnverified(string toLabel) =>
-                $"CHECK: {toLabel}'s HD-1/EXi type couldn't be fully verified - the write may be rejected (Reply 64).";
-            public static string AlreadyContainsExact(string toLabel) =>
-                $"REFUSE: {toLabel} already contains this exact object - nothing to place.";
-            public static string ReferencedWouldBeOverwritten(string toLabel, int refCount) =>
-                $"REFUSE: {toLabel} is referenced by {refCount} object(s) and would be overwritten without being relocated itself - add it to this batch as a source, or choose a different destination.";
-            public static string InitOccupantOverwritten(string toLabel, int refCount) =>
-                $"CHECK: {toLabel} held an INIT placeholder referenced by {refCount} object(s) - placed anyway (an INIT slot is a placeholder, not data), so those referrer(s) now resolve to the new object.";
-            public static string ForcedOverwriteReferenced(string toLabel, int refCount) =>
-                $"CHECK: {toLabel} was referenced by {refCount} object(s) - Force Overwrite placed it anyway, so those referrer(s) now resolve to the NEW object instead of the old one.";
-            public static string CheckOverwrittenNotDiverted(string toLabel) =>
-                $"CHECK: {toLabel} is overwritten and not diverted - its prior contents are only recoverable from the automatic backup.";
-            public static string ReferringObjectMissing(int refObj, int refBank, int refIndex) =>
-                $"REFUSE: referring object missing from catalog (obj {refObj:X2} bank {refBank:X2} idx {refIndex}) - re-scan before moving";
+            public static readonly PlanWarning NoPlacements = PlanWarning.Refuse("no placements to perform");
+            public static PlanWarning DuplicateDestination(string label, int count) => PlanWarning.Refuse(
+                $"duplicate destination {label} targeted by {count} placement(s)");
+            public static readonly PlanWarning BatchTypeMismatch = PlanWarning.Refuse(
+                "batch contains an object of a different type than the batch's object type");
+            public static readonly PlanWarning DestinationReadOnly = PlanWarning.Refuse("a destination bank is read-only (GM/g)");
+            public static PlanWarning BankTypesDiffer(string fromLabel, string fromType, string toLabel, string toType) => PlanWarning.Refuse(
+                $"{fromLabel} ({fromType}) cannot move to {toLabel} ({toType}) - bank types differ");
+            public static PlanWarning CheckCrossBankUnverified(string fromLabel, string toLabel) => PlanWarning.Check(
+                $"{fromLabel} -> {toLabel} crosses banks whose HD-1/EXi type couldn't be fully verified - the write may be rejected (Reply 64).");
+            public static PlanWarning WrongFormatForBank(string toLabel, string bankType, int expectedLen, string sourceLabel, int actualLen) => PlanWarning.Refuse(
+                $"{toLabel} is a {bankType} bank ({expectedLen}-byte Programs), but {sourceLabel} is {actualLen} bytes - wrong format for this bank.");
+            public static PlanWarning CheckDestTypeUnverified(string toLabel) => PlanWarning.Check(
+                $"{toLabel}'s HD-1/EXi type couldn't be fully verified - the write may be rejected (Reply 64).");
+            public static PlanWarning AlreadyContainsExact(string toLabel) => PlanWarning.Refuse(
+                $"{toLabel} already contains this exact object - nothing to place.");
+            public static PlanWarning ReferencedWouldBeOverwritten(string toLabel, int refCount) => PlanWarning.Refuse(
+                $"{toLabel} is referenced by {refCount} object(s) and would be overwritten without being relocated itself - add it to this batch as a source, or choose a different destination.");
+            public static PlanWarning InitOccupantOverwritten(string toLabel, int refCount) => PlanWarning.Check(
+                $"{toLabel} held an INIT placeholder referenced by {refCount} object(s) - placed anyway (an INIT slot is a placeholder, not data), so those referrer(s) now resolve to the new object.");
+            public static PlanWarning ForcedOverwriteReferenced(string toLabel, int refCount) => PlanWarning.Check(
+                $"{toLabel} was referenced by {refCount} object(s) - Force Overwrite placed it anyway, so those referrer(s) now resolve to the NEW object instead of the old one.");
+            public static PlanWarning CheckOverwrittenNotDiverted(string toLabel) => PlanWarning.Check(
+                $"{toLabel} is overwritten and not diverted - its prior contents are only recoverable from the automatic backup.");
+            public static PlanWarning ReferringObjectMissing(int refObj, int refBank, int refIndex) => PlanWarning.Refuse(
+                $"referring object missing from catalog (obj {refObj:X2} bank {refBank:X2} idx {refIndex}) - re-scan before moving");
 
-            public const string CannotMoveBetweenTypes =
-                "REFUSE: cannot move between different object types (program vs combi)";
-            public static string DestinationReadOnlyBank(string dstLabel) =>
-                $"REFUSE: destination {dstLabel} is a read-only (GM/g) program bank";
-            public const string SameLocation = "REFUSE: source and destination are the same location";
-            public const string CheckProgramMoveAcrossBanks =
-                "CHECK: program move across banks - destination bank must be the same type (HD-1/EXi) or the write is rejected (Reply 64).";
+            public static readonly PlanWarning CannotMoveBetweenTypes = PlanWarning.Refuse(
+                "cannot move between different object types (program vs combi)");
+            public static PlanWarning DestinationReadOnlyBank(string dstLabel) => PlanWarning.Refuse(
+                $"destination {dstLabel} is a read-only (GM/g) program bank");
+            public static readonly PlanWarning SameLocation = PlanWarning.Refuse("source and destination are the same location");
+            public static readonly PlanWarning CheckProgramMoveAcrossBanks = PlanWarning.Check(
+                "program move across banks - destination bank must be the same type (HD-1/EXi) or the write is rejected (Reply 64).");
         }
     }
 
@@ -675,12 +681,11 @@ public static class AppMessages
         public const string CopyMenuItem   = "Copy all details";
         public const string CopiedToClipboard = "Details copied to the clipboard.";
         public static string ScanFound(string label, string fileName) =>
-            $"Found {label} in {fileName} - staged in the Merge Window. Place it anywhere; the reference repoints on the next Sync/Commit.";
+            $"Found {label} in {fileName} - staged in the Merge Window. Place it anywhere.";
         // The sweep found several at once - the file the user picked for one gap turned out to
         // hold others too, which is the common case when they were all saved together.
         public static string ScanFoundMany(int found, string fileName) =>
-            $"Found {found} of the missing objects in {fileName} - all staged in the Merge Window. " +
-            "Place them anywhere; the references repoint on the next Sync/Commit.";
+            $"Found {found} of the missing objects in {fileName} - staged in the Merge Window. Place them anywhere.";
         public static string ScanNotFound(string label, string fileName) =>
             $"{fileName} doesn't contain {label}, or any of the others still listed - try another .pcg file.";
         public static string ScanFailed(string detail) => $"Search failed: {detail}";

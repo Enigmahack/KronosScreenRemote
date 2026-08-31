@@ -65,7 +65,7 @@ internal partial class UnresolvedDependenciesDialog : ThemedWindow
                     AppMessages.UnresolvedDependencies.RowReferrer(
                         ObjectTypeRegistry.Get(entry.RequiredBy.ObjType).DisplayName,
                         entry.RequiredBy.Label(),
-                        entry.RefKind),
+                        RefKinds.Describe(entry.RefKind, entry.Site)),
                     group.Key));
             if (entries.Count > maxReferrersShown)
                 rows.Add(new Row(AppMessages.UnresolvedDependencies.RowReferrerMore(entries.Count - maxReferrersShown), group.Key));

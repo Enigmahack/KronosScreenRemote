@@ -155,6 +155,44 @@ static class DataSafetySelfTests
             finally { Reset(root); Reset(backupDir); }
         }
 
+        // ── B1b: the SECOND staleness gate. A front-panel Store landing DURING the 0x73 write
+        //        burst is invisible to the pre-write gate. Because a 0x73 write is volatile and
+        //        does not change bank storage (KRONOS_MIDI_SysEx.txt [73]/[38]), the digest is
+        //        still comparable right before the 0x76 Store - and that re-check is the only
+        //        thing standing between a mid-burst panel Store and silently overwriting it. ──
+        {
+            string root = ScratchRoot + "_b1b_lib";
+            string backupDir = ScratchRoot + "_b1b_bak";
+            Reset(root); Reset(backupDir);
+            try
+            {
+                var exec = new FakeMoveExecutor();
+                exec.Seed(LibObj.Program, 0x00, 0, 1, Prog("ORIG-MIDBURST"));
+                var cache = new LocalLibraryCache(root);
+                await LibraryPullPipeline.PullAsync(exec, cache, full: true);
+
+                var loc = new ObjLoc(LibObj.Program, 0x00, 0);
+                LocalEditOps.Rename(cache, loc, "EDIT-MIDBURST", DateTime.UtcNow);
+
+                var (plan, _) = await ChangesetBuilder.BuildAsync(cache, exec, new SessionDependencyClipboard());
+                await Librarian.ArmPlanAsync(plan, exec);
+
+                // The panel Store lands only once our own writes are already going out, so the
+                // pre-write gate saw a clean bank and passed.
+                exec.BeforeEachWrite = () => exec.Seed(LibObj.Program, 0x00, 7, 1, Prog("PANEL-MIDBURST"));
+
+                exec.CallLog.Clear();
+                var (ok, _, aborted) = await Librarian.ApplyMoveAsync(plan, exec, backupDir, "TESTSTAMP", null, doLive: false);
+                Check("b1b-aborted", !ok);
+                Check("b1b-error-explains-change", aborted != null && aborted.Contains("changed since preview"));
+                Check("b1b-write-did-fire", exec.CallLog.Contains("Write"));   // gate 1 passed, as designed
+                Check("b1b-no-store-fired", !exec.CallLog.Contains("Store"));
+                Check("b1b-panel-edit-survived", (await exec.DumpObjectAsync(LibObj.Program, 0x00, 7)) is { } p
+                    && ProgramBody.ReadName(p.Body) == "PANEL-MIDBURST");
+            }
+            finally { Reset(root); Reset(backupDir); }
+        }
+
         // ── B2: a rejected write (func-0x73 Reply != 0) must abort before any Store - no bank is
         //        half-committed, hardware stays at the original. ──
         {
@@ -265,6 +303,56 @@ static class DataSafetySelfTests
                 var recoveredBody = recovered.TryGetValue(key, out var rh) ? LocalObjectStore.TryGet(root, rh) : null;
                 Check("c2-recovered-body-is-the-edit", recoveredBody != null && ProgramBody.ReadName(recoveredBody) == "EDITED-RECOV");
                 Check("c2-recovered-bytes-intact", recoveredBody != null && liveEdit != null && recoveredBody.SequenceEqual(liveEdit));
+            }
+            finally { Reset(root); }
+        }
+
+        // ── D: the referential gate sees deletions that happen in the SAME push. ──
+        // A pending-delete object still reads back completely normally (the flag touches neither
+        // the index entry nor the blob), so ChangesetBuilder's step-3 check used to pass a dirty
+        // Combi whose Program dependency step 4b was about to blank two steps later - producing
+        // exactly the referrer-pointing-at-nothing the gate exists to prevent. The UI warns when
+        // the user marks the delete, but this gate is the independent backstop.
+        {
+            string root = ScratchRoot + "_d";
+            Reset(root);
+            try
+            {
+                var utc = DateTime.UtcNow;
+                var exec = new FakeMoveExecutor();
+                exec.Seed(LibObj.Program, 0x40, 9, 1, Prog("DEP-TARGET"));
+                var combiBody = new byte[7810];
+                for (int t = 0; t < LibRefs.TimbreCount; t++)
+                    LibRefs.SetCombiTimbreRef(combiBody, t, KronosBanks.ObjBankToFunc33(1, 0x40), 9);
+                exec.Seed(LibObj.Combi, 0x00, 0, 3, combiBody);
+
+                var cache = new LocalLibraryCache(root);
+                await LibraryPullPipeline.PullAsync(exec, cache, full: true);
+
+                var combiLoc = new ObjLoc(LibObj.Combi, 0x00, 0);
+                var depLoc = new ObjLoc(LibObj.Program, 0x40, 9);
+                LocalEditOps.Rename(cache, combiLoc, "DIRTY-COMBI", utc);
+
+                var (cleanPlan, _) = await ChangesetBuilder.BuildAsync(cache, exec, new SessionDependencyClipboard());
+                Check("d-clean-plan-not-refusable", !cleanPlan.IsRefusable);
+
+                cache.SetPendingDelete(depLoc.ObjType, depLoc.Bank, depLoc.Number, true, utc);
+                // Precondition: the dependency still resolves by every ordinary test, which is
+                // exactly why the gate has to be told about the deletion explicitly.
+                Check("d-pending-delete-still-reads-back",
+                    cache.Exists(depLoc.ObjType, depLoc.Bank, depLoc.Number) &&
+                    cache.GetCurrentBody(depLoc.ObjType, depLoc.Bank, depLoc.Number) != null);
+
+                var (plan, _) = await ChangesetBuilder.BuildAsync(cache, exec, new SessionDependencyClipboard());
+                Check("d-refuses-push-that-orphans-a-referrer", plan.IsRefusable);
+                Check("d-refusal-names-the-dependency",
+                    plan.Warnings.Any(w => w.Severity == PlanSeverity.Refuse && w.Text.Contains(depLoc.Label())));
+
+                // Restoring the object must clear the refusal - the gate keys on the delete, not on
+                // some sticky state the flag left behind.
+                cache.SetPendingDelete(depLoc.ObjType, depLoc.Bank, depLoc.Number, false, utc);
+                var (restoredPlan, _) = await ChangesetBuilder.BuildAsync(cache, exec, new SessionDependencyClipboard());
+                Check("d-restore-clears-refusal", !restoredPlan.IsRefusable);
             }
             finally { Reset(root); }
         }

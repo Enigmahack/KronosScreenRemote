@@ -10,6 +10,12 @@ using System.Security.Cryptography;
 // blob left behind by a discard is a harmless orphan file, not a correctness problem).
 static class LocalObjectStore
 {
+    // SHA-1 deliberately, and it is NOT a security boundary: this hash only answers "are these
+    // two local bodies the same bytes" for dedup and dirty-detection, against content the user
+    // themselves pulled or loaded. Nothing here defends against a chosen-prefix collision an
+    // attacker would first have to get into the library by hand. Don't "harden" it to SHA-256 -
+    // every existing blob filename, index.json entry and op-log target is a 40-char hex hash, so
+    // a change is a store migration, not a one-line swap.
     public static string ComputeHash(byte[] body)
     {
         using var sha1 = SHA1.Create();

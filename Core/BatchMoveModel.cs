@@ -87,17 +87,19 @@ sealed class BatchMovePlan : IExecutablePlan
     public List<(int Obj, int Bank)> Stores { get; } = new();
     public List<ReferrerSite> Referrers = new();
     public List<string> Preview = new();
-    public List<string> Warnings { get; } = new();
+    public List<PlanWarning> Warnings { get; } = new();
     public List<byte[]> LivePc { get; } = new();           // always empty - batch live-preview (0x43) is out of scope for v1
     public Dictionary<(int, int), byte[]> DigestBaseline { get; } = new();
     public string BackupLabel { get; set; } = "batchmove";
 
-    public bool IsRefusable => Warnings.Any(w => w.StartsWith("REFUSE:", StringComparison.Ordinal));
+    public bool IsRefusable => Warnings.AnyRefusal();
 }
 
 static class BatchLibrarian
 {
     public const int BankSlotCount = 128;   // every Program/Combi bank is exactly 128 slots
+
+    static readonly List<ReferrerSite> NoReferrers = new();   // shared empty result for index misses
 
     // PURE. Assigns sequential destination slots to a set of PENDING clipboard entries - the
     // algorithm behind drag-drop auto-fill onto a bank (ViewModels/LibrarianShellViewModel.cs's
@@ -242,6 +244,13 @@ static class BatchLibrarian
         var relocation = new Dictionary<ObjLoc, ObjLoc>();
         foreach (var p in real) if (p.From is { } f) relocation[f] = p.To;
 
+        // Referrer lookups for the whole plan, from ONE catalog pass - the orphan gate below asks
+        // per destination and step (3) asks per relocation source, and cat.ReferrersOf re-sweeps
+        // the entire catalog every time (see BuildReferrerIndex).
+        var referrerIndex = cat.BuildReferrerIndex();
+        List<ReferrerSite> ReferrersOf(ObjLoc loc) =>
+            referrerIndex.TryGetValue(loc, out var sites) ? sites : NoReferrers;
+
         // (2) Orphan gate - UNCONDITIONAL, independent of divertDisplacedToClipboard. A
         // clipboard entry has no address for a referrer to repoint to, so overwriting a
         // referenced slot is only safe when that slot's occupant is ITSELF also being relocated
@@ -255,7 +264,7 @@ static class BatchLibrarian
         var distinctTargets = real.Select(p => p.To).Distinct().ToList();
         foreach (var to in distinctTargets)
         {
-            var displacedRefs = cat.ReferrersOf(to);
+            var displacedRefs = ReferrersOf(to);
             if (displacedRefs.Count == 0 || relocation.ContainsKey(to)) continue;
 
             // The common, non-alarming trigger for this gate: the destination already holds
@@ -288,7 +297,7 @@ static class BatchLibrarian
         // (3) Referrer collection + grouping - direct generalization of PlanMove's `grouped` dict.
         // Raw bank/number (not pre-encoded) - LibRefs.ApplyResolvedRef in step (6) encodes
         // per-Kind (func33 for a Combi/Program target, linear for a Drum Kit/Wave Sequence one).
-        var grouped = new Dictionary<(int, int, int), List<(int Site, string Kind, int NewBank, int NewNumber)>>();
+        var grouped = new Dictionary<(int, int, int), List<(int Site, RefKind Kind, int NewBank, int NewNumber)>>();
         void AddPatch(ReferrerSite r, int newBank, int newNumber)
         {
             var key = (r.RefObj, r.RefBank, r.RefIndex);
@@ -297,7 +306,7 @@ static class BatchLibrarian
         }
         foreach (var (from, to) in relocation)
         {
-            var sites = cat.ReferrersOf(from);
+            var sites = ReferrersOf(from);
             plan.Referrers.AddRange(sites);
             foreach (var r in sites) AddPatch(r, to.Bank, to.Number);
         }
@@ -321,7 +330,11 @@ static class BatchLibrarian
                 {
                     ObjType = objType, Origin = to, Version = occ.Version, Body = occ.Body,
                     Provenance = ClipboardProvenance.DisplacedDestination,
-                    Reason = $"displaced by incoming placement to {to.Label()}", CutAt = DateTime.Now,
+                    // UtcNow, like every other persisted timestamp (OpLog, LocalIndexEntry, the
+                    // UserCopy entries in LocalLibraryPaneViewModel/LibrarianShellViewModel) - a
+                    // clipboard that survives restarts must not reorder when the machine changes
+                    // timezone or crosses a DST boundary.
+                    Reason = $"displaced by incoming placement to {to.Label()}", CutAt = DateTime.UtcNow,
                 });
             else
                 plan.Warnings.Add(AppMessages.Librarian.Move.CheckOverwrittenNotDiverted(to.Label()));
@@ -475,14 +488,14 @@ static class BatchLibrarian
             new List<BatchPlacement> { new(null, freshDest, wrongFormatBody, "fresh") },
             noOccupants, divertDisplacedToClipboard: false, BankType);
         Check("fresh-placement-wrong-format-refuses", freshWrongFormatPlan.IsRefusable &&
-            freshWrongFormatPlan.Warnings.Any(w => w.Contains("wrong format for this bank")));
+            freshWrongFormatPlan.Warnings.Any(w => w.Text.Contains("wrong format for this bank")));
 
         var correctFormatBody = new ObjectDump(LibObj.Program, 0x40, 20, 1, new byte[ProgramFormatConverter.WireSizeHd1]);
         var freshCorrectFormatPlan = PlanBatchMove(freshCat, LibObj.Program,
             new List<BatchPlacement> { new(null, freshDest, correctFormatBody, "fresh") },
             noOccupants, divertDisplacedToClipboard: false, BankType);
         Check("fresh-placement-correct-format-not-refused",
-            !freshCorrectFormatPlan.Warnings.Any(w => w.Contains("wrong format for this bank")));
+            !freshCorrectFormatPlan.Warnings.Any(w => w.Text.Contains("wrong format for this bank")));
 
         var unknownBankDest = new ObjLoc(LibObj.Program, 0x99, 0);   // BankType(0x99) => null, "can't verify"
         var unknownBankBody = new ObjectDump(LibObj.Program, 0x99, 0, 1, new byte[ProgramFormatConverter.WireSizeExi]);
@@ -490,7 +503,7 @@ static class BatchLibrarian
             new List<BatchPlacement> { new(null, unknownBankDest, unknownBankBody, "fresh") },
             noOccupants, divertDisplacedToClipboard: false, BankType);
         Check("fresh-placement-unknown-bank-check-only", !freshUnknownBankPlan.IsRefusable &&
-            freshUnknownBankPlan.Warnings.Any(w => w.StartsWith("CHECK:", StringComparison.Ordinal) && w.Contains("couldn't be fully verified")));
+            freshUnknownBankPlan.Warnings.Any(w => w.Severity == PlanSeverity.Check && w.Text.Contains("couldn't be fully verified")));
 
         // 4. Orphan gate: overwriting a referenced, non-relocated slot REFUSES.
         var cat1 = new LibraryCatalog();
@@ -506,7 +519,7 @@ static class BatchLibrarian
         var orphanPlacements = new List<BatchPlacement> { new(orphanSrc, orphanDst, new ObjectDump(LibObj.Program, 0x00, 5, 1, incomingBody), orphanSrc.Label()) };
         var orphanOccupants = new Dictionary<ObjLoc, ObjectDump> { [orphanDst] = new ObjectDump(LibObj.Program, 0x40, 10, 1, occupantBody) };
         var orphanPlan = PlanBatchMove(cat1, LibObj.Program, orphanPlacements, orphanOccupants, divertDisplacedToClipboard: false);
-        Check("orphan-gate-refuses", orphanPlan.IsRefusable && orphanPlan.Warnings.Any(w => w.Contains("referenced by")));
+        Check("orphan-gate-refuses", orphanPlan.IsRefusable && orphanPlan.Warnings.Any(w => w.Text.Contains("referenced by")));
 
         // 4b. Orphan gate: same referenced/non-relocated shape, but the incoming content is
         // BYTE-IDENTICAL to what's already there - a friendlier "already exists" message, not
@@ -514,8 +527,8 @@ static class BatchLibrarian
         var dupOrphanPlacements = new List<BatchPlacement> { new(orphanSrc, orphanDst, new ObjectDump(LibObj.Program, 0x00, 5, 1, occupantBody), orphanSrc.Label()) };
         var dupOrphanPlan = PlanBatchMove(cat1, LibObj.Program, dupOrphanPlacements, orphanOccupants, divertDisplacedToClipboard: false);
         Check("orphan-gate-identical-content", dupOrphanPlan.IsRefusable &&
-            dupOrphanPlan.Warnings.Any(w => w.Contains("already contains this exact object")) &&
-            !dupOrphanPlan.Warnings.Any(w => w.Contains("referenced by")));
+            dupOrphanPlan.Warnings.Any(w => w.Text.Contains("already contains this exact object")) &&
+            !dupOrphanPlan.Warnings.Any(w => w.Text.Contains("referenced by")));
 
         // 4c. Orphan gate: forceOverwrite (the Merge Window's "Force Overwrite" checkbox)
         // downgrades the same REFUSE to a CHECK and lets the write through - the referrer keeps
@@ -524,7 +537,7 @@ static class BatchLibrarian
         var forcedPlan = PlanBatchMove(cat1, LibObj.Program, orphanPlacements, orphanOccupants,
             divertDisplacedToClipboard: true, bankTypeOf: null, forceOverwrite: true);
         Check("orphan-gate-forced-not-refused", !forcedPlan.IsRefusable &&
-            forcedPlan.Warnings.Any(w => w.StartsWith("CHECK:", StringComparison.Ordinal) && w.Contains("Force Overwrite")));
+            forcedPlan.Warnings.Any(w => w.Severity == PlanSeverity.Check && w.Text.Contains("Force Overwrite")));
         Check("orphan-gate-forced-write-present", forcedPlan.Writes.Any(w => w.Bank == orphanDst.Bank && w.Index == orphanDst.Number));
         Check("orphan-gate-forced-displaced-to-clipboard", forcedPlan.ClipboardAdds.Any(c => c.Origin.Equals(orphanDst)));
 
@@ -539,7 +552,7 @@ static class BatchLibrarian
         };
         var initPlan = PlanBatchMove(cat1, LibObj.Program, orphanPlacements, initOccupants, divertDisplacedToClipboard: true);
         Check("orphan-gate-init-occupant-not-refused", !initPlan.IsRefusable &&
-            initPlan.Warnings.Any(w => w.StartsWith("CHECK:", StringComparison.Ordinal) && w.Contains("INIT placeholder")));
+            initPlan.Warnings.Any(w => w.Severity == PlanSeverity.Check && w.Text.Contains("INIT placeholder")));
         Check("orphan-gate-init-write-present", initPlan.Writes.Any(w => w.Bank == orphanDst.Bank && w.Index == orphanDst.Number));
         Check("orphan-gate-init-displaced-to-clipboard", initPlan.ClipboardAdds.Any(c => c.Origin.Equals(orphanDst)));
 
@@ -574,7 +587,7 @@ static class BatchLibrarian
         };
         var realCombiPlan = PlanBatchMove(combiRefCat, LibObj.Combi, combiPlacements, realCombiOccupants, divertDisplacedToClipboard: true);
         Check("orphan-gate-real-combi-still-refuses", realCombiPlan.IsRefusable &&
-            realCombiPlan.Warnings.Any(w => w.Contains("referenced by")));
+            realCombiPlan.Warnings.Any(w => w.Text.Contains("referenced by")));
 
         // 4f. An INIT Combi contributes NO dependencies: its 16 timbres all hold the zero default,
         // which encodes "nothing assigned" - not a real dependency on Program I-A:000. This is the
@@ -649,7 +662,7 @@ static class BatchLibrarian
         var soloOccupants = new Dictionary<ObjLoc, ObjectDump> { [soloDst] = new ObjectDump(LibObj.Combi, 0x40, 0, 1, new byte[7810]) };
 
         var checkPlan = PlanBatchMove(new LibraryCatalog(), LibObj.Combi, soloPlacements, soloOccupants, divertDisplacedToClipboard: false);
-        Check("check-warning-on-overwrite", !checkPlan.IsRefusable && checkPlan.Warnings.Any(w => w.StartsWith("CHECK:")) && checkPlan.ClipboardAdds.Count == 0);
+        Check("check-warning-on-overwrite", !checkPlan.IsRefusable && checkPlan.Warnings.Any(w => w.Severity == PlanSeverity.Check) && checkPlan.ClipboardAdds.Count == 0);
 
         var clipPlan = PlanBatchMove(new LibraryCatalog(), LibObj.Combi, soloPlacements, soloOccupants, divertDisplacedToClipboard: true);
         Check("clipboard-add-on-overwrite", !clipPlan.IsRefusable && clipPlan.ClipboardAdds.Count == 1 &&
@@ -705,7 +718,7 @@ static class BatchLibrarian
         Check("setlist-batch-not-refusable", !slPlan.IsRefusable);
         Check("setlist-batch-no-referrer-writes", slPlan.Referrers.Count == 0);
         Check("setlist-batch-one-write", slPlan.Writes.Count == 1);
-        Check("setlist-batch-check-on-overwrite", slPlan.Warnings.Any(w => w.StartsWith("CHECK:")));
+        Check("setlist-batch-check-on-overwrite", slPlan.Warnings.Any(w => w.Severity == PlanSeverity.Check));
 
         return fails;
     }

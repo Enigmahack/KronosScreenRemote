@@ -230,14 +230,14 @@ static class ObjectBodySelfTests
         progRef[3240 + 22] = 1;                      // OSC2 Zone2 MS Type = Multisample
         LibRefs.SetProgramZoneNumber(progRef, 1, 1, 44);    // -> U-A:004 (Drum Kit, via oscMode)
         var progRefs = ObjectReferenceWalker.Walk(LibObj.Program, progRef).ToList();
-        Check("program-walk-drumtrack", progRefs.Any(r => r.RefKind == "drum track" && r.Ref == new ObjLoc(LibObj.Program, 0x40, 12)));
+        Check("program-walk-drumtrack", progRefs.Any(r => r.RefKind == RefKind.DrumTrack && r.Ref == new ObjLoc(LibObj.Program, 0x40, 12)));
         Check("program-walk-waveseq", progRefs.Any(r => r.Ref == new ObjLoc(LibObj.WaveSequence, 0x47, 6)));
         Check("program-walk-drumkit", progRefs.Any(r => r.Ref == new ObjLoc(LibObj.DrumKit, 0x40, 4)));
 
         var progRefOff = (byte[])progRef.Clone();
         progRefOff[1295] &= unchecked((byte)~0x10);   // Drum Track Off - the 0,0 default must not walk as I-A:000
         Check("program-walk-drumtrack-off-skipped",
-            !ObjectReferenceWalker.Walk(LibObj.Program, progRefOff).Any(r => r.RefKind == "drum track"));
+            !ObjectReferenceWalker.Walk(LibObj.Program, progRefOff).Any(r => r.RefKind == RefKind.DrumTrack));
 
         Check("gm-drumkit-always-available", ObjectReferenceWalker.IsAlwaysAvailable(new ObjLoc(LibObj.DrumKit, 0x10, 0)));
 

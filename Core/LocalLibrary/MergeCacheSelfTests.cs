@@ -232,6 +232,38 @@ static class MergeCacheSelfTests
             Check("persistence-roundtrip-placement-survived",
                 reloadedPatched != null && LibRefs.CombiTimbreRef(reloadedPatched, 0) == (fbDest, progADest.Number));
 
+            // ── Legacy (pre-RefKind-enum) snapshot still loads ─────────────────────────
+            // MergeRefSite.RefKind used to be persisted as one of ObjectReferenceWalker's kind
+            // STRINGS. RefKindJsonConverter exists so upgrading doesn't throw away a user's
+            // staged Merge Window; without it Load() would except, log, and silently start empty.
+            string legacyPath = Path.Combine(root, "legacy_snapshot.json");
+            string writtenSnapshot = File.ReadAllText(snapshotPath);
+            string legacySnapshot = writtenSnapshot.Replace("\"CombiTimbre\"", "\"timbre 1\"");
+            // Guards the two checks below against passing vacuously if the fixture ever stops
+            // producing a persisted RefKind at all.
+            Check("legacy-snapshot-fixture-rewritten", legacySnapshot != writtenSnapshot);
+            File.WriteAllText(legacyPath, legacySnapshot);
+            var legacyLoaded = new MergeCache(new FileMergeCachePersistence(legacyPath));
+            Check("legacy-snapshot-count", legacyLoaded.Entries.Count == countBeforeReload);
+            Check("legacy-snapshot-refkind-decoded",
+                legacyLoaded.Entries.SelectMany(e => e.RefSites).All(r => r.RefKind == RefKind.CombiTimbre));
+            var legacyCombiX = legacyLoaded.Entries.FirstOrDefault(e => e.DisplayName == "COMBI X");
+            var legacyPatched = legacyCombiX != null ? legacyLoaded.ResolveReferencesForPlacement(legacyCombiX).Body : null;
+            Check("legacy-snapshot-placement-still-patches",
+                legacyPatched != null && LibRefs.CombiTimbreRef(legacyPatched, 0) == (fbDest, progADest.Number));
+
+            // Every legacy spelling of every kind, both vocabularies - the only surviving reader
+            // of those strings.
+            var legacyKinds = System.Text.Json.JsonSerializer.Deserialize<RefKind[]>(
+                "[\"timbre 3\",\"combi_timbre\",\"drum track\",\"drum_track\"," +
+                "\"osc1 zone2\",\"osc1_zone2\",\"slot 5\",\"setlist_slot\",\"CombiTimbre\"]")!;
+            Check("legacy-kind-strings-parse", legacyKinds.SequenceEqual(new[]
+            {
+                RefKind.CombiTimbre, RefKind.CombiTimbre, RefKind.DrumTrack, RefKind.DrumTrack,
+                RefKind.OscZone, RefKind.OscZone, RefKind.SetListSlot, RefKind.SetListSlot,
+                RefKind.CombiTimbre,
+            }));
+
             // ── SetPersistence: Temp -> Local persists current state; Local -> Temp clears
             // the file but keeps what's in memory for the rest of this session ───────────
             var memCache = new MergeCache(new InMemoryMergeCachePersistence());

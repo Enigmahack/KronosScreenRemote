@@ -106,7 +106,7 @@ static class SyncPipelineSelfTests
                 LocalEditOps.Rename(cache, loc, "SHOULD-NOT-PUSH", DateTime.UtcNow);
 
                 var sessionClip = new SessionDependencyClipboard();
-                sessionClip.Add(new SessionDependencyEntry(new ObjLoc(LibObj.Program, 0x41, 5), "timbre 1", 0, new ObjLoc(LibObj.Combi, 0x00, 0), null));
+                sessionClip.Add(new SessionDependencyEntry(new ObjLoc(LibObj.Program, 0x41, 5), RefKind.CombiTimbre, 0, new ObjLoc(LibObj.Combi, 0x00, 0), null));
 
                 var result = await SyncPipeline.PushAsync(exec, cache, sessionClip);
                 Check("c-refused", !result.Ok);
@@ -199,7 +199,7 @@ static class SyncPipelineSelfTests
                 // bank-type mismatch one, not some other REFUSE" - is what the test cares about.
                 Check("e1-error-mentions-format", result.Error != null &&
                     result.Error.Contains(
-                        AppMessages.Librarian.Sync.RefuseBankTypeMismatch(KronosBanks.ProgramLabel(0x40), "EXi"),
+                        AppMessages.Librarian.Sync.RefuseBankTypeMismatch(KronosBanks.ProgramLabel(0x40), "EXi").ToString(),
                         StringComparison.Ordinal));
                 Check("e1-still-dirty", cache.IsDirty(loc.ObjType, loc.Bank, loc.Number));
                 Check("e1-no-hardware-write", !exec.CallLog.Contains("Write"));
@@ -430,7 +430,7 @@ static class SyncPipelineSelfTests
                 // hand-copied substring. Here the bank is HD-1 and the pending Programs are EXi.
                 Check("j-error-format", result.Error != null &&
                     result.Error.Contains(
-                        AppMessages.Librarian.Sync.RefuseBankTypeMismatch(KronosBanks.ProgramLabel(destBank), "HD-1"),
+                        AppMessages.Librarian.Sync.RefuseBankTypeMismatch(KronosBanks.ProgramLabel(destBank), "HD-1").ToString(),
                         StringComparison.Ordinal));
                 Check("j-refuse-deduped-per-bank", result.Error != null &&
                     System.Text.RegularExpressions.Regex.Matches(result.Error, "REFUSE:").Count == 1);

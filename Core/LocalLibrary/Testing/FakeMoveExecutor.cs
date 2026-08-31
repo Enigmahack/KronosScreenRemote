@@ -33,6 +33,11 @@ sealed class FakeMoveExecutor : ILibrarianService
     // self-test exercise ApplyMoveAsync's write-reject abort (aborts before any Store).
     public int WriteRejectCode { get; set; }
 
+    // Models a COMMITTED storage change (a front-panel Store, a PCG load) - deliberately not
+    // routed through _uncommitted below, so a bank's digest moves immediately. That is what lets
+    // a self-test simulate the panel changing a bank out from under an armed plan. Seeding a slot
+    // the plan also WRITES would be masked by that slot's shadow entry instead; seed a different
+    // slot in the same bank (as DataSafetySelfTests B1/B1b do) to move the digest.
     public void Seed(int obj, int bank, int number, byte version, byte[] body) =>
         _objects[(obj, bank, number)] = (version, body);
 
@@ -59,6 +64,20 @@ sealed class FakeMoveExecutor : ILibrarianService
     // over nothing. Lets a self-test exercise LibraryPullPipeline's NoDigest sentinel.
     public HashSet<(int Obj, int Bank)> NoDigestBanks { get; } = new();
 
+    // What bank STORAGE still holds for a slot that has an uncommitted func-0x73 write over it.
+    // A 0x73 write is volatile - "not committed to storage until a Store Bank Request has been
+    // received" - and the instrument's 0x38 digest notification fires for every storage change
+    // "while receiving function 0x73 object dumps do not" (KRONOS_MIDI_SysEx.txt [73]/[38]), so a
+    // bank's digest must NOT move until StoreBankAsync. Key present = uncommitted write over that
+    // slot; a null value = storage holds nothing there (the write landed in an empty slot, which
+    // is why an absent key can't stand in for it). DumpObjectAsync deliberately still reads
+    // _objects: what a 0x72 request returns mid-burst isn't what this models.
+    readonly Dictionary<(int Obj, int Bank, int Number), (byte Version, byte[] Body)?> _uncommitted = new();
+
+    // Fires at the top of each WriteObjectAsync, before the body lands - lets a self-test mutate
+    // "hardware" DURING the write burst (see DataSafetySelfTests B1b).
+    public Action? BeforeEachWrite { get; set; }
+
     public Task<byte[]?> BankDigestAsync(int obj, int bank)
     {
         CallLog.Add($"Digest:{obj}:{bank}");
@@ -66,14 +85,19 @@ sealed class FakeMoveExecutor : ILibrarianService
         using var sha1 = SHA1.Create();
         using var ms = new MemoryStream();
         for (int n = 0; n < 128; n++)
-            if (_objects.TryGetValue((obj, bank, n), out var o))
-                ms.Write(o.Body, 0, o.Body.Length);
+        {
+            (byte Version, byte[] Body)? stored =
+                _uncommitted.TryGetValue((obj, bank, n), out var shadow) ? shadow
+                : _objects.TryGetValue((obj, bank, n), out var o) ? o : null;
+            if (stored is { } s) ms.Write(s.Body, 0, s.Body.Length);
+        }
         return Task.FromResult<byte[]?>(sha1.ComputeHash(ms.ToArray()));
     }
 
     public Task<int> WriteObjectAsync(WriteOp op)
     {
         CallLog.Add("Write");
+        BeforeEachWrite?.Invoke();
         // Simulated hardware reject: return the Reply code and leave "hardware" untouched
         // (a rejected write stores nothing), so ApplyMoveAsync must abort before any Store.
         if (WriteRejectCode != 0) return Task.FromResult(WriteRejectCode);
@@ -81,13 +105,18 @@ sealed class FakeMoveExecutor : ILibrarianService
         // CurrentObjectVersion's comment - so a self-test can verify a stale/placeholder
         // stored version never actually reaches "hardware".
         byte version = LibObj.CurrentObjectVersion(op.Obj) ?? op.Version;
-        _objects[(op.Obj, op.Bank, op.Index)] = (version, (byte[])op.Body.Clone());
+        var key = (op.Obj, op.Bank, op.Index);
+        if (!_uncommitted.ContainsKey(key))
+            _uncommitted[key] = _objects.TryGetValue(key, out var prev) ? prev : null;
+        _objects[key] = (version, (byte[])op.Body.Clone());
         return Task.FromResult(0);
     }
 
     public Task<int> StoreBankAsync(int obj, int bank)
     {
         CallLog.Add("Store");
+        foreach (var key in _uncommitted.Keys.Where(k => k.Obj == obj && k.Bank == bank).ToList())
+            _uncommitted.Remove(key);
         return Task.FromResult(0);
     }
 
@@ -102,6 +131,10 @@ sealed class FakeMoveExecutor : ILibrarianService
         BankTypeChanges[bank] = isExi;
         foreach (var key in _objects.Keys.Where(k => k.Obj == LibObj.Program && k.Bank == bank).ToList())
             _objects.Remove(key);
+        // The erase IS a storage change (the doc lists "changing user bank types" among the
+        // events that notify a new digest), so nothing about this bank is uncommitted any more.
+        foreach (var key in _uncommitted.Keys.Where(k => k.Obj == LibObj.Program && k.Bank == bank).ToList())
+            _uncommitted.Remove(key);
         return Task.FromResult(0);
     }
 

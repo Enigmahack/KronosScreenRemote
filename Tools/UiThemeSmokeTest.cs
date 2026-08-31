@@ -330,7 +330,7 @@ static class UiThemeSmokeTest
         Try("PropertiesDialog (Set List)",      () => PropertiesDialog.ForSetList("Test Properties", "Test Name", new SetListData(0, "Test", Array.Empty<SetListSlot>())));
         Try("UnresolvedDependenciesDialog",     () => UnresolvedDependenciesDialog.For(new[]
         {
-            new SessionDependencyEntry(new ObjLoc(LibObj.Program, 0x00, 0), "timbre 1", 0, new ObjLoc(LibObj.Combi, 0x00, 0), null),
+            new SessionDependencyEntry(new ObjLoc(LibObj.Program, 0x00, 0), RefKind.CombiTimbre, 0, new ObjLoc(LibObj.Combi, 0x00, 0), null),
         }));
         Try("ObjectInfoDialog", () => new ObjectInfoDialog(
             "Program: I-A:000 - TEST", "Combi: I-A:000 - TEST COMBI (via timbre 1)", new[] { "Wave Sequence: Int:000 - TEST WAVE (via osc1 zone1)" }));

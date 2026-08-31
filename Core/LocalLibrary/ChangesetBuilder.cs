@@ -76,13 +76,18 @@ static class ChangesetBuilder
             else survivingDeletes.Add(loc);
         }
 
-        // Step 3: defense-in-depth referential check over the surviving set.
+        // Step 3: defense-in-depth referential check over the surviving set. The slots step 4b
+        // is about to blank count as missing here: they still read back normally until the push
+        // actually runs (PendingDelete only flips a flag - both the index entry and the blob
+        // stay), so without naming them the gate is blind to the one case it exists to catch -
+        // a dirty Combi pushed in the same changeset that erases a Program it points at.
+        var beingErased = survivingDeletes.ToHashSet();
         foreach (var loc in surviving)
         {
             if (loc.ObjType != LibObj.Combi && loc.ObjType != LibObj.SetList) continue;
             var body = cache.GetCurrentBody(loc.ObjType, loc.Bank, loc.Number);
             if (body == null) continue;
-            foreach (var (missingRef, kind) in DependencyScanner.Scan(cache, loc.ObjType, body))
+            foreach (var (missingRef, kind) in DependencyScanner.ScanForPush(cache, loc.ObjType, body, beingErased))
                 plan.Warnings.Add(AppMessages.Librarian.Sync.RefuseMissingReference(loc.Label(), missingRef.Label(), kind));
         }
 

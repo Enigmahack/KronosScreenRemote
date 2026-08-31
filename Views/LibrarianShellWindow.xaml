@@ -75,15 +75,15 @@
                         <MenuItem x:Name="MI_Paste" Header="Paste" InputGestureText="Ctrl+V" Click="OnPasteMenuItem"/>
                         <Separator x:Name="SEP_MergeMove"/>
                         <MenuItem x:Name="MI_MoveToMerge" Header="Move to Merge Window" Click="OnMoveLocalToMergeMenuItem"
-                                  ToolTip="Stage this (and its dependencies) in the Merge Window to rearrange and push it somewhere else."/>
+                                  ToolTip="Stage this and its dependencies in the Merge Window."/>
                         <MenuItem x:Name="MI_ScanDeps" Header="Scan PCG for dependencies..." Click="OnScanDependenciesMenuItem"
-                                  ToolTip="Pick a .pcg file and stage whatever it holds of this object's missing dependencies into the Merge Window."/>
+                                  ToolTip="Search a .pcg for this object's missing dependencies and stage them."/>
                         <Separator x:Name="SEP_1"/>
                         <MenuItem x:Name="MI_Rename" Header="Rename..." InputGestureText="F2" Click="OnRenameMenuItem"/>
                         <MenuItem x:Name="MI_Properties" Header="Properties..." Click="OnOpenProperties"/>
                         <Separator x:Name="SEP_2"/>
                         <MenuItem x:Name="MI_Delete" Header="Delete" InputGestureText="Del" Click="OnDeleteMenuItem"
-                                  ToolTip="Removes this from your local library only - hardware is unaffected until Sync/Commit; Pull restores it."/>
+                                  ToolTip="Deletes from the local library only - hardware is untouched until Commit."/>
                         <Separator/>
                         <MenuItem Header="Expand Selected" Click="OnLocalExpandSelectedMenuItem"/>
                         <MenuItem Header="Collapse Selected" Click="OnLocalCollapseSelectedMenuItem"/>
@@ -155,7 +155,7 @@
                     <TextBlock Text="●" FontSize="9" Margin="5 0 0 0" VerticalAlignment="Center"
                                Foreground="{StaticResource SampleDependencyDotBrush}"
                                Visibility="{Binding HasSampleDependency, Converter={StaticResource BoolToVis}}"
-                               ToolTip="References a sample (Sampling Mode/RAM, EXs, or a User/3rd-Party sample bank) - see Object Dependencies below for which."/>
+                               ToolTip="References a sample - see Object Dependencies for which."/>
                 </StackPanel>
             </Border>
         </HierarchicalDataTemplate>
@@ -183,7 +183,7 @@
                     <TextBlock Text="●" FontSize="9" Margin="5 0 0 0" VerticalAlignment="Center"
                                Foreground="{StaticResource SampleDependencyDotBrush}"
                                Visibility="{Binding HasSampleDependency, Converter={StaticResource BoolToVis}}"
-                               ToolTip="References a sample (Sampling Mode/RAM, EXs, or a User/3rd-Party sample bank) - see Object Dependencies below for which."/>
+                               ToolTip="References a sample - see Object Dependencies for which."/>
                 </StackPanel>
             </Border>
         </HierarchicalDataTemplate>
@@ -213,7 +213,7 @@
                     <TextBlock Text="●" FontSize="9" Margin="5 0 0 0" VerticalAlignment="Center"
                                Foreground="{StaticResource SampleDependencyDotBrush}"
                                Visibility="{Binding HasSampleDependency, Converter={StaticResource BoolToVis}}"
-                               ToolTip="References a sample (Sampling Mode/RAM, EXs, or a User/3rd-Party sample bank) - see Object Dependencies below for which."/>
+                               ToolTip="References a sample - see Object Dependencies for which."/>
                 </StackPanel>
             </Border>
         </HierarchicalDataTemplate>
@@ -257,15 +257,15 @@
                 <TextBlock Text="Search PCG:" VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
                 <TextBox x:Name="TXT_PcgSearch" Width="220" Margin="6 0 0 0"
                          Text="{Binding PcgPane.SearchText, UpdateSourceTrigger=PropertyChanged, Delay=200}"
-                         ToolTip="Live filter for the Loaded PCG File tree below - matches name, bank (e.g. 'I-A'), category, EXi engine type (e.g. 'AL-1' matches both a name containing it and a Program that IS one), and what the object itself references. Case-insensitive."/>
+                         ToolTip="Filters the tree below by name, bank, category, EXi type, or reference."/>
             </StackPanel>
             <StackPanel Orientation="Horizontal">
                 <Button x:Name="BTN_Sync" Content="Sync Library" Width="120"
                         Command="{Binding SyncLibraryCommand}"
-                        ToolTip="Pull the whole library (lazy digest-diff, or Force Full Sync below), then push every pending local change."/>
+                        ToolTip="Pull the library, then push every pending local change."/>
                 <CheckBox Content="Force Full Sync" VerticalAlignment="Center" Margin="10 0 0 0"
                           IsChecked="{Binding ForceFullPull}"
-                          ToolTip="Instead of syncing changes, forces a complete sync for all programs/combis/set lists on the Kronos."/>
+                          ToolTip="Sync every program, combi, and set list, not just what changed."/>
                 <Button x:Name="BTN_Undo" Content="Undo" Padding="10 2" Margin="16 0 0 0"
                         Command="{Binding UndoCommand}" ToolTip="{Binding UndoLabel}"/>
                 <TextBlock VerticalAlignment="Center" Margin="16 0 0 0"
@@ -298,7 +298,7 @@
                         VerticalAlignment="Top" Click="OnDismissWarning"
                         Background="Transparent" BorderThickness="0" Foreground="#FFFFE0A0"
                         FontSize="13" FontWeight="Bold" Cursor="Hand"
-                        ToolTip="Dismiss this warning. It doesn't undo or acknowledge anything - the condition it describes is unchanged."/>
+                        ToolTip="Hide this warning. The condition it describes is unchanged."/>
                 <TextBlock Foreground="#FFFFE0A0" FontSize="13" FontWeight="Bold" TextWrapping="Wrap"
                            Text="{Binding WarningText}"/>
             </DockPanel>
@@ -335,10 +335,10 @@
                                 Click="OnRenameButton" ToolTip="Rename the selected item (F2)"/>
                         <Button x:Name="BTN_LocalDelete" Content="Delete" Padding="10 2" Margin="0 0 4 0"
                                 Click="OnDeleteButton"
-                                ToolTip="Removes from your local library only - hardware is unaffected until Sync/Commit; Pull restores it. (Del)"/>
+                                ToolTip="Deletes from the local library only - hardware is untouched until Commit. (Del)"/>
                         <Button x:Name="BTN_LocalClearChanges" Content="Clear Changes" Padding="10 2"
                                 Click="OnClearChangesButton"
-                                ToolTip="Reverts every pending local edit back to baseline and un-marks every pending deletion - a fresh Pull would show the same thing. Does not touch hardware."/>
+                                ToolTip="Revert every pending edit and deletion. Hardware is untouched."/>
                     </StackPanel>
 
                     <TextBlock Grid.Row="1" Margin="0 0 0 6" FontSize="11" Foreground="{StaticResource AccentBrush}"
@@ -370,7 +370,7 @@
 
                     <Border Grid.Row="3" Margin="0 6 0 0" Padding="0 5 0 0"
                             BorderThickness="0 1 0 0" BorderBrush="{StaticResource MutedTextBrush}"
-                            ToolTip="A conflicted/pending-delete/read-only row is tinted instead of dotted. See the sample legend at the very bottom of the window for the blue sample-reference dot.">
+                            ToolTip="Conflicted, pending-delete, and read-only rows are tinted, not dotted.">
                         <StackPanel Orientation="Vertical">
                             <WrapPanel Orientation="Horizontal">
                                 <StackPanel Orientation="Horizontal" Margin="0 0 12 2">
@@ -430,8 +430,9 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
-                    
+
                     <Grid Grid.Row="0" Margin="0 0 0 6">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto"/>
@@ -440,7 +441,7 @@
                         
                         <Button Grid.Column="0" Padding="10 2" MinWidth="128" HorizontalAlignment="Left"
                                 Command="{Binding AutoFillToLibraryCommand}"
-                                ToolTip="Place everything staged here into the next free slots of its own type in Local Library - Programs first, then Combis, then Set Lists, so each one's dependencies are already placed and its references point at where they actually landed. Nothing is sent to the Kronos: this only stages, exactly like dragging items across yourself. Review the result, then Commit Changes to push.">
+                                ToolTip="Place everything staged into the next free slots of its own type - Programs, then Combis, then Set Lists. Anything that doesn't fit stays staged.">
                             <Grid>
                                 <ProgressBar IsIndeterminate="True" Height="14" Opacity="0.35"
                                              Background="Transparent" BorderThickness="0"
@@ -463,10 +464,10 @@
                         <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
                             <CheckBox Content="Force Overwrite" VerticalAlignment="Center" Margin="0 0 12 0"
                                       IsChecked="{Binding MergePane.ForceOverwrite}"
-                                      ToolTip="Placing onto a slot still referenced by another Combi/Set List normally refuses, to avoid silently breaking that reference. Check this to overwrite it anyway - the referrer(s) will then resolve to the NEW object instead of the old one. The old occupant is still diverted to the session clipboard, never lost outright."/>
+                                      ToolTip="Allow overwriting a slot another Combi or Set List still references."/>
                             <Button Content="Clear Merge" Padding="10 2"
                                     Click="OnClearMergeButton"
-                                    ToolTip="Abandons everything staged here, whether or not any of it has been placed into Local Library yet."/>
+                                    ToolTip="Abandon everything staged here."/>
                         </StackPanel>
                     </Grid>
 
@@ -480,9 +481,33 @@
                               ItemContainerStyle="{StaticResource LibraryTreeItemStyle}"
                               AllowDrop="True" DragOver="OnMergeDragOver" Drop="OnMergeDrop"/>
 
-                    <Border Grid.Row="3" Margin="0 6 0 0" Padding="0 5 0 0"
+                    <!-- What's staged, and what it still needs - see MergePaneViewModel.RefreshTally.
+                         The missing-dependency line turns red the moment anything staged references
+                         something nothing staged provides, so a gap is visible without opening the
+                         Object Dependencies panel. -->
+                    <StackPanel Grid.Row="3" Margin="0 6 0 0"
+                                ToolTip="What's staged in the Merge Window right now.">
+                        <TextBlock Text="{Binding MergePane.TallyText}" FontSize="10"
+                                   TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}"/>
+                        <TextBlock FontSize="10" Margin="0 2 0 0"
+                                   Text="{Binding MergePane.MissingDependencyCount, StringFormat='Total missing dependencies: {0}'}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding MergePane.HasMissingDependencies}" Value="True">
+                                            <Setter Property="Foreground" Value="{StaticResource MissingDependencyTextBrush}"/>
+                                            <Setter Property="FontWeight" Value="Bold"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+
+                    <Border Grid.Row="4" Margin="0 6 0 0" Padding="0 5 0 0"
                             BorderThickness="0 1 0 0" BorderBrush="{StaticResource MutedTextBrush}"
-                            ToolTip="A dot marks an object staged/referenced more than once. See the sample legend at the very bottom of the window for the blue sample-reference dot.">
+                            ToolTip="A dot marks an object staged or referenced more than once.">
                         <WrapPanel Orientation="Horizontal">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="●" FontSize="9" VerticalAlignment="Center" Foreground="#FFD4C020"/>
@@ -539,7 +564,7 @@
 
                     <Button Grid.Row="0" Content="Clear History" Padding="10 2" Margin="0 0 0 6"
                             HorizontalAlignment="Left" Click="OnClearHistoryButton"
-                            ToolTip="Permanently deletes the local audit log - does not affect your local library, pending edits, or hardware."/>
+                            ToolTip="Permanently delete the local audit log. Nothing else is affected."/>
 
                     <ListBox Grid.Row="1" ItemsSource="{Binding History}" FontFamily="Consolas" FontSize="11"
                              Background="{StaticResource PanelBackgroundBrush}" Foreground="{StaticResource TextBrush}"
@@ -561,18 +586,9 @@
             </GroupBox>
 
             <GroupBox Grid.Column="2" Header="Object Dependencies"
-                      ToolTip="Red rows at the top are dependencies the Merge Window is MISSING - something staged references them and nothing staged provides them. Right-click one to search a .pcg for it; anything found is staged here, so the gap can be filled before you Commit. Below them: every Program/Combi/Drum Kit/Wave Sequence the currently selected object(s) reference, including nested dependencies. Double-click or right-click a row for more info.">
+                      ToolTip="Red rows are missing dependencies - right-click one to search a .pcg.">
               <Grid Margin="6">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <RowDefinition Height="*"/>
-                </Grid.RowDefinitions>
-
-                <Button Grid.Row="0" x:Name="BTN_ResolveSampleNames" Content="Resolve Sample Bank Names..." Padding="10 2"
-                        Margin="0 0 0 6" HorizontalAlignment="Left" Click="OnResolveSampleNamesButton"
-                        ToolTip="Turns a raw EXs number or 3rd-party sample bank shown below into its real name using the shipped EXs product catalog"/>
-
-                <ListBox Grid.Row="1" x:Name="LST_ObjectDependencies" ItemsSource="{Binding ObjectDependencyRows}" FontFamily="Consolas" FontSize="11"
+                <ListBox x:Name="LST_ObjectDependencies" ItemsSource="{Binding ObjectDependencyRows}" FontFamily="Consolas" FontSize="11"
                          Background="{StaticResource PanelBackgroundBrush}" Foreground="{StaticResource TextBrush}"
                          BorderBrush="{StaticResource BorderBrush1}"
                          MouseDoubleClick="OnObjectDependencyRowDoubleClick"
@@ -635,7 +651,7 @@
              repeated per pane (it used to be, before the user asked for this consolidation). -->
         <Border Grid.Row="4" Margin="0 8 0 0" Padding="0 5 0 0"
                 BorderThickness="0 1 0 0" BorderBrush="{StaticResource MutedTextBrush}"
-                ToolTip="Applies to every tree above (Local Library, Merge Window, Loaded PCG File) and to the Object Dependencies panel's own text colors.">
+                ToolTip="Applies to every tree above and to the Object Dependencies panel.">
             <WrapPanel Orientation="Horizontal">
                 <!-- Not a sample color - listed first because it's the one entry here that means
                      "act on this", and the Object Dependencies panel is the only place it appears. -->
@@ -682,7 +698,7 @@
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="16 0 0 0">
                 <Button x:Name="BTN_Cancel" Content="Cancel" Width="90" Margin="0 0 8 0"
                         Click="OnCancelButton"
-                        ToolTip="Close the Librarian. Local edits are already saved as you make them - this doesn't undo anything (use Clear Changes for that)."/>
+                        ToolTip="Close the Librarian. Local edits are already saved."/>
                 <Button x:Name="BTN_Commit" Content="Commit Changes" Width="130"
                         Style="{StaticResource DangerButtonStyle}"
                         Command="{Binding CommitChangesCommand}"

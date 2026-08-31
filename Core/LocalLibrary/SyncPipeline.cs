@@ -17,7 +17,7 @@ static class SyncPipeline
         if (plan.IsRefusable)
         {
             cache.Save();   // persist the Conflicted flags ChangesetBuilder just set, even on refusal
-            return new PushResult(false, string.Join("; ", plan.Warnings), 0, conflicted);
+            return new PushResult(false, plan.Warnings.Join(), 0, conflicted);
         }
         if (plan.Writes.Count == 0)
         {
@@ -26,7 +26,7 @@ static class SyncPipeline
             var delUtc = DateTime.UtcNow;
             foreach (var loc in plan.Deletes) cache.RemoveObject(loc.ObjType, loc.Bank, loc.Number, delUtc);
             cache.Save();
-            return new PushResult(true, plan.Warnings.Count > 0 ? string.Join("; ", plan.Warnings) : null, 0, conflicted, plan.Deletes.Count);
+            return new PushResult(true, plan.Warnings.Count > 0 ? plan.Warnings.Join() : null, 0, conflicted, plan.Deletes.Count);
         }
 
         await Librarian.ArmPlanAsync(plan, sysEx).ConfigureAwait(false);
@@ -105,7 +105,7 @@ static class SyncPipeline
     {
         var pull = await LibraryPullPipeline.PullAsync(sysEx, cache, fullPull, progress, ct).ConfigureAwait(false);
         if (ct.IsCancellationRequested)
-            return (pull, new PushResult(false, AppMessages.Librarian.Sync.CheckSyncCancelled, 0, new List<ObjLoc>()));
+            return (pull, new PushResult(false, AppMessages.Librarian.Sync.CheckSyncCancelled.ToString(), 0, new List<ObjLoc>()));
         var push = await PushAsync(sysEx, cache, sessionClip, progress).ConfigureAwait(false);
         return (pull, push);
     }

@@ -175,6 +175,24 @@
          replaces the theme style outright.
          ══════════════════════════════════════════════════════════════════ -->
 
+    <!-- App-wide tooltip wrapping. A WPF tooltip never wraps on its own, so a long one renders as
+         a single line running off the edge of the screen - MaxWidth alone doesn't help, since the
+         implicit TextBlock inside defaults to TextWrapping="NoWrap" and simply overflows it. The
+         ContentTemplate assumes tooltip content is TEXT (a string, or a binding to one), which is
+         what every ToolTip in this app currently is; a tooltip that needs rich content must set
+         its own ContentTemplate (or wrap the panel in a ToolTip element) to opt out. Colors are
+         deliberately left at the system default - this changes layout only. -->
+    <Style TargetType="ToolTip">
+        <Setter Property="MaxWidth" Value="360"/>
+        <Setter Property="ContentTemplate">
+            <Setter.Value>
+                <DataTemplate>
+                    <TextBlock Text="{Binding}" TextWrapping="Wrap"/>
+                </DataTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <Style TargetType="CheckBox">
         <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
         <Style.Triggers>

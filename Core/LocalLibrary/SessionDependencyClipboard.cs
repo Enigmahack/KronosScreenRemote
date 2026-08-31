@@ -15,7 +15,7 @@ namespace KronosScreenRemote;
 // true gap (the source - a loaded PCG, or the Merge Window's own pull - never resolved this
 // reference to any known content), which is not something this mechanism can ever auto-repair;
 // it stays pending until the user does something about it manually.
-sealed record SessionDependencyEntry(ObjLoc MissingRef, string RefKind, int Site, ObjLoc RequiredBy, string? ExpectedContentHash);
+sealed record SessionDependencyEntry(ObjLoc MissingRef, RefKind RefKind, int Site, ObjLoc RequiredBy, string? ExpectedContentHash);
 
 sealed class SessionDependencyClipboard
 {

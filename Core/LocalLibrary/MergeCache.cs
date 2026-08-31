@@ -15,7 +15,7 @@ readonly record struct MergeOrigin(string PcgFileName, ObjLoc SourceLoc);
 sealed class MergeRefSite
 {
     public required string OwnerHash { get; init; }   // the entry this reference site belongs to
-    public required string RefKind { get; init; }
+    public required RefKind RefKind { get; init; }
     public required int Site { get; init; }
     public required ObjLoc TargetLoc { get; init; }   // the original reference, for gap reconciliation
     public string? ResolvedContentHash { get; set; }
@@ -166,7 +166,7 @@ sealed class MergeCache
     // Added alone can't answer that: a PCG bank of unused INIT Combis is byte-identical content
     // that dedups to one entry, and re-pulling anything already staged adds nothing at all, so a
     // count taken from Added reads as "Pulled 0 object(s)" for a pull that did stage objects.
-    public (List<MergeEntry> Added, List<(ObjLoc MissingRef, string RefKind)> Gaps) PullFromPcg(
+    public (List<MergeEntry> Added, List<(ObjLoc MissingRef, string Reason)> Gaps) PullFromPcg(
         PcgLibraryView pcg, string pcgFileName, ObjLoc loc, ICollection<string>? stagedHashes = null)
     {
         MergePullSource source = l =>
@@ -183,7 +183,7 @@ sealed class MergeCache
     // staged back in the Merge Window to be rearranged and pushed somewhere else. Bodies come
     // from the cache's CURRENT state (cache.GetCurrentBody); references resolve against whatever
     // address they encode, exactly as a PCG pull resolves within its file.
-    public (List<MergeEntry> Added, List<(ObjLoc MissingRef, string RefKind)> Gaps) PullFromLocal(
+    public (List<MergeEntry> Added, List<(ObjLoc MissingRef, string Reason)> Gaps) PullFromLocal(
         LocalLibraryCache localCache, ObjLoc loc, ICollection<string>? stagedHashes = null)
     {
         MergePullSource source = l =>
@@ -194,7 +194,7 @@ sealed class MergeCache
         return Pull(source, LocalSourceLabel, loc, stagedHashes);
     }
 
-    (List<MergeEntry> Added, List<(ObjLoc MissingRef, string RefKind)> Gaps) Pull(
+    (List<MergeEntry> Added, List<(ObjLoc MissingRef, string Reason)> Gaps) Pull(
         MergePullSource source, string sourceLabel, ObjLoc loc, ICollection<string>? stagedHashes)
     {
         Mutating?.Invoke();
@@ -336,6 +336,35 @@ sealed class MergeCache
         Save();
     }
 
+    // Collapses the persistence writes of a burst of mutations into ONE, on dispose. Save()
+    // fully rewrites the JSON snapshot (see FileMergeCachePersistence), so a per-item caller -
+    // a 128-slot Auto-Fill, a whole-bank dedup sweep - paid two rewrites per item, a real stall
+    // with DataDir on an SMB share.
+    //
+    // Deliberately defers only the WRITE, never the mutation: each RecordPlacement/Remove still
+    // lands immediately, in order, because callers depend on seeing their own earlier placements
+    // mid-loop (LibrarianShellViewModel.DedupMergeGroup re-resolves every entry against
+    // _placedAddresses, which ResolveReferencesForPlacement consults ahead of any content
+    // search). Collecting the mutations and applying them at the end instead would silently
+    // change how a later item in the same group resolves.
+    int _saveDepth;
+    bool _savePending;
+
+    public IDisposable DeferSaves() => new SaveScope(this);
+
+    sealed class SaveScope : IDisposable
+    {
+        readonly MergeCache _cache;
+        public SaveScope(MergeCache cache) { _cache = cache; _cache._saveDepth++; }
+
+        public void Dispose()
+        {
+            if (--_cache._saveDepth > 0 || !_cache._savePending) return;
+            _cache._savePending = false;
+            _cache.Save();
+        }
+    }
+
     // Rewrites a COPY of `entry`'s own body so every dependency that can be resolved gets
     // repointed to its actual destination, and reports back whatever's left unresolved (see
     // MergeRefSite - used by the caller to track it for a later retry, e.g.
@@ -381,7 +410,11 @@ sealed class MergeCache
         return (body, unresolved);
     }
 
-    void Save() => _persistence.Save(BuildSnapshot(deepCopyRefSites: false));
+    void Save()
+    {
+        if (_saveDepth > 0) { _savePending = true; return; }
+        _persistence.Save(BuildSnapshot(deepCopyRefSites: false));
+    }
 
     // deepCopyRefSites: false for Save (serialized or discarded immediately, so sharing the live
     // MergeRefSite objects is free and safe); true for Snapshot, which is held indefinitely - see

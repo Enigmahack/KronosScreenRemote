@@ -11,9 +11,9 @@ sealed class ChangesetPlan : IExecutablePlan
     public List<(int Obj, int Bank)> Stores { get; } = new();
     public Dictionary<(int, int), byte[]> DigestBaseline { get; } = new();
     public List<byte[]> LivePc { get; } = new();   // always empty - no live 0x43 anywhere in this pipeline
-    public List<string> Warnings { get; } = new();
+    public List<PlanWarning> Warnings { get; } = new();
     public string BackupLabel => "changeset";
-    public bool IsRefusable => Warnings.Any(w => w.StartsWith("REFUSE:", StringComparison.Ordinal));
+    public bool IsRefusable => Warnings.AnyRefusal();
 
     // Program banks this changeset reformats to HD-1/EXi (func 0x7C) before writing them -
     // a whole-bank type change. Implements IExecutablePlan.BankTypeChanges (whose

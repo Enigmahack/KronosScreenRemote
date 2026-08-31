@@ -23,6 +23,17 @@ partial class MergePaneViewModel : ObservableObject
 
     [ObservableProperty] string statusText = "";
 
+    // What's staged right now, by type, plus what it still needs - shown above the pane's legend
+    // and rebuilt by RefreshTally on every tree rebuild (i.e. every pull, placement, and remove).
+    [ObservableProperty] string tallyText = "";
+    [ObservableProperty] int missingDependencyCount;
+
+    // Drives the tally's red styling in LibrarianShellWindow.xaml - a plain > 0 test needs a
+    // converter at the binding, a bool doesn't.
+    public bool HasMissingDependencies => MissingDependencyCount > 0;
+
+    partial void OnMissingDependencyCountChanged(int value) => OnPropertyChanged(nameof(HasMissingDependencies));
+
     // "Force Overwrite" (Views/LibrarianShellWindow.xaml's Merge Window GroupBox): bypasses
     // BatchLibrarian.PlanBatchMove's orphan gate, which otherwise REFUSEs placing onto a slot
     // still referenced by another local Combi/Set List (overwriting it would leave that
@@ -42,6 +53,12 @@ partial class MergePaneViewModel : ObservableObject
     public Func<string, IDisposable>? BeginUndo { get; set; }
 
     IDisposable? Undoable(string description) => BeginUndo?.Invoke(description);
+
+    // Injected by LibrarianShellViewModel (same pattern as BeginUndo above), since the Local
+    // Library cache is shell-owned and this pane only ever holds the MergeCache: "does Local
+    // Library already have this address?", asked of each gap a PCG pull leaves behind. Null in a
+    // headless self-test - the gap report then just states the count, never a wrong split.
+    public Func<ObjLoc, bool>? LocalHas { get; set; }
 
     public MergePaneViewModel(MergeCache cache)
     {
@@ -69,13 +86,26 @@ partial class MergePaneViewModel : ObservableObject
         if (locs.Count == 0) return;
         using var undo = Undoable(AppMessages.Librarian.Shell.UndoPulledIntoMerge(locs.Count));
         var staged = new HashSet<string>();
-        int gaps = 0;
+        var gaps = new HashSet<ObjLoc>();
         foreach (var loc in locs)
-            gaps += _cache.PullFromPcg(pcg, pcgFileName, loc, staged).Gaps.Count;
+            foreach (var (missing, _) in _cache.PullFromPcg(pcg, pcgFileName, loc, staged).Gaps)
+                gaps.Add(missing);
         RefreshTree();
-        StatusText = gaps == 0
+        StatusText = gaps.Count == 0
             ? AppMessages.Librarian.Merge.PulledIntoMerge(staged.Count)
-            : AppMessages.Librarian.Merge.PulledWithGapsInPcg(staged.Count, gaps);
+            : DescribeGaps(staged.Count, gaps);
+    }
+
+    // Gaps are counted by distinct ADDRESS, not by reference site: one missing Program referenced
+    // by eight staged Combis is one thing for the user to go find, not eight. Whatever Local
+    // Library already holds at that address needs no PCG hunt at all, so it's reported apart from
+    // what's genuinely still missing (and not at all when there's none, to keep the line short).
+    string DescribeGaps(int staged, IReadOnlyCollection<ObjLoc> gaps)
+    {
+        int inLibrary = LocalHas is { } has ? gaps.Count(has) : 0;
+        return inLibrary == 0
+            ? AppMessages.Librarian.Merge.PulledWithGapsInPcg(staged, gaps.Count)
+            : AppMessages.Librarian.Merge.PulledWithGapsPartlyLocal(staged, gaps.Count, inLibrary, gaps.Count - inLibrary);
     }
 
     // Requirement 3: stage a Local Library object (transitively, same as PullFromPcg) back into
@@ -91,13 +121,14 @@ partial class MergePaneViewModel : ObservableObject
         if (locs.Count == 0) return;
         using var undo = Undoable(AppMessages.Librarian.Shell.UndoPulledIntoMerge(locs.Count));
         var staged = new HashSet<string>();
-        int gaps = 0;
+        var gaps = new HashSet<ObjLoc>();   // by address, same as PullFromPcg's - see DescribeGaps
         foreach (var loc in locs)
-            gaps += _cache.PullFromLocal(localCache, loc, staged).Gaps.Count;
+            foreach (var (missing, _) in _cache.PullFromLocal(localCache, loc, staged).Gaps)
+                gaps.Add(missing);
         RefreshTree();
-        StatusText = gaps == 0
+        StatusText = gaps.Count == 0
             ? AppMessages.Librarian.Merge.PulledIntoMerge(staged.Count)
-            : AppMessages.Librarian.Merge.PulledWithGapsLocally(staged.Count, gaps);
+            : AppMessages.Librarian.Merge.PulledWithGapsLocally(staged.Count, gaps.Count);
     }
 
     // Explicit "Clear Merge" - abandons everything still staged (see MergeCache.Clear's own
@@ -179,7 +210,53 @@ partial class MergePaneViewModel : ObservableObject
     {
         _cache.RecordPlacement(contentHash, destLoc);
         _cache.Remove(contentHash);
+        RequestRefresh();
+    }
+
+    // Group form, for every caller that places more than one item (Auto-Fill, whole-bank
+    // placement, the dedup sweep): one cache write and one tree rebuild for the whole group
+    // instead of two writes plus a full tree reconstruction per item. Each placement still lands
+    // one at a time inside the scope - see MergeCache.DeferSaves for why that ordering matters.
+    public void CommitPlacements(IReadOnlyList<(string ContentHash, ObjLoc Dest)> placements)
+    {
+        if (placements.Count == 0) return;
+        using var scope = DeferCommits();
+        foreach (var (hash, dest) in placements) CommitPlacement(hash, dest);
+    }
+
+    // For a caller whose own loop has to interleave work between placements (DedupMergeGroup
+    // decides each entry against the placements it has already made) and so can't hand the whole
+    // group over at once.
+    public IDisposable DeferCommits() => new CommitScope(this);
+
+    int _deferDepth;
+    bool _refreshPending;
+
+    void RequestRefresh()
+    {
+        if (_deferDepth > 0) { _refreshPending = true; return; }
         RefreshTree();
+    }
+
+    sealed class CommitScope : IDisposable
+    {
+        readonly MergePaneViewModel _pane;
+        readonly IDisposable _cacheScope;
+
+        public CommitScope(MergePaneViewModel pane)
+        {
+            _pane = pane;
+            _pane._deferDepth++;
+            _cacheScope = pane._cache.DeferSaves();
+        }
+
+        public void Dispose()
+        {
+            _cacheScope.Dispose();
+            if (--_pane._deferDepth > 0 || !_pane._refreshPending) return;
+            _pane._refreshPending = false;
+            _pane.RefreshTree();
+        }
     }
 
     void RefreshTree()
@@ -240,7 +317,23 @@ partial class MergePaneViewModel : ObservableObject
         if (drumKitsRoot.Children.Count > 0) Roots.Add(drumKitsRoot);
         if (waveSequencesRoot.Children.Count > 0) Roots.Add(waveSequencesRoot);
         ObjectTreeNode.RestoreExpandedKeys(Roots, expandedKeys);
+        RefreshTally();
         TreeRefreshed?.Invoke();
+    }
+
+    // The tree only shows a type root once something of that type is staged, and a nested
+    // dependency is hidden from its own root entirely (see the display rules above), so "how much
+    // is actually staged" can't be read off it. This counts the flat cache instead - every staged
+    // entry, at any depth. Missing dependencies are counted by distinct ADDRESS, matching the
+    // pull's own gap report: one missing Program referenced by eight staged Combis is one thing
+    // for the user to go and find.
+    void RefreshTally()
+    {
+        int Count(int objType) => _cache.Entries.Count(e => e.ObjType == objType);
+        TallyText = $"Programs: {Count(LibObj.Program)}   Combis: {Count(LibObj.Combi)}   " +
+                    $"Drum Kits: {Count(LibObj.DrumKit)}   Wave Seq: {Count(LibObj.WaveSequence)}   " +
+                    $"Set Lists: {Count(LibObj.SetList)}";
+        MissingDependencyCount = _cache.UnresolvedRefSites.Select(s => s.TargetLoc).Distinct().Count();
     }
 
     // Top-level Combis/Programs grouped by their SOURCE bank (requirement 4) so a whole bank is

@@ -404,6 +404,29 @@ public partial class HelpWindow : ThemedWindow
                  "when checked, placing staged content that already exists in Local Library still writes " +
                  "a fresh copy; when unchecked, the existing copy is reused instead of writing a " +
                  "duplicate. Defaults: Programs are reused, Combis are copied as-is."));
+        Add(Body("• Auto-Fill sends nothing to the Kronos - it only stages, exactly like dragging items " +
+                 "across yourself. Review the result, then Commit Changes to push. Anything that doesn't " +
+                 "fit (no bank of the matching type has room) stays staged.\n" +
+                 "• Force Overwrite (Merge Window): placing onto a slot another Combi or Set List still " +
+                 "references normally refuses, to avoid silently breaking that reference. Force Overwrite " +
+                 "places anyway - those referrers then resolve to the NEW object, and the old occupant is " +
+                 "diverted to the session clipboard rather than lost.\n" +
+                 "• Object Dependencies: red rows at the top are dependencies nothing staged provides. " +
+                 "Right-click one to search a .pcg for it; anything found is staged, so the gap can be " +
+                 "filled before you Commit. Below them is every Program/Combi/Drum Kit/Wave Sequence the " +
+                 "selection references, nested ones included - double-click a row for more info.\n" +
+                 "• Sample bank names (EXs and 3rd-party) are resolved automatically from the shipped EXs " +
+                 "catalog when you load a .pcg. A catalog hit identifies the product, and is not proof " +
+                 "the pack is installed on the instrument.\n" +
+                 "• The PCG search box matches name, bank (e.g. 'I-A'), category, EXi engine type (e.g. " +
+                 "'AL-1' matches both a name containing it and a Program that IS one), and what the object " +
+                 "references. Case-insensitive.\n" +
+                 "• Delete and Clear Changes affect the local library only - hardware is untouched until " +
+                 "Sync/Commit, and a fresh Pull restores what was deleted. Clear History deletes the local " +
+                 "audit log alone: local library, pending edits, and hardware are all unaffected.\n" +
+                 "• Tree dots and tints: a dot marks an object staged or referenced more than once, a blue " +
+                 "dot marks a sample reference (see the legend at the bottom of the window), and a " +
+                 "conflicted, pending-delete, or read-only row is tinted instead of dotted."));
 
         Add(SectionHead("Command Palette  (Ctrl+K)"));
         Add(Body("A fuzzy-search launcher for all app commands. Start typing to filter; press Enter or click " +

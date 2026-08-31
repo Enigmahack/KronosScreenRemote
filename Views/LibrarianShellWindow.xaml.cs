@@ -288,23 +288,6 @@ internal partial class LibrarianShellWindow : ThemedWindow
     void ShowObjectDependencyInfo(ObjectDependencyRow row) =>
         new ObjectInfoDialog(row.Description, row.ParentInfo, row.DescribeChildren()).OwnedBy(this).ShowDialog();
 
-    // Builds the EXs/3rd-party sample-bank name index (Core/Sample/ExsOptionIndex.cs) from the
-    // shipped product catalog - no connection, no login, no cancellation, so it stays an
-    // instantaneous local read. Still a manual, explicit action rather than something the
-    // selection-change path does on its own, matching what the button has always promised.
-    void OnResolveSampleNamesButton(object sender, RoutedEventArgs e)
-    {
-        var index = ExsOptionIndex.FromCatalog();
-        _vm.ApplyExsOptionIndex(index);
-
-        // Worded as identification, never as installation: a catalog hit proves Korg publishes
-        // that pack, not that this instrument has it - see ExsOptionIndex's header comment.
-        string source = index.FromOverrideFile ? "updated EXs catalog" : "EXs product catalog";
-        _vm.StatusText = index.Count == 0
-            ? "No EXs catalog available - sample bank names are unchanged."
-            : $"Named {index.Count} EXs sample bank(s) from the {source}.";
-    }
-
     // Program/Combi: Name + Category/Sub-Category. Set List: Name + a browsable slot list
     // (Name/Color/Comments per slot) - see PropertiesDialog's own doc comment for why this
     // absorbs the retired SetListWindow/SetListSlotEditDialog into one dialog.

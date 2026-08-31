@@ -13,18 +13,28 @@ static class LocalEditOps
         return body != null && version != null ? new ObjectDump(loc.ObjType, loc.Bank, loc.Number, version.Value, body) : null;
     }
 
+    // The ONE place a name is written into a body. Rename and EditProperties used to carry
+    // separate copies of this switch, and the Rename copy silently fell through to "body
+    // unchanged" for Drum Kits and Wave Sequences - still reporting success, still writing an
+    // op-log entry. Returns null (not the untouched body) for a type with no name codec, so an
+    // unhandled type can never again be mistaken for a successful rename.
+    static byte[]? WriteNameFor(int objType, byte[] body, string name) => objType switch
+    {
+        LibObj.Program      => ProgramBody.WriteName(body, name),
+        LibObj.Combi        => CombiBody.WriteName(body, name),
+        LibObj.SetList      => SetListBody.WriteName(body, name),
+        LibObj.DrumKit      => DrumKitBody.WriteName(body, name),
+        LibObj.WaveSequence => WaveSequenceBody.WriteName(body, name),
+        _ => null,
+    };
+
     public static (bool Ok, string? Error) Rename(LocalLibraryCache cache, ObjLoc loc, string newName, DateTime utcNow)
     {
         var dump = GetObjectDump(cache, loc);
         if (dump == null) return (false, "not found locally - Pull first");
+        if (WriteNameFor(loc.ObjType, dump.Body, newName) is not { } renamed)
+            return (false, "this object type can't be renamed");
 
-        byte[] renamed = loc.ObjType switch
-        {
-            LibObj.Program => ProgramBody.WriteName(dump.Body, newName),
-            LibObj.Combi   => CombiBody.WriteName(dump.Body, newName),
-            LibObj.SetList => SetListBody.WriteName(dump.Body, newName),
-            _ => dump.Body,
-        };
         cache.RecordEdit(loc.ObjType, loc.Bank, loc.Number, dump.Version, renamed,
             "Rename", $"Renamed {loc.Label()} to \"{newName}\"", utcNow);
         return (true, null);
@@ -42,7 +52,7 @@ static class LocalEditOps
 
         var cat = cache.BuildCatalog();
         var plan = Librarian.PlanMove(cat, src, srcDump, dst, dstDump);
-        if (plan.IsRefusable) return (false, string.Join("; ", plan.Warnings));
+        if (plan.IsRefusable) return (false, plan.Warnings.Join());
 
         cache.RecordEdits(plan.Writes.Select(w => (w.Obj, w.Bank, w.Index, w.Version, w.Body)),
             "Move", $"Moved {src.Label()} ↔ {dst.Label()}", utcNow);
@@ -77,7 +87,7 @@ static class LocalEditOps
         }
 
         var plan = BatchLibrarian.PlanBatchMove(cat, objType, placements, destOccupants, divertDisplacedToClipboard, bankTypeOf, forceOverwrite);
-        if (plan.IsRefusable) return (false, string.Join("; ", plan.Warnings), new List<ClipboardEntry>());
+        if (plan.IsRefusable) return (false, plan.Warnings.Join(), new List<ClipboardEntry>());
 
         cache.RecordEdits(plan.Writes.Select(w => (w.Obj, w.Bank, w.Index, w.Version, w.Body)),
             "BatchPlace", $"Placed {placements.Count} item(s) into {ObjectTypeRegistry.Get(objType).DisplayName} bank(s)", utcNow);
@@ -111,7 +121,7 @@ static class LocalEditOps
     // may already be dirty or even previously pushed. Returns false - leaving the reference
     // tracked as still-pending - if requiredBy is no longer present locally (e.g. discarded since
     // it was tracked), or if the destination can't be encoded at that site.
-    public static bool RepatchReference(LocalLibraryCache cache, ObjLoc requiredBy, int site, string refKind, ObjLoc newTarget, DateTime utcNow)
+    public static bool RepatchReference(LocalLibraryCache cache, ObjLoc requiredBy, int site, RefKind refKind, ObjLoc newTarget, DateTime utcNow)
     {
         var dump = GetObjectDump(cache, requiredBy);
         if (dump == null) return false;
@@ -143,15 +153,9 @@ static class LocalEditOps
 
         if (name != null)
         {
-            body = loc.ObjType switch
-            {
-                LibObj.Program      => ProgramBody.WriteName(body, name),
-                LibObj.Combi        => CombiBody.WriteName(body, name),
-                LibObj.SetList      => SetListBody.WriteName(body, name),
-                LibObj.DrumKit      => DrumKitBody.WriteName(body, name),
-                LibObj.WaveSequence => WaveSequenceBody.WriteName(body, name),
-                _ => body,
-            };
+            if (WriteNameFor(loc.ObjType, body, name) is not { } named)
+                return (false, "this object type can't be renamed");
+            body = named;
             changes.Add($"name to \"{name}\"");
         }
         if (category is int cat && subCategory is int sub)

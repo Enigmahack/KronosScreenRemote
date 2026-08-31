@@ -16,6 +16,13 @@ interface IObjectTypeDescriptor
     string DisplayName { get; }
     bool IsReferrer { get; }        // can this type's bodies reference other objects?
     bool IsReferencable { get; }    // can other objects reference this type?
+
+    // The "type" selector of the func-33 reference encoding (KronosBanks.Func33ToObjBank /
+    // ObjBankToFunc33), or null for a type that has no representation in it. Distinct from
+    // IsReferencable: a Drum Kit IS referencable, but through the LINEAR ms-number encoding,
+    // not this one. Null is therefore also the answer to "can a Set List slot address this?" -
+    // a slot stores exactly this selector, so a type without one cannot be a set-list target.
+    int? Func33RefType { get; }
     string BankLabel(int bank);
     bool IsReadOnlyBank(int bank);
 
@@ -50,6 +57,7 @@ static class ObjectTypeRegistry
         public string DisplayName => "Program";
         public bool IsReferrer => true;    // Drum Track -> Program; HD-1 oscillator zones -> Drum Kit/Wave Sequence
         public bool IsReferencable => true;
+        public int? Func33RefType => 1;
         public string BankLabel(int bank) => KronosBanks.ProgramLabel(bank);
         public bool IsReadOnlyBank(int bank) => KronosBanks.IsReadOnlyProgramBank(bank);
 
@@ -74,6 +82,7 @@ static class ObjectTypeRegistry
         public string DisplayName => "Combi";
         public bool IsReferrer => true;
         public bool IsReferencable => true;
+        public int? Func33RefType => 0;
         public string BankLabel(int bank) => KronosBanks.CombiLabel(bank);
         public bool IsReadOnlyBank(int bank) => false;
         // Combi genuinely has SEVEN internal banks (I-A..I-G) - see KronosBanks.Func33ToObjBank.
@@ -88,6 +97,7 @@ static class ObjectTypeRegistry
         public string DisplayName => "Set List";
         public bool IsReferrer => true;
         public bool IsReferencable => false;   // nothing ever references a Set List
+        public int? Func33RefType => null;
         public string BankLabel(int bank) => "Set Lists";
         public bool IsReadOnlyBank(int bank) => false;
         public IEnumerable<int> EditableBanks() => new[] { 0 };   // flat 128-slot pseudo-bank
@@ -108,6 +118,7 @@ static class ObjectTypeRegistry
         public string DisplayName => "Drum Kit";
         public bool IsReferrer => false;    // references samples (Bank UUID + Id), not other Librarian objects
         public bool IsReferencable => true;    // Drums-mode HD-1 oscillator zones reference these
+        public int? Func33RefType => null;
         public string BankLabel(int bank) => KronosBanks.DrumKitLabel(bank);
         public bool IsReadOnlyBank(int bank) => KronosBanks.IsReadOnlyDrumKitBank(bank);
         public IEnumerable<int> EditableBanks() => new[] { 0 }.Concat(Enumerable.Range(0x40, 14));
@@ -124,6 +135,7 @@ static class ObjectTypeRegistry
         public string DisplayName => "Wave Sequence";
         public bool IsReferrer => false;
         public bool IsReferencable => true;    // HD-1 oscillator zones reference these
+        public int? Func33RefType => null;
         public string BankLabel(int bank) => KronosBanks.WaveSeqLabel(bank);
         public bool IsReadOnlyBank(int bank) => false;
         public IEnumerable<int> EditableBanks() => new[] { 0 }.Concat(Enumerable.Range(0x40, 14));
@@ -141,6 +153,21 @@ static class ObjectTypeRegistry
     };
 
     public static IObjectTypeDescriptor Get(int objType) => _byType[objType];
+
+    // Both directions of the func-33 reference "type" selector, kept adjacent so the pair stays
+    // in lockstep by construction rather than by comment (ReferrersOf encodes, BuildReferrerIndex
+    // decodes). Null-tolerant on purpose - unlike Get, these are reached with an ObjLoc whose
+    // ObjType may have no descriptor at all (LibObj.Global arrives from a loaded .pcg), and the
+    // answer there is "not func-33 addressable", not a throw.
+    public static int? Func33RefType(int objType) =>
+        _byType.TryGetValue(objType, out var d) ? d.Func33RefType : null;
+
+    public static int? ObjTypeForFunc33RefType(int refType)
+    {
+        foreach (var d in _byType.Values)
+            if (d.Func33RefType == refType) return d.ObjType;
+        return null;
+    }
 
     // Does this address sit in a read-only factory bank? Read-only rows are shown in the Local
     // pane as browsable leaves WITH a real Loc (so they label and select like any other row),
