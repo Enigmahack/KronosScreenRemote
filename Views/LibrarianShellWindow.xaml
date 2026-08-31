@@ -570,7 +570,7 @@
 
                 <Button Grid.Row="0" x:Name="BTN_ResolveSampleNames" Content="Resolve Sample Bank Names..." Padding="10 2"
                         Margin="0 0 0 6" HorizontalAlignment="Left" Click="OnResolveSampleNamesButton"
-                        ToolTip="Connects to the Kronos over FTP and reads /korg/rw/Options to turn a raw EXs number or 3rd-party sample bank shown below into its real name - e.g. 'EXs18' becomes 'EXs18 - Funk and Soul Brass'. Only covers banks actually installed on this instrument; a live Sampling Mode (RAM) reference can never be named (see the sample legend at the very bottom of the window)."/>
+                        ToolTip="Turns a raw EXs number or 3rd-party sample bank shown below into its real name using the shipped EXs product catalog"/>
 
                 <ListBox Grid.Row="1" x:Name="LST_ObjectDependencies" ItemsSource="{Binding ObjectDependencyRows}" FontFamily="Consolas" FontSize="11"
                          Background="{StaticResource PanelBackgroundBrush}" Foreground="{StaticResource TextBrush}"

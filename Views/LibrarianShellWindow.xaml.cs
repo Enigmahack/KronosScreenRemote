@@ -289,56 +289,20 @@ internal partial class LibrarianShellWindow : ThemedWindow
         new ObjectInfoDialog(row.Description, row.ParentInfo, row.DescribeChildren()).OwnedBy(this).ShowDialog();
 
     // Builds the EXs/3rd-party sample-bank name index (Core/Sample/ExsOptionIndex.cs) from the
-    // live instrument over FTP - deliberately a manual, explicit action (see that class's own
-    // header comment for why this must never run automatically off the selection-change path).
-    // The FTP connect/login is WPF-owned code-behind, same split as every other confirmation
-    // callback in this file; the ViewModel only ever receives the finished index.
-    async void OnResolveSampleNamesButton(object sender, RoutedEventArgs e)
+    // shipped product catalog - no connection, no login, no cancellation, so it stays an
+    // instantaneous local read. Still a manual, explicit action rather than something the
+    // selection-change path does on its own, matching what the button has always promised.
+    void OnResolveSampleNamesButton(object sender, RoutedEventArgs e)
     {
-        BTN_ResolveSampleNames.IsEnabled = false;
-        string previousStatus = _vm.StatusText;
-        _vm.StatusText = "Connecting to resolve sample bank names...";
-        try
-        {
-            if (!await KronosFtpSession.EnsureLoginAsync(this, _settings, _host))
-            {
-                _vm.StatusText = previousStatus;
-                return;
-            }
+        var index = ExsOptionIndex.FromCatalog();
+        _vm.ApplyExsOptionIndex(index);
 
-            // Every FTP call below runs OFF the dispatcher and under a hard deadline. It used to
-            // run on the UI thread with no cancellation token at all: ExsOptionIndex downloads one
-            // file per installed option, and a stalled passive data channel leaves each of those
-            // waiting out Config.ReadTimeout (30s) plus FluentFTP's own retries, with no way to
-            // cancel - the button that starts this is disabled for the duration, so the only way
-            // out was killing the app.
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(90));
-            var index = await Task.Run(async () =>
-            {
-                using var client = KronosFtpSession.CreateClient(_host, _settings.FtpPort, _settings.FtpUsername, _settings.FtpPassword);
-                await client.Connect(cts.Token).ConfigureAwait(false);
-                return await ExsOptionIndex.BuildAsync(client, cts.Token).ConfigureAwait(false);
-            }, cts.Token);
-
-            _vm.ApplyExsOptionIndex(index);
-            _vm.StatusText = index.Count == 0
-                ? "No /korg/rw/Options sample bank files found on this instrument."
-                : $"Resolved {index.Count} sample bank name(s) from /korg/rw/Options.";
-        }
-        catch (OperationCanceledException)
-        {
-            AppLog.Warn("[librarian] resolve sample bank names timed out");
-            _vm.StatusText = "Timed out reading /korg/rw/Options - the Kronos stopped responding. Names are unchanged.";
-        }
-        catch (Exception ex)
-        {
-            AppLog.Warn($"[librarian] resolve sample bank names failed: {ex.Message}");
-            _vm.StatusText = $"Couldn't resolve sample bank names: {ex.Message}";
-        }
-        finally
-        {
-            BTN_ResolveSampleNames.IsEnabled = true;
-        }
+        // Worded as identification, never as installation: a catalog hit proves Korg publishes
+        // that pack, not that this instrument has it - see ExsOptionIndex's header comment.
+        string source = index.FromOverrideFile ? "updated EXs catalog" : "EXs product catalog";
+        _vm.StatusText = index.Count == 0
+            ? "No EXs catalog available - sample bank names are unchanged."
+            : $"Named {index.Count} EXs sample bank(s) from the {source}.";
     }
 
     // Program/Combi: Name + Category/Sub-Category. Set List: Name + a browsable slot list

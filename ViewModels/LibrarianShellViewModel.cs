@@ -50,9 +50,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     ProgramBankTypes? _programBankTypes;
 
     // Built once by an explicit user action (Views/LibrarianShellWindow.xaml.cs's "Resolve
-    // Sample Bank Names..." handler, which owns the live FTP connection - see ExsOptionIndex's
-    // own header comment for why this is never built automatically). Null means "not resolved
-    // this session" - every sample-dependency row then shows exactly what it always has
+    // Sample Bank Names..." handler). Null means "not resolved this session" - every sample-dependency row then shows exactly what it always has
     // (SampleReferenceWalker's own EXs<N>/raw-UUID label), never blocked or delayed by it.
     ExsOptionIndex? _exsIndex;
 
@@ -800,22 +798,17 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
 
     // ── PCG -> Merge Window (fully automatic, transitive - see MergeCache.PullFromPcg) ──
 
-    public void PullIntoMerge(ObjLoc pcgLoc)
-    {
-        if (PcgPane.View is not { } view) return;   // nothing loaded - nothing to pull from
-        MergePane.PullFromPcg(view, PcgPane.LoadedFileName ?? "(unknown)", pcgLoc);
-    }
+    public void PullIntoMerge(ObjLoc pcgLoc) => PullIntoMerge(new[] { pcgLoc });
 
-    // Multi-item entry point (a multi-select or a whole-bank drag/context-menu action). Exists so
-    // ONE gesture is ONE undo step: the per-loc overload above is called in a loop, and without a
-    // scope around the whole loop, dragging a bank of 128 into the Merge Window would take 128
-    // Ctrl+Z presses to walk back. Nested Begins inside the loop join this step (see
-    // LibrarianUndoRecorder.Begin).
+    // Multi-item entry point (a multi-select or a whole-bank drag/context-menu action). Handed to
+    // the pane as ONE list rather than looped here so the whole gesture is one undo step and one
+    // status line - see MergePaneViewModel.PullFromPcg's list overload for why the loop can't live
+    // on this side any more.
     public void PullIntoMerge(IReadOnlyList<ObjLoc> pcgLocs)
     {
         if (pcgLocs.Count == 0) return;
-        using var undo = _undo.Begin(AppMessages.Librarian.Shell.UndoPulledIntoMerge(pcgLocs.Count));
-        foreach (var loc in pcgLocs) PullIntoMerge(loc);
+        if (PcgPane.View is not { } view) return;   // nothing loaded - nothing to pull from
+        MergePane.PullFromPcg(view, PcgPane.LoadedFileName ?? "(unknown)", pcgLocs);
     }
 
     // ── Local -> Merge Window (requirement 3, transitive - see MergeCache.PullFromLocal) ──
@@ -824,19 +817,14 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     // A read-only GM/g row has no body in the library to stage - it is a name from the shared
     // name cache and nothing more (see ReadOnlyBankNames), so staging it would add an empty or
     // phantom Merge entry.
-    public void PullLocalIntoMerge(ObjLoc localLoc)
-    {
-        if (ObjectTypeRegistry.IsReadOnly(localLoc)) return;
-        MergePane.PullFromLocal(_cache, localLoc);
-    }
+    public void PullLocalIntoMerge(ObjLoc localLoc) => PullLocalIntoMerge(new[] { localLoc });
 
-    // Same one-gesture-one-step reasoning as PullIntoMerge's list overload above.
+    // Same one-gesture-one-step-one-status-line reasoning as PullIntoMerge's list overload above.
     public void PullLocalIntoMerge(IReadOnlyList<ObjLoc> localLocs)
     {
         localLocs = localLocs.Where(l => !ObjectTypeRegistry.IsReadOnly(l)).ToList();
         if (localLocs.Count == 0) return;
-        using var undo = _undo.Begin(AppMessages.Librarian.Shell.UndoPulledIntoMerge(localLocs.Count));
-        foreach (var loc in localLocs) PullLocalIntoMerge(loc);
+        MergePane.PullFromLocal(_cache, localLocs);
     }
 
     // ── Merge Window group -> Local (bulk placement of a multi-item Merge selection) ─────
@@ -1427,9 +1415,8 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         if (unresolved.Count == 0) return;
         if (PcgPane.View is { } view)
         {
-            foreach (var (_, _, originalTarget, expectedHash) in unresolved)
-                if (expectedHash != null)
-                    MergePane.PullFromPcg(view, PcgPane.LoadedFileName ?? "(unknown)", originalTarget);
+            var toStage = unresolved.Where(u => u.ExpectedHash != null).Select(u => u.OriginalTarget).ToList();
+            MergePane.PullFromPcg(view, PcgPane.LoadedFileName ?? "(unknown)", toStage);
         }
         foreach (var (refKind, site, originalTarget, expectedHash) in unresolved)
             _sessionClipboard.Add(new SessionDependencyEntry(originalTarget, refKind, site, placedAt, expectedHash));
@@ -1607,9 +1594,9 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     // see ExsOptionIndex's own header comment on why a raw-UUID bank found there isn't
     // reclassified from UserOrThirdParty to Exs even when it turns out to be an EXs127+ pack).
     // Falls back to the row's own description untouched when no index is loaded yet, or the
-    // bank isn't in it (not installed on this instrument, or genuinely unresolvable - e.g. the
-    // live Sampling Mode/RAM bucket, which SampleReferenceWalker's own comment explains has no
-    // persistent identity to look up at all).
+    // bank isn't in it (a user's own sample bank rather than a published EXs product, or
+    // genuinely unresolvable - e.g. the live Sampling Mode/RAM bucket, which
+    // SampleReferenceWalker's own comment explains has no persistent identity to look up at all).
     string ResolveSampleDescription(SampleReferenceWalker.SampleDependencyRow row)
     {
         if (_exsIndex == null) return row.Description;
@@ -1644,8 +1631,8 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     // re-decoded every referenced body through WireBodyFromPcgEntry, and a Set List selection is
     // 128 slots x 16 timbres of that, on the UI thread. Tolerable off a click (the user asked for
     // it and waits once), but ApplyExsOptionIndex re-runs the SAME walk to pick up resolved names
-    // - which is what made "Resolve Sample Bank Names..." lock the window the moment its FTP work
-    // returned, long after the part that talks to the instrument was done.
+    // - which is what made "Resolve Sample Bank Names..." lock the window the moment the index
+    // was built.
     //
     // A loaded PcgLibraryView is immutable, so keying the memo on the instance makes it
     // self-invalidating: loading a different file is a different instance and misses everything.
@@ -1849,10 +1836,10 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         if (found.Count == 0) return (found, null);
 
         // One undo step for the whole sweep - the user made one decision (this file), so one
-        // Ctrl+Z should take all of it back, not unwind object by object.
+        // Ctrl+Z should take all of it back, not unwind object by object. The nested Begin inside
+        // the pane's list pull joins this step (see LibrarianUndoRecorder.Begin).
         using var undo = _undo.Begin(AppMessages.Librarian.Shell.UndoScannedPcgForDependencies(fileName));
-        foreach (var loc in found)
-            MergePane.PullFromPcg(view, fileName, loc);
+        MergePane.PullFromPcg(view, fileName, found);
         return (found, null);
     }
 
@@ -1883,11 +1870,12 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         using var undo = _undo.Begin(AppMessages.Librarian.Shell.UndoScannedPcgForDependencies(fileName));
         int found = 0;
         bool tracked = false;
+        var toStage = new List<ObjLoc>();
         foreach (var gap in missing)
         {
             var entry = view.Get(gap.Missing);
             if (entry == null) continue;
-            MergePane.PullFromPcg(view, fileName, gap.Missing);
+            toStage.Add(gap.Missing);
             found++;
 
             // Staging alone doesn't repair anything: the referrer still encodes the OLD address,
@@ -1905,6 +1893,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
                 tracked = true;
             }
         }
+        MergePane.PullFromPcg(view, fileName, toStage);
         if (tracked) RefreshSessionClipboard();
         return (found, missing.Count, null);
     }

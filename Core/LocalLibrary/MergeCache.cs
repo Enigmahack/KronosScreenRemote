@@ -159,8 +159,15 @@ sealed class MergeCache
     // (from this or any earlier pull) is recognized and NOT duplicated; only genuinely new
     // content is returned in Added. Gaps are references that don't resolve in `pcg` - the
     // caller decides how to surface them (same contract DependencyScanner.Scan already uses).
+    //
+    // `stagedHashes`, when supplied, collects the content hash of everything this pull covered -
+    // newly added AND already staged, at every depth - and is meant to be shared across the whole
+    // multi-object gesture so the caller can report objects STAGED rather than objects added.
+    // Added alone can't answer that: a PCG bank of unused INIT Combis is byte-identical content
+    // that dedups to one entry, and re-pulling anything already staged adds nothing at all, so a
+    // count taken from Added reads as "Pulled 0 object(s)" for a pull that did stage objects.
     public (List<MergeEntry> Added, List<(ObjLoc MissingRef, string RefKind)> Gaps) PullFromPcg(
-        PcgLibraryView pcg, string pcgFileName, ObjLoc loc)
+        PcgLibraryView pcg, string pcgFileName, ObjLoc loc, ICollection<string>? stagedHashes = null)
     {
         MergePullSource source = l =>
         {
@@ -168,7 +175,7 @@ sealed class MergeCache
             var body = e == null ? null : ProgramFormatConverter.WireBodyFromPcgEntry(l.ObjType, e);
             return body == null ? null : (body, e!.Name);
         };
-        return Pull(source, pcgFileName, loc);
+        return Pull(source, pcgFileName, loc, stagedHashes);
     }
 
     // Requirement 3: the same transitive, deduping pull, sourced from Local Library instead of a
@@ -177,23 +184,23 @@ sealed class MergeCache
     // from the cache's CURRENT state (cache.GetCurrentBody); references resolve against whatever
     // address they encode, exactly as a PCG pull resolves within its file.
     public (List<MergeEntry> Added, List<(ObjLoc MissingRef, string RefKind)> Gaps) PullFromLocal(
-        LocalLibraryCache localCache, ObjLoc loc)
+        LocalLibraryCache localCache, ObjLoc loc, ICollection<string>? stagedHashes = null)
     {
         MergePullSource source = l =>
         {
             var body = localCache.GetCurrentBody(l.ObjType, l.Bank, l.Number);
             return body == null ? null : (body, localCache.GetDisplayName(l.ObjType, l.Bank, l.Number));
         };
-        return Pull(source, LocalSourceLabel, loc);
+        return Pull(source, LocalSourceLabel, loc, stagedHashes);
     }
 
     (List<MergeEntry> Added, List<(ObjLoc MissingRef, string RefKind)> Gaps) Pull(
-        MergePullSource source, string sourceLabel, ObjLoc loc)
+        MergePullSource source, string sourceLabel, ObjLoc loc, ICollection<string>? stagedHashes)
     {
         Mutating?.Invoke();
         var added = new List<MergeEntry>();
         var gaps = new List<(ObjLoc, string)>();
-        PullRecursive(source, sourceLabel, loc, isTopLevel: true, added, gaps);
+        PullRecursive(source, sourceLabel, loc, isTopLevel: true, added, gaps, stagedHashes);
         Save();
         return (added, gaps);
     }
@@ -206,7 +213,8 @@ sealed class MergeCache
     // second encounter always hits the dedup check at the top and returns immediately instead of
     // re-walking.
     string? PullRecursive(MergePullSource source, string sourceLabel, ObjLoc loc, bool isTopLevel,
-                           List<MergeEntry> added, List<(ObjLoc, string)> gaps)
+                           List<MergeEntry> added, List<(ObjLoc, string)> gaps,
+                           ICollection<string>? stagedHashes)
     {
         if (source(loc) is not { } got)
         {
@@ -218,6 +226,7 @@ sealed class MergeCache
         string hash = LocalObjectStore.ComputeHash(wireBody);
         if (_byHash.TryGetValue(hash, out var existing))
         {
+            AddStagedClosure(existing, stagedHashes);
             if (isTopLevel) existing.IsTopLevelPull = true;
             if (!existing.Origins.Any(o => o.PcgFileName == sourceLabel && o.SourceLoc == loc))
                 existing.Origins.Add(new MergeOrigin(sourceLabel, loc));
@@ -233,6 +242,7 @@ sealed class MergeCache
         entry.Origins.Add(new MergeOrigin(sourceLabel, loc));
         _byHash[hash] = entry;
         added.Add(entry);
+        stagedHashes?.Add(hash);
         ReconcileGaps(loc, hash);
 
         // WalkResolvable, not Walk: a reference into a read-only ROM Program bank (GM/g) needs no
@@ -241,13 +251,28 @@ sealed class MergeCache
         // ObjectReferenceWalker.IsAlwaysAvailable.
         foreach (var (refKind, site, refLoc) in ObjectReferenceWalker.WalkResolvable(loc.ObjType, wireBody))
         {
-            string? depHash = PullRecursive(source, sourceLabel, refLoc, isTopLevel: false, added, gaps);
+            string? depHash = PullRecursive(source, sourceLabel, refLoc, isTopLevel: false, added, gaps, stagedHashes);
             var refSite = new MergeRefSite { OwnerHash = hash, RefKind = refKind, Site = site, TargetLoc = refLoc, ResolvedContentHash = depHash };
             entry.RefSites.Add(refSite);
             if (depHash != null) _byHash[depHash].ReferencedBy.Add(hash);
             else RegisterGap(refSite);
         }
         return hash;
+    }
+
+    // A deduped entry returns above BEFORE its references are walked (they were walked when it
+    // was first staged), so a staged-object count taken from that branch alone would stop at the
+    // entry itself - re-pulling a Combi would report the Combi and not the Programs it brings
+    // with it. Its RefSites already record what it resolved to, so the closure comes from the
+    // cache rather than from re-parsing the body; stagedHashes doubles as the cycle guard a
+    // Program->Drum Track->Program reference needs.
+    void AddStagedClosure(MergeEntry entry, ICollection<string>? stagedHashes)
+    {
+        if (stagedHashes == null || stagedHashes.Contains(entry.ContentHash)) return;
+        stagedHashes.Add(entry.ContentHash);
+        foreach (var site in entry.RefSites)
+            if (site.ResolvedContentHash is { } depHash && _byHash.TryGetValue(depHash, out var dep))
+                AddStagedClosure(dep, stagedHashes);
     }
 
     void RegisterGap(MergeRefSite site)

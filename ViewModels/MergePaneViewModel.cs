@@ -53,28 +53,51 @@ partial class MergePaneViewModel : ObservableObject
     // Combi pulls in everything it references that resolves within `pcg`, with no further
     // clicks. Anything that doesn't resolve is reported in StatusText, same "flag, don't
     // block" contract DependencyScanner's existing gap-tracking already uses.
-    public void PullFromPcg(PcgLibraryView pcg, string pcgFileName, ObjLoc loc)
+    public void PullFromPcg(PcgLibraryView pcg, string pcgFileName, ObjLoc loc) =>
+        PullFromPcg(pcg, pcgFileName, new[] { loc });
+
+    // The whole gesture (a multi-select, a whole bank, a dependency sweep) is ONE pull as far as
+    // undo and StatusText are concerned. Looping the single-loc overload instead left the status
+    // line reporting only the LAST loc's result - a bank drag whose last Combi was an unused INIT
+    // (byte-identical to every other unused slot, so deduped) ended on "Pulled 0 object(s)" no
+    // matter how much the drag actually staged. The count is the distinct content staged by the
+    // gesture, new or already present (MergeCache's stagedHashes), which is what the Merge Window
+    // now holds because of it; per-loc Added counts can't be summed for that - a shared dependency
+    // would be counted once per referrer that pulled it.
+    public void PullFromPcg(PcgLibraryView pcg, string pcgFileName, IReadOnlyList<ObjLoc> locs)
     {
-        using var undo = Undoable(AppMessages.Librarian.Shell.UndoPulledIntoMerge(1));
-        var (added, gaps) = _cache.PullFromPcg(pcg, pcgFileName, loc);
+        if (locs.Count == 0) return;
+        using var undo = Undoable(AppMessages.Librarian.Shell.UndoPulledIntoMerge(locs.Count));
+        var staged = new HashSet<string>();
+        int gaps = 0;
+        foreach (var loc in locs)
+            gaps += _cache.PullFromPcg(pcg, pcgFileName, loc, staged).Gaps.Count;
         RefreshTree();
-        StatusText = gaps.Count == 0
-            ? AppMessages.Librarian.Merge.PulledIntoMerge(added.Count)
-            : AppMessages.Librarian.Merge.PulledWithGapsInPcg(added.Count, gaps.Count);
+        StatusText = gaps == 0
+            ? AppMessages.Librarian.Merge.PulledIntoMerge(staged.Count)
+            : AppMessages.Librarian.Merge.PulledWithGapsInPcg(staged.Count, gaps);
     }
 
     // Requirement 3: stage a Local Library object (transitively, same as PullFromPcg) back into
     // the Merge Window, so it can be rearranged and pushed to a different destination. The
     // LocalLibraryCache is supplied by the caller (LibrarianShellViewModel, which owns it) - this
     // pane only ever holds the MergeCache.
-    public void PullFromLocal(LocalLibraryCache localCache, ObjLoc loc)
+    public void PullFromLocal(LocalLibraryCache localCache, ObjLoc loc) =>
+        PullFromLocal(localCache, new[] { loc });
+
+    // Same one-gesture-one-status-line/one-undo-step reasoning as PullFromPcg's list overload.
+    public void PullFromLocal(LocalLibraryCache localCache, IReadOnlyList<ObjLoc> locs)
     {
-        using var undo = Undoable(AppMessages.Librarian.Shell.UndoPulledIntoMerge(1));
-        var (added, gaps) = _cache.PullFromLocal(localCache, loc);
+        if (locs.Count == 0) return;
+        using var undo = Undoable(AppMessages.Librarian.Shell.UndoPulledIntoMerge(locs.Count));
+        var staged = new HashSet<string>();
+        int gaps = 0;
+        foreach (var loc in locs)
+            gaps += _cache.PullFromLocal(localCache, loc, staged).Gaps.Count;
         RefreshTree();
-        StatusText = gaps.Count == 0
-            ? AppMessages.Librarian.Merge.PulledIntoMerge(added.Count)
-            : AppMessages.Librarian.Merge.PulledWithGapsLocally(added.Count, gaps.Count);
+        StatusText = gaps == 0
+            ? AppMessages.Librarian.Merge.PulledIntoMerge(staged.Count)
+            : AppMessages.Librarian.Merge.PulledWithGapsLocally(staged.Count, gaps);
     }
 
     // Explicit "Clear Merge" - abandons everything still staged (see MergeCache.Clear's own

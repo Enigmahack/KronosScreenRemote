@@ -56,6 +56,7 @@ public partial class App : Application
             fails.AddRange(MergeGroupPlacementSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(MergeAutoFillSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(MergeOrderingSelfTests.SelfTest());
+            fails.AddRange(MergePullCountSelfTests.SelfTest());
             fails.AddRange(LibrarianUndoSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(PlacementStalenessGateSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(SyncCancellationSelfTests.SelfTestAsync().GetAwaiter().GetResult());
