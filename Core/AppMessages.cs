@@ -344,10 +344,13 @@ public static class AppMessages
         public static class Merge
         {
             public static string PulledIntoMerge(int count) => $"Pulled {count} object(s) into the Merge Window.";
-            public static string PulledWithGapsInPcg(int added, int gaps) =>
-                $"Pulled {added} object(s); {gaps} dependency reference(s) not found in this PCG - load another PCG that has them and pull it in.";
-            public static string PulledWithGapsLocally(int added, int gaps) =>
-                $"Pulled {added} object(s); {gaps} dependency reference(s) not found locally - pull them in too, or place from a PCG.";
+            // "object(s)", not "dependency reference(s)": a gap is just as often a top-level pull
+            // whose slot the source doesn't have (MergeCache's Gaps carries RefKind "pull" for
+            // those) as it is an unresolved dependency of something that did come in.
+            public static string PulledWithGapsInPcg(int staged, int gaps) =>
+                $"Pulled {staged} object(s); {gaps} object(s) not found in this PCG - load another PCG that has them and pull it in.";
+            public static string PulledWithGapsLocally(int staged, int gaps) =>
+                $"Pulled {staged} object(s); {gaps} object(s) not found locally - pull them in too, or place from a PCG.";
             public const string Cleared    = "Merge Window cleared.";
             public const string RemovedOne = "Removed 1 item from the Merge Window.";
             public static string RemovedMany(int removed) => $"Removed {removed} item(s) from the Merge Window.";
