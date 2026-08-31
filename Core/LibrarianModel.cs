@@ -384,7 +384,12 @@ static class LibRefs
     // ObjectReferenceWalker's RefKind vocabulary ("timbre 3", "drum track", "osc1 zone2") and
     // ReferrerSite.Kind's ("combi_timbre", "drum_track", "osc1_zone2") - two independently-named
     // but equivalent taggings of the same four reference shapes.
-    public static void ApplyResolvedRef(byte[] body, string refKind, int site, int targetObjType, int destBank, int destNumber)
+    // Returns false when the osc-zone branch can't encode the destination (a Drum Kit/Wave
+    // Sequence bank outside the linear maps) and therefore wrote NOTHING - callers that record
+    // the patch as a real edit must not treat that as a resolved reference. The three plan-
+    // building callers ignore it: an unencodable target there simply leaves the old bytes, same
+    // as before. Only LocalEditOps.RepatchReference acts on it.
+    public static bool ApplyResolvedRef(byte[] body, string refKind, int site, int targetObjType, int destBank, int destNumber)
     {
         if (refKind.StartsWith("timbre", StringComparison.Ordinal) || refKind == "combi_timbre")
         {
@@ -399,13 +404,15 @@ static class LibRefs
             int? linear = targetObjType == LibObj.WaveSequence
                 ? KronosBanks.WaveSeqLocToLinear(destBank, destNumber)
                 : KronosBanks.DrumKitLocToLinear(destBank, destNumber);
-            if (linear is { } lin) SetProgramZoneNumber(body, site / ZonesPerOsc, site % ZonesPerOsc, lin);
+            if (linear is not { } lin) return false;
+            SetProgramZoneNumber(body, site / ZonesPerOsc, site % ZonesPerOsc, lin);
         }
         else
         {
             int refType = targetObjType == LibObj.Program ? 1 : 0;   // a Set List slot can target either
             SetSetListSlotRef(body, site, KronosBanks.ObjBankToFunc33(refType, destBank), destNumber, type: null);
         }
+        return true;
     }
 }
 

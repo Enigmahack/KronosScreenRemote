@@ -42,6 +42,12 @@
         </Style>
 
         <Style x:Key="TreeNodeSelectionStyle" TargetType="Border">
+            <!-- Transparent, not unset: a Border with a null Background is invisible to hit
+                 testing, so before this the only clickable part of a row was the label TextBlock
+                 itself - clicks to the right of the text, or in the row's own vertical padding,
+                 landed on nothing at all. The row Border carries the mouse handlers now (see the
+                 three node templates below), and this is what makes its full width live. -->
+            <Setter Property="Background" Value="Transparent"/>
             <Setter Property="TextElement.Foreground" Value="{StaticResource TextBrush}"/>
             <Style.Triggers>
                 <DataTrigger Binding="{Binding IsSelected}" Value="True">
@@ -52,7 +58,39 @@
         </Style>
 
         <HierarchicalDataTemplate x:Key="LocalNodeTemplate" DataType="{x:Type vm:ObjectTreeNode}" ItemsSource="{Binding Children}">
-            <Border Padding="2 0" HorizontalAlignment="Stretch">
+            <!-- Padding is 2 VERTICAL here and 0 on the TreeViewItem (LibraryTreeItemStyle), not
+                 the other way round: identical geometry, but the gap between rows now belongs to
+                 this Border - which handles clicks - instead of to the TreeViewItem, which does
+                 not. That is what removes the dead band between adjacent entries. -->
+            <Border Padding="2 2" HorizontalAlignment="Stretch"
+                    PreviewMouseLeftButtonDown="OnLocalNodePreviewMouseDown"
+                    PreviewMouseLeftButtonUp="OnLocalNodeMouseUp"
+                    PreviewMouseRightButtonDown="OnLocalNodePreviewRightDown"
+                    PreviewMouseMove="OnLocalNodePreviewMouseMove"
+                    ContextMenuOpening="OnLocalContextMenuOpening">
+                <Border.ContextMenu>
+                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                        <MenuItem x:Name="MI_Cut" Header="Cut" InputGestureText="Ctrl+X" Click="OnCutMenuItem"/>
+                        <MenuItem x:Name="MI_Copy" Header="Copy" InputGestureText="Ctrl+C" Click="OnCopyMenuItem"/>
+                        <MenuItem x:Name="MI_Paste" Header="Paste" InputGestureText="Ctrl+V" Click="OnPasteMenuItem"/>
+                        <Separator x:Name="SEP_MergeMove"/>
+                        <MenuItem x:Name="MI_MoveToMerge" Header="Move to Merge Window" Click="OnMoveLocalToMergeMenuItem"
+                                  ToolTip="Stage this (and its dependencies) in the Merge Window to rearrange and push it somewhere else."/>
+                        <MenuItem x:Name="MI_ScanDeps" Header="Scan PCG for dependencies..." Click="OnScanDependenciesMenuItem"
+                                  ToolTip="Pick a .pcg file and stage whatever it holds of this object's missing dependencies into the Merge Window."/>
+                        <Separator x:Name="SEP_1"/>
+                        <MenuItem x:Name="MI_Rename" Header="Rename..." InputGestureText="F2" Click="OnRenameMenuItem"/>
+                        <MenuItem x:Name="MI_Properties" Header="Properties..." Click="OnOpenProperties"/>
+                        <Separator x:Name="SEP_2"/>
+                        <MenuItem x:Name="MI_Delete" Header="Delete" InputGestureText="Del" Click="OnDeleteMenuItem"
+                                  ToolTip="Removes this from your local library only - hardware is unaffected until Sync/Commit; Pull restores it."/>
+                        <Separator/>
+                        <MenuItem Header="Expand Selected" Click="OnLocalExpandSelectedMenuItem"/>
+                        <MenuItem Header="Collapse Selected" Click="OnLocalCollapseSelectedMenuItem"/>
+                        <MenuItem Header="Expand All" Click="OnLocalExpandAllMenuItem"/>
+                        <MenuItem Header="Collapse All" Click="OnLocalCollapseAllMenuItem"/>
+                    </ContextMenu>
+                </Border.ContextMenu>
                 <Border.Style>
                     <Style TargetType="Border" BasedOn="{StaticResource TreeNodeSelectionStyle}">
                         <Style.Triggers>
@@ -76,36 +114,7 @@
                     </Style>
                 </Border.Style>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="{Binding Label}" FontFamily="Consolas" FontSize="12"
-                               PreviewMouseLeftButtonDown="OnLocalNodePreviewMouseDown"
-                               PreviewMouseLeftButtonUp="OnLocalNodeMouseUp"
-                               PreviewMouseRightButtonDown="OnLocalNodePreviewRightDown"
-                               PreviewMouseMove="OnLocalNodePreviewMouseMove"
-                               ContextMenuOpening="OnLocalContextMenuOpening">
-                        <TextBlock.ContextMenu>
-                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                <MenuItem x:Name="MI_Cut" Header="Cut" InputGestureText="Ctrl+X" Click="OnCutMenuItem"/>
-                                <MenuItem x:Name="MI_Copy" Header="Copy" InputGestureText="Ctrl+C" Click="OnCopyMenuItem"/>
-                                <MenuItem x:Name="MI_Paste" Header="Paste" InputGestureText="Ctrl+V" Click="OnPasteMenuItem"/>
-                                <Separator x:Name="SEP_MergeMove"/>
-                                <MenuItem x:Name="MI_MoveToMerge" Header="Move to Merge Window" Click="OnMoveLocalToMergeMenuItem"
-                                          ToolTip="Stage this (and its dependencies) in the Merge Window to rearrange and push it somewhere else."/>
-                                <MenuItem x:Name="MI_ScanDeps" Header="Scan PCG for dependencies..." Click="OnScanDependenciesMenuItem"
-                                          ToolTip="Pick a .pcg file and stage whatever it holds of this object's missing dependencies into the Merge Window."/>
-                                <Separator x:Name="SEP_1"/>
-                                <MenuItem x:Name="MI_Rename" Header="Rename..." InputGestureText="F2" Click="OnRenameMenuItem"/>
-                                <MenuItem x:Name="MI_Properties" Header="Properties..." Click="OnOpenProperties"/>
-                                <Separator x:Name="SEP_2"/>
-                                <MenuItem x:Name="MI_Delete" Header="Delete" InputGestureText="Del" Click="OnDeleteMenuItem"
-                                          ToolTip="Removes this from your local library only - hardware is unaffected until Sync/Commit; Pull restores it."/>
-                                <Separator/>
-                                <MenuItem Header="Expand Selected" Click="OnLocalExpandSelectedMenuItem"/>
-                                <MenuItem Header="Collapse Selected" Click="OnLocalCollapseSelectedMenuItem"/>
-                                <MenuItem Header="Expand All" Click="OnLocalExpandAllMenuItem"/>
-                                <MenuItem Header="Collapse All" Click="OnLocalCollapseAllMenuItem"/>
-                            </ContextMenu>
-                        </TextBlock.ContextMenu>
-                    </TextBlock>
+                    <TextBlock Text="{Binding Label}" FontFamily="Consolas" FontSize="12"/>
 
                     <TextBlock Text="●" FontSize="9" Margin="5 0 0 0" VerticalAlignment="Center">
                         <TextBlock.Style>
@@ -152,25 +161,24 @@
         </HierarchicalDataTemplate>
 
         <HierarchicalDataTemplate x:Key="PcgNodeTemplate" DataType="{x:Type vm:ObjectTreeNode}" ItemsSource="{Binding Children}">
-            <Border Padding="2 0" HorizontalAlignment="Stretch" Style="{StaticResource TreeNodeSelectionStyle}">
+            <Border Padding="2 2" HorizontalAlignment="Stretch" Style="{StaticResource TreeNodeSelectionStyle}"
+                    PreviewMouseLeftButtonDown="OnPcgPreviewMouseDown"
+                    PreviewMouseLeftButtonUp="OnPcgNodeMouseUp"
+                    PreviewMouseRightButtonDown="OnPcgNodePreviewRightDown"
+                    PreviewMouseMove="OnPcgPreviewMouseMove"
+                    ContextMenuOpening="OnPcgContextMenuOpening">
+                <Border.ContextMenu>
+                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                        <MenuItem x:Name="MI_MoveToMerge" Header="Move to Merge Window" Click="OnMoveToMergeMenuItem"/>
+                        <Separator/>
+                        <MenuItem Header="Expand Selected" Click="OnPcgExpandSelectedMenuItem"/>
+                        <MenuItem Header="Collapse Selected" Click="OnPcgCollapseSelectedMenuItem"/>
+                        <MenuItem Header="Expand All" Click="OnPcgExpandAllMenuItem"/>
+                        <MenuItem Header="Collapse All" Click="OnPcgCollapseAllMenuItem"/>
+                    </ContextMenu>
+                </Border.ContextMenu>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="{Binding Label}" FontFamily="Consolas" FontSize="12"
-                               PreviewMouseLeftButtonDown="OnPcgPreviewMouseDown"
-                               PreviewMouseLeftButtonUp="OnPcgNodeMouseUp"
-                               PreviewMouseRightButtonDown="OnPcgNodePreviewRightDown"
-                               PreviewMouseMove="OnPcgPreviewMouseMove"
-                               ContextMenuOpening="OnPcgContextMenuOpening">
-                        <TextBlock.ContextMenu>
-                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                <MenuItem x:Name="MI_MoveToMerge" Header="Move to Merge Window" Click="OnMoveToMergeMenuItem"/>
-                                <Separator/>
-                                <MenuItem Header="Expand Selected" Click="OnPcgExpandSelectedMenuItem"/>
-                                <MenuItem Header="Collapse Selected" Click="OnPcgCollapseSelectedMenuItem"/>
-                                <MenuItem Header="Expand All" Click="OnPcgExpandAllMenuItem"/>
-                                <MenuItem Header="Collapse All" Click="OnPcgCollapseAllMenuItem"/>
-                            </ContextMenu>
-                        </TextBlock.ContextMenu>
-                    </TextBlock>
+                    <TextBlock Text="{Binding Label}" FontFamily="Consolas" FontSize="12"/>
 
                     <TextBlock Text="●" FontSize="9" Margin="5 0 0 0" VerticalAlignment="Center"
                                Foreground="{StaticResource SampleDependencyDotBrush}"
@@ -181,25 +189,24 @@
         </HierarchicalDataTemplate>
 
         <HierarchicalDataTemplate x:Key="MergeNodeTemplate" DataType="{x:Type vm:ObjectTreeNode}" ItemsSource="{Binding Children}">
-            <Border Padding="2 0" HorizontalAlignment="Stretch" Style="{StaticResource TreeNodeSelectionStyle}">
+            <Border Padding="2 2" HorizontalAlignment="Stretch" Style="{StaticResource TreeNodeSelectionStyle}"
+                    PreviewMouseLeftButtonDown="OnMergePreviewMouseDown"
+                    PreviewMouseLeftButtonUp="OnMergeNodeMouseUp"
+                    PreviewMouseRightButtonDown="OnMergeNodePreviewRightDown"
+                    PreviewMouseMove="OnMergePreviewMouseMove"
+                    ContextMenuOpening="OnMergeContextMenuOpening">
+                <Border.ContextMenu>
+                    <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                        <MenuItem x:Name="MI_RemoveFromMerge" Header="Remove" Click="OnRemoveFromMergeMenuItem"/>
+                        <Separator/>
+                        <MenuItem Header="Expand Selected" Click="OnMergeExpandSelectedMenuItem"/>
+                        <MenuItem Header="Collapse Selected" Click="OnMergeCollapseSelectedMenuItem"/>
+                        <MenuItem Header="Expand All" Click="OnMergeExpandAllMenuItem"/>
+                        <MenuItem Header="Collapse All" Click="OnMergeCollapseAllMenuItem"/>
+                    </ContextMenu>
+                </Border.ContextMenu>
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="{Binding Label}" FontFamily="Consolas" FontSize="12"
-                               PreviewMouseLeftButtonDown="OnMergePreviewMouseDown"
-                               PreviewMouseLeftButtonUp="OnMergeNodeMouseUp"
-                               PreviewMouseRightButtonDown="OnMergeNodePreviewRightDown"
-                               PreviewMouseMove="OnMergePreviewMouseMove"
-                               ContextMenuOpening="OnMergeContextMenuOpening">
-                        <TextBlock.ContextMenu>
-                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                <MenuItem x:Name="MI_RemoveFromMerge" Header="Remove" Click="OnRemoveFromMergeMenuItem"/>
-                                <Separator/>
-                                <MenuItem Header="Expand Selected" Click="OnMergeExpandSelectedMenuItem"/>
-                                <MenuItem Header="Collapse Selected" Click="OnMergeCollapseSelectedMenuItem"/>
-                                <MenuItem Header="Expand All" Click="OnMergeExpandAllMenuItem"/>
-                                <MenuItem Header="Collapse All" Click="OnMergeCollapseAllMenuItem"/>
-                            </ContextMenu>
-                        </TextBlock.ContextMenu>
-                    </TextBlock>
+                    <TextBlock Text="{Binding Label}" FontFamily="Consolas" FontSize="12"/>
                     <TextBlock Text="●" FontSize="9" Margin="5 0 0 0" VerticalAlignment="Center" Foreground="#FFD4C020"
                                Visibility="{Binding SharedTooltip, Converter={StaticResource NullToCollapsed}}"
                                ToolTip="{Binding SharedTooltip}"/>
@@ -212,6 +219,12 @@
         </HierarchicalDataTemplate>
         <Style x:Key="LibraryTreeItemStyle" TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
             <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}"/>
+            <!-- The theme's TreeViewItem gives every row 2px of vertical padding OUTSIDE the
+                 header content, which is dead to the mouse. Handing those 2px to the row Border
+                 instead (Padding="2 2" in the templates above) keeps the rows exactly where they
+                 were while making the band between two entries hit the nearer one. Scoped to the
+                 librarian trees rather than the theme so no other TreeView shifts. -->
+            <Setter Property="Padding" Value="2 0"/>
         </Style>
 
         <!-- PCG pane only (TV_Pcg) - collapses whatever the live search filter excludes
@@ -272,12 +285,23 @@
             </StackPanel>
         </DockPanel>
 
-        <!-- Non-refusable ("CHECK:") or refusal ("REFUSE:") warnings from the last Sync/Commit. -->
+        <!-- Non-refusable ("CHECK:") or refusal ("REFUSE:") warnings from the last Sync/Commit,
+             and Auto-Fill's own "nowhere left to put these". Dismissible: a warning that can only
+             be cleared by running another operation stays on screen long after it's been read and
+             acted on, and then gets ignored on the run where it matters. -->
         <Border Grid.Row="1" x:Name="BRD_Warning" Background="#FF4A3410" BorderBrush="#FFC08A20"
                 BorderThickness="2" CornerRadius="4" Padding="10" Margin="0 0 0 8"
                 Visibility="{Binding WarningText, Converter={StaticResource NullToCollapsed}}">
-            <TextBlock Foreground="#FFFFE0A0" FontSize="13" FontWeight="Bold" TextWrapping="Wrap"
-                       Text="{Binding WarningText}"/>
+            <DockPanel>
+                <Button DockPanel.Dock="Right" x:Name="BTN_DismissWarning" Content="✕"
+                        Width="22" Height="22" Margin="10 0 0 0" Padding="0"
+                        VerticalAlignment="Top" Click="OnDismissWarning"
+                        Background="Transparent" BorderThickness="0" Foreground="#FFFFE0A0"
+                        FontSize="13" FontWeight="Bold" Cursor="Hand"
+                        ToolTip="Dismiss this warning. It doesn't undo or acknowledge anything - the condition it describes is unchanged."/>
+                <TextBlock Foreground="#FFFFE0A0" FontSize="13" FontWeight="Bold" TextWrapping="Wrap"
+                           Text="{Binding WarningText}"/>
+            </DockPanel>
         </Border>
 
         <Grid Grid.Row="2">
@@ -537,7 +561,7 @@
             </GroupBox>
 
             <GroupBox Grid.Column="2" Header="Object Dependencies"
-                      ToolTip="Every Program/Combi/Drum Kit/Wave Sequence the currently selected object(s) reference, including nested dependencies. Double-click or right-click a row for more info.">
+                      ToolTip="Red rows at the top are dependencies the Merge Window is MISSING - something staged references them and nothing staged provides them. Right-click one to search a .pcg for it; anything found is staged here, so the gap can be filled before you Commit. Below them: every Program/Combi/Drum Kit/Wave Sequence the currently selected object(s) reference, including nested dependencies. Double-click or right-click a row for more info.">
               <Grid Margin="6">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
@@ -551,7 +575,8 @@
                 <ListBox Grid.Row="1" x:Name="LST_ObjectDependencies" ItemsSource="{Binding ObjectDependencyRows}" FontFamily="Consolas" FontSize="11"
                          Background="{StaticResource PanelBackgroundBrush}" Foreground="{StaticResource TextBrush}"
                          BorderBrush="{StaticResource BorderBrush1}"
-                         MouseDoubleClick="OnObjectDependencyRowDoubleClick">
+                         MouseDoubleClick="OnObjectDependencyRowDoubleClick"
+                         ContextMenuOpening="OnObjectDependencyMenuOpening">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <!-- Color-codes a SAMPLE dependency row by its bucket (SampleBucket is
@@ -562,6 +587,14 @@
                                 <TextBlock.Style>
                                     <Style TargetType="TextBlock">
                                         <Style.Triggers>
+                                            <!-- A missing staged dependency - listed first and in
+                                                 red, so a gap is visible while there's still time
+                                                 to fill it. Never collides with the sample-bucket
+                                                 triggers below: a gap row has no SampleBucket. -->
+                                            <DataTrigger Binding="{Binding IsMissing}" Value="True">
+                                                <Setter Property="Foreground" Value="{StaticResource MissingDependencyTextBrush}"/>
+                                                <Setter Property="FontWeight" Value="Bold"/>
+                                            </DataTrigger>
                                             <DataTrigger Binding="{Binding SampleBucket}" Value="Exs">
                                                 <Setter Property="Foreground" Value="{StaticResource SampleExsTextBrush}"/>
                                             </DataTrigger>
@@ -588,6 +621,8 @@
                     <ListBox.ContextMenu>
                         <ContextMenu>
                             <MenuItem Header="More Info..." Click="OnObjectDependencyMoreInfo"/>
+                            <MenuItem x:Name="MI_ScanForDependency" Header="Search a PCG for this object..."
+                                      Click="OnObjectDependencyScanPcg"/>
                         </ContextMenu>
                     </ListBox.ContextMenu>
                 </ListBox>
@@ -602,6 +637,15 @@
                 BorderThickness="0 1 0 0" BorderBrush="{StaticResource MutedTextBrush}"
                 ToolTip="Applies to every tree above (Local Library, Merge Window, Loaded PCG File) and to the Object Dependencies panel's own text colors.">
             <WrapPanel Orientation="Horizontal">
+                <!-- Not a sample color - listed first because it's the one entry here that means
+                     "act on this", and the Object Dependencies panel is the only place it appears. -->
+                <StackPanel Orientation="Horizontal" Margin="0 0 16 2">
+                    <TextBlock Text="■" FontSize="10" VerticalAlignment="Center"
+                               Foreground="{StaticResource MissingDependencyTextBrush}"/>
+                    <TextBlock Text="Missing dependency (right-click to search a PCG)" FontSize="10" Margin="4 0 0 0"
+                               VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
+                </StackPanel>
+
                 <StackPanel Orientation="Horizontal" Margin="0 0 16 2">
                     <TextBlock Text="●" FontSize="9" VerticalAlignment="Center"
                                Foreground="{StaticResource SampleDependencyDotBrush}"/>

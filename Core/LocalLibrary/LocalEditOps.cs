@@ -100,7 +100,7 @@ static class LocalEditOps
         return BatchPlace(cache, objType, new[] { placement }, divertDisplacedToClipboard, bankTypeOf, utcNow, forceOverwrite);
     }
 
-    // Repoints ONE reference site inside an already-placed Combi/Set List to a NEW destination
+    // Repoints ONE reference site inside an already-placed Program/Combi/Set List to a NEW destination
     // - the repair half of the auto-heal placement pipeline (LibrarianShellViewModel.
     // ResolvePendingDependencies): a dependency that wasn't resolvable when `requiredBy` was
     // originally placed has since turned up somewhere in Local Library (found by content hash,
@@ -108,20 +108,23 @@ static class LocalEditOps
     // rewriting to point there. This is a REAL edit - goes through RecordEdit like any other
     // local change (re-dirties requiredBy, appends OpLog/History, feeds the next push
     // changeset) - never a silent byte mutation bypassing that bookkeeping, since requiredBy
-    // may already be dirty or even previously pushed. Returns false if requiredBy itself is no
-    // longer present locally (e.g. discarded/deleted since it was tracked).
+    // may already be dirty or even previously pushed. Returns false - leaving the reference
+    // tracked as still-pending - if requiredBy is no longer present locally (e.g. discarded since
+    // it was tracked), or if the destination can't be encoded at that site.
     public static bool RepatchReference(LocalLibraryCache cache, ObjLoc requiredBy, int site, string refKind, ObjLoc newTarget, DateTime utcNow)
     {
         var dump = GetObjectDump(cache, requiredBy);
         if (dump == null) return false;
 
+        // Must go through the shared LibRefs.ApplyResolvedRef - the one dispatcher every other
+        // patch path uses (DependencyScanner.RepointPcgReferences, MergeCache, PlanMove,
+        // BatchMoveModel). It covers all four reference kinds and encodes the destination per
+        // kind (func33 for a Combi/Program target, linear for a Drum Kit/Wave Sequence one), so
+        // nothing is pre-encoded here. A local timbre-or-else split silently sends an osc-zone
+        // site down the Set List branch and indexes far past the end of a Program body.
         var body = (byte[])dump.Body.Clone();
-        int refType = newTarget.ObjType == LibObj.Program ? 1 : 0;
-        int func33Bank = KronosBanks.ObjBankToFunc33(refType, newTarget.Bank);
-        if (refKind.StartsWith("timbre", StringComparison.Ordinal))
-            LibRefs.SetCombiTimbreRef(body, site, func33Bank, newTarget.Number);
-        else
-            LibRefs.SetSetListSlotRef(body, site, func33Bank, newTarget.Number, type: null);
+        if (!LibRefs.ApplyResolvedRef(body, refKind, site, newTarget.ObjType, newTarget.Bank, newTarget.Number))
+            return false;   // unencodable destination - nothing written, so it is NOT resolved
 
         cache.RecordEdit(requiredBy.ObjType, requiredBy.Bank, requiredBy.Number, dump.Version, body,
             "RepatchReference", $"Repointed a reference in {requiredBy.Label()} to {newTarget.Label()}", utcNow);

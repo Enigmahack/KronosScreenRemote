@@ -259,6 +259,32 @@ internal partial class LibrarianShellWindow : ThemedWindow
         if (LST_ObjectDependencies.SelectedItem is ObjectDependencyRow row) ShowObjectDependencyInfo(row);
     }
 
+    // Display-only: clearing the banner never changes what it was reporting. The next
+    // Sync/Commit/Auto-Fill sets it again from scratch if the condition still holds.
+    void OnDismissWarning(object sender, RoutedEventArgs e) => _vm.WarningText = null;
+
+    // Only a red missing-dependency row has anything to search FOR - every other row's object is
+    // already accounted for locally, in the loaded PCG, or in the Merge Window.
+    void OnObjectDependencyMenuOpening(object sender, ContextMenuEventArgs e) =>
+        MI_ScanForDependency.IsEnabled = LST_ObjectDependencies.SelectedItem is ObjectDependencyRow { IsMissing: true };
+
+    // Same one-file-many-gaps sweep the Unresolved Dependencies dialog's own right-click runs,
+    // reached here BEFORE a Commit instead of during one - the clicked row picks the file, then
+    // every other gap still listed is looked for in it too (a .pcg holding one of a Combi's
+    // missing Programs usually holds the rest). Nothing is dropped from the list by hand:
+    // whatever gets staged closes its gap in the merge cache, and the resulting TreeRefreshed
+    // rebuilds this panel with a smaller red section.
+    void OnObjectDependencyScanPcg(object sender, RoutedEventArgs e)
+    {
+        if (LST_ObjectDependencies.SelectedItem is not ObjectDependencyRow { MissingRef: { } clicked }) return;
+
+        var targets = new List<ObjLoc> { clicked };
+        targets.AddRange(_vm.ObjectDependencyRows.Select(r => r.MissingRef).OfType<ObjLoc>().Where(l => !l.Equals(clicked)));
+
+        var (_, status) = SearchPcgForMissingObject(targets);
+        if (!string.IsNullOrEmpty(status)) _vm.MergePane.StatusText = status;
+    }
+
     void ShowObjectDependencyInfo(ObjectDependencyRow row) =>
         new ObjectInfoDialog(row.Description, row.ParentInfo, row.DescribeChildren()).OwnedBy(this).ShowDialog();
 
@@ -279,13 +305,30 @@ internal partial class LibrarianShellWindow : ThemedWindow
                 _vm.StatusText = previousStatus;
                 return;
             }
-            using var client = KronosFtpSession.CreateClient(_host, _settings.FtpPort, _settings.FtpUsername, _settings.FtpPassword);
-            await client.Connect();
-            var index = await ExsOptionIndex.BuildAsync(client);
+
+            // Every FTP call below runs OFF the dispatcher and under a hard deadline. It used to
+            // run on the UI thread with no cancellation token at all: ExsOptionIndex downloads one
+            // file per installed option, and a stalled passive data channel leaves each of those
+            // waiting out Config.ReadTimeout (30s) plus FluentFTP's own retries, with no way to
+            // cancel - the button that starts this is disabled for the duration, so the only way
+            // out was killing the app.
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(90));
+            var index = await Task.Run(async () =>
+            {
+                using var client = KronosFtpSession.CreateClient(_host, _settings.FtpPort, _settings.FtpUsername, _settings.FtpPassword);
+                await client.Connect(cts.Token).ConfigureAwait(false);
+                return await ExsOptionIndex.BuildAsync(client, cts.Token).ConfigureAwait(false);
+            }, cts.Token);
+
             _vm.ApplyExsOptionIndex(index);
             _vm.StatusText = index.Count == 0
                 ? "No /korg/rw/Options sample bank files found on this instrument."
                 : $"Resolved {index.Count} sample bank name(s) from /korg/rw/Options.";
+        }
+        catch (OperationCanceledException)
+        {
+            AppLog.Warn("[librarian] resolve sample bank names timed out");
+            _vm.StatusText = "Timed out reading /korg/rw/Options - the Kronos stopped responding. Names are unchanged.";
         }
         catch (Exception ex)
         {
@@ -430,28 +473,38 @@ internal partial class LibrarianShellWindow : ThemedWindow
     // scan above, but for ONE reported address. Returns the status line for the dialog to show in
     // place - it's already modal over a Sync/Commit, so stacking another dialog on it to report a
     // result would be worse than useless.
-    string SearchPcgForMissingObject(ObjLoc missing)
+    // One file pick, then every still-missing address is looked for in that file - `missing` is the
+    // dialog's whole outstanding list, ordered with the right-clicked row first. Returns the
+    // addresses actually located; the dialog drops their rows, so "found" must mean STAGED, never
+    // merely "the scan ran".
+    (IReadOnlyCollection<ObjLoc> Found, string Status) SearchPcgForMissingObject(IReadOnlyList<ObjLoc> missing)
     {
+        var none = Array.Empty<ObjLoc>();
+        if (missing.Count == 0) return (none, "");
+
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
             Title = AppMessages.Librarian.Shell.ScanPcgDialogTitle,
             Filter = "Korg PCG Files|*.pcg|All Files|*.*",
         };
-        if (dlg.ShowDialog(this) != true) return "";
+        if (dlg.ShowDialog(this) != true) return (none, "");
 
         string fileName = System.IO.Path.GetFileName(dlg.FileName);
         try
         {
-            var (found, error) = _vm.ScanPcgForOneDependency(missing, System.IO.File.ReadAllBytes(dlg.FileName), fileName);
-            if (error != null) return AppMessages.UnresolvedDependencies.ScanFailed(error);
-            return found
-                ? AppMessages.UnresolvedDependencies.ScanFound(missing.Label(), fileName)
-                : AppMessages.UnresolvedDependencies.ScanNotFound(missing.Label(), fileName);
+            var (found, error) = _vm.ScanPcgForMissingObjects(missing, System.IO.File.ReadAllBytes(dlg.FileName), fileName);
+            if (error != null) return (none, AppMessages.UnresolvedDependencies.ScanFailed(error));
+            return found.Count switch
+            {
+                0 => (none, AppMessages.UnresolvedDependencies.ScanNotFound(missing[0].Label(), fileName)),
+                1 => (found, AppMessages.UnresolvedDependencies.ScanFound(found[0].Label(), fileName)),
+                _ => (found, AppMessages.UnresolvedDependencies.ScanFoundMany(found.Count, fileName)),
+            };
         }
         catch (Exception ex)
         {
             AppLog.Error($"[librarian] dependency search failed: {ex}");
-            return AppMessages.UnresolvedDependencies.ScanFailed(ex.Message);
+            return (none, AppMessages.UnresolvedDependencies.ScanFailed(ex.Message));
         }
     }
 
@@ -616,26 +669,40 @@ internal partial class LibrarianShellWindow : ThemedWindow
     // ── Expand/Collapse (Local/PCG/Merge context menus - "Selected"/"All") ───────────────────
     // Shared across all three trees instead of 12 near-duplicate bodies, same rationale as
     // PaneSelection's own header comment on why it's one class instead of three hand-copied ones.
-    // "Selected" is the pane's CURRENT selection (PaneSelection.Items - right-click already
-    // selects the target first per Explorer convention, or keeps an existing multi-select intact),
-    // not just the node that was clicked; a no-op on an empty selection.
+    // "Selected" is normally the pane's CURRENT selection (PaneSelection.Items - right-click
+    // already selects the target first per Explorer convention, or keeps an existing multi-select
+    // intact). BUT a type-root header (Programs/Combis/...) in the Local/PCG trees isn't a
+    // "selectable citizen" (PaneInteraction's IsLibrarySelectable - it has neither Loc nor
+    // BankRef, deliberately, so Cut/Copy/Delete/Rename never fire on the whole type at once), so
+    // right-clicking one never made it into Items and this fell through to whatever was selected
+    // before, or nothing. `rightClicked` is the node actually under the cursor (the MenuItem's own
+    // DataContext, same source OnCutMenuItem etc. already read directly); when the selectability
+    // gate kept it out of Items, act on it alone instead of the stale/empty selection.
     static void ExpandAll(IEnumerable<ObjectTreeNode> roots) => ObjectTreeNode.SetExpandedRecursive(roots, true);
     static void CollapseAll(IEnumerable<ObjectTreeNode> roots) => ObjectTreeNode.SetExpandedRecursive(roots, false);
-    static void ExpandSelected(PaneSelection selection) => ObjectTreeNode.SetExpandedRecursive(selection.Items, true);
-    static void CollapseSelected(PaneSelection selection) => ObjectTreeNode.SetExpandedRecursive(selection.Items, false);
 
-    void OnLocalExpandSelectedMenuItem(object sender, RoutedEventArgs e) => ExpandSelected(_localSelection);
-    void OnLocalCollapseSelectedMenuItem(object sender, RoutedEventArgs e) => CollapseSelected(_localSelection);
+    static void ExpandSelected(PaneSelection selection, ObjectTreeNode? rightClicked) =>
+        ObjectTreeNode.SetExpandedRecursive(EffectiveTargets(selection, rightClicked), true);
+    static void CollapseSelected(PaneSelection selection, ObjectTreeNode? rightClicked) =>
+        ObjectTreeNode.SetExpandedRecursive(EffectiveTargets(selection, rightClicked), false);
+
+    static IEnumerable<ObjectTreeNode> EffectiveTargets(PaneSelection selection, ObjectTreeNode? rightClicked) =>
+        rightClicked != null && !selection.Items.Contains(rightClicked) ? new[] { rightClicked } : selection.Items;
+
+    static ObjectTreeNode? ClickedNode(object sender) => (sender as MenuItem)?.DataContext as ObjectTreeNode;
+
+    void OnLocalExpandSelectedMenuItem(object sender, RoutedEventArgs e) => ExpandSelected(_localSelection, ClickedNode(sender));
+    void OnLocalCollapseSelectedMenuItem(object sender, RoutedEventArgs e) => CollapseSelected(_localSelection, ClickedNode(sender));
     void OnLocalExpandAllMenuItem(object sender, RoutedEventArgs e) => ExpandAll(_vm.LocalPane.Roots);
     void OnLocalCollapseAllMenuItem(object sender, RoutedEventArgs e) => CollapseAll(_vm.LocalPane.Roots);
 
-    void OnPcgExpandSelectedMenuItem(object sender, RoutedEventArgs e) => ExpandSelected(_pcgSelection);
-    void OnPcgCollapseSelectedMenuItem(object sender, RoutedEventArgs e) => CollapseSelected(_pcgSelection);
+    void OnPcgExpandSelectedMenuItem(object sender, RoutedEventArgs e) => ExpandSelected(_pcgSelection, ClickedNode(sender));
+    void OnPcgCollapseSelectedMenuItem(object sender, RoutedEventArgs e) => CollapseSelected(_pcgSelection, ClickedNode(sender));
     void OnPcgExpandAllMenuItem(object sender, RoutedEventArgs e) => ExpandAll(_vm.PcgPane.Roots);
     void OnPcgCollapseAllMenuItem(object sender, RoutedEventArgs e) => CollapseAll(_vm.PcgPane.Roots);
 
-    void OnMergeExpandSelectedMenuItem(object sender, RoutedEventArgs e) => ExpandSelected(_mergeSelection);
-    void OnMergeCollapseSelectedMenuItem(object sender, RoutedEventArgs e) => CollapseSelected(_mergeSelection);
+    void OnMergeExpandSelectedMenuItem(object sender, RoutedEventArgs e) => ExpandSelected(_mergeSelection, ClickedNode(sender));
+    void OnMergeCollapseSelectedMenuItem(object sender, RoutedEventArgs e) => CollapseSelected(_mergeSelection, ClickedNode(sender));
     void OnMergeExpandAllMenuItem(object sender, RoutedEventArgs e) => ExpandAll(_vm.MergePane.Roots);
     void OnMergeCollapseAllMenuItem(object sender, RoutedEventArgs e) => CollapseAll(_vm.MergePane.Roots);
 

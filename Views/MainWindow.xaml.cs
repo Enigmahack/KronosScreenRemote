@@ -151,6 +151,13 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     // default (no minimize box).
     protected override bool AllowMinimize => true;
 
+    // Opts out of ThemedWindow's generic placement memory: this window already has its own
+    // WindowLeft/Top/Width/Height/Maximized settings, restored in MainWindow.Input.cs alongside
+    // the minimum-width pin, and its geometry is further driven by the tray and fullscreen paths
+    // (MainWindow.xaml.cs's _fs save/restore). Two mechanisms writing the same window's position
+    // would fight over it.
+    protected override bool RemembersPlacement => false;
+
     public MainWindow()
     {
         InitializeComponent();

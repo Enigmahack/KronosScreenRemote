@@ -360,6 +360,79 @@ static class LocalEditOpsSelfTests
             Check("try-next-free-slot-finds-gap", LocalEditOps.TryFindNextFreeSlot(cache, LibObj.Program, 0x41) == 1);
             Check("try-next-free-slot-empty-bank", LocalEditOps.TryFindNextFreeSlot(cache, LibObj.Combi, 0x46) == 0);
 
+            // ── RepatchReference dispatches on EVERY reference kind, not just timbres ──
+            // Regression: this used to be a local "starts with timbre ? combi timbre : SET LIST
+            // SLOT" split, which predated the Drum Track and osc-zone (Drum Kit / Wave Sequence)
+            // kinds. An "osc2 zone3" site then went down the set-list branch and wrote at
+            // 24 + site*542 = offset 5444 of a 3706-byte HD-1 Program body - an
+            // IndexOutOfRangeException thrown out of Commit (ResolvePendingDependencies), which
+            // is where a user first met it. Each kind below asserts the bytes the CORRECT
+            // encoder owns actually changed, so a future mis-dispatch fails loudly instead of
+            // patching the wrong field.
+            var hd1Prog = new byte[ProgramFormatConverter.WireSizeHd1];
+            var hd1Loc = new ObjLoc(LibObj.Program, 0x41, 40);
+            LocalEditOps.PlaceObject(cache, hd1Loc, LibObj.Program, 5, hd1Prog, "hd1-repatch-fixture",
+                divertDisplacedToClipboard: false, utcNow);
+
+            // osc2 zone3 -> site 1*8+2 = 10; Drum Kit U-A:003 is linear 40+3 = 43, written LE
+            // into the zone's 2-byte number field at 3240 + 2*22 + 18 = 3302.
+            Check("repatch-osc-zone-drumkit", LocalEditOps.RepatchReference(
+                cache, hd1Loc, site: 10, "osc2 zone3", new ObjLoc(LibObj.DrumKit, 0x40, 3), utcNow));
+            var zoneBody = cache.GetCurrentBody(hd1Loc.ObjType, hd1Loc.Bank, hd1Loc.Number);
+            Check("repatch-osc-zone-wrote-linear",
+                zoneBody != null && zoneBody[3302] == 43 && zoneBody[3303] == 0);
+
+            // The SILENT half of the same bug, and the more dangerous one: the set-list branch
+            // touches at most byte 50 + site*542, so for site <= 6 (osc1 zone1..zone7) it stayed
+            // INSIDE a 3706-byte Program body - no exception, just three arbitrary Program
+            // parameter bytes overwritten and the reference reported as resolved. Only site >= 7
+            // threw. Site 2 writes at 24 + 2*542 + {24,25,26} = 1132/1133/1134 under the old
+            // dispatch, so this case catches a mis-dispatch that never announces itself.
+            Check("repatch-osc-zone-low-site-drumkit", LocalEditOps.RepatchReference(
+                cache, hd1Loc, site: 2, "osc1 zone3", new ObjLoc(LibObj.DrumKit, 0x40, 1), utcNow));
+            var lowSiteBody = cache.GetCurrentBody(hd1Loc.ObjType, hd1Loc.Bank, hd1Loc.Number);
+            // osc1 zone3 -> 2774 + 2*22 + 18 = 2836; Drum Kit U-A:001 is linear 40+1 = 41.
+            Check("repatch-osc-zone-low-site-wrote-linear",
+                lowSiteBody != null && lowSiteBody[2836] == 41 && lowSiteBody[2837] == 0);
+            Check("repatch-osc-zone-low-site-left-setlist-bytes-alone",
+                lowSiteBody != null && lowSiteBody[1132] == 0 && lowSiteBody[1133] == 0 && lowSiteBody[1134] == 0);
+
+            // A Wave Sequence target at the same site uses the WAVE SEQ linear map, not the drum
+            // kit one: U-A:005 is 150 + 5 = 155 (0x9B), i.e. a genuinely different number for the
+            // same (bank, slot) - so this also guards the targetObjType branch inside the encoder.
+            Check("repatch-osc-zone-waveseq", LocalEditOps.RepatchReference(
+                cache, hd1Loc, site: 10, "osc2 zone3", new ObjLoc(LibObj.WaveSequence, 0x40, 5), utcNow));
+            zoneBody = cache.GetCurrentBody(hd1Loc.ObjType, hd1Loc.Bank, hd1Loc.Number);
+            Check("repatch-osc-zone-waveseq-linear",
+                zoneBody != null && zoneBody[3302] == 155 && zoneBody[3303] == 0);
+
+            // Drum Track is a Program->Program ref with no site at all (-1) - the old split sent
+            // this to the set-list branch too, where -1 indexes BEFORE the body.
+            Check("repatch-drum-track", LocalEditOps.RepatchReference(
+                cache, hd1Loc, site: -1, "drum track", new ObjLoc(LibObj.Program, 0x40, 12), utcNow));
+            var dtBody = cache.GetCurrentBody(hd1Loc.ObjType, hd1Loc.Bank, hd1Loc.Number);
+            Check("repatch-drum-track-wrote-ref", dtBody != null
+                && LibRefs.ProgramDrumTrackRef(dtBody) == (KronosBanks.ObjBankToFunc33(1, 0x40), 12));
+
+            // An unencodable destination (Drum Kit bank 0x20 is in no linear map) writes nothing,
+            // so it must report failure - otherwise ResolvePendingDependencies drops the entry as
+            // "resolved" while the reference still dangles.
+            Check("repatch-unencodable-target-reports-failure", !LocalEditOps.RepatchReference(
+                cache, hd1Loc, site: 10, "osc1 zone1", new ObjLoc(LibObj.DrumKit, 0x20, 0), utcNow));
+
+            // The two kinds that always worked still do (combi timbre / set-list slot).
+            Check("repatch-timbre-still-works", LocalEditOps.RepatchReference(
+                cache, new ObjLoc(LibObj.Combi, 0x00, 0), site: 3, "timbre 4", new ObjLoc(LibObj.Program, 0x40, 9), utcNow));
+            var timbreBody = cache.GetCurrentBody(LibObj.Combi, 0x00, 0);
+            Check("repatch-timbre-wrote-ref", timbreBody != null
+                && LibRefs.CombiTimbreRef(timbreBody, 3) == (KronosBanks.ObjBankToFunc33(1, 0x40), 9));
+
+            Check("repatch-setlist-slot-still-works", LocalEditOps.RepatchReference(
+                cache, new ObjLoc(LibObj.SetList, 0, 0), site: 2, "setlist_slot", new ObjLoc(LibObj.Program, 0x40, 11), utcNow));
+            var slotBody = cache.GetCurrentBody(LibObj.SetList, 0, 0);
+            Check("repatch-setlist-slot-wrote-ref", slotBody != null
+                && LibRefs.SetListSlotRef(slotBody, 2).Index == 11);
+
             // ── SessionDependencyClipboard: add/resolve ──
             var sessionClip = new SessionDependencyClipboard();
             var otherMissing = new ObjLoc(LibObj.Program, 0x41, 55);

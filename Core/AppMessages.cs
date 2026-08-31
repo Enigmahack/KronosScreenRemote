@@ -370,6 +370,16 @@ public static class AppMessages
                 if (stillStaged > 0) msg += $" {stillStaged} could not be placed and are still staged (no matching bank has room).";
                 return msg;
             }
+            // Auto-Fill ran out of destination slots. Names the KIND that has nowhere to go (EXi
+            // and HD-1 Programs are counted separately - they can't share a bank), because "the
+            // destination is full" without saying full OF WHAT leaves the user hunting through
+            // every bank of every type for the free space that isn't there.
+            public static string AutoFillNoRoom(IReadOnlyList<(string What, int Count)> noRoom) =>
+                "Local Library has no free slots left for: " +
+                string.Join(", ", noRoom.Select(n => $"{n.Count} {n.What}(s)")) +
+                ". These are still staged in the Merge Window - free up slots in a bank of the " +
+                "matching type (delete or move objects), then run Auto-Fill again.";
+
             // A refusal partway through still leaves everything placed BEFORE it sitting in Local
             // Library as pending edits. Leading with that count is what tells the user whether to
             // keep the partial result or Ctrl+Z the whole sweep - a bare "stopped on X" reads as
@@ -492,6 +502,13 @@ public static class AppMessages
             // A reference that resolves to an INIT/placeholder Program - satisfied, but not really
             // the sound the referrer wants. See ProgramBody.IsInit.
             public const string InitPlaceholderSuffix = "(INIT placeholder)";
+
+            // A reference the loaded PCG / Merge Window can't satisfy but Local Library CAN, since
+            // the reference is an address and Local Library already holds that address. Says where
+            // it was looked for AND where it was found, so the row can't be misread as either a
+            // gap or as having come out of the source being browsed.
+            public static string ResolvedFromLocalLibrary(string whereMissing) =>
+                $"(not {whereMissing}; already in your Local Library at this address)";
 
             // ── Properties dialog: dependency lists + "Scan PCG..." ──
             public const string DependenciesHeader   = "Dependencies";
@@ -628,6 +645,14 @@ public static class AppMessages
             "anything found is staged in the Merge Window, and placing it anywhere repoints the reference " +
             "automatically at the next Sync/Commit.";
 
+        // Every gap in the list was located and staged. Deliberately does NOT say "resolved":
+        // staging is not placement, and the references are only repointed once the staged objects
+        // are placed and the next Sync/Commit runs.
+        public const string AllLocated =
+            "Every missing object below has been found and staged in the Merge Window.\n\n" +
+            "They aren't placed yet - drop them into Local Library, and the references that " +
+            "needed them are repointed automatically at the next Sync/Commit.";
+
         // Type name first ("Program I-C:008", never a bare "I-C:008" - Program and Combi bank
         // labels look identical), then who needs it and through which site.
         public static string Row(string typeName, string label, string name, int count) =>
@@ -637,13 +662,24 @@ public static class AppMessages
             $"        -> {typeName} {label} ({refKind})";
         public static string RowReferrerMore(int more) => $"        -> ... and {more} more";
 
+        // Shown where the "More Info" popup would otherwise list a row's own outgoing references
+        // (ObjectInfoDialog) - a gap row has no object behind it, so there is nothing to list and
+        // "(references nothing)" would be an outright wrong answer.
+        public const string NotStagedChildren =
+            "Not staged - what this object itself references can't be known until it's found.";
+
         public const string ScanMenuItem   = "Search a PCG for this object...";
         public const string CopyMenuItem   = "Copy all details";
         public const string CopiedToClipboard = "Details copied to the clipboard.";
         public static string ScanFound(string label, string fileName) =>
             $"Found {label} in {fileName} - staged in the Merge Window. Place it anywhere; the reference repoints on the next Sync/Commit.";
+        // The sweep found several at once - the file the user picked for one gap turned out to
+        // hold others too, which is the common case when they were all saved together.
+        public static string ScanFoundMany(int found, string fileName) =>
+            $"Found {found} of the missing objects in {fileName} - all staged in the Merge Window. " +
+            "Place them anywhere; the references repoint on the next Sync/Commit.";
         public static string ScanNotFound(string label, string fileName) =>
-            $"{fileName} doesn't contain {label} - try another .pcg file.";
+            $"{fileName} doesn't contain {label}, or any of the others still listed - try another .pcg file.";
         public static string ScanFailed(string detail) => $"Search failed: {detail}";
     }
 

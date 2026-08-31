@@ -144,6 +144,41 @@ static class PaneSelectionSelfTests
             Check("clear-empties", sel.Items.Count == 0 && !t.Leaf0.IsSelected && !t.Leaf1.IsSelected && sel.Anchor == null);
         }
 
+        // ── HighlightOnly is feedback, never membership ──
+        // The whole point of the type-root highlight is that it changes what the row LOOKS like
+        // and nothing else: Items must stay empty, so every consumer that keys off "is anything
+        // selected" (the toolbar, the context-menu gating, the dependency panel, Cut/Copy/Delete)
+        // behaves exactly as it did when clicking a header did nothing at all.
+        {
+            var t = BuildTree();
+            var sel = Make(t.Roots);
+            var header = t.Roots[0];   // the "Programs" type-root - no Loc, no BankRef
+
+            sel.HighlightOnly(header);
+            Check("highlight-marks-the-row", header.IsSelected);
+            Check("highlight-is-not-a-selection", sel.Items.Count == 0);
+            Check("highlight-leaves-no-anchor", sel.Anchor == null);
+            Check("highlight-is-tracked", sel.HighlightedOnly == header);
+
+            // A real selection supersedes it - never two lit rows at once.
+            sel.HandleClick(t.Leaf0, None);
+            Check("real-click-drops-highlight", !header.IsSelected && sel.HighlightedOnly == null);
+            Check("real-click-still-selects", sel.Items.Count == 1 && t.Leaf0.IsSelected);
+
+            // ...and the reverse: highlighting a header drops a real selection.
+            sel.HighlightOnly(header);
+            Check("highlight-drops-real-selection", sel.Items.Count == 0 && !t.Leaf0.IsSelected);
+
+            // Clear covers the highlight too, and still notifies when only a highlight was set.
+            int changes = 0;
+            sel.SelectionChanged += () => changes++;
+            sel.Clear();
+            Check("clear-drops-highlight", !header.IsSelected && sel.HighlightedOnly == null);
+            Check("clear-notifies-for-highlight-only", changes == 1);
+            sel.Clear();
+            Check("clear-is-quiet-when-already-empty", changes == 1);
+        }
+
         return fails;
     }
 

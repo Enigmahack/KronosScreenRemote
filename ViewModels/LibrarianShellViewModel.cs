@@ -196,6 +196,14 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         // NOT re-evaluated per keystroke: a search only filters the haystack each leaf's
         // SearchText already has, it doesn't rebuild it - see PcgPaneViewModel.BuildSearchText.
         PcgPane.GetCategoryNames = () => CategoryNames;
+
+        // The missing-dependency rows are a property of what's STAGED, not of what's selected, so
+        // they're rebuilt on every merge mutation (TreeRefreshed fires on pull, remove, clear,
+        // placement and undo alike) rather than off the selection-change path. Called once here
+        // too: a merge cache restored from disk (MergeCachePersistence) already has its gaps
+        // before anything in this window has been clicked.
+        MergePane.TreeRefreshed += RebuildObjectDependencies;
+        RebuildObjectDependencies();
     }
 
     // ── Category names (requirement 4) ──────────────────────────────────────────────────────
@@ -687,6 +695,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     async Task AutoFillToLibraryAsync()
     {
         IsAutoFilling = true;
+        WarningText = null;   // this sweep's own outcome, not the last one's
         // Locks the Local pane's own tree/toolbar for the same span the undo scope below stays
         // open across - a rename/paste/delete landing mid-sweep would otherwise silently fold
         // into the sweep's own undo step instead of getting one of its own (see IsInputLocked's
@@ -988,6 +997,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
 
         int startCount = staged.Count;
         string? refusal = null, refusedWhat = null;
+        var noRoom = new List<(string What, int Count)>();
 
         foreach (var objType in new[] { LibObj.DrumKit, LibObj.WaveSequence, LibObj.Program, LibObj.Combi, LibObj.SetList })
         {
@@ -1017,7 +1027,18 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
                     // Re-asked every pass: the previous pass filled that bank up, so the next one
                     // has to resolve to a different bank (or to null = nothing of this format has
                     // room left, and the rest stays staged rather than being lost).
-                    if (LocalEditOps.FindBankWithFreeSlot(_cache, objType, isExi, BankTypeOf) is not { } bank) break;
+                    if (LocalEditOps.FindBankWithFreeSlot(_cache, objType, isExi, BankTypeOf) is not { } bank)
+                    {
+                        // Nothing of this kind has room anywhere. This used to end the pass
+                        // silently, leaving the items staged with only a clause at the end of the
+                        // Merge pane's status line to say why - which is not where anyone looks
+                        // after clicking Auto-Fill. Collected per type/format so the warning can
+                        // name exactly what has nowhere to go (an EXi Program can only ever land
+                        // in an EXi bank, so "Programs are full" would be the wrong thing to say
+                        // when the HD-1 banks are half empty).
+                        noRoom.Add((DescribeAutoFillKind(objType, isExi), remaining.Count));
+                        break;
+                    }
 
                     // One yield per bank - the finest granularity available without splitting a
                     // BatchPlace, which has to stay atomic. Placing a full 128-slot bank is
@@ -1047,8 +1068,15 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
                         break;
                     }
                     // Progress guard: a bank that accepted nothing would otherwise be chosen
-                    // again forever, since FindBankWithFreeSlot would keep returning it.
-                    if (remaining.Count >= before) break;
+                    // again forever, since FindBankWithFreeSlot would keep returning it. Reported
+                    // through the same warning as a genuinely full library - a different cause,
+                    // but from the user's side the identical outcome (these items are still
+                    // staged and nothing said so).
+                    if (remaining.Count >= before)
+                    {
+                        noRoom.Add((DescribeAutoFillKind(objType, isExi), remaining.Count));
+                        break;
+                    }
                 }
             }
         }
@@ -1057,10 +1085,24 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         int stillStaged = MergePane.Entries.Count;
         int resolved = startCount - stillStaged;
 
+        // The banner, not a pop-up: Auto-Fill is a sweep the user watches, and a modal that has
+        // to be dismissed before the result can even be looked at is the wrong shape for "some of
+        // this didn't fit". Left set until dismissed or until the next Sync/Commit clears it.
+        if (noRoom.Count > 0) WarningText = AppMessages.Librarian.Merge.AutoFillNoRoom(noRoom);
+
         if (refusal != null)
             return (false, AppMessages.Librarian.Merge.AutoFillRefused(resolved, refusedWhat ?? "a staged group", refusal));
 
         return (resolved > 0, AppMessages.Librarian.Merge.AutoFillResult(resolved, stillStaged));
+    }
+
+    // What kind of thing ran out of room, as the warning names it. Programs carry their wire
+    // format because that's what actually constrains them - an EXi Program is only ever placeable
+    // in an EXi bank (see LocalEditOps.FindBankWithFreeSlot's own isExi argument).
+    static string DescribeAutoFillKind(int objType, bool? isExi)
+    {
+        string name = ObjectTypeRegistry.Get(objType).DisplayName;
+        return isExi is { } exi ? $"{(exi ? "EXi" : "HD-1")} {name}" : name;
     }
 
     // ── Whole Program bank copy with EXi/HD-1 type change (requirement 4) ────────────────
@@ -1442,15 +1484,62 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         ReplaceObjectDependencies(rows);
     }
 
+    // Both walks over ONE object's body. Pure functions of (objType, body), which is what makes
+    // the memo below safe.
+    sealed record ObjectWalk(
+        List<(string RefKind, int Site, ObjLoc Ref)> Refs,
+        List<SampleReferenceWalker.SampleDependencyRow> SampleRows);
+
+    // Populating this panel walks the selection's dependencies TRANSITIVELY, and every step used
+    // to re-read the referenced body off the CAS store - two filesystem round trips each
+    // (LocalObjectStore.TryGet), over a DataDir that is routinely an SMB share. A Set List
+    // selection is 128 slots x 16 timbres of that, so clicking one object took seconds, and a
+    // plain click runs the walk twice anyway (PaneSelection.HandleMouseUpWithoutDrag fires
+    // SelectionChanged unconditionally).
+    //
+    // Keyed on the body's CONTENT hash, read from the index with no blob read at all
+    // (LocalLibraryCache.GetContentHash), so this is self-invalidating rather than something
+    // that has to be flushed: any edit rewrites the body, which changes the hash, which misses.
+    // Only the object actually edited is invalidated - the rest of the graph stays warm. Two
+    // different slots sharing a hash (every INIT Program has an identical body) SHOULD share an
+    // entry: the walkers return targets derived from the body, never the owner's own address.
+    //
+    // Deliberately memoizes ONLY the body-derived walk. Whether each referenced object is
+    // present (_cache.Exists) and what it is called (_cache.GetDisplayName) stay live on every
+    // population - both are index-only lookups, and they are exactly what must stay fresh so a
+    // dependency that gets placed flips from missing to found with no flush anywhere.
+    readonly Dictionary<(int ObjType, string Hash), ObjectWalk> _walkCache = new();
+
+    // Test-only visibility into whether the memo is actually being HIT - a correctness test
+    // passes identically when every lookup silently misses (see LibrarianDependencyCacheSelfTests).
+    internal int WalkCacheMisses { get; private set; }
+
+    ObjectWalk? LocalWalk(ObjLoc loc)
+    {
+        string? hash = _cache.GetContentHash(loc.ObjType, loc.Bank, loc.Number);
+        // NoBaselineSentinel ("") is not an identity - keying on it would serve one object's
+        // dependencies for every other local-only object of the same type.
+        bool cacheable = !string.IsNullOrEmpty(hash);
+        if (cacheable && _walkCache.TryGetValue((loc.ObjType, hash!), out var hit)) return hit;
+
+        WalkCacheMisses++;
+        if (_cache.GetCurrentBody(loc.ObjType, loc.Bank, loc.Number) is not { } body) return null;
+        var walk = new ObjectWalk(
+            ObjectReferenceWalker.Walk(loc.ObjType, body).ToList(),
+            SampleReferenceWalker.Walk(loc.ObjType, body).ToList());
+        if (cacheable) _walkCache[(loc.ObjType, hash!)] = walk;
+        return walk;
+    }
+
     // `missing` is optional: the selection-driven panel only wants display rows, while
     // InspectDependencies wants the gaps from the SAME walk rather than a second one.
     void CollectLocalDeps(ObjLoc loc, HashSet<ObjLoc> seen, HashSet<string> sampleSeen, List<ObjectDependencyRow> rows,
                           List<MissingDependency>? missing = null)
     {
-        if (_cache.GetCurrentBody(loc.ObjType, loc.Bank, loc.Number) is not { } body) return;
+        if (LocalWalk(loc) is not { } walk) return;
         string parentName = _cache.GetDisplayName(loc.ObjType, loc.Bank, loc.Number);
-        AddSampleRows(loc.ObjType, body, DescribeParent(loc, parentName, "sample"), sampleSeen, rows);
-        foreach (var (refKind, site, refLoc) in ObjectReferenceWalker.Walk(loc.ObjType, body))
+        AddSampleRows(walk.SampleRows, DescribeParent(loc, parentName, "sample"), sampleSeen, rows);
+        foreach (var (refKind, site, refLoc) in walk.Refs)
         {
             if (!seen.Add(refLoc)) continue;
             string parentInfo = DescribeParent(loc, parentName, refKind);
@@ -1464,7 +1553,11 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
             }
             // Cached at write time (LocalIndexEntry.DisplayName) - never a blob read, same
             // discipline as the tree's own labels (LocalLibraryPaneViewModel.MakeLeafNode).
-            bool found = _cache.Exists(refLoc.ObjType, refLoc.Bank, refLoc.Number);
+            // AvailableLocally, not bare Exists: an object already marked pending-delete still has
+            // an index entry, so Exists reported a Combi's timbre as satisfied by a Program the
+            // very next Commit removes. Now consistent with the PCG/Merge rows, which use the same
+            // test to decide whether a reference is really covered.
+            bool found = AvailableLocally(refLoc);
             string name = found ? _cache.GetDisplayName(refLoc.ObjType, refLoc.Bank, refLoc.Number) : "";
             // An INIT Program satisfies the reference technically but is a placeholder, not the
             // sound the referrer expects - worth saying so, since it's also the case that places
@@ -1473,7 +1566,17 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
                 found && refLoc.ObjType == LibObj.Program && ProgramBody.IsInitName(name)
                     ? $"{TypeName(refLoc.ObjType)}: {refLoc.Label()} - {name} {AppMessages.Librarian.Shell.InitPlaceholderSuffix}"
                     : DescribeDependency(refLoc, name, found, "locally"),
-                parentInfo, found ? () => DescribeLocalChildren(refLoc) : null));
+                parentInfo,
+                // "(references nothing)" - ObjectInfoDialog's default for a null callback - is the
+                // wrong answer for a missing object: nothing local HAS it, so what it references
+                // is unknowable, not empty.
+                found ? () => DescribeLocalChildren(refLoc)
+                      : () => new[] { AppMessages.UnresolvedDependencies.NotStagedChildren },
+                // A "not found locally" row IS a missing dependency - it was already saying so in
+                // words while rendering in the same color as every satisfied row beside it, which
+                // read as "noted, and fine". Flagging it red also makes it right-clickable to
+                // search a .pcg, the same recovery every other missing row now offers.
+                missingRef: found ? null : refLoc));
             // A ROM reference is listed but is never a gap (IsAlwaysAvailable - it resolves on the
             // instrument and can't be searched for), so it never enters `missing`.
             if (!found && missing != null && !ObjectReferenceWalker.IsAlwaysAvailable(refLoc))
@@ -1489,9 +1592,9 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     // is no recursion, no "missing" tracking, and no child-describe callback - just a flat
     // row per distinct bank this object references, deduped against `sampleSeen` the same way
     // `seen` dedupes object refs across one panel population.
-    void AddSampleRows(int objType, byte[] body, string parentInfo, HashSet<string> sampleSeen, List<ObjectDependencyRow> rows)
+    void AddSampleRows(IEnumerable<SampleReferenceWalker.SampleDependencyRow> walked, string parentInfo, HashSet<string> sampleSeen, List<ObjectDependencyRow> rows)
     {
-        foreach (var row in SampleReferenceWalker.Walk(objType, body))
+        foreach (var row in walked)
         {
             if (!sampleSeen.Add(row.Key)) continue;
             rows.Add(new ObjectDependencyRow(ResolveSampleDescription(row), parentInfo, sampleBucket: row.Bucket));
@@ -1537,12 +1640,36 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         ReplaceObjectDependencies(rows);
     }
 
+    // The PCG walk had no memo of its own, unlike LocalWalk's _walkCache: every population
+    // re-decoded every referenced body through WireBodyFromPcgEntry, and a Set List selection is
+    // 128 slots x 16 timbres of that, on the UI thread. Tolerable off a click (the user asked for
+    // it and waits once), but ApplyExsOptionIndex re-runs the SAME walk to pick up resolved names
+    // - which is what made "Resolve Sample Bank Names..." lock the window the moment its FTP work
+    // returned, long after the part that talks to the instrument was done.
+    //
+    // A loaded PcgLibraryView is immutable, so keying the memo on the instance makes it
+    // self-invalidating: loading a different file is a different instance and misses everything.
+    readonly Dictionary<(int ObjType, int Bank, int Number), byte[]?> _pcgBodyCache = new();
+    PcgLibraryView? _pcgBodyCacheView;
+
+    byte[]? PcgBody(PcgLibraryView view, ObjLoc loc)
+    {
+        if (!ReferenceEquals(view, _pcgBodyCacheView))
+        {
+            _pcgBodyCache.Clear();
+            _pcgBodyCacheView = view;
+        }
+        var key = (loc.ObjType, loc.Bank, loc.Number);
+        if (_pcgBodyCache.TryGetValue(key, out var hit)) return hit;
+        var entry = view.Get(loc);
+        return _pcgBodyCache[key] = entry == null ? null : ProgramFormatConverter.WireBodyFromPcgEntry(loc.ObjType, entry);
+    }
+
     void CollectPcgDeps(PcgLibraryView view, ObjLoc loc, HashSet<ObjLoc> seen, HashSet<string> sampleSeen, List<ObjectDependencyRow> rows)
     {
         var entry = view.Get(loc);
-        var body = entry == null ? null : ProgramFormatConverter.WireBodyFromPcgEntry(loc.ObjType, entry);
-        if (body == null) return;
-        AddSampleRows(loc.ObjType, body, DescribeParent(loc, entry!.Name, "sample"), sampleSeen, rows);
+        if (entry == null || PcgBody(view, loc) is not { } body) return;
+        AddSampleRows(SampleReferenceWalker.Walk(loc.ObjType, body), DescribeParent(loc, entry!.Name, "sample"), sampleSeen, rows);
         foreach (var (refKind, _, refLoc) in ObjectReferenceWalker.Walk(loc.ObjType, body))
         {
             if (!seen.Add(refLoc)) continue;
@@ -1553,9 +1680,18 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
                 continue;
             }
             var depEntry = view.Get(refLoc);
-            rows.Add(new ObjectDependencyRow(DescribeDependency(refLoc, depEntry?.Name ?? "", depEntry != null, "in this PCG"),
-                parentInfo, depEntry != null ? () => DescribePcgChildren(view, refLoc) : null));
-            if (depEntry != null) CollectPcgDeps(view, refLoc, seen, sampleSeen, rows);
+            if (depEntry != null)
+            {
+                rows.Add(new ObjectDependencyRow(DescribeDependency(refLoc, depEntry.Name, true, "in this PCG"),
+                    parentInfo, () => DescribePcgChildren(view, refLoc)));
+                CollectPcgDeps(view, refLoc, seen, sampleSeen, rows);
+                continue;
+            }
+            // Absent from the PCG is NOT the same as missing: the reference is an ADDRESS, so
+            // whatever Local Library already holds there is what the Kronos will play. Checking
+            // that before calling it a gap is the difference between "you need to find this" and
+            // "you already have this" - see DescribeAvailableLocally.
+            rows.Add(DescribeGapOrLocal(refLoc, parentInfo, "in this PCG"));
         }
     }
 
@@ -1581,7 +1717,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     void CollectMergeDeps(MergeEntry entry, HashSet<string> seen, HashSet<string> sampleSeen, List<ObjectDependencyRow> rows)
     {
         string parentName = string.IsNullOrEmpty(entry.DisplayName) ? "(unnamed)" : entry.DisplayName;
-        AddSampleRows(entry.ObjType, entry.Body, $"{TypeName(entry.ObjType)}: {parentName} (via sample, staged - not yet placed)", sampleSeen, rows);
+        AddSampleRows(SampleReferenceWalker.Walk(entry.ObjType, entry.Body), $"{TypeName(entry.ObjType)}: {parentName} (via sample, staged - not yet placed)", sampleSeen, rows);
         foreach (var site in entry.RefSites)
         {
             var dep = site.ResolvedContentHash is { } hash ? MergePane.TryGet(hash) : null;
@@ -1590,15 +1726,56 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
             string parentInfo = $"{TypeName(entry.ObjType)}: {parentName} (via {site.RefKind}, staged - not yet placed)";
             // No real address yet (Merge Window is bag-based, not addressed) - name is all
             // there is to show until it's actually placed.
-            rows.Add(new ObjectDependencyRow(dep != null
-                ? $"{TypeName(dep.ObjType)}: {(string.IsNullOrEmpty(dep.DisplayName) ? "(unnamed)" : dep.DisplayName)}"
-                : $"{TypeName(site.TargetLoc.ObjType)}: {site.TargetLoc.Label()} - not found in any loaded PCG",
-                parentInfo, dep != null ? () => DescribeMergeChildren(dep) : null));
-            if (dep != null) CollectMergeDeps(dep, seen, sampleSeen, rows);
+            if (dep != null)
+            {
+                rows.Add(new ObjectDependencyRow(
+                    $"{TypeName(dep.ObjType)}: {(string.IsNullOrEmpty(dep.DisplayName) ? "(unnamed)" : dep.DisplayName)}",
+                    parentInfo, () => DescribeMergeChildren(dep)));
+                CollectMergeDeps(dep, seen, sampleSeen, rows);
+                continue;
+            }
+            rows.Add(DescribeGapOrLocal(site.TargetLoc, parentInfo, "in any loaded PCG"));
         }
     }
 
-    public void ClearObjectDependencies() => ObjectDependencyRows.Clear();
+    // Empties the SELECTION half of the panel only - the staged-gap rows above it belong to the
+    // Merge Window, not to whatever happens to be selected, and must not disappear when the user
+    // clicks empty space (that list is the pre-Commit checklist; a checklist that vanishes on a
+    // stray click is worse than none).
+    // One reference that its own source (a loaded PCG, the Merge Window) doesn't satisfy - which
+    // is only half the question. The reference is an ADDRESS, so if Local Library already holds
+    // something there, the Kronos resolves it on load and there is nothing for the user to go
+    // find: that gets an ordinary row naming what's actually there, not a red one. Only an
+    // address nothing local covers is a real gap.
+    // Present locally AND still going to be there after the next Commit. _cache.Exists alone
+    // counts an object already marked pending-delete, so reassuring the user that a dependency is
+    // "already in your Local Library" off Exists would be pointing at something Commit is about to
+    // remove. Only used for the green-light direction - saying something IS satisfied is the claim
+    // that has to be strict.
+    bool AvailableLocally(ObjLoc loc) =>
+        _cache.Exists(loc.ObjType, loc.Bank, loc.Number) && !_cache.IsPendingDelete(loc.ObjType, loc.Bank, loc.Number);
+
+    ObjectDependencyRow DescribeGapOrLocal(ObjLoc refLoc, string parentInfo, string whereMissing)
+    {
+        if (AvailableLocally(refLoc))
+        {
+            string localName = _cache.GetDisplayName(refLoc.ObjType, refLoc.Bank, refLoc.Number);
+            return new ObjectDependencyRow(
+                $"{TypeName(refLoc.ObjType)}: {refLoc.Label()} - {(string.IsNullOrEmpty(localName) ? "(unnamed)" : localName)} " +
+                $"{AppMessages.Librarian.Shell.ResolvedFromLocalLibrary(whereMissing)}",
+                parentInfo, () => DescribeLocalChildren(refLoc));
+        }
+        return new ObjectDependencyRow(
+            DescribeDependency(refLoc, "", false, whereMissing), parentInfo,
+            () => new[] { AppMessages.UnresolvedDependencies.NotStagedChildren },
+            missingRef: refLoc);
+    }
+
+    public void ClearObjectDependencies()
+    {
+        _selectionDependencyRows.Clear();
+        RebuildObjectDependencies();
+    }
 
     // ── Per-object dependency detail (the Properties dialog's own lists, requirement 1) ──────
     // Same data the "Object Dependencies" panel shows, but for ONE object and in both directions:
@@ -1652,17 +1829,31 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     // object-level scan; no new session-clipboard tracking is needed here because these entries
     // are ALREADY tracked (that's why they're in the dialog), so ResolvePendingDependencies will
     // repoint them by content wherever the user places them.
-    public (bool Found, string? Error) ScanPcgForOneDependency(ObjLoc missing, byte[] pcgBytes, string fileName)
+    // Scans ONE .pcg for EVERY address in `missing`, not just the one the user right-clicked.
+    // A .pcg that holds one of a Combi's missing Programs very often holds the rest of them too
+    // (they were saved together), so checking only the clicked row made the user re-pick the same
+    // file once per gap. Everything present is staged in a single undo scope; the caller drops the
+    // rows for what came back and leaves the rest of the list for another file.
+    public (List<ObjLoc> Found, string? Error) ScanPcgForMissingObjects(
+        IReadOnlyList<ObjLoc> missing, byte[] pcgBytes, string fileName)
     {
+        var found = new List<ObjLoc>();
+        if (missing.Count == 0) return (found, null);
+
         var file = PcgFile.Open(pcgBytes);
-        if (file == null) return (false, AppMessages.Librarian.Pcg.NotRecognizedPcg(fileName));
+        if (file == null) return (found, AppMessages.Librarian.Pcg.NotRecognizedPcg(fileName));
 
         var view = new PcgLibraryView(file);
-        if (view.Get(missing) == null) return (false, null);
+        foreach (var loc in missing)
+            if (view.Get(loc) != null) found.Add(loc);
+        if (found.Count == 0) return (found, null);
 
+        // One undo step for the whole sweep - the user made one decision (this file), so one
+        // Ctrl+Z should take all of it back, not unwind object by object.
         using var undo = _undo.Begin(AppMessages.Librarian.Shell.UndoScannedPcgForDependencies(fileName));
-        MergePane.PullFromPcg(view, fileName, missing);
-        return (true, null);
+        foreach (var loc in found)
+            MergePane.PullFromPcg(view, fileName, loc);
+        return (found, null);
     }
 
     // A display name for an address, wherever it can be found - Local Library first (the cached
@@ -1718,10 +1909,70 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         return (found, missing.Count, null);
     }
 
+    // ── Missing staged dependencies (the panel's red section) ────────────────────────────────
+    // The panel shows two things stacked: everything the Merge Window still MISSES (red, always
+    // first, independent of any selection), then what the current selection references. Keeping
+    // the selection half cached rather than re-derived is what lets a merge mutation refresh the
+    // red rows for free: ScanPcgForMissingObjects pulls once per object it finds, so re-running
+    // the selection's own transitive walk on each of those would be dozens of walks over a
+    // DataDir that is routinely an SMB share (see _walkCache's comment).
+    readonly List<ObjectDependencyRow> _selectionDependencyRows = new();
+
     void ReplaceObjectDependencies(List<ObjectDependencyRow> rows)
     {
+        _selectionDependencyRows.Clear();
+        _selectionDependencyRows.AddRange(rows);
+        RebuildObjectDependencies();
+    }
+
+    void RebuildObjectDependencies()
+    {
         ObjectDependencyRows.Clear();
-        foreach (var r in rows) ObjectDependencyRows.Add(r);
+        foreach (var r in BuildMergeGapRows()) ObjectDependencyRows.Add(r);
+        foreach (var r in _selectionDependencyRows) ObjectDependencyRows.Add(r);
+    }
+
+    // One row per missing ADDRESS, not per reference site: a Set List whose Combis all want the
+    // same absent Program would otherwise repeat that Program once per timbre and bury the
+    // selection's own rows underneath. Reuses the Unresolved Dependencies dialog's own row format
+    // so the same gap reads identically wherever the user meets it.
+    List<ObjectDependencyRow> BuildMergeGapRows()
+    {
+        var rows = new List<ObjectDependencyRow>();
+        foreach (var group in MergePane.UnresolvedDependencies
+                     .GroupBy(s => s.TargetLoc)
+                     // Local Library already covers this address, so the reference resolves on the
+                     // instrument and there is nothing to go find - the gap is only in the Merge
+                     // Window's own pull source, which is not the user's problem. Filtering here
+                     // rather than styling it differently keeps the red section to exactly the
+                     // things that still need an action.
+                     .Where(g => !AvailableLocally(g.Key))
+                     .OrderBy(g => g.Key.ObjType).ThenBy(g => g.Key.Bank).ThenBy(g => g.Key.Number))
+        {
+            var referrers = group.Select(DescribeGapReferrer).ToList();
+            rows.Add(new ObjectDependencyRow(
+                // Safe to name now: the local-library case is filtered out above, so
+                // DescribeMissingName can only be answering from a loaded PCG - i.e. "this is
+                // sitting in the PCG you have open, pull it in", which is exactly the useful hint.
+                AppMessages.UnresolvedDependencies.Row(
+                    TypeName(group.Key.ObjType), group.Key.Label(), DescribeMissingName(group.Key), group.Count()),
+                string.Join("; ", referrers),
+                // Nothing staged HAS this object, so its own outgoing references are genuinely
+                // unknowable until it's found - say that rather than letting the "More Info"
+                // popup's default read as "it references nothing".
+                () => new[] { AppMessages.UnresolvedDependencies.NotStagedChildren },
+                missingRef: group.Key));
+        }
+        return rows;
+    }
+
+    // Which staged object needs this gap, and through which site - the merge cache is keyed by
+    // content, so the referrer is named, never addressed.
+    string DescribeGapReferrer(MergeRefSite site)
+    {
+        var owner = MergePane.TryGet(site.OwnerHash);
+        string name = owner == null || string.IsNullOrEmpty(owner.DisplayName) ? "(unnamed)" : owner.DisplayName;
+        return $"{TypeName(owner?.ObjType ?? site.TargetLoc.ObjType)}: {name} (via {site.RefKind})";
     }
 
     static string TypeName(int objType) => ObjectTypeRegistry.Get(objType).DisplayName;
@@ -1756,11 +2007,11 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         foreach (var row in SampleReferenceWalker.Walk(loc.ObjType, body)) lines.Add(ResolveSampleDescription(row));
         foreach (var (refKind, _, refLoc) in ObjectReferenceWalker.Walk(loc.ObjType, body))
         {
+            bool found = AvailableLocally(refLoc);   // see CollectLocalDeps on why not bare Exists
             string desc = ObjectReferenceWalker.IsAlwaysAvailable(refLoc)
                 ? DescribeRomDependency(refLoc)
-                : DescribeDependency(refLoc, _cache.Exists(refLoc.ObjType, refLoc.Bank, refLoc.Number)
-                    ? _cache.GetDisplayName(refLoc.ObjType, refLoc.Bank, refLoc.Number) : "",
-                    _cache.Exists(refLoc.ObjType, refLoc.Bank, refLoc.Number), "locally");
+                : DescribeDependency(refLoc,
+                    found ? _cache.GetDisplayName(refLoc.ObjType, refLoc.Bank, refLoc.Number) : "", found, "locally");
             lines.Add($"{desc} (via {refKind})");
         }
         return lines;
@@ -1853,12 +2104,19 @@ sealed class ObjectDependencyRow
     // sample dependency reads as a distinct kind of row at a glance, not just by its text.
     public SampleReferenceWalker.BankBucket? SampleBucket { get; }
 
+    // Set only on a MISSING-dependency row (LibrarianShellViewModel.BuildMergeGapRows) - the
+    // address nothing staged can satisfy. Drives the row's red styling and enables its
+    // "Search a PCG for this object..." right-click; null on every ordinary dependency row.
+    public ObjLoc? MissingRef { get; }
+    public bool IsMissing => MissingRef != null;
+
     public ObjectDependencyRow(string description, string parentInfo = "", Func<IReadOnlyList<string>>? describeChildren = null,
-                                SampleReferenceWalker.BankBucket? sampleBucket = null)
+                                SampleReferenceWalker.BankBucket? sampleBucket = null, ObjLoc? missingRef = null)
     {
         Description = description;
         ParentInfo = parentInfo;
         DescribeChildren = describeChildren ?? (() => Array.Empty<string>());
         SampleBucket = sampleBucket;
+        MissingRef = missingRef;
     }
 }

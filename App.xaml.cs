@@ -45,6 +45,7 @@ public partial class App : Application
             fails.AddRange(ReadOnlyBankBrowseSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(MergeCacheSelfTests.SelfTest());
             fails.AddRange(DependencyResolutionSelfTests.SelfTestAsync().GetAwaiter().GetResult());
+            fails.AddRange(LibrarianDependencyCacheSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(MergeTreeVisibilitySelfTests.SelfTest());
             fails.AddRange(PaneSelectionSelfTests.SelfTest());
             fails.AddRange(RawKeyMapSelfTests.SelfTest());

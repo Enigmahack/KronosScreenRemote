@@ -108,6 +108,11 @@ partial class MergePaneViewModel : ObservableObject
 
     public MergeEntry? TryGet(string contentHash) => _cache.TryGet(contentHash);
 
+    // What everything staged still needs and nothing staged provides (see
+    // MergeCache.UnresolvedRefSites) - listed in red at the top of the Object Dependencies panel
+    // from the moment a pull leaves a gap, so it can be filled before Commit rather than after.
+    public IReadOnlyList<MergeRefSite> UnresolvedDependencies => _cache.UnresolvedRefSites.ToList();
+
     // Everything currently staged, flat - the tree (Roots) is a DISPLAY shape that nests
     // dependencies under their referrers and hides a nested entry from its own type root, so it
     // can't be walked to answer "what is still staged". Auto-Fill needs exactly that flat answer

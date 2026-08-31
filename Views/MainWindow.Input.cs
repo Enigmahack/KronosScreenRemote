@@ -155,21 +155,27 @@ public partial class MainWindow
         // Kronos window" complaint) - so it no longer closes automatically when this
         // window does. Close it explicitly here instead, past every cancellable point
         // above, so the previous "closing Main closes everything" behavior still holds.
-        if (_sampleEditorWin != null && _sampleEditorWin.IsLoaded)
+        // Whether the close actually went through is read off the FIELD, not off the window:
+        // Close() raises Closed synchronously, and each window's Closed handler (see
+        // OpenSampleEditorWindow / OpenLibrarianShellWindow) nulls its own field - so a
+        // successful close leaves the field null, while a cancelled one never fires Closed and
+        // leaves it pointing at the live window. Only the Sample Editor can actually cancel
+        // (its unsaved-changes prompt); the Librarian's check below is defensive symmetry.
+        // Re-reading `_sampleEditorWin.IsLoaded` after Close() instead threw a
+        // NullReferenceException on the ordinary path and skipped every teardown step below,
+        // leaking the tray icon, the screen session and the low-level keyboard hook.
+        if (_sampleEditorWin is { IsLoaded: true } sampleEditor)
         {
-            _sampleEditorWin.Close();
-            // Close() can be cancelled by the Sample Editor's own unsaved-changes prompt
-            // (SampleEditorWindow.OnWindowClosing) - if the user chose not to discard,
-            // IsLoaded is still true here, and Main must not tear down around it either.
-            if (_sampleEditorWin.IsLoaded) { e.Cancel = true; return; }
+            sampleEditor.Close();
+            if (_sampleEditorWin != null) { e.Cancel = true; return; }
         }
 
         // Same reasoning, same pattern - LibrarianShellWindow is no longer owned either (see
         // OpenLibrarianShellWindow's own comment).
-        if (_librarianShellWin != null && _librarianShellWin.IsLoaded)
+        if (_librarianShellWin is { IsLoaded: true } librarianShell)
         {
-            _librarianShellWin.Close();
-            if (_librarianShellWin.IsLoaded) { e.Cancel = true; return; }
+            librarianShell.Close();
+            if (_librarianShellWin != null) { e.Cancel = true; return; }
         }
 
         _trayIcon?.Dispose();

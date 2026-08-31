@@ -14,9 +14,17 @@ namespace KronosScreenRemote;
 // dependencies..." offers, reachable from the moment the problem is actually reported.
 internal partial class UnresolvedDependenciesDialog : ThemedWindow
 {
-    // Set by the owner (LibrarianShellWindow): runs the file picker + scan for ONE missing object,
-    // and returns the status line to show. Null (a headless construction) just disables the action.
-    public Func<ObjLoc, string>? ScanForDependencyRequested { get; set; }
+    // Set by the owner (LibrarianShellWindow): runs the file picker once, then scans the chosen
+    // .pcg for EVERY address still listed - the clicked row is only what starts it. Returns the
+    // addresses actually located (so their rows can go) plus the status line. Null (a headless
+    // construction) disables the action.
+    public Func<IReadOnlyList<ObjLoc>, (IReadOnlyCollection<ObjLoc> Found, string Status)>? ScanForDependencyRequested { get; set; }
+
+    // How many pending ENTRIES each missing address accounts for - the heading counts references,
+    // while a row group is one address, so removing a group has to subtract its own share rather
+    // than one. Populated by For(); empty for the headless ctor path.
+    readonly Dictionary<ObjLoc, int> _entriesPerMissing = new();
+    int _remainingReferences;
 
     UnresolvedDependenciesDialog(string heading, IEnumerable<Row> rows)
     {
@@ -63,7 +71,11 @@ internal partial class UnresolvedDependenciesDialog : ThemedWindow
                 rows.Add(new Row(AppMessages.UnresolvedDependencies.RowReferrerMore(entries.Count - maxReferrersShown), group.Key));
         }
 
-        return new UnresolvedDependenciesDialog(AppMessages.UnresolvedDependencies.Heading(pending.Count), rows);
+        var dlg = new UnresolvedDependenciesDialog(AppMessages.UnresolvedDependencies.Heading(pending.Count), rows);
+        dlg._remainingReferences = pending.Count;
+        foreach (var group in pending.GroupBy(e => e.MissingRef))
+            dlg._entriesPerMissing[group.Key] = group.Count();
+        return dlg;
     }
 
     // Every row - heading line or indented referrer detail - carries the missing address it belongs
@@ -85,7 +97,34 @@ internal partial class UnresolvedDependenciesDialog : ThemedWindow
     void OnScanForRow(object sender, RoutedEventArgs e)
     {
         if (LST_Dependencies.SelectedItem is not Row row || ScanForDependencyRequested == null) return;
-        TXT_Status.Text = ScanForDependencyRequested(row.Missing);
+
+        // The clicked row picks the file; the scan then covers everything still outstanding. Its
+        // own address goes first so a file holding only that one still reads as answering the row
+        // the user actually right-clicked.
+        var targets = new List<ObjLoc> { row.Missing };
+        targets.AddRange(_entriesPerMissing.Keys.Where(k => !k.Equals(row.Missing)));
+
+        var (found, status) = ScanForDependencyRequested(targets);
+        TXT_Status.Text = status;
+        foreach (var located in found) DropGroup(located);
+    }
+
+    // The object turned up and is now staged in the Merge Window, so its heading row and every
+    // indented referrer line under it come off the list - otherwise the user is left re-reading a
+    // gap they already closed, with nothing to distinguish it from the ones still outstanding.
+    // Display-only: the underlying SessionDependencyClipboard entries stay tracked (the reference
+    // isn't actually repointed until the staged object is placed and the next Sync/Commit runs -
+    // see LibrarianShellViewModel.ResolvePendingDependencies), so Continue still carries the same
+    // meaning it always did.
+    void DropGroup(ObjLoc missing)
+    {
+        foreach (var stale in LST_Dependencies.Items.OfType<Row>().Where(r => r.Missing.Equals(missing)).ToList())
+            LST_Dependencies.Items.Remove(stale);
+
+        if (_entriesPerMissing.Remove(missing, out int references)) _remainingReferences -= references;
+        TXT_Heading.Text = _remainingReferences > 0
+            ? AppMessages.UnresolvedDependencies.Heading(_remainingReferences)
+            : AppMessages.UnresolvedDependencies.AllLocated;
     }
 
     // The whole list as text - for anyone who wants to work through the gaps outside this dialog

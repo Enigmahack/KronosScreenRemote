@@ -639,6 +639,15 @@
          there is no UUID to resolve at all today, factory or 3rd-party. -->
     <SolidColorBrush x:Key="SampleExiExternalTextBrush" Color="#FFE0954A"/>
 
+    <!-- Missing-dependency rows at the top of the Object Dependencies panel
+         (ObjectDependencyRow.IsMissing) - something staged in the Merge Window references an
+         object nothing staged provides. Deliberately a red, not another amber: this is the one
+         row kind in that panel that means "this WILL be wrong on the Kronos unless you act",
+         while ConflictHighlightBrush's amber and the sample-bucket colors are all informational.
+         Kept light enough to stay readable on PanelBackgroundBrush rather than a saturated
+         pure red. -->
+    <SolidColorBrush x:Key="MissingDependencyTextBrush" Color="#FFE05A5A"/>
+
     <Style TargetType="TreeView">
         <Setter Property="Background"  Value="{StaticResource PanelBackgroundBrush}"/>
         <Setter Property="Foreground"  Value="{StaticResource TextBrush}"/>

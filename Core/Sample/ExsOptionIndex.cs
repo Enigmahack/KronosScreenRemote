@@ -45,7 +45,12 @@ sealed class ExsOptionIndex
         var index = new ExsOptionIndex();
         const string dir = "/korg/rw/Options";
         FtpListItem[] listing;
+        // Cancellation is rethrown, never swallowed by the catches below: a timed-out listing
+        // returning an EMPTY index is indistinguishable from a real instrument with no options
+        // installed, and a timed-out download returning a PARTIAL one reports as complete. Both
+        // turn "the Kronos stopped answering" into a confident wrong answer at the caller.
         try { listing = await client.GetListing(dir, ct); }
+        catch (OperationCanceledException) { throw; }
         catch { return index; }   // folder missing/unreadable - callers just see an empty index
 
         string scratchDir = Path.Combine(Path.GetTempPath(), "kronos_exs_options");
@@ -53,7 +58,7 @@ sealed class ExsOptionIndex
 
         foreach (var item in listing)
         {
-            if (ct.IsCancellationRequested) break;
+            ct.ThrowIfCancellationRequested();
             if (item.Type != FtpObjectType.File) continue;
             // Filenames are "S<digits>" (e.g. S016, S285) - anything else in this folder isn't
             // an option file this app understands.
@@ -67,6 +72,7 @@ sealed class ExsOptionIndex
                 await client.DownloadFile(localPath, item.FullName, FtpLocalExists.Overwrite, token: ct);
                 text = await File.ReadAllTextAsync(localPath, System.Text.Encoding.ASCII, ct);
             }
+            catch (OperationCanceledException) { throw; }   // see GetListing above
             catch { continue; }   // one unreadable file shouldn't abort the whole index
 
             if (ExsOptionFile.Parse(number, text) is not { } file) continue;

@@ -48,12 +48,38 @@ sealed class PaneSelection
 
     static bool IsBank(ObjectTreeNode n) => n.BankRef != null;
 
+    // A node highlighted for FEEDBACK ONLY, never a selection. A type-root header (the
+    // "Programs"/"Combis" rows) is deliberately not a selectable citizen - see PaneInteraction's
+    // selectable predicate, which keeps it out of Items so Cut/Copy/Delete can never fire on a
+    // whole object type at once - but clicking one used to do nothing visible at all, which
+    // reads as an unresponsive UI. This gives it the highlight without giving it membership:
+    // Items stays empty, so the toolbar, the context-menu gating and the dependency panel all
+    // still see "no selection" exactly as before.
+    public ObjectTreeNode? HighlightedOnly { get; private set; }
+
     public void Clear()
     {
-        if (Items.Count == 0) return;
+        bool had = Items.Count > 0 || HighlightedOnly != null;
+        ClearSilent();
+        if (had) SelectionChanged?.Invoke();
+    }
+
+    void ClearSilent()
+    {
         foreach (var n in Items) n.IsSelected = false;
         Items.Clear();
         Anchor = null;
+        if (HighlightedOnly != null) { HighlightedOnly.IsSelected = false; HighlightedOnly = null; }
+    }
+
+    // Feedback-only click on a non-selectable node. Mutually exclusive with a real selection in
+    // this pane and with any selection in the others, so the tree never shows two active rows.
+    public void HighlightOnly(ObjectTreeNode node)
+    {
+        ClearOthers();
+        ClearSilent();
+        HighlightedOnly = node;
+        node.IsSelected = true;
         SelectionChanged?.Invoke();
     }
 
@@ -154,6 +180,9 @@ sealed class PaneSelection
     // would silently act on stale, orphaned node objects nothing on screen still represents.
     public void ReconcileAfterRefresh(IEnumerable<ObjectTreeNode> newRoots)
     {
+        // A feedback-only highlight is not worth re-binding across a rebuild (it carries no
+        // state anything acts on) - drop it rather than leave it pointing at a discarded node.
+        HighlightedOnly = null;
         if (Items.Count == 0) return;
 
         var wantedLocs = new HashSet<ObjLoc>(Items.Where(n => n.Loc != null).Select(n => n.Loc!.Value));

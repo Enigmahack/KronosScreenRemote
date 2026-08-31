@@ -68,6 +68,12 @@ public class AppSettings
     public double WindowHeight   { get; set; } = -1;
     public bool   WindowMaximized { get; set; } = false;
 
+    // Geometry for every OTHER window, keyed by type name - see ThemedWindow's own placement
+    // handling for which windows opt in. MainWindow keeps the dedicated fields above instead:
+    // its restore is entangled with the tray/fullscreen paths (MainWindow.Input.cs), which this
+    // generic one deliberately doesn't know about.
+    public Dictionary<string, WindowPlacement> WindowPlacements { get; set; } = new();
+
     public bool   AlwaysOnTop     { get; set; } = false;
     public double ZoomDefaultLevel { get; set; } = 2.5;
     public double ZoomWindowSize   { get; set; } = 1.0;
@@ -210,4 +216,16 @@ public class AppSettings
         }).ToList();
         return copy;
     }
+}
+
+// One window's remembered geometry (AppSettings.WindowPlacements). Always the NORMAL-state
+// bounds even when the window was closed maximized (Window.RestoreBounds), so un-maximizing
+// after a restart lands where the user last had it rather than at some default size.
+public class WindowPlacement
+{
+    public double Left { get; set; }
+    public double Top { get; set; }
+    public double Width { get; set; }
+    public double Height { get; set; }
+    public bool Maximized { get; set; }
 }

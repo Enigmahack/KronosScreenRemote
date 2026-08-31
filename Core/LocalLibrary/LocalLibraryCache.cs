@@ -66,6 +66,14 @@ sealed class LocalLibraryCache
     public byte? GetVersion(int objType, int bank, int number) =>
         _index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e) ? e.Version : null;
 
+    // The body's CAS hash - index-only, no blob read. Lets a caller key a cache of anything
+    // derived purely from the body bytes (see LibrarianShellViewModel's dependency-walk memo)
+    // without paying the read the derivation would otherwise need just to know what it has.
+    // Null for an untracked slot; can also be the empty NoBaselineSentinel, which callers must
+    // not treat as an identity (see LocalObjectStore.TryGet's own handling of it).
+    public string? GetContentHash(int objType, int bank, int number) =>
+        _index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e) ? e.CurrentHash : null;
+
     public bool IsDirty(int objType, int bank, int number) =>
         _index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e) &&
         e.CurrentHash != e.BaselineHash;

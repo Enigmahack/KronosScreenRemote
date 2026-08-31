@@ -62,6 +62,17 @@ sealed class MergeCache
 
     public IReadOnlyCollection<MergeEntry> Entries => _byHash.Values;
 
+    // Every reference site of everything currently staged that nothing staged can satisfy - the
+    // Merge Window's own answer to "what is still missing", surfaced so the gap can be closed
+    // while the user is still staging rather than only being reported by the Commit gate
+    // afterwards (see LibrarianShellViewModel.BuildMergeGapRows).
+    //
+    // Recomputed from the CURRENT entries rather than read off _pendingGapSites: Remove (and so
+    // CommitPlacement) never prunes that index, so a placed entry's own gap sites would keep
+    // being reported after it left the cache.
+    public IEnumerable<MergeRefSite> UnresolvedRefSites =>
+        _byHash.Values.SelectMany(e => e.RefSites).Where(s => s.ResolvedContentHash == null);
+
     // Raised immediately BEFORE any change to what's staged (a pull, a removal, a clear, a
     // placement record). The Librarian's linear undo (Core/LocalLibrary/LibrarianUndo.cs) is the
     // only subscriber, and it uses this to snapshot the staging state LAZILY - only actions that

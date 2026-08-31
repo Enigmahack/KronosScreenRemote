@@ -69,7 +69,14 @@ sealed class PaneInteraction
     {
         node = null!;
         if (sender is not FrameworkElement fe || fe.DataContext is not ObjectTreeNode n) return false;
-        if (!_selectable(n)) return false;   // a type-root header isn't a selectable citizen
+        if (!_selectable(n))
+        {
+            // A type-root header isn't a selectable citizen, but it should still LOOK like the
+            // click landed - highlight only, no membership in Selection.Items, so no behaviour
+            // downstream changes. See PaneSelection.HighlightOnly.
+            Selection.HighlightOnly(n);
+            return false;
+        }
         node = n;
         return true;
     }
