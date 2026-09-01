@@ -1,4 +1,4 @@
-<local:ThemedWindow x:Class="KronosScreenRemote.SampleEditorWindow"
+﻿<local:ThemedWindow x:Class="KronosScreenRemote.SampleEditorWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:KronosScreenRemote"
@@ -273,18 +273,18 @@
     <DockPanel>
         <!-- ── Menu ──────────────────────────────────────────────────────── -->
         <Menu DockPanel.Dock="Top">
-            <MenuItem Header="_File">
-                <MenuItem x:Name="MNU_NewCollection" Header="_New Collection (.KSC)..." Click="OnNewCollection"/>
+            <MenuItem Header="_File" SubmenuOpened="OnFileMenuOpened">
+                <MenuItem x:Name="MNU_NewCollection" Header="_New Sample Collection (.KSC)..." Click="OnNewCollection"/>
                 <MenuItem x:Name="MNU_NewMultisample" Header="New M_ultisample in Collection..." Click="OnNewMultisample"/>
                 <MenuItem x:Name="MNU_NewStereoPair" Header="New _Stereo Multisample Pair..." Click="OnNewStereoMultisamplePair"/>
                 <Separator/>
-                <MenuItem x:Name="MNU_OpenCollection" Header="_Open Collection (.KSC)..." InputGestureText="Ctrl+O" Click="OnOpenCollection"/>
+                <MenuItem x:Name="MNU_OpenCollection" Header="_Open Sample Collection (.KSC)..." InputGestureText="Ctrl+O" Click="OnOpenCollection"/>
                 <MenuItem x:Name="MNU_OpenKmp" Header="Open _Multisample (.KMP)..." Click="OnOpenKmpDirect"/>
-                <MenuItem x:Name="MNU_RecentFiles" Header="_Recent Files" SubmenuOpened="OnRecentFilesSubmenuOpened">
+                <MenuItem x:Name="MNU_RecentFiles" Header="_Recent..." SubmenuOpened="OnRecentFilesSubmenuOpened">
                     <MenuItem Header="(none)" IsEnabled="False"/>
                 </MenuItem>
-                <MenuItem x:Name="MNU_UnloadCollection" Header="_Unload Collection (.KSC)" Click="OnUnloadActiveCollection"
-                          ToolTip="Removes the active collection from the tree - files on disk are untouched, re-open it any time."/>
+                <MenuItem x:Name="MNU_UnloadCollection" Header="Close Sample Collection (.KSC)" Click="OnUnloadActiveCollection"
+                          ToolTip="Closes the active collection from the tree - files on disk are untouched."/>
                 <Separator/>
                 <MenuItem x:Name="MNU_SaveChanges" Header="Save _Changes" InputGestureText="Ctrl+S" Click="OnSaveChanges"
                           ToolTip="Writes everything edited this session - sample audio/fields and zone key ranges alike, across every collection currently open."/>
@@ -303,9 +303,12 @@
                 <MenuItem x:Name="MNU_ExportMultisample" Header="Export Multisample to Folder..." Click="OnExportMultisample"/>
                 <MenuItem x:Name="MNU_ExportCollection" Header="Export Collection to Folder..." Click="OnExportCollection"/>
                 <Separator/>
-                <MenuItem x:Name="MNU_NormalizationReport" Header="_Normalization Report..." Click="OnNormalizationReport"/>
+                <MenuItem x:Name="MNU_NormalizationReport" Header="Sample Report..." Click="OnNormalizationReport"/>
+                <Separator/>
+                <MenuItem Header="_Close" InputGestureText="Alt+F4" Click="OnCloseWindowMenuItem"
+                          ToolTip="Closes the editor window. Unsaved edits are kept in memory only until then - save first."/>
             </MenuItem>
-            <MenuItem Header="_Edit">
+            <MenuItem Header="_Edit" SubmenuOpened="OnEditMenuOpened">
                 <MenuItem x:Name="MNU_Undo" Header="_Undo" InputGestureText="Ctrl+Z" Click="OnUndo"/>
                 <MenuItem x:Name="MNU_Redo" Header="_Redo" InputGestureText="Ctrl+Y" Click="OnRedo"/>
                 <Separator/>
@@ -327,7 +330,7 @@
                 <MenuItem x:Name="MNU_Gain" Header="_Gain..." Click="OnGainDialog"
                           ToolTip="Apply an arbitrary dB change - the Amplify/Soften toolbar buttons only offer the +/-1, 3 and 6 dB presets"/>
                 <Separator/>
-                <MenuItem Header="_Zoom">
+                <MenuItem x:Name="MNU_Zoom" Header="_Zoom">
                     <MenuItem Header="Zoom _In" InputGestureText="Ctrl++" Click="OnZoomIn"/>
                     <MenuItem Header="Zoom _Out" InputGestureText="Ctrl+-" Click="OnZoomOut"/>
                     <MenuItem Header="Zoom to _Selection" Click="OnZoomToSelection"/>

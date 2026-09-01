@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -279,13 +279,34 @@ partial class SampleEditorViewModel : ObservableObject
         StatusText = result.StatusMessage;
     }
 
+    // Whichever multisample a push would target: the selected multisample node, or the one
+    // owning the selected zone. Shared with CanPushSelectedMultisample so the greyed-out
+    // state and the refusal messages below can never disagree about what "selected" means.
+    string? PushTargetMultisamplePath()
+    {
+        if (_selectedNode?.MultisampleRef is { } ms) return ms.Path;
+        return _selectedZone != null ? _selectedKmpPath : null;
+    }
+
+    // Menu-enable predicates for the two Push items. Purely additive: every guard below
+    // still runs and still explains itself, because a greyed item says only "no", never why.
+    public bool CanPushSelectedSample =>
+        _selectedSample is { IsHeaderOnly: false }
+        && _selectedSamplePath != null
+        && !_dirtySamples.ContainsKey(_selectedSamplePath)
+        && _remoteMap.ContainsKey(_selectedSamplePath);
+
+    public bool CanPushSelectedMultisample =>
+        PushTargetMultisamplePath() is { } p
+        && !_dirtyMultisamples.ContainsKey(p)
+        && _remoteMap.ContainsKey(p);
+
     public async Task PushSelectedMultisampleAsync(IRemoteSampleSource source)
     {
-        string? path;
-        if (_selectedNode?.MultisampleRef is { } ms) path = ms.Path;
-        else if (_selectedZone != null) path = _selectedKmpPath;
-        else { StatusText = "No multisample selected."; return; }
+        if (_selectedNode?.MultisampleRef == null && _selectedZone == null)
+        { StatusText = "No multisample selected."; return; }
 
+        var path = PushTargetMultisamplePath();
         if (path == null) { StatusText = "Couldn't resolve the owning multisample."; return; }
         if (_dirtyMultisamples.ContainsKey(path)) { StatusText = "Save the multisample locally first (use Save Multisample), then push."; return; }
         if (!_remoteMap.TryGetValue(path, out var remotePath))

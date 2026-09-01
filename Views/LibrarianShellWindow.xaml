@@ -239,7 +239,35 @@
             </Style.Triggers>
         </Style>
     </Window.Resources>
-    <Grid Margin="10">
+    <DockPanel>
+        <!-- The window had no menu bar at all: Close, and the Local Library's own
+             Cut/Copy/Paste/Rename/Delete, were reachable only from the toolbar, that tree's
+             context menu, or a keyboard shortcut nothing advertised. Enabled state is
+             recomputed in OnEditMenuOpened rather than bound, because the selection these
+             act on lives in the TreeView (_localSelection), not on the pane view-model. -->
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="_File">
+                <MenuItem Header="_Close" InputGestureText="Alt+F4" Click="OnCloseWindowMenuItem"/>
+            </MenuItem>
+            <MenuItem Header="_Edit" SubmenuOpened="OnEditMenuOpened">
+                <MenuItem Header="_Undo" InputGestureText="Ctrl+Z"
+                          Command="{Binding UndoCommand}"
+                          ToolTipService.ShowOnDisabled="True" ToolTip="{Binding UndoLabel}"/>
+                <Separator/>
+                <MenuItem x:Name="MNU_LocalCut" Header="Cu_t" InputGestureText="Ctrl+X" Click="OnCutButton"/>
+                <MenuItem x:Name="MNU_LocalCopy" Header="_Copy" InputGestureText="Ctrl+C" Click="OnCopyButton"/>
+                <MenuItem x:Name="MNU_LocalPaste" Header="_Paste" InputGestureText="Ctrl+V" Click="OnPasteButton"/>
+                <Separator/>
+                <MenuItem x:Name="MNU_LocalRename" Header="_Rename..." InputGestureText="F2" Click="OnRenameButton"/>
+                <MenuItem x:Name="MNU_LocalDelete" Header="_Delete" InputGestureText="Del" Click="OnDeleteButton"
+                          ToolTip="Deletes from the local library only - hardware is untouched until Commit."/>
+                <Separator/>
+                <MenuItem x:Name="MNU_LocalClearChanges" Header="Clear C_hanges" Click="OnClearChangesButton"
+                          ToolTip="Revert every pending edit and deletion. Hardware is untouched."/>
+            </MenuItem>
+        </Menu>
+
+        <Grid Margin="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
@@ -249,23 +277,43 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <DockPanel Grid.Row="0" Margin="0 0 0 8">
-            <!-- Docked Right so it sits at the top-right of the window, directly above the
-                 "Loaded PCG File" pane (Grid.Column="0" below) - a live filter over that pane's
-                 tree only (Local Library/Merge Window are untouched). -->
-            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="16 0 0 0">
+        <!-- Column widths mirror the pane grid in Row 2 (1*,10,1*,10,1*) so each control group
+             sits directly above the pane it acts on: Search PCG over "Loaded PCG File", the Sync
+             split-button over "Local Library" - the pane a sync actually rewrites. -->
+        <Grid Grid.Row="0" Margin="0 0 0 8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1*"/>
+                <ColumnDefinition Width="10"/>
+                <ColumnDefinition Width="1*"/>
+                <ColumnDefinition Width="10"/>
+                <ColumnDefinition Width="1*"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
                 <TextBlock Text="Search PCG:" VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
                 <TextBox x:Name="TXT_PcgSearch" Width="220" Margin="6 0 0 0"
                          Text="{Binding PcgPane.SearchText, UpdateSourceTrigger=PropertyChanged, Delay=200}"
                          ToolTip="Filters the tree below by name, bank, category, EXi type, or reference."/>
             </StackPanel>
-            <StackPanel Orientation="Horizontal">
-                <!-- Split button: the main half runs SyncMode (its label always NAMES that mode,
-                     so a remembered destructive choice can never look like the safe default), the
-                     narrow half picks it. Replaces the old Sync Library + Commit Changes pair -
-                     Commit Changes was only ever the push half (SyncPipeline.CommitChangesAsync
-                     aliases PushAsync), and is now the "Push Only" entry below. -->
-                <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="3">
+
+            <TextBlock Grid.Column="2" VerticalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" FontWeight="Bold"
+                       Text="{Binding StatusText}" ToolTip="{Binding StatusText, Converter={StaticResource EmptyToNull}}">
+                <TextBlock.Style>
+                    <Style TargetType="TextBlock">
+                        <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding StatusIsSuccess}" Value="True">
+                                <Setter Property="Foreground" Value="{StaticResource SuccessBrush}"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBlock.Style>
+            </TextBlock>
+
+            <StackPanel Grid.Column="4" HorizontalAlignment="Right">
+                <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="3"
+                        HorizontalAlignment="Right">
                     <StackPanel Orientation="Horizontal">
                         <Button x:Name="BTN_Sync" MinWidth="104" BorderThickness="0"
                                 Content="{Binding SyncButtonLabel}"
@@ -310,29 +358,13 @@
                 </Border>
                 <!-- Bounds the PULL half only, so it is inert in Push Only - disabled rather than
                      hidden, so the control does not jump around as the mode changes. -->
-                <CheckBox Content="Force Full Sync" VerticalAlignment="Center" Margin="10 0 0 0"
+                <CheckBox Content="Force Full Sync" HorizontalAlignment="Center" Margin="0 6 0 0"
                           IsChecked="{Binding ForceFullPull}"
                           IsEnabled="{Binding SyncModeHasPullHalf}"
                           ToolTipService.ShowOnDisabled="True"
                           ToolTip="Sync every program, combi, and set list, not just what changed. Applies to the pull half only."/>
-                <Button x:Name="BTN_Undo" Content="Undo" Padding="10 2" Margin="16 0 0 0"
-                        Command="{Binding UndoCommand}" ToolTip="{Binding UndoLabel}"/>
-                <TextBlock VerticalAlignment="Center" Margin="16 0 0 0"
-                           TextTrimming="CharacterEllipsis" FontWeight="Bold"
-                           Text="{Binding StatusText}" ToolTip="{Binding StatusText, Converter={StaticResource EmptyToNull}}">
-                    <TextBlock.Style>
-                        <Style TargetType="TextBlock">
-                            <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding StatusIsSuccess}" Value="True">
-                                    <Setter Property="Foreground" Value="{StaticResource SuccessBrush}"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </TextBlock.Style>
-                </TextBlock>
             </StackPanel>
-        </DockPanel>
+        </Grid>
 
         <!-- Row 1 carries two independent banners stacked, rather than two grid rows: the SysEx
              banner is a persistent condition and the warning below it is per-operation, so both
@@ -798,5 +830,6 @@
             <TextBlock x:Name="TXT_Hint" FontSize="11" Foreground="#FF777777" VerticalAlignment="Center"
                        Text="Sync Library button (Pull Only, Push Only, or 2-Way) syncs up, down, or both. Drag from the PCG pane to copy in, or right-click it to move into the Merge Window; double-click for properties."/>
         </DockPanel>
-    </Grid>
+        </Grid>
+    </DockPanel>
 </local:ThemedWindow>

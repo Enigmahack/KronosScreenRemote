@@ -738,13 +738,13 @@
                               Margin="0 0 0 6"
                               ToolTip="Pull every bank from the Kronos as soon as the Librarian opens. Never writes to the Kronos."/>
                     <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap" Margin="0 0 0 12"
-                               Text="Off by default. Reads every program, combi and set list instead of only the banks whose digest changed - slow on a full library, and it runs unattended, so it is a pull only: nothing is pushed to the Kronos without you clicking Sync or Commit."/>
+                               Text="Reads every program, combi, set list, drum kit, and wave sequence instead of only the banks whose digest changed. Slow on a full library and is a pull only: nothing is pushed to the Kronos without user intervention."/>
 
                     <CheckBox x:Name="ChkLibrarianForceDestructiveWrite" Content="Force destructive write"
                               Margin="0 0 0 6"
                               ToolTip="Commit overwrites the Kronos even where it changed since the last pull, without asking."/>
                     <TextBlock Foreground="#FFCC8888" FontSize="11" TextWrapping="Wrap"
-                               Text="Off by default. Normally a bank that changed on the Kronos since this library last pulled it is excluded from the push and flagged as a conflict for you to resolve. With this on, the local library is treated as the source of truth and Commit writes over those changes silently. Front-panel edits made since the last pull are lost - and the pre-write backup cannot recover them, because it saves this library's last known copy of each slot, not what is actually on the Kronos."/>
+                               Text="With this on, the local library is treated as the source of truth and 2-Way Sync will write over what's on the Kronos to make the Kronos match the local library."/>
                 </StackPanel>
             </TabItem>
 

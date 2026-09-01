@@ -734,6 +734,28 @@ internal partial class LibrarianShellWindow : ThemedWindow
     void OnRenameButton(object sender, RoutedEventArgs e) => DoRename(_localSelection.Items.Count == 1 ? _localSelection.Items.First() : null);
     void OnDeleteButton(object sender, RoutedEventArgs e) => DoDelete();
 
+    // File > Close. Alt+F4 and the title-bar X already reach the same place; the menu entry
+    // exists because the window had no menu bar at all until now.
+    void OnCloseWindowMenuItem(object sender, RoutedEventArgs e) => Close();
+
+    // Recomputed every time the menu drops, so it can never go stale the way a pushed
+    // enabled-state can. Same rules UpdateToolbarEnabled applies to the Local Library
+    // toolbar - Cut/Copy/Delete need a selection, Rename needs exactly one, Paste needs a
+    // clipboard - plus the pane's own IsReady gate (indexing / mid-sync input lock), which
+    // the toolbar gets for free from the StackPanel it sits in.
+    void OnEditMenuOpened(object sender, RoutedEventArgs e)
+    {
+        bool ready = _vm.LocalPane.IsReady;
+        bool hasSelection = ready && _localSelection.Items.Count > 0;
+        MNU_LocalCut.IsEnabled = hasSelection;
+        MNU_LocalCopy.IsEnabled = hasSelection;
+        MNU_LocalPaste.IsEnabled = ready && _vm.LocalPane.HasClipboard;
+        MNU_LocalRename.IsEnabled = ready && _localSelection.Items.Count == 1;
+        MNU_LocalDelete.IsEnabled = hasSelection;
+        MNU_LocalDelete.Header = hasSelection && _localSelection.Items.All(n => n.IsPendingDelete) ? "Restore" : "_Delete";
+        MNU_LocalClearChanges.IsEnabled = ready;
+    }
+
     void OnLocalTreeKeyDown(object sender, KeyEventArgs e)
     {
         bool ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);

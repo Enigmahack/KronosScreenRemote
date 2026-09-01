@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows;
 using FluentFTP;
 using KronosScreenRemote.ViewModels;
@@ -40,27 +40,70 @@ sealed class KronosRemoteSampleSource : IRemoteSampleSource
     // A dedicated connection for the push - the pull's own connection (opened inside
     // SampleRemoteBrowserDialog) is long closed by the time an edited file gets saved
     // and pushed back, so there's no "same connection" to reuse here.
+    static readonly TimeSpan PushConnectTimeout = TimeSpan.FromSeconds(15);
+    static readonly TimeSpan PushUploadTimeout  = TimeSpan.FromMinutes(5);
+
+    // Runs from a UI-thread click handler, so the two rules the rest of this codebase's FTP
+    // code already follows are load-bearing here rather than stylistic:
+    //   - every await is ConfigureAwait(false), and the client is disconnected/disposed on a
+    //     background task rather than by a `using` that runs inline. FluentFTP's synchronous
+    //     Dispose() can block on an async cleanup continuation that itself needs the UI
+    //     thread - the deadlock SampleRemoteBrowserDialog.DisposeInBackground documents. With
+    //     the continuation posted back to a UI thread already blocked inside Dispose, both
+    //     Push menu items froze the whole application with no exit but force-quitting it.
+    //   - Connect and the upload each carry their own CancellationToken deadline, because
+    //     FluentFTP's async paths do not reliably honour Config.ConnectTimeout/ReadTimeout;
+    //     without one, a Kronos FTP server that accepts the socket and then stalls hangs
+    //     forever and reads to the user as the same freeze. The two timeout messages are
+    //     deliberately distinct so a report from live hardware names which half stalled.
     public async Task<RemoteSamplePushResult> PushAsync(string localPath, string remotePath)
     {
-        if (!await KronosFtpSession.EnsureLoginAsync(_owner, _settings, _host))
+        if (!await KronosFtpSession.EnsureLoginAsync(_owner, _settings, _host).ConfigureAwait(false))
             return RemoteSamplePushResult.Failed(AppMessages.Librarian.Pcg.FtpLoginFailedOrCancelled);
 
-        using var client = KronosFtpSession.CreateClient(_host, _settings.FtpPort, _settings.FtpUsername, _settings.FtpPassword);
+        var client = KronosFtpSession.CreateClient(_host, _settings.FtpPort, _settings.FtpUsername, _settings.FtpPassword);
+        bool connected = false;
         try
         {
-            await client.Connect();
-            var status = await client.UploadFile(localPath, remotePath, FtpRemoteExists.Overwrite, createRemoteDir: true);
-            try { await client.Disconnect(); } catch { }
+            using (var connectCts = new CancellationTokenSource(PushConnectTimeout))
+                await client.Connect(connectCts.Token).ConfigureAwait(false);
+            connected = true;
+
+            FtpStatus status;
+            using (var uploadCts = new CancellationTokenSource(PushUploadTimeout))
+                status = await client.UploadFile(localPath, remotePath, FtpRemoteExists.Overwrite,
+                                                 createRemoteDir: true, token: uploadCts.Token).ConfigureAwait(false);
+
             return status == FtpStatus.Success
                 ? RemoteSamplePushResult.Success($"Pushed '{Path.GetFileName(localPath)}' to the Kronos.")
                 : RemoteSamplePushResult.Failed($"Push of '{Path.GetFileName(localPath)}' did not complete ({status}).");
+        }
+        catch (OperationCanceledException)
+        {
+            AppLog.Error($"Sample push '{localPath}' -> '{remotePath}' timed out "
+                + (connected ? "during the upload." : "connecting."));
+            return RemoteSamplePushResult.Failed(connected
+                ? $"Push timed out: the Kronos stopped responding partway through uploading '{Path.GetFileName(localPath)}' ({PushUploadTimeout.TotalMinutes:0} min). Nothing on the Kronos is guaranteed complete - check the file there before relying on it."
+                : $"Push failed: could not connect to the Kronos at {_host} within {PushConnectTimeout.TotalSeconds:0} seconds. Nothing was uploaded.");
         }
         catch (Exception ex)
         {
             AppLog.Error($"Sample push '{localPath}' -> '{remotePath}' failed: {ex}");
             return RemoteSamplePushResult.Failed($"Push failed: {ex.Message}");
         }
+        finally
+        {
+            DisposeInBackground(client);
+        }
     }
+
+    // Same fire-and-forget background disconnect+dispose SampleRemoteBrowserDialog and
+    // RemoteFilePickerDialog use, and for the same reason - see PushAsync's own comment.
+    static void DisposeInBackground(AsyncFtpClient client) => Task.Run(async () =>
+    {
+        try { await client.Disconnect(CancellationToken.None).ConfigureAwait(false); } catch { }
+        try { client.Dispose(); } catch { }
+    });
 
     // The folder-pick dialog does BOTH the browse AND the upload over its own single
     // connection before closing (SampleRemoteBrowserDialog.SelectFolderAndPushAsync) -

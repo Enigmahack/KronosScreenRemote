@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
@@ -1170,6 +1170,74 @@ public partial class SampleEditorWindow : ThemedWindow
     }
 
     void UpdateStatus() => StatusBar.Text = _vm.StatusText;
+
+    // File > Close. Alt+F4, the title-bar X and the tree's own "Close Editor" entry all
+    // reach the same place - this is the discoverable one.
+    void OnCloseWindowMenuItem(object sender, RoutedEventArgs e) => Close();
+
+    // Menu enable-state is recomputed when the menu drops rather than pushed from every
+    // state change: RefreshDetailPanels and friends already set a handful of these, but
+    // widening that to every File/Edit item means auditing every call site that mutates
+    // state and missing one silently. Computing at display time cannot go stale. The
+    // existing per-refresh assignments are left alone - they agree with these and are
+    // harmless overlap. MNU_RecentFiles has used the same SubmenuOpened idiom all along.
+    void OnFileMenuOpened(object sender, RoutedEventArgs e)
+    {
+        bool collection  = _vm.HasActiveCollection;
+        bool multisample = _vm.CurrentMultisampleName != null;
+        bool sample      = _vm.HasSampleLoaded;
+
+        MNU_NewMultisample.IsEnabled    = collection;
+        MNU_NewStereoPair.IsEnabled     = collection;
+        MNU_UnloadCollection.IsEnabled  = collection;
+
+        MNU_SaveChanges.IsEnabled       = _vm.HasUnsavedChanges;
+        MNU_SaveMultisample.IsEnabled   = multisample;
+        MNU_SaveSample.IsEnabled        = sample;
+
+        // Both push paths only ever put an already-pulled file back where it came from,
+        // and refuse a dirty or header-only one - see CanPushSelected*.
+        MNU_PushSample.IsEnabled        = _vm.CanPushSelectedSample;
+        MNU_PushMultisample.IsEnabled   = _vm.CanPushSelectedMultisample;
+
+        MNU_ImportAudio.IsEnabled       = multisample;
+        MNU_ImportStereoAudio.IsEnabled = multisample;
+        MNU_NewZone.IsEnabled           = multisample;
+        MNU_ExportSample.IsEnabled      = sample && !_vm.SampleIsHeaderOnly;
+        MNU_ExportMultisample.IsEnabled = multisample;
+        MNU_ExportCollection.IsEnabled  = collection;
+        MNU_NormalizationReport.IsEnabled = _vm.Roots.Count > 0;
+    }
+
+    void OnEditMenuOpened(object sender, RoutedEventArgs e)
+    {
+        // A header-only .KSF has no PCM at all, so every waveform edit below is a no-op on
+        // it - the same predicate the transport buttons already use.
+        bool audio        = _vm.HasSampleLoaded && !_vm.SampleIsHeaderOnly;
+        bool hasSelection = audio && _vm.SelectionEndFrame > _vm.SelectionStartFrame;
+
+        MNU_Undo.IsEnabled  = _vm.CanUndo;
+        MNU_Redo.IsEnabled  = _vm.CanRedo;
+
+        MNU_Cut.IsEnabled       = hasSelection;
+        MNU_Copy.IsEnabled      = hasSelection;
+        MNU_Paste.IsEnabled     = audio && SampleClipboard.HasContent;
+        MNU_SelectAll.IsEnabled = audio;
+
+        MNU_Reverse.IsEnabled          = audio;
+        MNU_SilenceSelection.IsEnabled = hasSelection;
+        MNU_InsertSilence.IsEnabled    = audio;
+        MNU_RemoveDcOffset.IsEnabled   = audio;
+        MNU_Gain.IsEnabled             = audio;
+        MNU_Zoom.IsEnabled             = audio;
+
+        MNU_DeleteZone.IsEnabled        = _vm.HasZoneSelected;
+        MNU_RenameMultisample.IsEnabled = _vm.CurrentMultisampleName != null;
+        MNU_RenameSample.IsEnabled      = _vm.HasSampleLoaded;
+        MNU_RevertKsc.IsEnabled         = _vm.HasActiveCollection;
+        MNU_RevertAll.IsEnabled         = _vm.Roots.Count > 0;
+    }
+
 
     // Filename and a dirty marker in the title bar, the convention every editor uses -
     // this window previously showed one constant string, so neither "which file am I in"
