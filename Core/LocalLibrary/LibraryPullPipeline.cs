@@ -11,7 +11,21 @@ namespace KronosScreenRemote;
 // unconflicted refresh.
 static class LibraryPullPipeline
 {
-    public sealed record PullResult(int BanksChecked, int ObjectsFetched, int Conflicts);
+    // Aborted is non-null only when the sweep gave up before doing any work because the
+    // instrument answered nothing at all (see NoReplyGiveUp) - every normal outcome, including
+    // a cancelled or entirely empty pull, leaves it null.
+    public sealed record PullResult(int BanksChecked, int ObjectsFetched, int Conflicts, PlanWarning? Aborted = null);
+
+    // Consecutive unanswered digest requests tolerated at the START of the sweep before it gives
+    // up. Program INT A is the first bank AllBanks() yields and always answers on a live
+    // instrument, so a run of silence there is never a per-bank quirk - it means the instrument
+    // is not talking at all (most commonly SysEx switched off in GLOBAL > MIDI).
+    //
+    // Without this the failure was invisible rather than loud: every request times out instead of
+    // erroring, so the sweep alone is 65 banks x 5 s, and a Force Full Sync then goes on to
+    // attempt every registry bank's 128 slots at 6 s each - days of "Indexing local library..."
+    // with no way to tell it apart from a hang.
+    const int NoReplyGiveUp = 4;
 
     // Baseline value meaning "this bank answered no digest at all" - see PullAsync's own
     // comment. Distinct from every real digest (40 hex chars) and from "no baseline recorded
@@ -31,12 +45,28 @@ static class LibraryPullPipeline
         // bank before cancellation ever gets a chance to matter. A partial `fresh` is safe:
         // PlanPull already treats a missing digest the same as NoDigest (see below), which is
         // conservative (re-checks more next time) rather than lossy.
+        int silentRun = 0;
         foreach (var b in LibraryPullPlanner.AllBanks())
         {
             if (ct.IsCancellationRequested) break;
             var d = await sysEx.BankDigestAsync(b.ObjType, b.Bank).ConfigureAwait(false);
-            if (d != null) fresh[(b.ObjType, b.Bank)] = Convert.ToHexString(d).ToLowerInvariant();
-            else noDigest.Add((b.ObjType, b.Bank));
+            if (d != null)
+            {
+                fresh[(b.ObjType, b.Bank)] = Convert.ToHexString(d).ToLowerInvariant();
+                silentRun = 0;
+                continue;
+            }
+            noDigest.Add((b.ObjType, b.Bank));
+            // Only while NOTHING has answered yet. A run of nulls LATER in the sweep is normal
+            // (a whole object type the unit gives no digest for), and the NoDigest sentinel below
+            // is the right answer for those; a run of nulls from the very first bank is not.
+            // Returning here leaves every persisted baseline untouched, so the next connected
+            // Sync is unaffected - nothing has been written at this point.
+            if (fresh.Count == 0 && ++silentRun >= NoReplyGiveUp)
+            {
+                AppLog.Warn($"[librarian] pull aborted: {silentRun} banks answered no digest and none answered at all");
+                return new PullResult(0, 0, 0, AppMessages.Librarian.Sync.RefuseNoInstrumentReply);
+            }
         }
 
         // A bank the instrument never answers a digest request for still needs a PERSISTED

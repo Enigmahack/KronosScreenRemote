@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Media;
 
@@ -373,7 +373,8 @@ public partial class HelpWindow : ThemedWindow
         Row(st, "Keybindings",             "Rebind any shortcut listed in the Keyboard Shortcuts section above.");
         Row(st, "MIDI/SysEx",              "MIDI link (Auto / USB / TCP), monitor toggle, proactive SysEx\n" +
                                            "polling, and the VALUE-slider CC#.");
-        Row(st, "Librarian",               "Merge Window staging behavior: Temporary Memory or Local Storage.");
+        Row(st, "Librarian",               "Merge Window staging behavior, duplicate handling, full sync on\n" +
+                                           "launch, and force destructive write.");
         Add(st);
 
         Add(SectionHead("MIDI / SysEx  (status bar + Tools)"));
@@ -399,11 +400,24 @@ public partial class HelpWindow : ThemedWindow
                  "slots of the right type; dependencies are placed before their referrers so references " +
                  "resolve to where things actually landed.\n" +
                  "• Merge behavior (Settings → Librarian): Temporary Memory clears the staging when the " +
-                 "app closes; Local Storage persists it across sessions.\n" +
+                 "app closes; Local Storage persists it across sessions. Switching between them takes " +
+                 "effect immediately, carrying whatever is already staged across.\n" +
                  "• Preserve duplicate Programs/Combis (Merge Window toolbar, or Settings → Librarian): " +
                  "when checked, placing staged content that already exists in Local Library still writes " +
                  "a fresh copy; when unchecked, the existing copy is reused instead of writing a " +
-                 "duplicate. Defaults: Programs are reused, Combis are copied as-is."));
+                 "duplicate. Defaults: Programs are reused, Combis are copied as-is.\n" +
+                 "• Full sync on launch (Settings → Librarian, off by default): pulls every bank from the " +
+                 "Kronos as soon as the Librarian opens, instead of only the banks whose digest changed. " +
+                 "It is a pull ONLY - an action nobody clicked never writes to the instrument, so pending " +
+                 "local changes still wait for you to press Sync Library or Commit Changes.\n" +
+                 "• Force destructive write (Settings → Librarian, off by default): normally a bank that " +
+                 "changed on the Kronos since this library last pulled it is excluded from the push and " +
+                 "flagged as a conflict for you to resolve. With this on, the local library is treated as " +
+                 "the source of truth and Commit overwrites those changes silently - the standing form of " +
+                 "the Resolve Conflicts button. Front-panel edits made since the last pull are lost, and the " +
+                 "pre-write backup does NOT cover them - it saves this library's last known copy of " +
+                 "each slot, which is exactly what has gone stale. The " +
+                 "Librarian shows a red banner for as long as it is armed."));
         Add(Body("• Auto-Fill sends nothing to the Kronos - it only stages, exactly like dragging items " +
                  "across yourself. Review the result, then Commit Changes to push. Anything that doesn't " +
                  "fit (no bank of the matching type has room) stays staged.\n" +

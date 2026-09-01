@@ -155,11 +155,18 @@ static class DataSafetySelfTests
             finally { Reset(root); Reset(backupDir); }
         }
 
-        // ── B1b: the SECOND staleness gate. A front-panel Store landing DURING the 0x73 write
-        //        burst is invisible to the pre-write gate. Because a 0x73 write is volatile and
-        //        does not change bank storage (KRONOS_MIDI_SysEx.txt [73]/[38]), the digest is
-        //        still comparable right before the 0x76 Store - and that re-check is the only
-        //        thing standing between a mid-burst panel Store and silently overwriting it. ──
+        // ── B1b: a front-panel Store landing DURING the 0x73 write burst - invisible to B1's
+        //        pre-write gate by construction - must abort before any Store of ours, and say
+        //        that our writes are already sitting in the volatile bank buffer.
+        //
+        //        The detector is the unsolicited 0x38 the instrument pushes for exactly this class
+        //        of event ([38]: a panel write, a PCG load and a bank-type change all notify,
+        //        "while receiving function 0x73 object dumps do not"), NOT a post-write digest
+        //        re-check. This case used to assert the digest version and passed only because
+        //        FakeMoveExecutor froze a bank's digest until StoreBankAsync - modelling the
+        //        instrument backwards, which is how commit 68da2e7c shipped a gate that
+        //        false-aborted every commit on real hardware. Both the shadow and that gate are
+        //        gone; SimulatePanelStore models the push instead. ──
         {
             string root = ScratchRoot + "_b1b_lib";
             string backupDir = ScratchRoot + "_b1b_bak";
@@ -177,18 +184,63 @@ static class DataSafetySelfTests
                 var (plan, _) = await ChangesetBuilder.BuildAsync(cache, exec, new SessionDependencyClipboard());
                 await Librarian.ArmPlanAsync(plan, exec);
 
-                // The panel Store lands only once our own writes are already going out, so the
-                // pre-write gate saw a clean bank and passed.
-                exec.BeforeEachWrite = () => exec.Seed(LibObj.Program, 0x00, 7, 1, Prog("PANEL-MIDBURST"));
+                // The panel Store lands mid-burst, AFTER the pre-write gate has already passed -
+                // a different slot in the same bank, so it is a real storage change and not a
+                // no-diff Store (which the instrument does not notify for at all).
+                bool fired = false;
+                exec.BeforeEachWrite = () =>
+                {
+                    if (fired) return;
+                    fired = true;
+                    exec.SimulatePanelStore(LibObj.Program, 0x00, 7, 1, Prog("PANEL-MIDBURST"));
+                };
 
                 exec.CallLog.Clear();
-                var (ok, _, aborted) = await Librarian.ApplyMoveAsync(plan, exec, backupDir, "TESTSTAMP", null, doLive: false);
+                var (ok, steps, aborted) = await Librarian.ApplyMoveAsync(plan, exec, backupDir, "TESTSTAMP", null, doLive: false);
+                Check("b1b-panel-store-fired", fired);
                 Check("b1b-aborted", !ok);
-                Check("b1b-error-explains-change", aborted != null && aborted.Contains("changed since preview"));
-                Check("b1b-write-did-fire", exec.CallLog.Contains("Write"));   // gate 1 passed, as designed
+                Check("b1b-error-explains-mid-burst", aborted != null && aborted.Contains("during this commit's writes"));
+                // The whole point of the distinct wording: our writes ARE in the bank buffer by
+                // now, so a Store from the panel would commit them - the user has to be told.
+                Check("b1b-error-warns-volatile-buffer", aborted != null && aborted.Contains("volatile bank buffer"));
+                Check("b1b-error-suggests-replay", aborted != null && aborted.Contains("replay backups"));
                 Check("b1b-no-store-fired", !exec.CallLog.Contains("Store"));
-                Check("b1b-panel-edit-survived", (await exec.DumpObjectAsync(LibObj.Program, 0x00, 7)) is { } p
-                    && ProgramBody.ReadName(p.Body) == "PANEL-MIDBURST");
+                // Unlike B1 this aborts AFTER the writes, so the writes themselves must have run -
+                // otherwise the case would be passing for the wrong reason (the pre-write gate).
+                Check("b1b-writes-did-fire", exec.CallLog.Contains("Write"));
+                Check("b1b-backup-still-written", SyxFiles(backupDir).Length == 1);
+                Check("b1b-no-quiet-claim", !steps.Any(s => s.Contains("no panel-Store notification seen")));
+            }
+            finally { Reset(root); Reset(backupDir); }
+        }
+
+        // ── B1c: the fail-OPEN case. When pushes cannot be observed at all (no live MIDI stream),
+        //        B1b's gate has nothing to watch. It must say so out loud rather than reporting a
+        //        passed gate - the same policy the digest gate's "unprotected" warning follows,
+        //        and the precise mistake that made the old digest gate look tested. ──
+        {
+            string root = ScratchRoot + "_b1c_lib";
+            string backupDir = ScratchRoot + "_b1c_bak";
+            Reset(root); Reset(backupDir);
+            try
+            {
+                var exec = new FakeMoveExecutor();
+                exec.Seed(LibObj.Program, 0x00, 0, 1, Prog("ORIG-UNWATCHED"));
+                var cache = new LocalLibraryCache(root);
+                await LibraryPullPipeline.PullAsync(exec, cache, full: true);
+
+                LocalEditOps.Rename(cache, new ObjLoc(LibObj.Program, 0x00, 0), "EDIT-UNWATCHED", DateTime.UtcNow);
+
+                exec.SimulatePushesUnobservable = true;   // set BEFORE arm: nothing to baseline either
+                var (plan, _) = await ChangesetBuilder.BuildAsync(cache, exec, new SessionDependencyClipboard());
+                await Librarian.ArmPlanAsync(plan, exec);
+
+                var (ok, steps, _) = await Librarian.ApplyMoveAsync(plan, exec, backupDir, "TESTSTAMP", null, doLive: false);
+                // Still commits - an unobservable push is not a reason to refuse the write, only a
+                // reason not to claim protection it does not have.
+                Check("b1c-still-commits", ok);
+                Check("b1c-warns-unwatched", steps.Any(s => s.StartsWith("WARNING:") && s.Contains("storage-change notifications")));
+                Check("b1c-does-not-claim-quiet", !steps.Any(s => s.Contains("no panel-Store notification seen")));
             }
             finally { Reset(root); Reset(backupDir); }
         }

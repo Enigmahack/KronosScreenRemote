@@ -1,4 +1,4 @@
-namespace KronosScreenRemote;
+﻿namespace KronosScreenRemote;
 
 /// <summary>
 /// The single catalog for every user-facing <b>popup, dialog, status-bar, and notification</b>
@@ -414,12 +414,48 @@ public static class AppMessages
         /// <summary>Shell - destructive confirmations, drop-target hints, sync/commit status.</summary>
         public static class Shell
         {
+            // ── SysEx-off fallback (LibrarianShellViewModel.SysExProbeAsync) ──
+            // The Librarian is a SysEx client end to end: with SysEx switched off at the panel
+            // every request times out, so browsing/staging still work off the local cache but
+            // nothing can be pulled from or pushed to the instrument. Verbose by design - the
+            // exact GLOBAL > MIDI checkboxes are the whole point of the message.
+            public const string SysExOffFix =
+                "On the Kronos: GLOBAL > MIDI, and check every MIDI Filter box (Program Change, " +
+                "Bank Change, Combi Change, After Touch, Control Change and Exclusive).";
+            public const string SysExOffBanner =
+                "The Kronos is not answering SysEx. Local Library, the Merge Window and PCG files " +
+                "still work; Sync and Commit are disabled until it answers. " + SysExOffFix;
+            public const string SysExOffCommitTooltip = "Disabled - the Kronos is not answering SysEx.";
+
+            // ── Conflicts (LibrarianShellViewModel.ResolveConflictsKeepMineAsync) ──
+            public static string ConflictBanner(int count) =>
+                $"{count} local change(s) can't be pushed - their banks changed on the Kronos since this "
+                + "library last pulled them. Sync Library to pull those banks, or Resolve Conflicts to "
+                + "push your copy over what's on the Kronos.";
+            public static string ConflictsResolved(int objects, int rebased, int banks) =>
+                $"Resolved {objects} conflict(s) across {rebased}/{banks} bank(s) - Commit to push them.";
+            public const string ResolveConflictsTooltip =
+                "Push your copy over the Kronos for every conflicted object.";
+            public const string ResolveConflictsTitle = "Resolve Conflicts";
+            public static string ResolveConflictsConfirm(int count, string banks) =>
+                $"Push this library's copy of {count} conflicted object(s) over the Kronos?\n\n"
+                + $"Banks affected: {banks}\n\n"
+                + "Those banks changed on the Kronos since this library last pulled them. Continuing "
+                + "means the next Commit overwrites whatever changed there with your local copy.\n\n"
+                + "To keep the Kronos copy instead, cancel and run Sync Library.";
+            public const string CommitTooltip =
+                "Validate and push every pending local change now, without pulling first.";
+
             // ── Sync-row status (LibrarianShellViewModel) ──
             public const string Indexing        = "Indexing local library...";
             public const string IndexingFailed  = "Local library indexing failed - see log";
-            public static string SyncResult(int fetched, int conflicts, int written, int deleted) =>
+            // `notPushed` is the count the conflict pre-scan EXCLUDED from this push - deliberately
+            // in the headline, not only in the warning below it: the same line used to read
+            // "Pushed 99 object(s)." for a run that dropped 50 more without saying so.
+            public static string SyncResult(int fetched, int conflicts, int written, int deleted, int notPushed = 0) =>
                 $"Pulled {fetched} object(s) ({conflicts} conflict(s)). Pushed {written} object(s)."
-                + (deleted > 0 ? $" Deleted {deleted}." : "");
+                + (deleted > 0 ? $" Deleted {deleted}." : "")
+                + (notPushed > 0 ? $" {notPushed} NOT pushed - see below." : "");
             // Pull succeeded and nothing was locally dirty to push back - a normal, successful
             // outcome, not the CHECK/warning ChangesetBuilder's early-return produces for the same
             // state (that warning is meant for Commit Changes, where "nothing to push" with no
@@ -427,8 +463,20 @@ public static class AppMessages
             public static string SyncComplete(bool full, int fetched, int conflicts) =>
                 $"{(full ? "Full Sync" : "Sync")} Complete - pulled {fetched} object(s)"
                 + (conflicts > 0 ? $" ({conflicts} conflict(s))" : "") + ", nothing to push.";
-            public static string CommitResult(int written, int deleted) =>
-                $"Pushed {written} object(s)." + (deleted > 0 ? $" Deleted {deleted}." : "");
+            // Settings > Librarian > "Full sync on launch". Names itself rather than reusing
+            // SyncComplete: nothing was pushed and nothing was ASKED to be, so "nothing to push"
+            // would read as a finding about the library rather than the shape of the action.
+            public static string LaunchPullComplete(int fetched, int conflicts) =>
+                $"Full sync on launch - pulled {fetched} object(s)"
+                + (conflicts > 0 ? $" ({conflicts} conflict(s))" : "") + ".";
+            // Standing banner while AppSettings.LibrarianForceDestructiveWrite is on. The whole
+            // point of the setting is that the push stops asking, so the state has to be visible
+            // somewhere that isn't a dialog.
+            public const string DestructiveWriteArmed =
+                "Force destructive write is ON - Commit overwrites the Kronos without conflict checks.";
+            public static string CommitResult(int written, int deleted, int notPushed = 0) =>
+                $"Pushed {written} object(s)." + (deleted > 0 ? $" Deleted {deleted}." : "")
+                + (notPushed > 0 ? $" {notPushed} NOT pushed - see below." : "");
             public const string CommitFailed         = "Commit failed - see warning.";
             public const string CancelledPendingDeps = "Cancelled - unresolved dependencies still pending.";
             // A Sync/Commit that threw partway (as opposed to a clean push failure returning an
@@ -593,6 +641,27 @@ public static class AppMessages
                 PlanWarning.Check("sync cancelled - the Librarian window closed before it finished");
             public static readonly PlanWarning CheckEveryChangeConflicted =
                 PlanWarning.Check("every pending change conflicted or was rejected - nothing left to push");
+
+            // A push that wrote SOME objects and silently dropped others. Verbose on purpose: the
+            // failure this exists for looked exactly like success - 99 Programs went to the
+            // instrument while 47 Combis and 3 Set Lists were excluded as conflicted, and the
+            // result line said "Pushed 99 object(s)." and nothing else.
+            // Resolve Conflicts could not re-baseline a bank because the instrument gave it no
+            // digest. Those conflicts are deliberately left in place - see the method's comment.
+            public static readonly PlanWarning CheckResolveNoDigest = PlanWarning.Check(
+                "some banks gave no digest - their conflicts were left in place rather than cleared "
+                + "without a working baseline. Try again once the Kronos is answering.");
+
+            public static PlanWarning CheckConflictedNotPushed(int count, string banks) => PlanWarning.Check(
+                $"{count} object(s) in {banks} were NOT pushed - those banks changed on the Kronos since "
+                + "this library last pulled them, so overwriting them would clobber whatever changed. "
+                + "Sync Library to pull them, or use Resolve Conflicts to push your copy anyway.");
+
+            // LibraryPullPipeline gave up on its digest sweep because the instrument answered
+            // nothing at all - see its NoReplyGiveUp. Verbose on purpose: this is the one message
+            // that has to turn "the Librarian sat there for hours" into a two-minute fix.
+            public static readonly PlanWarning RefuseNoInstrumentReply = PlanWarning.Refuse(
+                "the Kronos answered no SysEx requests, so nothing could be pulled. " + Shell.SysExOffFix);
         }
 
         /// <summary>Move/placement planner gate reasons (BatchMoveModel / LibrarianModel PlanMove).

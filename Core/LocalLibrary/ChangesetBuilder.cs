@@ -1,4 +1,4 @@
-namespace KronosScreenRemote;
+﻿namespace KronosScreenRemote;
 
 // Builds a ChangesetPlan from whatever's currently dirty in the local cache - the Push
 // half of the Sync/Commit pipeline. In order:
@@ -7,7 +7,8 @@ namespace KronosScreenRemote;
 //  2. Conflict pre-scan: re-check each distinct (type,bank) containing a dirty object
 //     against hardware's CURRENT digest. A mismatch excludes every dirty object in that
 //     bank from this push (flagged Conflicted, same marker Pull uses) instead of silently
-//     overwriting a possible concurrent front-panel edit.
+//     overwriting a possible concurrent front-panel edit. Skipped entirely when
+//     `forceDestructiveWrite` says the local library is the source of truth.
 //  3. Defense-in-depth referential check: any surviving dirty Combi/Set List whose
 //     references point at a target with NO local body at all (never pulled/placed) is
 //     REFUSEd - catches an edit+discard interaction leaving a referrer pointing at
@@ -17,8 +18,15 @@ namespace KronosScreenRemote;
 //  4. Assemble Writes/PreImages from the surviving dirty set.
 static class ChangesetBuilder
 {
+    // forceDestructiveWrite (Settings > Librarian, AppSettings.LibrarianForceDestructiveWrite):
+    // the local library is authoritative, so step 2 below is skipped outright rather than run and
+    // ignored - its digest round trip per dirty bank exists only to decide what to exclude, and a
+    // MarkConflicted here would flag objects this very push is about to write anyway. The gates
+    // that survive it (steps 3 and 3.5, and ApplyMoveAsync's own staleness gate) guard against
+    // writes the Kronos would MANGLE, which is a different question from who wins a disagreement.
     public static async Task<(ChangesetPlan Plan, List<ObjLoc> Conflicted)> BuildAsync(
-        LocalLibraryCache cache, ILibrarianService sysEx, SessionDependencyClipboard sessionClip)
+        LocalLibraryCache cache, ILibrarianService sysEx, SessionDependencyClipboard sessionClip,
+        bool forceDestructiveWrite = false)
     {
         var plan = new ChangesetPlan();
         var conflicted = new List<ObjLoc>();
@@ -44,14 +52,26 @@ static class ChangesetBuilder
         // Step 2: conflict pre-scan, one BankDigestAsync per distinct (type,bank) - over the
         // union of edited and to-be-deleted banks (an erase write is conflict-gated exactly like
         // an edit: a bank changed on hardware since baseline must not be silently clobbered).
-        var baseline = cache.BankDigestBaselineHex();
         var excludedBanks = new HashSet<(int, int)>();
-        foreach (var (objType, bank) in dirty.Concat(pendingDeletes).Select(loc => (loc.ObjType, loc.Bank)).Distinct())
+        if (!forceDestructiveWrite)
         {
-            var fresh = await sysEx.BankDigestAsync(objType, bank).ConfigureAwait(false);
-            string freshHex = fresh != null ? Convert.ToHexString(fresh).ToLowerInvariant() : "";
-            bool changed = !baseline.TryGetValue((objType, bank), out var baseHex) || freshHex != baseHex;
-            if (changed) excludedBanks.Add((objType, bank));
+            var baseline = cache.BankDigestBaselineHex();
+            foreach (var (objType, bank) in dirty.Concat(pendingDeletes).Select(loc => (loc.ObjType, loc.Bank)).Distinct())
+            {
+                var fresh = await sysEx.BankDigestAsync(objType, bank).ConfigureAwait(false);
+                string freshHex = fresh != null ? Convert.ToHexString(fresh).ToLowerInvariant() : "";
+                bool changed = !baseline.TryGetValue((objType, bank), out var baseHex) || freshHex != baseHex;
+                if (changed) excludedBanks.Add((objType, bank));
+            }
+        }
+        else
+        {
+            // A Conflicted flag left over from an earlier pull/push would otherwise outlive this
+            // push forever: nothing downstream clears it now that the pre-scan no longer runs, and
+            // the object it marks is in `surviving` and about to be written. Clearing it here keeps
+            // the conflict banner honest instead of showing resolved history.
+            foreach (var loc in dirty.Concat(pendingDeletes))
+                cache.ClearConflict(loc.ObjType, loc.Bank, loc.Number);
         }
 
         var surviving = new List<ObjLoc>();

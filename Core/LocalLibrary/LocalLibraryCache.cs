@@ -372,6 +372,28 @@ sealed class LocalLibraryCache
             $"Pushed {targets.Count} object(s)", syncBatchId, utcNow));
     }
 
+    // Every object currently flagged Conflicted - what the shell counts to offer a resolution
+    // and what ResolveConflictsKeepMine walks. Distinct from DirtyObjects(): an object can be
+    // dirty without ever having conflicted, and (until resolved) a conflicted one stays dirty.
+    public IEnumerable<ObjLoc> ConflictedObjects() =>
+        _index.Entries.Where(kv => kv.Value.Conflicted).Select(kv => ParseKey(kv.Key))
+              .Where(loc => loc.ObjType >= 0);
+
+    // Clears the flag WITHOUT touching the edit or the baseline - "I looked, my copy wins."
+    // Deliberately not a revert (DiscardLocalEdit is that), and deliberately not enough on its
+    // own to make the next push succeed: the push's conflict pre-scan compares the BANK digest,
+    // so the caller must also refresh that bank's baseline. See
+    // LibrarianShellViewModel.ResolveConflictsKeepMineAsync, which does both in one action.
+    public void ClearConflict(int objType, int bank, int number)
+    {
+        string key = LocalLibraryIndex.Key(objType, bank, number);
+        lock (_lock)
+        {
+            if (_index.Entries.TryGetValue(key, out var e) && e.Conflicted)
+                _index.Entries[key] = e with { Conflicted = false };
+        }
+    }
+
     // A Pull found this object locally dirty AND its bank changed on hardware since
     // baseline - flag it, touch nothing else. The edit and the old baseline are both left
     // exactly as they were until the user resolves the conflict.

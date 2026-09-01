@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Windows.Input;
 
 namespace KronosScreenRemote;
@@ -39,6 +39,22 @@ public class AppSettings
     // Combis copy as-is.
     public bool MergePreserveDuplicatePrograms { get; set; } = false;
     public bool MergePreserveDuplicateCombis   { get; set; } = true;
+
+    // Librarian startup: run a FULL Pull (every registry bank, not just the ones whose digest
+    // changed) as soon as the Librarian window opens. Pull only, never the push half of Sync -
+    // an unattended launch action must not write to the instrument, and PrepareForPushAsync can
+    // raise a modal confirm while the window is still opening. See LibrarianShellViewModel.
+    // LaunchPullAsync for why it is sequenced behind the catalog warm-up and the SysEx probe.
+    public bool LibrarianFullSyncOnLaunch { get; set; } = false;
+
+    // Librarian push: treat the LOCAL LIBRARY as the source of truth and skip the conflict
+    // pre-scan (ChangesetBuilder step 2), which normally excludes every dirty object in a bank
+    // whose hardware digest moved since the last pull. On = Commit/Sync writes over whatever
+    // changed on the Kronos without flagging a conflict or asking - the standing form of the
+    // per-run "Resolve Conflicts" prompt. Deliberately does NOT bypass ApplyMoveAsync's
+    // staleness gate (a bank changing DURING the write is a race, not an arbitration) nor the
+    // missing-reference / bank-type REFUSE gates (those catch writes the Kronos would mangle).
+    public bool LibrarianForceDestructiveWrite { get; set; } = false;
 
     // MIDI / SysEx
     // Which backend carries MIDI/SysEx to the Kronos (screen/video stays TCP).
@@ -205,6 +221,7 @@ public class AppSettings
                 p.SetValue(copy, p.GetValue(this));
 
         copy.RecentHosts = new List<string>(RecentHosts);
+        copy.WindowPlacements = new Dictionary<string, WindowPlacement>(WindowPlacements);
         copy.SampleRecentFiles = new List<string>(SampleRecentFiles);
         copy.Keybinds    = new Dictionary<string, Keybind>(Keybinds);
         copy.Macros      = Macros.Select(m => new MacroDefinition

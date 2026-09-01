@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows;
 using Microsoft.Win32;
 using System.Windows.Controls;
@@ -1036,6 +1036,22 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
                              _settings.MaxFps      != newSettings.MaxFps    ||
                              _settings.KronosHost  != newSettings.KronosHost||
                              _settings.StreamPort  != newSettings.StreamPort;
+
+        // An already-open Librarian holds the AppSettings instance we are about to replace - see
+        // LibrarianShellViewModel.ApplySettings for the three ways that goes wrong unnoticed. It
+        // also owns the live MergeCache, so it handles the merge-behavior switch itself.
+        if (_librarianShellWin is { IsLoaded: true } lib) lib.ViewModel.ApplySettings(newSettings);
+        else if (_settings.MergeBehavior == MergeCacheBehavior.LocalStorage &&
+                 newSettings.MergeBehavior != MergeCacheBehavior.LocalStorage)
+        {
+            // No Librarian open, so nothing will ever call SetPersistence for this transition.
+            // Left on disk the snapshot outlives the switch, and a later switch BACK silently
+            // re-adopts a staging batch from whatever session last used Local Storage. Keyed off
+            // the TRANSITION, not the new value alone: the Librarian's own open path only sees the
+            // settings it is handed, so a caller passing plain defaults (the UI theme smoke test
+            // does exactly that) must not be able to delete a real user's staged batch.
+            new FileMergeCachePersistence(LibrarianShellViewModel.MergeCachePath).Clear();
+        }
 
         _settings = newSettings;
         AppLog.DebugEnabled = _settings.DebugLogging;

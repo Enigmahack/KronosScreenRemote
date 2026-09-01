@@ -295,13 +295,78 @@ static class Storage
         int? PastedBank, int? PastedNumber, DateTime? PastedAt, Guid? BankCopyGroup = null);
 
     static string ClipboardGlobalPath => Path.Combine(DataDir, "local_library_clipboard.json");
-    // Flat, not host-keyed (see the note above), so it rides the JsonFileCache base directly
-    // rather than HostKeyedCache - same lock/I/O plumbing, whole-file value.
-    static readonly JsonFileCache<List<ClipboardEntryDto>> _clipboard = new(() => ClipboardGlobalPath, "local-library-clipboard");
+    static string ClipboardGlobalLogPath => Path.Combine(DataDir, "local_library_clipboard.jsonl");
+    static readonly object _clipboardLock = new();
 
-    public static List<ClipboardEntryDto> LoadClipboardGlobal() => _clipboard.Read() ?? new();
+    // Append-only JSON Lines, NOT one whole-file JSON array, for the same reason OpLog is:
+    // this store only ever grows (every displaced occupant is kept as a safety net), and a
+    // load-modify-save of the whole thing costs O(file) on every single placement. Measured on
+    // a real 49 MB store over the SMB-mounted DataDir this app runs from: 715 MB allocated and
+    // ~10.5 s of blocking write per drop, both scaling with the file, which is what made a
+    // drag from the Merge Window into Local Library stall and thrash the GC. Appending one
+    // line is O(new entries) instead. It also removes a latent lost-update: load-add-save
+    // silently discarded anything another writer appended in between.
+    //
+    // ClipboardGlobalPath is the pre-JSONL format, kept READABLE (never rewritten in place)
+    // so no migration write is needed at all - Load concatenates it ahead of the log, and only
+    // an explicit whole-store rewrite (Save, below) folds it in and retires it.
+    public static List<ClipboardEntryDto> LoadClipboardGlobal()
+    {
+        lock (_clipboardLock)
+        {
+            var all = new List<ClipboardEntryDto>();
+            try
+            {
+                if (File.Exists(ClipboardGlobalPath) &&
+                    JsonSerializer.Deserialize<List<ClipboardEntryDto>>(File.ReadAllText(ClipboardGlobalPath)) is { } legacy)
+                    all.AddRange(legacy);
+                if (File.Exists(ClipboardGlobalLogPath))
+                    foreach (var line in File.ReadLines(ClipboardGlobalLogPath))
+                    {
+                        if (line.Length == 0) continue;
+                        if (JsonSerializer.Deserialize<ClipboardEntryDto>(line) is { } e) all.Add(e);
+                    }
+            }
+            catch (Exception ex) { AppLog.Warn($"[local-library-clipboard] load failed: {ex.Message}"); }
+            return all;
+        }
+    }
 
-    public static void SaveClipboardGlobal(List<ClipboardEntryDto> entries) => _clipboard.Write(entries);
+    // The hot path: what every displacing placement calls. One append, no read.
+    public static void AppendClipboardGlobal(IReadOnlyList<ClipboardEntryDto> entries)
+    {
+        if (entries.Count == 0) return;
+        lock (_clipboardLock)
+        {
+            try
+            {
+                Directory.CreateDirectory(DataDir);
+                var sb = new System.Text.StringBuilder();
+                foreach (var e in entries) sb.Append(JsonSerializer.Serialize(e)).Append(Environment.NewLine);
+                File.AppendAllText(ClipboardGlobalLogPath, sb.ToString());
+            }
+            catch (Exception ex) { AppLog.Warn($"[local-library-clipboard] append failed: {ex.Message}"); }
+        }
+    }
+
+    // Whole-store rewrite - only for a caller that REMOVES or MUTATES entries, never for a
+    // plain add (use AppendClipboardGlobal). Collapses the legacy array into the log and
+    // deletes it, so the pre-JSONL file is read at most until the first rewrite.
+    public static void SaveClipboardGlobal(List<ClipboardEntryDto> entries)
+    {
+        lock (_clipboardLock)
+        {
+            try
+            {
+                Directory.CreateDirectory(DataDir);
+                var sb = new System.Text.StringBuilder();
+                foreach (var e in entries) sb.Append(JsonSerializer.Serialize(e)).Append(Environment.NewLine);
+                File.WriteAllText(ClipboardGlobalLogPath, sb.ToString());
+                if (File.Exists(ClipboardGlobalPath)) File.Delete(ClipboardGlobalPath);
+            }
+            catch (Exception ex) { AppLog.Warn($"[local-library-clipboard] save failed: {ex.Message}"); }
+        }
+    }
 
     // ── Program bank type cache ───────────────────────────────────────────────
     // Persists the func-0x61 Program Bank Types bitmap (HD-1 vs EXi) per host. Currently

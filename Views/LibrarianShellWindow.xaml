@@ -1,4 +1,4 @@
-<local:ThemedWindow x:Class="KronosScreenRemote.LibrarianShellWindow"
+﻿<local:ThemedWindow x:Class="KronosScreenRemote.LibrarianShellWindow"
         x:ClassModifier="internal"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -285,11 +285,60 @@
             </StackPanel>
         </DockPanel>
 
+        <!-- Row 1 carries two independent banners stacked, rather than two grid rows: the SysEx
+             banner is a persistent condition and the warning below it is per-operation, so both
+             can legitimately be up at once. -->
+        <StackPanel Grid.Row="1">
+
+        <!-- SysEx-off read-only fallback: the Kronos answered no SysEx, so Sync and Commit are
+             disabled and everything else stays live. NOT dismissible - unlike a warning about
+             something that already happened, this describes the window's CURRENT capability, and
+             it clears itself the moment Re-check gets an answer. -->
+        <Border x:Name="BRD_SysExOff" Background="#FF3A1414" BorderBrush="#FFC04040"
+                BorderThickness="2" CornerRadius="4" Padding="10" Margin="0 0 0 8"
+                Visibility="{Binding SysExUnavailable, Converter={StaticResource BoolToVis}}">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" x:Name="BTN_RecheckSysEx" Content="Re-check"
+                        Margin="10 0 0 0" Padding="10 2" VerticalAlignment="Top"
+                        Command="{Binding RecheckSysExCommand}"
+                        ToolTip="Ask the Kronos again, after changing GLOBAL &gt; MIDI."/>
+                <TextBlock Foreground="#FFFFC0C0" FontSize="13" FontWeight="Bold" TextWrapping="Wrap"
+                           Text="{Binding SysExOffBannerText}"/>
+            </DockPanel>
+        </Border>
+
+        <!-- Force destructive write (Settings > Librarian): standing state, not an event, so it is
+             not dismissible - the setting's whole purpose is that Commit stops asking, which leaves
+             this banner as the only thing on screen saying the conflict check is off. -->
+        <Border x:Name="BRD_DestructiveWrite" Background="#FF3A1414" BorderBrush="#FFC04040"
+                BorderThickness="2" CornerRadius="4" Padding="10" Margin="0 0 0 8"
+                Visibility="{Binding ForceDestructiveWrite, Converter={StaticResource BoolToVis}}">
+            <TextBlock Foreground="#FFFFC0C0" FontSize="13" FontWeight="Bold" TextWrapping="Wrap"
+                       Text="{Binding DestructiveWriteBannerText}"/>
+        </Border>
+
+        <!-- Conflicts: local changes whose bank moved on the Kronos, so the push excludes them.
+             Persistent (it describes standing state, not an event) and carries its own way out,
+             because before this the only sign was a silently smaller "Pushed N object(s)." -->
+        <Border x:Name="BRD_Conflicts" Background="#FF3A2A10" BorderBrush="#FFC08A20"
+                BorderThickness="2" CornerRadius="4" Padding="10" Margin="0 0 0 8"
+                Visibility="{Binding HasConflicts, Converter={StaticResource BoolToVis}}">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" x:Name="BTN_ResolveConflicts" Content="Resolve Conflicts"
+                        Margin="10 0 0 0" Padding="10 2" VerticalAlignment="Top"
+                        Command="{Binding ResolveConflictsKeepMineCommand}"
+                        ToolTipService.ShowOnDisabled="True"
+                        ToolTip="Push your copy over the Kronos for every conflicted object."/>
+                <TextBlock Foreground="#FFFFE0A0" FontSize="13" FontWeight="Bold" TextWrapping="Wrap"
+                           Text="{Binding ConflictBannerText}"/>
+            </DockPanel>
+        </Border>
+
         <!-- Non-refusable ("CHECK:") or refusal ("REFUSE:") warnings from the last Sync/Commit,
              and Auto-Fill's own "nowhere left to put these". Dismissible: a warning that can only
              be cleared by running another operation stays on screen long after it's been read and
              acted on, and then gets ignored on the run where it matters. -->
-        <Border Grid.Row="1" x:Name="BRD_Warning" Background="#FF4A3410" BorderBrush="#FFC08A20"
+        <Border x:Name="BRD_Warning" Background="#FF4A3410" BorderBrush="#FFC08A20"
                 BorderThickness="2" CornerRadius="4" Padding="10" Margin="0 0 0 8"
                 Visibility="{Binding WarningText, Converter={StaticResource NullToCollapsed}}">
             <DockPanel>
@@ -303,6 +352,8 @@
                            Text="{Binding WarningText}"/>
             </DockPanel>
         </Border>
+
+        </StackPanel>
 
         <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
@@ -702,7 +753,7 @@
                 <Button x:Name="BTN_Commit" Content="Commit Changes" Width="130"
                         Style="{StaticResource DangerButtonStyle}"
                         Command="{Binding CommitChangesCommand}"
-                        ToolTip="Validate and push every pending local change now, without pulling first."/>
+                        ToolTipService.ShowOnDisabled="True" ToolTip="{Binding CommitTooltip}"/>
             </StackPanel>
             <TextBlock x:Name="TXT_Hint" FontSize="11" Foreground="#FF777777" VerticalAlignment="Center"
                        Text="Local edits never touch hardware until Sync Library or Commit Changes. Select an item or a whole bank, then Cut/Copy/Paste (toolbar, right-click, or Ctrl+X/C/V) or drag it - Copy fills an empty slot or a whole bank; Cut only swaps onto another occupied slot. F2 to rename, Del to mark for deletion (fades in place - Del again to restore). Drag from the PCG pane to copy in, or right-click it to move into the Merge Window; double-click for properties."/>

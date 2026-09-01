@@ -383,6 +383,7 @@ internal sealed class FakeSysExService : ISysExService
     public Task<int> WriteObjectAsync(WriteOp op) => Task.FromResult(0);
     public Task<int> StoreBankAsync(int obj, int bank) => Task.FromResult(0);
     public Task<int> ChangeProgramBankTypeAsync(int bank, bool isExi) => Task.FromResult(0);
+    public int? StorageChangeCountFor(int obj, int bank) => null;   // construction-only stub: nothing observes pushes
     public Task SendRawAsync(byte[] data) => Task.CompletedTask;
 }
 

@@ -115,6 +115,7 @@ static class SyncCancellationSelfTests
         public Task<int> StoreBankAsync(int obj, int bank) => inner.StoreBankAsync(obj, bank);
         public Task SendRawAsync(byte[] data) => inner.SendRawAsync(data);
         public Task<int> ChangeProgramBankTypeAsync(int bank, bool isExi) => inner.ChangeProgramBankTypeAsync(bank, isExi);
+        public int? StorageChangeCountFor(int obj, int bank) => inner.StorageChangeCountFor(obj, bank);
         public Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index) => inner.DumpObjectAsync(obj, bank, index);
         public Task<Dictionary<int, ObjectDump>> DumpBankBulkAsync(int obj, int bank, int count) => inner.DumpBankBulkAsync(obj, bank, count);
         public ObjLoc? CurrentPerformanceLoc() => inner.CurrentPerformanceLoc();
@@ -145,6 +146,7 @@ static class SyncCancellationSelfTests
         public Task<int> StoreBankAsync(int obj, int bank) => inner.StoreBankAsync(obj, bank);
         public Task SendRawAsync(byte[] data) => inner.SendRawAsync(data);
         public Task<int> ChangeProgramBankTypeAsync(int bank, bool isExi) => inner.ChangeProgramBankTypeAsync(bank, isExi);
+        public int? StorageChangeCountFor(int obj, int bank) => inner.StorageChangeCountFor(obj, bank);
         public Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index) => inner.DumpObjectAsync(obj, bank, index);
         public ObjLoc? CurrentPerformanceLoc() => inner.CurrentPerformanceLoc();
         public Task<ProgramBankTypes?> RequestProgramBankTypesAsync() => inner.RequestProgramBankTypesAsync();

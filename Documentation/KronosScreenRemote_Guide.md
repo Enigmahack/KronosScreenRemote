@@ -1,4 +1,4 @@
-# Kronos ScreenRemote - User Guide
+﻿# Kronos ScreenRemote - User Guide
 
 Windows client for the Kronos ScreenRemote system. View and interact with the Kronos touchscreen from your PC over a wired LAN connection.
 
@@ -363,6 +363,8 @@ All rebindable actions are listed. Double-click any row to capture a new key com
 | Setting | Description |
 |---|---|
 | Merge behavior | **Temporary Memory** (staging cleared on close) or **Local Storage** (persisted across sessions) |
+| Full sync on launch | Off by default. Pulls every bank as soon as the Librarian opens, rather than only the banks whose digest changed. Pull only - it never pushes, so nothing reaches the Kronos without an explicit Sync/Commit. |
+| Force destructive write | Off by default. Treats the local library as the source of truth: Commit/Sync skips the conflict pre-scan and overwrites banks that changed on the Kronos since the last pull, without asking. Front-panel edits made since then are lost, and the pre-write backup does not cover them. A red banner in the Librarian shows while it is armed. |
 
 ### Macros
 
@@ -439,7 +441,9 @@ A staging area between a loaded `.pcg` file / the local library and the instrume
 - **Object Dependencies** (bottom right): red rows at the top are dependencies nothing staged provides. Right-click one to search a `.pcg` for it; anything found is staged, so the gap can be filled before you Commit. Below them is every program/combi/drum kit/wave sequence the selection references, nested ones included - double-click a row for more info.
 - Tree dots and tints: a dot marks an object staged or referenced more than once, a blue dot marks a sample reference (legend at the bottom of the window), and a conflicted, pending-delete, or read-only row is tinted instead of dotted.
 - **Preserve duplicate Programs/Combis** (Merge Window toolbar, mirrored in Settings → Librarian): when checked, placing staged content that already exists in Local Library still writes a fresh copy ("preserve duplication"); when unchecked, the existing byte-identical copy is reused instead of consuming a slot. Combis are compared *after* their program references are re-pointed at local reality, so a re-copied chain still matches. Defaults: Programs reused (unchecked), Combis copied as-is (checked).
-- **Merge behavior** (Settings → Librarian): **Temporary Memory** clears the staging when the app closes; **Local Storage** persists it across sessions.
+- **Merge behavior** (Settings → Librarian): **Temporary Memory** clears the staging when the app closes; **Local Storage** persists it across sessions. Switching between them takes effect as soon as you press OK, even with the Librarian open, and carries whatever is already staged across: Temporary Memory → Local Storage writes the current staging out immediately, and Local Storage → Temporary Memory deletes the stored snapshot while keeping the staging in memory for the rest of the session. The snapshot is deleted rather than left on disk so that switching back later cannot silently re-adopt a batch from an old session.
+- **Full sync on launch** (Settings → Librarian): off by default. Pulls every bank the moment the Librarian opens instead of only the changed ones. It runs unattended, so it is deliberately a *pull only* - it never pushes, and it waits for the local-library index and the SysEx probe before starting.
+- **Force destructive write** (Settings → Librarian): off by default. Normally a bank whose contents moved on the Kronos since the last pull is excluded from the push and flagged as a conflict. With this on the local library wins outright and Commit overwrites those banks silently - the standing equivalent of clicking **Resolve Conflicts** on every conflict. Anything edited at the front panel since the last pull is lost. Note that the pre-write backup does **not** protect those slots: it is built from this library's last known copy of each object, which in exactly these banks is the stale one - so the `.syx` written before the push cannot restore what was on the Kronos. It does *not* disable the gates that catch writes the Kronos would reject (a missing reference, an HD-1 body headed for an EXi bank, or a bank changing mid-write); those still refuse.
 
 ---
 

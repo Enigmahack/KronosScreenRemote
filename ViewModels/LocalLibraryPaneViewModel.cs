@@ -450,13 +450,8 @@ partial class LocalLibraryPaneViewModel : ObservableObject
         return (true, msg);
     }
 
-    void MergeIntoPersistentClipboard(List<ClipboardEntry> newEntries)
-    {
-        if (newEntries.Count == 0) return;
-        var clip = BatchLibrarian.LoadClipboardGlobal();
-        clip.Entries.AddRange(newEntries);
-        BatchLibrarian.SaveClipboardGlobal(clip);
-    }
+    void MergeIntoPersistentClipboard(List<ClipboardEntry> newEntries) =>
+        BatchLibrarian.AppendClipboardGlobal(newEntries);
 
     public void Rename(ObjLoc loc, string newName)
     {

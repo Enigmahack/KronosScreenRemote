@@ -96,7 +96,19 @@ static class ReadOnlyBankBrowseSelfTests
         }
         finally
         {
-            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            // Retried, not a plain Delete. The ViewModel this suite constructs starts two
+            // background readers of the CAS blob store that nothing here can await -
+            // LocalLibraryCache.BuildCatalogInBackground (via WarmCatalogAsync) and
+            // BackfillInitFlags - and either one still inside a File.ReadAllBytes turns this
+            // cleanup into a sharing violation that takes down the WHOLE self-test run with an
+            // unhandled IOException. Intermittent, and it cost a real debugging session being
+            // mistaken for a code regression.
+            for (int attempt = 0; attempt < 10 && Directory.Exists(root); attempt++)
+            {
+                try { Directory.Delete(root, recursive: true); }
+                catch (IOException) { Thread.Sleep(100); }
+                catch (UnauthorizedAccessException) { Thread.Sleep(100); }
+            }
         }
 
         return fails;

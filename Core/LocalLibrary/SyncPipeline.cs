@@ -1,4 +1,4 @@
-namespace KronosScreenRemote;
+﻿namespace KronosScreenRemote;
 
 // The user-facing Sync/Commit pipeline (requirement 10): "Commit Changes" and "Sync
 // Library" share this one push mechanism - Sync Library = pull, then push, in one click;
@@ -9,11 +9,19 @@ static class SyncPipeline
 {
     public sealed record PushResult(bool Ok, string? Error, int Written, List<ObjLoc> Conflicted, int Deleted = 0);
 
+    // "Combi U-C, Set Lists" - the distinct banks a set of excluded objects sits in, so the
+    // conflict message names WHERE to look instead of just how many.
+    static string DescribeBanks(IEnumerable<ObjLoc> locs) =>
+        string.Join(", ", locs.Select(l => (l.ObjType, l.Bank)).Distinct()
+                              .Select(b => Librarian.StoreLabel(b.ObjType, b.Bank)));
+
+    // forceDestructiveWrite: the local library wins outright - see ChangesetBuilder.BuildAsync's
+    // own comment for exactly which gate that skips and which ones deliberately still run.
     public static async Task<PushResult> PushAsync(
         ILibrarianService sysEx, LocalLibraryCache cache, SessionDependencyClipboard sessionClip,
-        Action<string>? progress = null)
+        Action<string>? progress = null, bool forceDestructiveWrite = false)
     {
-        var (plan, conflicted) = await ChangesetBuilder.BuildAsync(cache, sysEx, sessionClip).ConfigureAwait(false);
+        var (plan, conflicted) = await ChangesetBuilder.BuildAsync(cache, sysEx, sessionClip, forceDestructiveWrite).ConfigureAwait(false);
         if (plan.IsRefusable)
         {
             cache.Save();   // persist the Conflicted flags ChangesetBuilder just set, even on refusal
@@ -77,16 +85,28 @@ static class SyncPipeline
         }
 
         cache.Save();
-        return new PushResult(true, null, plan.TargetsOnSuccess.Count, conflicted, plan.Erasures.Count + plan.Deletes.Count);
+        // A partial push is NOT a clean success. Anything the conflict pre-scan excluded is
+        // reported here or nowhere: `conflicted` never reaches plan.Writes, so every downstream
+        // count (Written, Deleted) is silent about it, and a push that dropped 50 objects while
+        // writing 99 otherwise renders as an unqualified "Pushed 99 object(s)."
+        string? error = conflicted.Count > 0
+            ? AppMessages.Librarian.Sync.CheckConflictedNotPushed(conflicted.Count, DescribeBanks(conflicted)).ToString()
+            : null;
+        return new PushResult(true, error, plan.TargetsOnSuccess.Count, conflicted, plan.Erasures.Count + plan.Deletes.Count);
     }
 
+    // Pull with no push - the launch action behind Settings > Librarian > "Full sync on launch"
+    // (LibrarianShellViewModel.LaunchPullAsync). `ct` bounds it the same way SyncLibraryAsync's
+    // does, because the window closing is exactly what has to stop an unattended sweep.
     public static Task<LibraryPullPipeline.PullResult> PullAsync(
-        ILibrarianService sysEx, LocalLibraryCache cache, bool full, Action<string>? progress = null) =>
-        LibraryPullPipeline.PullAsync(sysEx, cache, full, progress);
+        ILibrarianService sysEx, LocalLibraryCache cache, bool full, Action<string>? progress = null,
+        CancellationToken ct = default) =>
+        LibraryPullPipeline.PullAsync(sysEx, cache, full, progress, ct);
 
     public static Task<PushResult> CommitChangesAsync(
-        ILibrarianService sysEx, LocalLibraryCache cache, SessionDependencyClipboard sessionClip, Action<string>? progress = null) =>
-        PushAsync(sysEx, cache, sessionClip, progress);
+        ILibrarianService sysEx, LocalLibraryCache cache, SessionDependencyClipboard sessionClip,
+        Action<string>? progress = null, bool forceDestructiveWrite = false) =>
+        PushAsync(sysEx, cache, sessionClip, progress, forceDestructiveWrite);
 
     // Pull first, then push - so the push's conflict pre-scan sees the freshest possible
     // bank digests, minimizing spurious conflicts (a deliberate ordering choice: push-then-
@@ -101,12 +121,18 @@ static class SyncPipeline
     // of a session that's already gone - PushAsync hasn't touched anything yet at that point.
     public static async Task<(LibraryPullPipeline.PullResult Pull, PushResult Push)> SyncLibraryAsync(
         ILibrarianService sysEx, LocalLibraryCache cache, SessionDependencyClipboard sessionClip,
-        bool fullPull, Action<string>? progress = null, CancellationToken ct = default)
+        bool fullPull, Action<string>? progress = null, CancellationToken ct = default,
+        bool forceDestructiveWrite = false)
     {
         var pull = await LibraryPullPipeline.PullAsync(sysEx, cache, fullPull, progress, ct).ConfigureAwait(false);
+        // The pull gave up because the instrument answered nothing (SysEx off, or unplugged).
+        // Skipping the push is not just an optimisation: every write would time out the same way,
+        // and a push that "wrote 0 objects" against a silent instrument reads like success.
+        if (pull.Aborted is { } pullAborted)
+            return (pull, new PushResult(false, pullAborted.ToString(), 0, new List<ObjLoc>()));
         if (ct.IsCancellationRequested)
             return (pull, new PushResult(false, AppMessages.Librarian.Sync.CheckSyncCancelled.ToString(), 0, new List<ObjLoc>()));
-        var push = await PushAsync(sysEx, cache, sessionClip, progress).ConfigureAwait(false);
+        var push = await PushAsync(sysEx, cache, sessionClip, progress, forceDestructiveWrite).ConfigureAwait(false);
         return (pull, push);
     }
 }

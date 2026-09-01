@@ -90,6 +90,7 @@ sealed class BatchMovePlan : IExecutablePlan
     public List<PlanWarning> Warnings { get; } = new();
     public List<byte[]> LivePc { get; } = new();           // always empty - batch live-preview (0x43) is out of scope for v1
     public Dictionary<(int, int), byte[]> DigestBaseline { get; } = new();
+    public Dictionary<(int, int), int> StorageChangeBaseline { get; } = new();
     public string BackupLabel { get; set; } = "batchmove";
 
     public bool IsRefusable => Warnings.AnyRefusal();
@@ -425,6 +426,13 @@ static class BatchLibrarian
         clip.Entries.AddRange(Storage.LoadClipboardGlobal().Select(FromDto));
         return clip;
     }
+
+    // Adding entries must go through here, never Load + AddRange + Save: the store is
+    // append-only in practice and grows without bound, so a read-modify-write of the whole
+    // thing costs O(store) per placement (see Storage.AppendClipboardGlobal). SaveClipboardGlobal
+    // below stays for the callers that genuinely rewrite - one that removes or mutates entries.
+    public static void AppendClipboardGlobal(IReadOnlyList<ClipboardEntry> entries) =>
+        Storage.AppendClipboardGlobal(entries.Select(ToDto).ToList());
 
     public static void SaveClipboardGlobal(BatchClipboard clipboard) =>
         Storage.SaveClipboardGlobal(clipboard.Entries.Select(ToDto).ToList());

@@ -1,4 +1,4 @@
-<local:ThemedWindow x:Class="KronosScreenRemote.SettingsWindow"
+﻿<local:ThemedWindow x:Class="KronosScreenRemote.SettingsWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:KronosScreenRemote"
@@ -731,6 +731,20 @@
                               ToolTip="Checked (default): placing a Combi from the Merge Window always copies it as-is into a fresh slot. Unchecked: duplicates are detected and the existing copy is reused - compared after its Program references are re-pointed, so a re-copied PCG still matches."/>
                     <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
                                Text="When placing from the Merge Window into Local Library, choose per object type whether duplicates are preserved (copied as-is) or detected and reused. Also available as quick toggles in the Merge Window toolbar; both stay in sync."/>
+
+                    <Border Background="#FF444444" Margin="0 14 0 14" Height="1"/>
+
+                    <CheckBox x:Name="ChkLibrarianFullSyncOnLaunch" Content="Full sync on launch"
+                              Margin="0 0 0 6"
+                              ToolTip="Pull every bank from the Kronos as soon as the Librarian opens. Never writes to the Kronos."/>
+                    <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap" Margin="0 0 0 12"
+                               Text="Off by default. Reads every program, combi and set list instead of only the banks whose digest changed - slow on a full library, and it runs unattended, so it is a pull only: nothing is pushed to the Kronos without you clicking Sync or Commit."/>
+
+                    <CheckBox x:Name="ChkLibrarianForceDestructiveWrite" Content="Force destructive write"
+                              Margin="0 0 0 6"
+                              ToolTip="Commit overwrites the Kronos even where it changed since the last pull, without asking."/>
+                    <TextBlock Foreground="#FFCC8888" FontSize="11" TextWrapping="Wrap"
+                               Text="Off by default. Normally a bank that changed on the Kronos since this library last pulled it is excluded from the push and flagged as a conflict for you to resolve. With this on, the local library is treated as the source of truth and Commit writes over those changes silently. Front-panel edits made since the last pull are lost - and the pre-write backup cannot recover them, because it saves this library's last known copy of each slot, not what is actually on the Kronos."/>
                 </StackPanel>
             </TabItem>
 

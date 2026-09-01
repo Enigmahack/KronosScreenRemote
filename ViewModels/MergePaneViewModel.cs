@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace KronosScreenRemote.ViewModels;
@@ -59,6 +59,11 @@ partial class MergePaneViewModel : ObservableObject
     // Library already have this address?", asked of each gap a PCG pull leaves behind. Null in a
     // headless self-test - the gap report then just states the count, never a wrong split.
     public Func<ObjLoc, bool>? LocalHas { get; set; }
+
+    // Settings > Librarian > "Merge behavior" changed while this window is open - see
+    // MergeCache.SetPersistence for what each direction does to what is already staged.
+    public void SetPersistence(IMergeCachePersistence persistence, bool wasFileBacked) =>
+        _cache.SetPersistence(persistence, wasFileBacked);
 
     public MergePaneViewModel(MergeCache cache)
     {
@@ -208,6 +213,10 @@ partial class MergePaneViewModel : ObservableObject
     // this pane only ever shows what's still pending placement).
     public void CommitPlacement(string contentHash, ObjLoc destLoc)
     {
+        // Scoped even for the single-item case: RecordPlacement and Remove each persist the
+        // whole merge cache on their own, so without this one drop writes the file twice.
+        // Nested inside CommitPlacements' own scope this is a no-op (_deferDepth).
+        using var scope = DeferCommits();
         _cache.RecordPlacement(contentHash, destLoc);
         _cache.Remove(contentHash);
         RequestRefresh();

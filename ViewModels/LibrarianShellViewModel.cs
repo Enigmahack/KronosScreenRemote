@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -18,7 +18,9 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
 {
     readonly ILibrarianService _sysEx;
     readonly LocalLibraryCache _cache;
-    readonly AppSettings _settings;
+    // Not readonly: MainWindow.ApplySettingsResult REPLACES its AppSettings instance, and this
+    // window has to be handed the new one (ApplySettings below) - see that method's comment.
+    AppSettings _settings;
     readonly string _host;
     readonly SessionDependencyClipboard _sessionClipboard = new();
 
@@ -34,6 +36,9 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     // climbs with every cycle, exactly because nothing was ever torn down, only orphaned. See
     // Dispose().
     CancellationTokenSource? _syncCts;
+    // Cancelled once, in Dispose - covers the launch pull's pre-start warm-up wait, which
+    // happens before any _syncCts exists. Never reset: this window opens and closes once.
+    readonly CancellationTokenSource _lifetime = new();
 
     // Linear undo over every LOCAL (pre-Commit) edit made in this window - see
     // Core/LocalLibrary/LibrarianUndo.cs for the capture model and what's deliberately out of
@@ -136,6 +141,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         // PersistSettings hook to fire it into anyway).
         mergePreserveDuplicatePrograms = settings.MergePreserveDuplicatePrograms;
         mergePreserveDuplicateCombis   = settings.MergePreserveDuplicateCombis;
+        forceDestructiveWrite          = settings.LibrarianForceDestructiveWrite;
         LocalPane = new LocalLibraryPaneViewModel(cache);
         MergePane = new MergePaneViewModel(new MergeCache(BuildMergePersistence(settings)));
         LocalPane.BankTypeOf = BankTypeOf;
@@ -166,7 +172,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         // 10-20s freeze on a large library. While it runs, the Local Library pane hides its
         // tree and disables its toolbar (LocalPane.IsIndexing) so nothing can be moved/edited
         // against a half-built index; the pane reveals itself once the build completes.
-        _ = WarmCatalogAsync();
+        var catalogWarm = WarmCatalogAsync();
 
         // Set Lists are the one type whose "is this an empty placeholder?" can't be answered from
         // the cached display name, so a library synced by a build without LocalIndexEntry.IsInit
@@ -181,6 +187,20 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
 
         _programBankTypes = Storage.LoadProgramBankTypes(_host) is { } cached ? new ProgramBankTypes(cached) : null;
         _ = WarmProgramBankTypesAsync();
+
+        // Establishes SysExUnavailable (and with it the banner + the Sync/Commit gate) before the
+        // user can reach for either. Fire-and-forget like every other warm-up here: the commands
+        // start enabled and are disabled a round-trip later, which is the right way round - a
+        // Sync that beats the probe fails fast on its own now (LibraryPullPipeline.NoReplyGiveUp).
+        var sysExProbe = RecheckSysExAsync();
+
+        // Settings > Librarian > "Full sync on launch". Chained behind both warm-ups above rather
+        // than fired alongside them - see LaunchPullAsync.
+        if (settings.LibrarianFullSyncOnLaunch) _ = LaunchPullAsync(catalogWarm, sysExProbe);
+
+        // Conflicts survive in the index across sessions, so the banner has to be right from the
+        // moment the window opens - not only after the next Sync/Commit sets one.
+        RefreshConflictState();
 
         // TryCreate, never a direct construction: the cache file is untrusted input (truncated,
         // hand-edited, or written by a different build), and a short array would only surface as a
@@ -371,14 +391,18 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     void InvalidateReadOnlyBankNames() => _readOnlyNames = null;
 
     // The Merge Window's "Merge behavior" setting (Views/SettingsWindow.xaml's Librarian tab)
-    // selects the persistence strategy at construction time - see MergeCachePersistence.cs.
-    // A setting change while THIS window is already open only takes effect the next time the
-    // Librarian is reopened (MergeCache.SetPersistence exists and is exercised by
-    // MergeCacheSelfTests for when live cross-window switching is worth wiring up).
+    // selects the persistence strategy - see MergeCachePersistence.cs. Used at construction, and
+    // again from ApplySettings when the setting changes while this window is already open.
     static IMergeCachePersistence BuildMergePersistence(AppSettings settings) =>
         settings.MergeBehavior == MergeCacheBehavior.LocalStorage
-            ? new FileMergeCachePersistence(Path.Combine(Storage.DataDir, "merge_cache.json"))
+            ? new FileMergeCachePersistence(MergeCachePath)
             : new InMemoryMergeCachePersistence();
+
+    // Also read by MainWindow.ApplySettingsResult, which drops the snapshot when the user switches
+    // Local Storage -> Temporary Memory with NO Librarian open (an open one goes through
+    // ApplySettings above instead). InMemoryMergeCachePersistence.Clear() is a no-op, so nothing
+    // on the reopen path would otherwise remove it.
+    public static string MergeCachePath => Path.Combine(Storage.DataDir, "merge_cache.json");
 
     // Fires after EVERY local edit (NotifyLocalEditMade). Reads the op-log's in-memory display
     // mirror, NOT the file (OpLog.ReadForDisplay): re-reading a growing oplog.jsonl over a
@@ -476,8 +500,115 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         // unwinds on its own within a few seconds now that it actually observes cancellation;
         // waiting for that here would block the window's Closing handler on network I/O.
         _syncCts?.Cancel();
+        // The launch pull can still be sitting in its warm-up await when the window closes, i.e.
+        // before it has ever published a _syncCts for the line above to find. Cancelling the
+        // window-lifetime source stops it in that window too, so a Librarian opened and closed
+        // straight away never goes on to sweep every bank on behalf of a gone session.
+        _lifetime.Cancel();
         _undo.Changed -= OnUndoStackChanged;
         _undo.Dispose();
+    }
+
+    // Settings > Librarian > "Full sync on launch" (AppSettings.LibrarianFullSyncOnLaunch).
+    // A full PULL, never the push half of Sync: an action nobody clicked must not write to the
+    // instrument, and SyncLibraryAsync's PrepareForPushAsync can raise a modal confirm while the
+    // window is still coming up.
+    //
+    // Sequenced behind both ctor warm-ups rather than fired alongside them:
+    //  - WarmCatalogAsync owns LocalPane.IsIndexing and clears it in its own finally, so running
+    //    concurrently would have the catalog un-hide the tree while this pull is still mid-sweep -
+    //    showing pre-pull contents that look final (LibraryPullPipeline commits in ONE batch at
+    //    the very end, so there is genuinely nothing to watch until then).
+    //  - RecheckSysExAsync is what establishes SysExUnavailable. Going first would mean sweeping
+    //    every registry bank at an instrument already known to be silent; NoReplyGiveUp would
+    //    eventually catch it, but only after burning the probe's own timeouts again.
+    async Task LaunchPullAsync(Task catalogWarm, Task sysExProbe)
+    {
+        try
+        {
+            await catalogWarm;
+            await sysExProbe;
+            // SysExUnavailable: its banner already explains why nothing pulled - a launch action
+            // the user never clicked should not stack a second failure message on top of it.
+            // IsBusy: the awaits above are a real window in which the user can already click Sync
+            // Library (nothing is busy yet, and the probe has just enabled it). Losing that race
+            // would run this sweep concurrently with a full Sync over the same cache, so yield to
+            // it - the manual click is the more specific intent, and it pulls too.
+            if (_lifetime.IsCancellationRequested || SysExUnavailable || IsBusy) return;
+
+            IsBusy = true; WarningText = null; StatusIsSuccess = false;
+            LocalPane.IsIndexing = true;   // same gate, same reason as SyncLibraryAsync's own
+            // Deliberately NOT published as _syncCts: SyncLibraryAsync owns that field, and a
+            // launch pull clearing it in its own finally could null out a manual Sync's token.
+            // _lifetime is cancelled by Dispose directly, so window-close still stops this.
+            try
+            {
+                var pull = await SyncPipeline.PullAsync(
+                    _sysEx, _cache, full: true, m => StatusText = m, _lifetime.Token);
+                if (pull.Aborted is { } aborted)
+                {
+                    SysExUnavailable = true;
+                    StatusText = "";
+                    WarningText = aborted.ToString();
+                }
+                else if (!_lifetime.IsCancellationRequested)
+                {
+                    StatusText = AppMessages.Librarian.Shell.LaunchPullComplete(pull.ObjectsFetched, pull.Conflicts);
+                    StatusIsSuccess = pull.Conflicts == 0;
+                }
+                AppLog.Info($"[librarian] launch pull done: fetched={pull.ObjectsFetched} conflicts={pull.Conflicts}");
+                InvalidateReadOnlyBankNames();
+            }
+            finally
+            {
+                LocalPane.RefreshTree();
+                LocalPane.IsIndexing = false;
+                RefreshHistory();
+                RefreshConflictState();
+                IsBusy = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            // Fire-and-forget from the ctor - an unobserved task exception here would be invisible.
+            AppLog.Warn($"[librarian] launch pull failed: {ex}");
+            WarningText = AppMessages.Librarian.Shell.OperationFailed(ex.Message);
+        }
+    }
+
+    // What Sync/Commit actually reads, and what the standing red banner binds to. A settable
+    // mirror rather than a read-through to _settings, because MainWindow.ApplySettingsResult
+    // REPLACES the AppSettings instance: this window keeps its own reference, so a user who
+    // opens Settings and turns this OFF while the Librarian is open would otherwise still get a
+    // destructive push. MainWindow pushes the new value in here instead (SetForceDestructiveWrite).
+    [ObservableProperty] bool forceDestructiveWrite;
+    public string DestructiveWriteBannerText => AppMessages.Librarian.Shell.DestructiveWriteArmed;
+
+    // Called by MainWindow when the Settings dialog (or File > Import Settings) is applied while
+    // this window is open. Two things go wrong without it, because ApplySettingsResult swaps the
+    // AppSettings OBJECT rather than mutating it:
+    //  - a destructive-write toggle never reaches the Librarian, including turning it OFF;
+    //  - worse, the merge-duplicate toolbar toggles write through to whatever instance this VM
+    //    holds and then persist it (PersistSettings = Storage.SaveSettings), so flipping one after
+    //    a Settings change wrote the PRE-DIALOG snapshot back over settings.json, silently
+    //    reverting everything the user had just changed.
+    // _settings is swapped FIRST so the duplicate toggles' write-through (which fires only if a
+    // value actually changed) persists the new instance rather than the one being replaced.
+    public void ApplySettings(AppSettings settings)
+    {
+        // Merge behavior has to switch LIVE, not on the next reopen. Deleting merge_cache.json from
+        // MainWindow is not enough on its own while this window is up: our MergeCache still holds a
+        // FileMergeCachePersistence aimed at that path, so the very next drag rewrites the file -
+        // and a later switch back to Local Storage re-adopts it. SetPersistence clears the file AND
+        // swaps the strategy, and carries whatever is currently staged across either way.
+        bool wasFileBacked = _settings.MergeBehavior == MergeCacheBehavior.LocalStorage;
+        if (wasFileBacked != (settings.MergeBehavior == MergeCacheBehavior.LocalStorage))
+            MergePane.SetPersistence(BuildMergePersistence(settings), wasFileBacked);
+
+        _settings = settings;
+        ForceDestructiveWrite          = settings.LibrarianForceDestructiveWrite;
+        MergePreserveDuplicatePrograms = settings.MergePreserveDuplicatePrograms;
+        MergePreserveDuplicateCombis   = settings.MergePreserveDuplicateCombis;
     }
 
     [RelayCommand(CanExecute = nameof(CanRunHardwareOp))]
@@ -498,7 +629,8 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         {
             if (!await PrepareForPushAsync()) return;
             var (pull, push) = await SyncPipeline.SyncLibraryAsync(
-                _sysEx, _cache, _sessionClipboard, ForceFullPull, m => StatusText = m, cts.Token);
+                _sysEx, _cache, _sessionClipboard, ForceFullPull, m => StatusText = m, cts.Token,
+                ForceDestructiveWrite);
             // A pull that succeeded with nothing locally dirty to push back is a complete,
             // successful Sync - not the CHECK/warning ChangesetBuilder's early-return produces for
             // the same state (that's meant for Commit Changes, which has no pull to justify "why
@@ -507,14 +639,24 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
             // write (a conflicted object is deliberately excluded from Writes, not "not dirty").
             bool nothingToPushClean = push.Ok && push.Written == 0 && push.Deleted == 0
                 && pull.Conflicts == 0 && push.Error == AppMessages.Librarian.Sync.CheckNothingToPush.ToString();
-            if (nothingToPushClean)
+            // The pull gave up because the instrument answered nothing. Raising the banner from
+            // here as well as from the probe matters: the probe only runs at open and on demand,
+            // so an instrument that goes quiet mid-session would otherwise leave Sync enabled and
+            // failing with nothing on screen to explain the state.
+            if (pull.Aborted is { } pullAborted)
+            {
+                SysExUnavailable = true;
+                StatusText = "";
+                WarningText = pullAborted.ToString();
+            }
+            else if (nothingToPushClean)
             {
                 StatusText = AppMessages.Librarian.Shell.SyncComplete(ForceFullPull, pull.ObjectsFetched, pull.Conflicts);
                 StatusIsSuccess = true;
             }
             else
             {
-                StatusText = AppMessages.Librarian.Shell.SyncResult(pull.ObjectsFetched, pull.Conflicts, push.Written, push.Deleted);
+                StatusText = AppMessages.Librarian.Shell.SyncResult(pull.ObjectsFetched, pull.Conflicts, push.Written, push.Deleted, push.Conflicted.Count);
                 // Surface a CHECK/REFUSE explanation whenever one exists, not just on a hard
                 // failure - a "0 written" push (nothing to push, or every change conflicted) still
                 // reports Ok: true, and the text is the only thing that explains why.
@@ -546,6 +688,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
             LocalPane.RefreshTree();
             LocalPane.IsIndexing = false;
             RefreshHistory();
+            RefreshConflictState();   // the pull and the push both set/clear conflicts
             IsBusy = false;
         }
     }
@@ -557,9 +700,10 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         try
         {
             if (!await PrepareForPushAsync()) return;
-            var result = await SyncPipeline.CommitChangesAsync(_sysEx, _cache, _sessionClipboard, m => StatusText = m);
+            var result = await SyncPipeline.CommitChangesAsync(
+                _sysEx, _cache, _sessionClipboard, m => StatusText = m, ForceDestructiveWrite);
             StatusText = result.Ok
-                ? AppMessages.Librarian.Shell.CommitResult(result.Written, result.Deleted)
+                ? AppMessages.Librarian.Shell.CommitResult(result.Written, result.Deleted, result.Conflicted.Count)
                 : AppMessages.Librarian.Shell.CommitFailed;
             // See SyncLibraryAsync's identical comment: a CHECK explanation must surface even on
             // the Ok path, and the undo stack is only ever safe to drop once something actually
@@ -578,6 +722,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         {
             LocalPane.RefreshTree();
             RefreshHistory();
+            RefreshConflictState();   // ChangesetBuilder's pre-scan flags conflicts as it runs
             IsBusy = false;
         }
     }
@@ -659,7 +804,149 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         await ConfirmDestinationBankAsync(LibObj.Program, destBank)
             ? PlaceMergeBankWithTypeChange(destBank, contentHashes, targetIsExi) : (false, AppMessages.Librarian.Shell.PlacementCancelledOutOfSync);
 
-    bool CanRunHardwareOp() => !IsBusy;
+    bool CanRunHardwareOp() => !IsBusy && !SysExUnavailable;
+
+    // ── SysEx-off read-only fallback ────────────────────────────────────────────────────────
+    // With SysEx switched off on the Kronos (GLOBAL > MIDI) every request times out rather than
+    // erroring, so without this the Librarian looked functional and then sat for hours. True =
+    // the instrument answered nothing; the window stays fully usable for browsing, staging and
+    // organising Local Library / the Merge Window / a loaded PCG, and only the two commands that
+    // actually talk to hardware (Sync, Commit) are disabled. Deliberately NOT a read of
+    // IBankDumpService.CanDump, which is the LOCAL MIDI-monitor setting, not the instrument's.
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SyncLibraryCommand))]
+    [NotifyCanExecuteChangedFor(nameof(CommitChangesCommand))]
+    [NotifyCanExecuteChangedFor(nameof(ResolveConflictsKeepMineCommand))]
+    [NotifyPropertyChangedFor(nameof(CommitTooltip))]
+    bool sysExUnavailable;
+
+    public string SysExOffBannerText => AppMessages.Librarian.Shell.SysExOffBanner;
+
+    // Bound rather than static so the disabled Commit button can say WHY it is disabled - the
+    // banner above carries the fix, this only has to name the cause.
+    public string CommitTooltip => SysExUnavailable
+        ? AppMessages.Librarian.Shell.SysExOffCommitTooltip
+        : AppMessages.Librarian.Shell.CommitTooltip;
+
+    // One func-0x37 bank-digest request against Program INT A - the same detector
+    // LibraryPullPipeline's sweep leads with, so the banner and a Sync can never disagree about
+    // whether the instrument is answering. INT A always exists and always answers a digest on a
+    // live unit (unlike the GM/g banks, which have none by design), so a null here means silence,
+    // not a bank quirk.
+    //
+    // Re-runnable on purpose: the fix for this state is something the user does AT THE PANEL
+    // while the window is open, so a probe that only ran at open time would leave the banner up
+    // forever after they fixed it - see the Re-check button in LibrarianShellWindow.xaml.
+    // Retried, and this is not belt-and-braces. A single attempt false-negatived on real
+    // hardware: the ctor also fires WarmCategoryNamesAsync, whose Global-object dump is ~24 KB
+    // with a 10 s no-response window, and both go through the same DumpGate - so the probe's
+    // 5 s digest timeout expired waiting behind it and disabled Sync and Commit on a perfectly
+    // healthy instrument. Any bulk dump in flight can do that; the instrument being genuinely
+    // silent looks identical on one attempt and only differs across several.
+    const int SysExProbeAttempts = 3;
+
+    [RelayCommand]
+    async Task RecheckSysExAsync()
+    {
+        for (int attempt = 1; attempt <= SysExProbeAttempts; attempt++)
+        {
+            try
+            {
+                if (await _sysEx.BankDigestAsync(LibObj.Program, 0x00) != null)
+                {
+                    if (SysExUnavailable) AppLog.Info("[librarian] SysEx probe: answered - Sync/Commit re-enabled");
+                    SysExUnavailable = false;
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                // Observe and log; a throwing probe is treated exactly like a silent one.
+                AppLog.Warn($"[librarian] SysEx probe attempt {attempt} failed: {ex.Message}");
+            }
+            AppLog.Debug($"[librarian] SysEx probe attempt {attempt}/{SysExProbeAttempts}: no reply");
+            if (attempt < SysExProbeAttempts) await Task.Delay(1500);
+        }
+        SysExUnavailable = true;
+        AppLog.Warn($"[librarian] SysEx probe: no reply after {SysExProbeAttempts} attempts - Sync/Commit disabled");
+    }
+
+    // ── Conflict resolution ─────────────────────────────────────────────────────────────────
+    // A conflicted object is one this library has edits for whose BANK changed on the Kronos
+    // since the baseline was taken. The push excludes the whole bank rather than clobber
+    // whatever changed - correct, but until now there was no way out of it from this window and
+    // no sign it had happened, so a Commit could write 99 Programs, silently drop 47 Combis, and
+    // report "Pushed 99 object(s)." That is the bug this pairs with; see
+    // AppMessages.Librarian.Sync.CheckConflictedNotPushed.
+    public int ConflictedCount => _cache.ConflictedObjects().Count();
+    public bool HasConflicts => ConflictedCount > 0;
+
+    // Set by LibrarianShellWindow to a WPF confirmation, same code-behind split every other
+    // destructive prompt here uses. Null (headless self-test) proceeds.
+    public Func<int, string, Task<bool>>? ConfirmResolveConflicts { get; set; }
+
+    // "Keep mine": clear the flags AND re-baseline each affected bank from the instrument's
+    // CURRENT digest, so the next Commit's pre-scan passes and the local edits go out. Both
+    // halves are required - clearing the flag alone changes nothing, because the pre-scan
+    // compares bank digests, not flags.
+    //
+    // This is destructive TO THE INSTRUMENT by design: whatever changed in those banks is about
+    // to be overwritten by this library's copy, which is exactly what the user is choosing. The
+    // other resolution (take theirs) already exists as Sync Library, which pulls the bank and
+    // leaves hardware alone.
+    [RelayCommand(CanExecute = nameof(CanResolveConflicts))]
+    async Task ResolveConflictsKeepMineAsync()
+    {
+        var stuck = _cache.ConflictedObjects().ToList();
+        if (stuck.Count == 0) return;
+        var banks = stuck.Select(l => (l.ObjType, l.Bank)).Distinct().ToList();
+        string bankList = string.Join(", ", banks.Select(b => Librarian.StoreLabel(b.ObjType, b.Bank)));
+
+        if (ConfirmResolveConflicts != null && !await ConfirmResolveConflicts(stuck.Count, bankList)) return;
+
+        IsBusy = true; WarningText = null; StatusIsSuccess = false;
+        try
+        {
+            int rebased = 0;
+            foreach (var (objType, bank) in banks)
+            {
+                // A bank we cannot get a digest for keeps its stale baseline and its conflicts:
+                // re-baselining on a timeout would clear the flag while leaving the pre-scan
+                // still excluding the bank, which looks like the resolve silently did nothing.
+                var fresh = await _sysEx.BankDigestAsync(objType, bank).ConfigureAwait(true);
+                if (fresh == null) continue;
+                _cache.SetBankDigestBaseline(objType, bank, Convert.ToHexString(fresh).ToLowerInvariant());
+                rebased++;
+                foreach (var loc in stuck.Where(l => l.ObjType == objType && l.Bank == bank))
+                    _cache.ClearConflict(loc.ObjType, loc.Bank, loc.Number);
+            }
+            _cache.Save();
+            StatusText = AppMessages.Librarian.Shell.ConflictsResolved(stuck.Count, rebased, banks.Count);
+            StatusIsSuccess = rebased == banks.Count;
+            if (rebased < banks.Count)
+                WarningText = AppMessages.Librarian.Sync.CheckResolveNoDigest.ToString();
+        }
+        finally
+        {
+            LocalPane.RefreshTree();
+            RefreshConflictState();
+            IsBusy = false;
+        }
+    }
+
+    bool CanResolveConflicts() => !IsBusy && !SysExUnavailable && HasConflicts;
+
+    // Conflicts are set/cleared deep in the pipelines (ChangesetBuilder, LibraryPullPipeline),
+    // not through a property this can observe, so every path that can change them calls this.
+    public void RefreshConflictState()
+    {
+        OnPropertyChanged(nameof(ConflictedCount));
+        OnPropertyChanged(nameof(HasConflicts));
+        OnPropertyChanged(nameof(ConflictBannerText));
+        ResolveConflictsKeepMineCommand.NotifyCanExecuteChanged();
+    }
+
+    public string ConflictBannerText => AppMessages.Librarian.Shell.ConflictBanner(ConflictedCount);
 
     partial void OnIsBusyChanged(bool value)
     {
@@ -667,6 +954,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         CommitChangesCommand.NotifyCanExecuteChanged();
         UndoCommand.NotifyCanExecuteChanged();   // see CanUndo - undo must not race a push
         AutoFillToLibraryCommand.NotifyCanExecuteChanged();
+        ResolveConflictsKeepMineCommand.NotifyCanExecuteChanged();
     }
 
     // Set for the duration of an Auto-Fill so the button can show it's working. Distinct from

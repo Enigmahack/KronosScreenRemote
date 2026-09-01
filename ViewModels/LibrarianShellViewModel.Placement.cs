@@ -579,16 +579,26 @@ partial class LibrarianShellViewModel
         // Anything still unresolved is tracked for a later retry (TrackMergeDependencies).
         var (body, unresolved) = MergePane.ResolveReferencesForPlacement(entry, LocalLookup);
 
+        // Per-phase timings: this is the one drop path the user feels, and every phase below
+        // writes a whole file to a DataDir that is routinely an SMB share, so a regression here
+        // reads as a multi-second stall with no other symptom. Debug-level, so it costs nothing
+        // unless someone is looking.
+        var sw = System.Diagnostics.Stopwatch.StartNew();
         var (ok, error, clipboardAdds) = LocalEditOps.PlaceObject(
             _cache, destLoc, entry.ObjType, entry.Version, body, entry.DisplayName,
             divertDisplacedToClipboard: true, DateTime.UtcNow, BankTypeOf, MergePane.ForceOverwrite);
         if (!ok) return (false, error);
+        long tPlace = sw.ElapsedMilliseconds;
 
         MergeDisplacedIntoPersistentClipboard(clipboardAdds);
+        long tClip = sw.ElapsedMilliseconds;
         MergePane.CommitPlacement(mergeContentHash, destLoc);
         TrackMergeDependencies(unresolved, destLoc);
+        long tMerge = sw.ElapsedMilliseconds;
         LocalPane.RefreshTree();
         NotifyLocalEditMade();
+        AppLog.Debug($"[librarian] place-from-merge {destLoc.Label()}: place {tPlace}ms, clipboard(+{clipboardAdds.Count}) {tClip - tPlace}ms, " +
+                     $"merge {tMerge - tClip}ms, tree+history {sw.ElapsedMilliseconds - tMerge}ms, total {sw.ElapsedMilliseconds}ms");
         return (true, null);
     }
 
@@ -658,13 +668,8 @@ partial class LibrarianShellViewModel
 
     int FindNextFreeSlot(int objType, int bank) => LocalEditOps.FindNextFreeSlot(_cache, objType, bank);
 
-    void MergeDisplacedIntoPersistentClipboard(List<ClipboardEntry> newEntries)
-    {
-        if (newEntries.Count == 0) return;
-        var clip = BatchLibrarian.LoadClipboardGlobal();
-        clip.Entries.AddRange(newEntries);
-        BatchLibrarian.SaveClipboardGlobal(clip);
-    }
+    void MergeDisplacedIntoPersistentClipboard(List<ClipboardEntry> newEntries) =>
+        BatchLibrarian.AppendClipboardGlobal(newEntries);
 
     // Requirement 14's dependency-completeness gate feeds off this: whatever
     // ResolveReferencesForPlacement (Merge path) couldn't resolve gets tracked so

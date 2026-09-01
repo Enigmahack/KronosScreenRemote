@@ -206,6 +206,65 @@ sealed class SysExService : ISysExService
         ParseIncoming(raw);
     }
 
+    // ── Storage-change notifications (unsolicited func 0x38) ────────────────────────────────
+    // Per (obj, bank) count of PUSHED digest notifications - the instrument's own signal that a
+    // bank's storage changed (a front-panel Store, a PCG load, a bank-type change), which
+    // KRONOS_MIDI_SysEx.txt [38] says explicitly does NOT fire for func-0x73 object writes.
+    // Monotonic and meaningless in absolute terms: a caller arms a baseline and compares later
+    // (Librarian.ArmPlanAsync / ApplyMoveAsync step 3b). Hardware-observed: a real panel Store
+    // pushes the SAME 0x38 twice, ~100 ms apart, so any absolute reading would double-count.
+    // Guarded by _digestLock, below.
+    readonly Dictionary<(int Obj, int Bank), int> _storageChanges = new();
+
+    // Bank-digest replies of our own that ParseIncoming has not accounted for yet, per
+    // (obj, bank). This is the ONLY thing that can tell our own func-0x37 reply from an
+    // unsolicited push: the two are byte-identical and reach ParseIncoming by the same path
+    // (AwaitReplyAsync SUBSCRIBES to the stream, it does not consume the message).
+    //
+    // A per-bank token consumed by ParseIncoming, deliberately NOT a wall-clock window. Both
+    // transports raise SysExMessageReceived INLINE on their read thread and hand Traffic - which
+    // is what feeds ParseIncoming - to a bounded consumer channel (MidiStreamMonitor.Surface,
+    // UsbMidiTransport.ConsumeAsync), so a reply can reach AwaitReplyAsync arbitrarily long
+    // before ParseIncoming sees it, and further behind the busier the stream is. Any time window
+    // wide enough to cover that lag would also blind the start of the write burst, which is
+    // exactly where step 3b's hazard lives. Matching a reply to its request is immune to the lag.
+    readonly object _digestLock = new();
+    readonly Dictionary<(int Obj, int Bank), int> _expectedDigestReplies = new();
+
+    void ExpectDigestReply(int obj, int bank)
+    {
+        lock (_digestLock)
+            _expectedDigestReplies[(obj, bank)] =
+                _expectedDigestReplies.TryGetValue((obj, bank), out var n) ? n + 1 : 1;
+    }
+
+    // Drops one token. Called for a request that timed out (nothing will ever arrive to consume
+    // it, and a stale token would swallow the next genuine push for that bank), and by
+    // ParseIncoming on a 0x38 - where a true return means "this was our own reply".
+    //
+    // A reply arriving AFTER its timeout is therefore counted as a push. That direction is
+    // deliberate: it can only cause a false abort, never a missed one.
+    bool TakeExpectedDigestReply(int obj, int bank)
+    {
+        lock (_digestLock)
+        {
+            if (!_expectedDigestReplies.TryGetValue((obj, bank), out var n) || n <= 0) return false;
+            if (n == 1) _expectedDigestReplies.Remove((obj, bank));
+            else _expectedDigestReplies[(obj, bank)] = n - 1;
+            return true;
+        }
+    }
+
+    // Null (never 0) when pushes cannot be observed at all: with no live stream nothing reaches
+    // ParseIncoming, so reporting "no changes seen" would be a fail-open on exactly the hazard
+    // the caller is asking about. See ApplyMoveAsync step 3b, which reports an unwatched bank
+    // out loud rather than counting it as a pass.
+    public int? StorageChangeCountFor(int obj, int bank)
+    {
+        if (_transport?.CanStream != true || !_midiMonitorEnabled) return null;
+        lock (_digestLock) return _storageChanges.TryGetValue((obj, bank), out var n) ? n : 0;
+    }
+
     // Decode signals the Kronos pushes unsolicited on the MIDI-out stream.
     // Every recognised message is logged so an absent signal (transmit disabled
     // in the Kronos Global/MIDI settings) is distinguishable from a parse bug.
@@ -222,6 +281,23 @@ sealed class SysExService : ISysExService
             int digObj  = raw[5];   // 0x00 = Program, 0x01 = Combi, ...
             int digBank = raw[6];   // object bank number
 
+            // A pushed 0x38 and the reply to our own func-0x37 request are byte-identical and
+            // arrive here by the same path, so only the request bookkeeping can tell them apart
+            // - see IsSolicitedDigest. Counted for EVERY object type (Set List 0x0D, Drum Kit,
+            // Wave Sequence included), unlike the name-cache invalidation below.
+            if (!TakeExpectedDigestReply(digObj, digBank))
+            {
+                lock (_digestLock)
+                    _storageChanges[(digObj, digBank)] =
+                        _storageChanges.TryGetValue((digObj, digBank), out var seen) ? seen + 1 : 1;
+                AppLog.Debug($"[sysex] storage change pushed: obj={digObj:X2} bank={digBank:X2}");
+            }
+
+            // Name/dumped-ledger invalidation stays scoped to Program/Combi. Both caches are keyed
+            // by the func-33 SLOT TYPE (1 = program, 0 = combi), which has no encoding for a Set
+            // List, Drum Kit or Wave Sequence bank - inventing one would collide with the program
+            // and combi keys and invalidate the wrong banks. Those types have no name cache to
+            // invalidate anyway; what they needed from 0x38 is the storage-change count above.
             if (digObj is 0x00 or 0x01)
             {
                 int t = digObj == 0x00 ? 1 : 0;     // program = 1, combi = 0
@@ -946,12 +1022,17 @@ sealed class SysExService : ISysExService
         var transport = _transport;
         if (transport?.CanStream != true) return null;
         int gateEpoch = _dumpGate.Begin();
+        // Marks the reply as SOLICITED for ParseIncoming - see _expectedDigestReplies.
+        ExpectDigestReply(obj, bank);
         try
         {
-            return await transport.AwaitReplyAsync<byte[]>(
+            var digest = await transport.AwaitReplyAsync<byte[]>(
                 () => transport.SendAsync(KronosSysEx.BuildBankDigestRequest(obj, bank)),
                 m => KronosSysEx.ParseBankDigest(m) is { } bd && bd.Obj == obj && bd.Bank == bank ? bd.Sha1 : null,
                 5000).ConfigureAwait(false);
+            // No reply: nothing is coming that ParseIncoming could match the token against.
+            if (digest == null) TakeExpectedDigestReply(obj, bank);
+            return digest;
         }
         finally { _dumpGate.End(gateEpoch); }
     }

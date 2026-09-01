@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -125,6 +125,8 @@ public partial class SettingsWindow : ThemedWindow
         CMB_MergeBehavior.SelectedIndex = Result.MergeBehavior == MergeCacheBehavior.LocalStorage ? 1 : 0;
         ChkPreserveDupPrograms.IsChecked = Result.MergePreserveDuplicatePrograms;
         ChkPreserveDupCombis.IsChecked   = Result.MergePreserveDuplicateCombis;
+        ChkLibrarianFullSyncOnLaunch.IsChecked      = Result.LibrarianFullSyncOnLaunch;
+        ChkLibrarianForceDestructiveWrite.IsChecked = Result.LibrarianForceDestructiveWrite;
 
         // View
         SlZoomLevel.Value      = Result.ZoomDefaultLevel;
@@ -380,6 +382,8 @@ public partial class SettingsWindow : ThemedWindow
         Result.MergeBehavior = CMB_MergeBehavior.SelectedIndex == 1 ? MergeCacheBehavior.LocalStorage : MergeCacheBehavior.TemporaryMemory;
         Result.MergePreserveDuplicatePrograms = ChkPreserveDupPrograms.IsChecked == true;
         Result.MergePreserveDuplicateCombis   = ChkPreserveDupCombis.IsChecked == true;
+        Result.LibrarianFullSyncOnLaunch      = ChkLibrarianFullSyncOnLaunch.IsChecked == true;
+        Result.LibrarianForceDestructiveWrite = ChkLibrarianForceDestructiveWrite.IsChecked == true;
 
         // View
         Result.ZoomDefaultLevel = SlZoomLevel.Value;

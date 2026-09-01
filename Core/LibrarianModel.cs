@@ -132,6 +132,11 @@ interface IExecutablePlan
     List<WriteOp> PreImages { get; }
     List<(int Obj, int Bank)> Stores { get; }
     Dictionary<(int, int), byte[]> DigestBaseline { get; }
+
+    // Arm-time reading of IMoveExecutor.StorageChangeCountFor per affected bank. A bank ABSENT
+    // here could not be watched at arm time (no live stream), which ApplyMoveAsync's step 3b
+    // reports rather than silently passing.
+    Dictionary<(int, int), int> StorageChangeBaseline { get; }
     List<byte[]> LivePc { get; }
     List<PlanWarning> Warnings { get; }
     string BackupLabel { get; }            // filename-safe; ApplyMoveAsync prefixes it with the stamp
@@ -155,6 +160,7 @@ sealed class MovePlan : IExecutablePlan
     public List<PlanWarning> Warnings { get; } = new();
     public List<byte[]> LivePc { get; } = new();           // optional 0x43 dual-write
     public Dictionary<(int, int), byte[]> DigestBaseline { get; } = new();
+    public Dictionary<(int, int), int> StorageChangeBaseline { get; } = new();
 
     public bool IsRefusable => Warnings.AnyRefusal();
     public string BackupLabel => $"move_{Src.Label()}_{Dst.Label()}".Replace(":", "").Replace(" ", "");
@@ -174,4 +180,16 @@ interface IMoveExecutor
     // ApplyMoveAsync after the staleness gate and before that bank's writes, since the whole
     // bank must be re-written after the erase.
     Task<int> ChangeProgramBankTypeAsync(int bank, bool isExi);
+
+    // How many UNSOLICITED func-0x38 storage-change notifications this session has seen for one
+    // bank. Monotonic and meaningless in absolute terms - arm a baseline, compare later. The
+    // instrument pushes one for a front-panel Store, a PCG load and a bank-type change, and
+    // explicitly NOT for the func-0x73 object writes a commit is made of (KRONOS_MIDI_SysEx.txt
+    // [38]), which is what makes it the only usable detector for a panel Store landing mid-burst.
+    //
+    // NULL means pushes cannot be observed at all right now (no live MIDI stream) - deliberately
+    // distinct from 0, "observed, nothing seen". A caller must never read null as "no change":
+    // ApplyMoveAsync reports such a bank as unwatched, the same way the digest gate reports a
+    // bank that answers no digest.
+    int? StorageChangeCountFor(int obj, int bank);
 }

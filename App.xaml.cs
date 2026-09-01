@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Windows;
 using KronosScreenRemote.ViewModels;
 
@@ -43,6 +43,7 @@ public partial class App : Application
             fails.AddRange(CrossPanePlacementSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(LocalCutCopyPasteSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(ReadOnlyBankBrowseSelfTests.SelfTestAsync().GetAwaiter().GetResult());
+            fails.AddRange(LibrarianSettingsApplySelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(MergeCacheSelfTests.SelfTest());
             fails.AddRange(DependencyResolutionSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(LibrarianDependencyCacheSelfTests.SelfTestAsync().GetAwaiter().GetResult());

@@ -1,4 +1,4 @@
-using System.Windows;
+﻿using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -27,6 +27,9 @@ internal partial class LibrarianShellWindow : ThemedWindow
     protected override bool AllowMinimize => true;
 
     readonly LibrarianShellViewModel _vm;
+    // MainWindow.ApplySettingsResult reaches this to hand an already-open Librarian the new
+    // AppSettings instance - see LibrarianShellViewModel.ApplySettings.
+    public LibrarianShellViewModel ViewModel => _vm;
 
     // One PaneSelection per tree (see the PaneSelection class below) - replaces what used to
     // be two near-identical duplicated selection blocks (Local, PCG) plus a third pane (Merge)
@@ -96,6 +99,18 @@ internal partial class LibrarianShellWindow : ThemedWindow
             var result = MessageBox.Show(this,
                 AppMessages.Librarian.Shell.ConfirmStaleBank(bankLabel),
                 AppMessages.Librarian.Shell.ConfirmStaleBankTitle, MessageBoxButton.YesNo, MessageBoxImage.Warning);
+            return Task.FromResult(result == MessageBoxResult.Yes);
+        };
+
+        // Resolve Conflicts overwrites hardware with this library's copy, so it gets the same
+        // MessageBox treatment as the other destructive confirms above. Defaults to No: the
+        // safe answer is to cancel and Sync Library, which keeps the Kronos copy instead.
+        _vm.ConfirmResolveConflicts = (count, banks) =>
+        {
+            var result = MessageBox.Show(this,
+                AppMessages.Librarian.Shell.ResolveConflictsConfirm(count, banks),
+                AppMessages.Librarian.Shell.ResolveConflictsTitle,
+                MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
             return Task.FromResult(result == MessageBoxResult.Yes);
         };
 

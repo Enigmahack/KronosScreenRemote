@@ -10,6 +10,7 @@ sealed class ChangesetPlan : IExecutablePlan
     public List<WriteOp> PreImages { get; } = new();
     public List<(int Obj, int Bank)> Stores { get; } = new();
     public Dictionary<(int, int), byte[]> DigestBaseline { get; } = new();
+    public Dictionary<(int, int), int> StorageChangeBaseline { get; } = new();
     public List<byte[]> LivePc { get; } = new();   // always empty - no live 0x43 anywhere in this pipeline
     public List<PlanWarning> Warnings { get; } = new();
     public string BackupLabel => "changeset";

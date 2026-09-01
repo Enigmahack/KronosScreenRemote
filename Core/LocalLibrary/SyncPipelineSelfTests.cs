@@ -1,4 +1,4 @@
-namespace KronosScreenRemote;
+﻿namespace KronosScreenRemote;
 
 using System.IO;
 
@@ -139,6 +139,96 @@ static class SyncPipelineSelfTests
                 int firstDump = exec.CallLog.FindIndex(c => c.StartsWith("Dump:") || c.StartsWith("BulkDump:"));
                 int firstWrite = exec.CallLog.IndexOf("Write");
                 Check("d-pull-before-push", firstDump >= 0 && firstWrite >= 0 && firstDump < firstWrite);
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+        }
+
+        // ── F: a PARTIAL push must not read as a clean success. Regression test for the real
+        //      failure: a Commit wrote 99 Programs, excluded 47 Combis and 3 Set Lists as
+        //      conflicted, and reported "Pushed 99 object(s)." with Error == null and Ok == true.
+        //      The excluded objects never reach plan.Writes, so this result is the ONLY place
+        //      they can be reported. Also covers the way out - clearing the flag alone must NOT
+        //      be enough, because the pre-scan compares bank digests, not flags. ──
+        {
+            string root = ScratchRoot + "_f";
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            try
+            {
+                var exec = new FakeMoveExecutor();
+                // INT-A:000 as well as the edited Program: a zeroed combi body's timbre refs all
+                // point there, and ChangesetBuilder's referential gate REFUSES a push whose combi
+                // references something the library doesn't have.
+                exec.Seed(LibObj.Program, 0x00, 0, 5, new byte[ProgramFormatConverter.WireSizeHd1]);
+                exec.Seed(LibObj.Program, 0x40, 0, 5, new byte[ProgramFormatConverter.WireSizeHd1]);
+                exec.Seed(LibObj.Combi,   0x41, 0, 3, new byte[7810]);
+                var cache = new LocalLibraryCache(root);
+                await LibraryPullPipeline.PullAsync(exec, cache, full: true);
+
+                var prog  = new ObjLoc(LibObj.Program, 0x40, 0);
+                var combi = new ObjLoc(LibObj.Combi,   0x41, 0);
+                LocalEditOps.Rename(cache, prog,  "PUSH-ME",  DateTime.UtcNow);
+                LocalEditOps.Rename(cache, combi, "BLOCK-ME", DateTime.UtcNow);
+
+                // The combi's BANK moves on "hardware" (a different slot), so the pre-scan
+                // excludes the whole bank - exactly the shape of the real failure.
+                var otherCombi = new byte[7810];
+                otherCombi[100] = 0x7F;   // any byte - the point is the BANK digest moving
+                exec.Seed(LibObj.Combi, 0x41, 9, 3, otherCombi);
+
+                var push = await SyncPipeline.PushAsync(exec, cache, new SessionDependencyClipboard());
+                Check("f-push-ok", push.Ok);
+                Check("f-program-written", push.Written == 1);
+                Check("f-combi-reported-conflicted", push.Conflicted.Count == 1);
+                // The bug: Error was null here, so nothing downstream had anything to show.
+                Check("f-partial-push-explains-itself", push.Error != null && push.Error.Contains("NOT pushed"));
+                Check("f-error-names-the-bank", push.Error != null && push.Error.Contains("Combi"));
+                var hw = await exec.DumpObjectAsync(combi.ObjType, combi.Bank, combi.Number);
+                Check("f-combi-not-on-hardware", hw != null && Librarian.ReadName(hw.Body) != "BLOCK-ME");
+
+                // Clearing the flag alone must not unblock it - the pre-scan compares digests.
+                cache.ClearConflict(combi.ObjType, combi.Bank, combi.Number);
+                var still = await SyncPipeline.PushAsync(exec, cache, new SessionDependencyClipboard());
+                Check("f-flag-clear-alone-insufficient", still.Conflicted.Count == 1);
+
+                // Re-baselining the bank IS the resolution (what ResolveConflictsKeepMineAsync
+                // does alongside clearing the flag) - the edit then goes out.
+                var fresh = await exec.BankDigestAsync(combi.ObjType, combi.Bank);
+                cache.SetBankDigestBaseline(combi.ObjType, combi.Bank, Convert.ToHexString(fresh!).ToLowerInvariant());
+                cache.ClearConflict(combi.ObjType, combi.Bank, combi.Number);
+                var resolved = await SyncPipeline.PushAsync(exec, cache, new SessionDependencyClipboard());
+                Check("f-resolved-push-writes-combi", resolved.Ok && resolved.Written == 1 && resolved.Conflicted.Count == 0);
+                Check("f-resolved-push-clean", resolved.Error == null);
+                var hw2 = await exec.DumpObjectAsync(combi.ObjType, combi.Bank, combi.Number);
+                Check("f-combi-now-on-hardware", hw2 != null && Librarian.ReadName(hw2.Body) == "BLOCK-ME");
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+        }
+
+        // ── E: an instrument that answers nothing (SysEx switched off at the panel - every
+        //      request times out rather than erroring) must make the pull give up within a few
+        //      banks, not grind through all 65 digests and then a Force Full Sync's ~19,000
+        //      individual object dumps. That difference is hours of "Indexing local library..."
+        //      versus a message naming the fix. ──
+        {
+            string root = ScratchRoot + "_e";
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            try
+            {
+                var exec = new FakeMoveExecutor();
+                foreach (var b in LibraryPullPlanner.AllBanks()) exec.NoDigestBanks.Add((b.ObjType, b.Bank));
+                var cache = new LocalLibraryCache(root);
+
+                var pull = await LibraryPullPipeline.PullAsync(exec, cache, full: true);
+                Check("e-pull-aborted", pull.Aborted != null);
+                Check("e-abort-names-the-fix", pull.Aborted?.Text.Contains("GLOBAL > MIDI") == true);
+                Check("e-gave-up-early", exec.CallLog.Count(c => c.StartsWith("Digest:")) <= 8);
+                Check("e-no-object-dumps", !exec.CallLog.Any(c => c.StartsWith("BulkDump:") || c.StartsWith("Dump:")));
+
+                // And a Sync must not go on to push against a silent instrument - a push that
+                // "wrote 0 objects" there reads like success.
+                exec.CallLog.Clear();
+                var (_, push) = await SyncPipeline.SyncLibraryAsync(exec, cache, new SessionDependencyClipboard(), fullPull: true);
+                Check("e-push-skipped", !push.Ok && !exec.CallLog.Contains("Write"));
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
         }
@@ -571,9 +661,9 @@ static class SyncPipelineSelfTests
                 // difference is exactly what distinguishes "used the real factory body" from
                 // "gave up and blanked the name"), and init by shape.
                 Check("k2-used-baked-init-combi", hw != null && hw.Body.Length == 7810 &&
-                    CombiBody.ReadName(hw.Body) == "Init Combi");
+                    Librarian.ReadName(hw.Body) == "Init Combi");
                 Check("k2-erased-slot-reads-as-init", hw != null && CombiBody.IsInit(hw.Body));
-                Check("k2-not-the-deleted-patch", hw != null && CombiBody.ReadName(hw.Body) != "MY COMBI");
+                Check("k2-not-the-deleted-patch", hw != null && Librarian.ReadName(hw.Body) != "MY COMBI");
                 // No capture happened, so nothing was persisted to the per-library store either.
                 Check("k2-no-capture-persisted", new BlankTemplateStore(cache.Root).Get(LibObj.Combi, false) == null &&
                     new BlankTemplateStore(cache.Root).Get(LibObj.Combi, true) == null);
@@ -617,9 +707,9 @@ static class SyncPipelineSelfTests
                 Check("k3-commit-ok", result.Ok && result.Deleted == 1);
 
                 var hw = await exec.DumpObjectAsync(delLoc.ObjType, delLoc.Bank, delLoc.Number);
-                Check("k3-poisoned-template-not-used", hw != null && CombiBody.ReadName(hw.Body) != "SCREAMING HEAD Gmin RIFF");
+                Check("k3-poisoned-template-not-used", hw != null && Librarian.ReadName(hw.Body) != "SCREAMING HEAD Gmin RIFF");
                 Check("k3-erased-slot-reads-as-init", hw != null && CombiBody.IsInit(hw.Body));
-                Check("k3-baked-body-used-instead", hw != null && CombiBody.ReadName(hw.Body) == "Init Combi");
+                Check("k3-baked-body-used-instead", hw != null && Librarian.ReadName(hw.Body) == "Init Combi");
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
         }
@@ -672,6 +762,80 @@ static class SyncPipelineSelfTests
                 await LibraryPullPipeline.PullAsync(exec, cache, full: false);
                 Check("l-offline-pull-keeps-baselines",
                     cache.BankDigestBaselineHex()[(LibObj.Program, 0x00)] == goodBaseline);
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+        }
+
+        // ── M: "Force destructive write" (Settings > Librarian) - case B's exact scenario, but
+        //      with the local library declared the source of truth. The bank that moved on
+        //      hardware must now be WRITTEN rather than excluded, and no conflict raised. The
+        //      inverse (flag off) is case B, so the pair pins both directions: getting this
+        //      backwards would either silently clobber front-panel edits by default, or make the
+        //      setting a no-op. ──
+        {
+            string root = ScratchRoot + "_m";
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            try
+            {
+                var exec = new FakeMoveExecutor();
+                exec.Seed(LibObj.Program, 0x00, 0, 1, new byte[3706]);
+                exec.Seed(LibObj.Program, 0x40, 0, 1, new byte[3706]);
+                var cache = new LocalLibraryCache(root);
+                await LibraryPullPipeline.PullAsync(exec, cache, full: true);
+
+                var locA = new ObjLoc(LibObj.Program, 0x00, 0);
+                var locB = new ObjLoc(LibObj.Program, 0x40, 0);
+                LocalEditOps.Rename(cache, locA, "BANK-A-EDIT", DateTime.UtcNow);
+                LocalEditOps.Rename(cache, locB, "BANK-B-EDIT", DateTime.UtcNow);
+
+                // Same simulated front-panel edit as case B: bank 0x00's digest moves underneath us.
+                var hwEdited = new byte[3706]; hwEdited[50] = 0x77;
+                exec.Seed(LibObj.Program, 0x00, 1, 1, hwEdited);
+
+                var result = await SyncPipeline.PushAsync(
+                    exec, cache, new SessionDependencyClipboard(), progress: null, forceDestructiveWrite: true);
+                Check("m-push-ok", result.Ok && result.Written == 2);
+                Check("m-nothing-conflicted", result.Conflicted.Count == 0);
+                Check("m-changed-bank-not-flagged", !cache.IsConflicted(locA.ObjType, locA.Bank, locA.Number));
+                Check("m-changed-bank-clean-after-push", !cache.IsDirty(locA.ObjType, locA.Bank, locA.Number));
+
+                var hwA = await exec.DumpObjectAsync(locA.ObjType, locA.Bank, locA.Number);
+                Check("m-changed-bank-overwritten", hwA != null && ProgramBody.ReadName(hwA.Body) == "BANK-A-EDIT");
+                var hwB = await exec.DumpObjectAsync(locB.ObjType, locB.Bank, locB.Number);
+                Check("m-other-bank-still-pushed", hwB != null && ProgramBody.ReadName(hwB.Body) == "BANK-B-EDIT");
+            }
+            finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
+        }
+
+        // ── M2: force destructive write settles who WINS a disagreement - it must not disable the
+        //       gates that catch writes the Kronos would reject or mangle. A Combi pointing at a
+        //       Program with no local body is still REFUSEd. ──
+        {
+            string root = ScratchRoot + "_m2";
+            if (Directory.Exists(root)) Directory.Delete(root, recursive: true);
+            try
+            {
+                var exec = new FakeMoveExecutor();
+                // Timbre 0 points at Program U-A:005, which is deliberately never seeded - so the
+                // combi carries a reference the library cannot resolve. Explicit rather than
+                // relying on a zeroed body's own default refs: those decode to a bank the walker
+                // treats as needing no resolution, so a plain new byte[7810] yields no references.
+                var danglingCombi = new byte[7810];
+                LibRefs.SetCombiTimbreRef(danglingCombi, 0, KronosBanks.ObjBankToFunc33(1, 0x40), 5);
+                exec.Seed(LibObj.Combi, 0x41, 0, 3, danglingCombi);
+                var cache = new LocalLibraryCache(root);
+                await LibraryPullPipeline.PullAsync(exec, cache, full: true);
+
+                var loc = new ObjLoc(LibObj.Combi, 0x41, 0);
+                LocalEditOps.Rename(cache, loc, "DANGLING", DateTime.UtcNow);
+
+                var result = await SyncPipeline.PushAsync(
+                    exec, cache, new SessionDependencyClipboard(), progress: null, forceDestructiveWrite: true);
+                                Check("m2-still-refused", !result.Ok);
+                Check("m2-refusal-names-the-reference",
+                    result.Error != null && result.Error.Contains("does not exist locally"));
+                var hw = await exec.DumpObjectAsync(loc.ObjType, loc.Bank, loc.Number);
+                Check("m2-hardware-untouched", hw != null && Librarian.ReadName(hw.Body) != "DANGLING");
             }
             finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }
         }

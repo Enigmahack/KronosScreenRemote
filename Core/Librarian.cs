@@ -145,17 +145,22 @@ static partial class Librarian
         return plan;
     }
 
-    // Capture the storage digest of every affected bank - the staleness baseline
-    // ApplyMoveAsync re-checks before writing and again immediately before Storing.
-    // A bank the instrument gives no digest for is deliberately NOT recorded; the apply-side
-    // gate walks plan.Stores rather than just the recorded baselines, so a missing entry is
-    // reported as an unprotected bank instead of silently counting as a pass.
+    // Capture both staleness baselines of every affected bank: the storage digest the pre-write
+    // gate compares, and the unsolicited-0x38 push count step 3b compares after the write burst.
+    // A bank the instrument gives neither for is deliberately NOT recorded; both apply-side gates
+    // walk plan.Stores rather than just the recorded baselines, so a missing entry is reported as
+    // an unprotected/unwatched bank instead of silently counting as a pass.
     public static async Task ArmPlanAsync(IExecutablePlan plan, IMoveExecutor ex)
     {
         foreach (var (obj, bank) in plan.Stores)
         {
             var d = await ex.BankDigestAsync(obj, bank).ConfigureAwait(false);
             if (d != null) plan.DigestBaseline[(obj, bank)] = d;
+            // Read AFTER the digest, in the same iteration: a Store landing between the two is
+            // then already in the digest but not yet in the baseline count, so the pre-write gate
+            // catches it. The other order would leave it in neither.
+            if (ex.StorageChangeCountFor(obj, bank) is { } pushes)
+                plan.StorageChangeBaseline[(obj, bank)] = pushes;
         }
     }
 
@@ -178,23 +183,17 @@ static partial class Librarian
         Note($"backup {plan.PreImages.Count} pre-image object(s) -> {backupPath}");
         await ex.BackupObjectsAsync(plan.PreImages, backupPath).ConfigureAwait(false);
 
-        // The staleness gate, run TWICE (step 2 and step 3b). A func-0x73 object write is
-        // VOLATILE - "not committed to storage until a Store Bank Request has been received" -
-        // and the instrument's 0x38 digest notification fires for every storage change "while
-        // receiving function 0x73 object dumps do not" (KRONOS_MIDI_SysEx.txt [73]/[38]). So a
-        // bank digest is still comparable against the arm-time baseline after the write burst,
-        // and a front-panel Store landing mid-burst is catchable there and nowhere else.
-        var erasedBanks = plan.BankTypeChanges.Select(b => (LibObj.Program, b.Bank)).ToHashSet();
-        async Task<string?> StalenessAbortAsync(bool beforeStore)
+        // The staleness gate, run ONCE, before any write. It compares each affected bank's
+        // digest against the arm-time baseline, so it is only meaningful while this plan has
+        // written nothing: a 0x73 write lands in the bank buffer the digest is hashed over
+        // (KRONOS_MIDI_SysEx.txt [38] - "generated from the bank data, in the same format as is
+        // sent via func 0x73 and 0x75 dumps"), so after the burst every affected bank mismatches
+        // by construction. See step 3b's note for why a post-write re-check cannot use digests.
+        async Task<string?> StalenessAbortAsync()
         {
             var unprotected = new List<string>();
             foreach (var (obj, bank) in plan.Stores)
             {
-                // Step 2b's 0x7C reformat is itself a storage change, so this bank's digest
-                // legitimately no longer matches the baseline - it is unprotected from that point
-                // on by construction (the changeset rewrites every slot of it regardless).
-                if (beforeStore && erasedBanks.Contains((obj, bank))) continue;
-
                 var cur = await ex.BankDigestAsync(obj, bank).ConfigureAwait(false);
                 if (cur == null || !plan.DigestBaseline.TryGetValue((obj, bank), out var baseline))
                 {
@@ -208,10 +207,7 @@ static partial class Librarian
                     continue;
                 }
                 if (!cur.AsSpan().SequenceEqual(baseline))
-                    return $"ABORT: {StoreLabel(obj, bank)} changed since preview (edited at the panel?) - nothing was Stored"
-                         + (beforeStore
-                            ? "; this plan's 0x73 writes ARE already in the instrument's volatile bank buffer, and a Store from the panel would commit them - replay backups to be safe"
-                            : "");
+                    return $"ABORT: {StoreLabel(obj, bank)} changed since preview (edited at the panel?) - nothing was Stored";
             }
             if (unprotected.Count > 0)
                 Note($"WARNING: no digest for {string.Join(", ", unprotected)} - staleness gate cannot protect {(unprotected.Count == 1 ? "that bank" : "those banks")}");
@@ -219,7 +215,7 @@ static partial class Librarian
         }
 
         // 2. Staleness gate - abort if any affected bank changed since arm.
-        if (await StalenessAbortAsync(beforeStore: false).ConfigureAwait(false) is { } stale)
+        if (await StalenessAbortAsync().ConfigureAwait(false) is { } stale)
             return (false, steps, stale);
         Note("staleness gate passed");
 
@@ -244,11 +240,51 @@ static partial class Librarian
                 return (false, steps, $"ABORT: write rejected (Reply {rc}) for {StoreLabel(w.Obj, w.Bank)} idx {w.Index} - nothing Stored; replay backups to be safe");
         }
 
-        // 3b. Re-check immediately before committing - catches a front-panel Store or PCG load
-        // that landed DURING the write burst above, which the pre-write gate cannot see.
-        if (await StalenessAbortAsync(beforeStore: true).ConfigureAwait(false) is { } staleNow)
-            return (false, steps, staleNow);
-        Note("staleness gate re-checked before Store");
+        // 3b. Post-write gate - catches a front-panel Store or PCG load that landed DURING the
+        // write burst above, which the pre-write gate structurally cannot see.
+        //
+        // NOT a digest re-check. That is what this used to be, and it aborted EVERY commit: a
+        // 0x73 write lands in the bank buffer the digest is hashed over ([38] "generated from the
+        // bank data, in the same format as is sent via func 0x73 and 0x75 dumps"), so after the
+        // burst every affected bank mismatches its arm-time baseline by construction. [73]'s "not
+        // committed to storage until a Store Bank Request" is about persistence, not about what
+        // is present to hash. Observed directly: gate 2 passes, a post-write digest re-check
+        // fails, and the only thing in between is our own writes.
+        //
+        // The detector that does work is the unsolicited 0x38 the instrument PUSHES for exactly
+        // this class of event and explicitly not for our 0x73 writes ([38]). Hardware-confirmed:
+        // a panel Store pushes obj/bank in bytes 5-6, only on a real change (a no-diff Store
+        // pushes nothing, so no false aborts), twice ~100 ms apart - which is why the baseline is
+        // compared for inequality rather than counted.
+        //
+        // UNVERIFIED, and the reason the pass note below says only what was OBSERVED: whether an
+        // instrument that answers request/reply SysEx necessarily also transmits unsolicited
+        // pushes is not established. If some Global/MIDI setting can enable the first and not the
+        // second, this gate goes quiet without going null, and a quiet gate would be a fail-open
+        // on exactly the hazard it exists for. Never reword the note into a claim of safety.
+        {
+            var unwatched = new List<string>();
+            foreach (var (obj, bank) in plan.Stores)
+            {
+                int? pushes = ex.StorageChangeCountFor(obj, bank);
+                if (pushes == null || !plan.StorageChangeBaseline.TryGetValue((obj, bank), out var armed))
+                {
+                    // Same policy as the digest gate's `unprotected`: a bank whose pushes could
+                    // not be watched must never look like a bank that was watched and stayed
+                    // quiet. Say it out loud instead - shipping a silent pass here would be the
+                    // same fail-open class of bug as the digest gate this replaces.
+                    unwatched.Add(StoreLabel(obj, bank));
+                    continue;
+                }
+                if (pushes != armed)
+                    return (false, steps, $"ABORT: {StoreLabel(obj, bank)} was Stored on the instrument during this commit's writes - nothing was Stored by us"
+                                        + "; this plan's 0x73 writes ARE already in the instrument's volatile bank buffer, and a Store from the panel would commit them - replay backups to be safe");
+            }
+            if (unwatched.Count > 0)
+                Note($"WARNING: no storage-change notifications for {string.Join(", ", unwatched)} - a Store made at the panel during this commit's writes would not have been caught");
+            else
+                Note("no panel-Store notification seen during the write burst");
+        }
 
         // 4. Commit each affected bank.
         foreach (var (obj, bank) in plan.Stores)
