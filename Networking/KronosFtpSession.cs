@@ -8,20 +8,24 @@ static class KronosFtpSession
     // Shared across every caller (MainWindow's own connect flow, the new Librarian's PCG
     // pane, ...) - this is genuinely one FTP session concept for whichever Kronos is
     // currently connected, not something each feature should track separately.
-    static bool _authenticated;
-    static string? _authenticatedHost;
+    // The full identity a verification actually proved, not just the host. Keying on the host
+    // alone meant changing the port or the username in Settings still hit the cached "yes" and
+    // skipped verification entirely, so credentials that had never been checked were treated as
+    // known-good. Comparing the whole tuple makes any settings change invalidate the cache by
+    // construction, with no reset call site to remember.
+    static (string Host, int Port, string User)? _authIdentity;
 
     // Call when an existing FTP session is known to be invalid (e.g. the daemon connection
     // itself rejected auth) so the next EnsureLoginAsync re-verifies instead of trusting a
     // stale "already authenticated" flag.
-    public static void ResetAuthentication() => _authenticated = false;
+    public static void ResetAuthentication() => _authIdentity = null;
 
     // Mutates `settings` in place (Username/Password) and saves it if the user checked
     // "save password".
     public static async Task<bool> EnsureLoginAsync(Window owner, AppSettings settings, string host)
     {
-        if (_authenticated && _authenticatedHost == host) return true;
-        _authenticated = false;
+        if (_authIdentity == (host, settings.FtpPort, settings.FtpUsername)) return true;
+        _authIdentity = null;
 
         // Silent verify with cached credentials - if they work, skip the dialog entirely.
         if (!string.IsNullOrEmpty(settings.FtpUsername))
@@ -30,8 +34,7 @@ static class KronosFtpSession
                 .ConfigureAwait(false);
             if (silentOk)
             {
-                _authenticated = true;
-                _authenticatedHost = host;
+                _authIdentity = (host, settings.FtpPort, settings.FtpUsername);
                 return true;
             }
         }
@@ -54,8 +57,7 @@ static class KronosFtpSession
 
         if (dialogOk)
         {
-            _authenticated = true;
-            _authenticatedHost = host;
+            _authIdentity = (host, settings.FtpPort, settings.FtpUsername);
             return true;
         }
 

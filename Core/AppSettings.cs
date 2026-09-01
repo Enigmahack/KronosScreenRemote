@@ -56,6 +56,13 @@ public class AppSettings
     // missing-reference / bank-type REFUSE gates (those catch writes the Kronos would mangle).
     public bool LibrarianForceDestructiveWrite { get; set; } = false;
 
+    // Librarian: which direction the Sync Library button's PLAIN CLICK runs, chosen from its own
+    // dropdown and remembered across sessions. Deliberately persisted rather than reset per
+    // session: the whole point of remembering is that a repeated workflow costs one click. See
+    // LibrarianSyncMode - the button's LABEL always names the current mode, so a remembered
+    // destructive choice can never be invisible.
+    public LibrarianSyncMode LibrarianSyncMode { get; set; } = LibrarianSyncMode.TwoWay;
+
     // MIDI / SysEx
     // Which backend carries MIDI/SysEx to the Kronos (screen/video stays TCP).
     // Auto prefers a directly-connected Kronos USB-MIDI device, else the daemon.

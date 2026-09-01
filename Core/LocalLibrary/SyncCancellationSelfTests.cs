@@ -103,9 +103,9 @@ static class SyncCancellationSelfTests
     {
         int _digestCalls;
 
-        public async Task<byte[]?> BankDigestAsync(int obj, int bank)
+        public async Task<byte[]?> BankDigestAsync(int obj, int bank, CancellationToken ct = default)
         {
-            var result = await inner.BankDigestAsync(obj, bank);
+            var result = await inner.BankDigestAsync(obj, bank, ct);
             if (++_digestCalls >= cancelAfter) cts.Cancel();
             return result;
         }
@@ -116,8 +116,8 @@ static class SyncCancellationSelfTests
         public Task SendRawAsync(byte[] data) => inner.SendRawAsync(data);
         public Task<int> ChangeProgramBankTypeAsync(int bank, bool isExi) => inner.ChangeProgramBankTypeAsync(bank, isExi);
         public int? StorageChangeCountFor(int obj, int bank) => inner.StorageChangeCountFor(obj, bank);
-        public Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index) => inner.DumpObjectAsync(obj, bank, index);
-        public Task<Dictionary<int, ObjectDump>> DumpBankBulkAsync(int obj, int bank, int count) => inner.DumpBankBulkAsync(obj, bank, count);
+        public Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index, CancellationToken ct = default) => inner.DumpObjectAsync(obj, bank, index, ct);
+        public Task<Dictionary<int, ObjectDump>> DumpBankBulkAsync(int obj, int bank, int count, CancellationToken ct = default) => inner.DumpBankBulkAsync(obj, bank, count, ct);
         public ObjLoc? CurrentPerformanceLoc() => inner.CurrentPerformanceLoc();
         public Task<ProgramBankTypes?> RequestProgramBankTypesAsync() => inner.RequestProgramBankTypesAsync();
         public IReadOnlyDictionary<int, string> CachedBankNames(int type, int objBank) => inner.CachedBankNames(type, objBank);
@@ -133,21 +133,21 @@ static class SyncCancellationSelfTests
     {
         int _bulkCalls;
 
-        public async Task<Dictionary<int, ObjectDump>> DumpBankBulkAsync(int obj, int bank, int count)
+        public async Task<Dictionary<int, ObjectDump>> DumpBankBulkAsync(int obj, int bank, int count, CancellationToken ct = default)
         {
-            var result = await inner.DumpBankBulkAsync(obj, bank, count);
+            var result = await inner.DumpBankBulkAsync(obj, bank, count, ct);
             if (++_bulkCalls >= cancelAfterCalls) cts.Cancel();
             return result;
         }
 
-        public Task<byte[]?> BankDigestAsync(int obj, int bank) => inner.BankDigestAsync(obj, bank);
+        public Task<byte[]?> BankDigestAsync(int obj, int bank, CancellationToken ct = default) => inner.BankDigestAsync(obj, bank, ct);
         public Task BackupObjectsAsync(IReadOnlyList<WriteOp> ops, string path) => inner.BackupObjectsAsync(ops, path);
         public Task<int> WriteObjectAsync(WriteOp op) => inner.WriteObjectAsync(op);
         public Task<int> StoreBankAsync(int obj, int bank) => inner.StoreBankAsync(obj, bank);
         public Task SendRawAsync(byte[] data) => inner.SendRawAsync(data);
         public Task<int> ChangeProgramBankTypeAsync(int bank, bool isExi) => inner.ChangeProgramBankTypeAsync(bank, isExi);
         public int? StorageChangeCountFor(int obj, int bank) => inner.StorageChangeCountFor(obj, bank);
-        public Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index) => inner.DumpObjectAsync(obj, bank, index);
+        public Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index, CancellationToken ct = default) => inner.DumpObjectAsync(obj, bank, index, ct);
         public ObjLoc? CurrentPerformanceLoc() => inner.CurrentPerformanceLoc();
         public Task<ProgramBankTypes?> RequestProgramBankTypesAsync() => inner.RequestProgramBankTypesAsync();
         public IReadOnlyDictionary<int, string> CachedBankNames(int type, int objBank) => inner.CachedBankNames(type, objBank);

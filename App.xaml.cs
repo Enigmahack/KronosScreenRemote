@@ -79,6 +79,7 @@ public partial class App : Application
             fails.AddRange(SamplePhase14SelfTests.SelfTest());
             fails.AddRange(SamplePhase15SelfTests.SelfTest());
             fails.AddRange(SamplePhase16SelfTests.SelfTest());
+            fails.AddRange(ReviewHardeningSelfTests.SelfTest());
             fails.AddRange(SamplePhase17SelfTests.SelfTest());
             fails.AddRange(SamplePhase18SelfTests.SelfTest());
             fails.AddRange(SamplePhase19SelfTests.SelfTest());

@@ -29,6 +29,9 @@ sealed class KmpZone
     {
         var kmpDir = System.IO.Path.GetDirectoryName(kmpPath) ?? "";
         var kmpBase = System.IO.Path.GetFileNameWithoutExtension(kmpPath);
-        return System.IO.Path.Combine(kmpDir, kmpBase, Filename);
+        var zoneDir = System.IO.Path.Combine(kmpDir, kmpBase);
+        // Filename is a raw 12-byte field off the wire; Path.Combine would drop zoneDir
+        // entirely for a rooted value and walk out of it for "..". See SamplePathGuard.
+        return SamplePathGuard.EnsureUnder(zoneDir, System.IO.Path.Combine(zoneDir, Filename), Filename);
     }
 }

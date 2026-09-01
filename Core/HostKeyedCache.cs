@@ -3,6 +3,14 @@ using System.Text.Json;
 
 namespace KronosScreenRemote;
 
+enum JsonCacheRead
+{
+    Absent,      // nothing on disk yet - a fresh install. An empty value is the right answer.
+    Ok,
+    Unreadable,  // a file IS there and could not be parsed. An empty value is a LIE, and
+                 // persisting one destroys whatever the file still held.
+}
+
 // One JSON file, one lock, atomic whole-file read-modify-write.
 // Serialization defaults to System.Text.Json but is injectable, for callers that need to
 // preserve a specific on-disk shape while still getting the lock + I/O plumbing.
@@ -26,18 +34,28 @@ sealed class JsonFileCache<T> where T : class
     // Whole-file read. Returns null when the file is absent, empty-valued, or unreadable -
     // callers supply their own empty (?? new()). An unlocked read racing a Write hits a
     // sharing violation, so the lock here is what keeps a load from silently reporting empty.
-    public T? Read()
+    public T? Read() => ReadState().Value;
+
+    // The distinction Read() cannot express, and the one that matters to any caller holding
+    // data it would otherwise overwrite: "there is no file" and "there is a file I could not
+    // parse" are opposite situations. Collapsing them is what let a corrupt index load as an
+    // empty library and then get saved back over the still-good bytes.
+    public (JsonCacheRead State, T? Value) ReadState()
     {
         lock (_lock)
         {
-            try
+            bool sawAny = false;
+            foreach (var candidate in AtomicFile.CandidatesForRead(_pathFn()))
             {
-                var path = _pathFn();
-                if (!File.Exists(path)) return null;
-                return _deserialize(File.ReadAllText(path));
+                sawAny = true;
+                try
+                {
+                    if (_deserialize(File.ReadAllText(candidate)) is { } value)
+                        return (JsonCacheRead.Ok, value);
+                }
+                catch (Exception ex) { AppLog.Warn($"[{_tag}] load failed for '{candidate}': {ex.Message}"); }
             }
-            catch (Exception ex) { AppLog.Warn($"[{_tag}] load failed: {ex.Message}"); }
-            return null;
+            return sawAny ? (JsonCacheRead.Unreadable, null) : (JsonCacheRead.Absent, null);
         }
     }
 
@@ -45,7 +63,7 @@ sealed class JsonFileCache<T> where T : class
     {
         lock (_lock)
         {
-            try { File.WriteAllText(_pathFn(), _serialize(value)); }
+            try { AtomicFile.WriteAllText(_pathFn(), _serialize(value)); }
             catch (Exception ex) { AppLog.Warn($"[{_tag}] save failed: {ex.Message}"); }
         }
     }
@@ -59,9 +77,8 @@ sealed class JsonFileCache<T> where T : class
         {
             try
             {
-                var path = _pathFn();
-                T current = (File.Exists(path) ? _deserialize(File.ReadAllText(path)) : null) ?? fallback();
-                File.WriteAllText(path, _serialize(mutate(current)));
+                T current = ReadState().Value ?? fallback();
+                AtomicFile.WriteAllText(_pathFn(), _serialize(mutate(current)));
             }
             catch (Exception ex) { AppLog.Warn($"[{_tag}] save failed: {ex.Message}"); }
         }

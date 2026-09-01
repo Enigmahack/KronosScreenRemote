@@ -375,7 +375,7 @@ public static class AppMessages
             // that item no longer needs a slot.
             public static string AutoFillResult(int resolved, int stillStaged)
             {
-                string msg = $"Auto-Fill placed {resolved} item(s) - review, then Commit Changes.";
+                string msg = $"Auto-Fill placed {resolved} item(s) - review, then Sync Library.";
                 if (stillStaged > 0) msg += $" {stillStaged} didn't fit and stay staged.";
                 return msg;
             }
@@ -402,6 +402,7 @@ public static class AppMessages
         public static class Pcg
         {
             public static string LoadFailed(string detail)   => $"Load failed: {detail}";
+            public static string Loading(string fileName)    => $"Loading {fileName}...";
             public static string NotRecognizedPcg(string fileName) => $"{fileName} is not a recognizable Kronos .pcg file.";
             public static string Loaded(string fileName, int count) => $"Loaded {fileName} - {count} object(s).";
             public static string RejectedBanksSuffix(int count) => $" ({count} bank chunk(s) couldn't be read - see log)";
@@ -441,10 +442,8 @@ public static class AppMessages
                 $"Push this library's copy of {count} conflicted object(s) over the Kronos?\n\n"
                 + $"Banks affected: {banks}\n\n"
                 + "Those banks changed on the Kronos since this library last pulled them. Continuing "
-                + "means the next Commit overwrites whatever changed there with your local copy.\n\n"
-                + "To keep the Kronos copy instead, cancel and run Sync Library.";
-            public const string CommitTooltip =
-                "Validate and push every pending local change now, without pulling first.";
+                + "means the next push overwrites whatever changed there with your local copy.\n\n"
+                + "To keep the Kronos copy instead, cancel and run Sync Library in 2-Way or Pull Only.";
 
             // ── Sync-row status (LibrarianShellViewModel) ──
             public const string Indexing        = "Indexing local library...";
@@ -458,7 +457,7 @@ public static class AppMessages
                 + (notPushed > 0 ? $" {notPushed} NOT pushed - see below." : "");
             // Pull succeeded and nothing was locally dirty to push back - a normal, successful
             // outcome, not the CHECK/warning ChangesetBuilder's early-return produces for the same
-            // state (that warning is meant for Commit Changes, where "nothing to push" with no
+            // state (that warning is meant for Push Only, where "nothing to push" with no
             // preceding pull is more likely a mistaken click).
             public static string SyncComplete(bool full, int fetched, int conflicts) =>
                 $"{(full ? "Full Sync" : "Sync")} Complete - pulled {fetched} object(s)"
@@ -478,6 +477,30 @@ public static class AppMessages
                 $"Pushed {written} object(s)." + (deleted > 0 ? $" Deleted {deleted}." : "")
                 + (notPushed > 0 ? $" {notPushed} NOT pushed - see below." : "");
             public const string CommitFailed         = "Commit failed - see warning.";
+
+            // Sync Library dropdown - Pull Only / Push Only. (2-Way reuses SyncResult/SyncComplete.)
+            public const string PullOnlyCancelled = "Pull cancelled - nothing was changed.";
+            public static string PullOnlyResult(int fetched, int discarded) =>
+                $"Pull complete - {fetched} object(s) pulled"
+                + (discarded > 0 ? $", {discarded} local change(s) discarded." : ", no local changes to discard.");
+            public static string PullDiscardPrompt(int count) =>
+                "Pull Only replaces the local library with what is on the Kronos."
+                + Environment.NewLine + Environment.NewLine
+                + $"{count} pending local change(s) - edits and slots marked for deletion - will be "
+                + "DISCARDED. This cannot be undone."
+                + Environment.NewLine + Environment.NewLine
+                + "Continue?";
+            public static string PushConflictSummary(int count) =>
+                $"{count} object(s) changed on the Kronos since the last sync.";
+            public static string PushOverwritePrompt(string reason) =>
+                "Push Only could not write safely:"
+                + Environment.NewLine + Environment.NewLine + reason
+                + Environment.NewLine + Environment.NewLine
+                + "Overwrite the Kronos with the local library anyway? This is DESTRUCTIVE - "
+                + "whatever is on the instrument for those objects is replaced.";
+            public const string PushOverwriting = "Overwriting Kronos from local library...";
+            public const string PullDiscardTitle   = "Discard Local Changes?";
+            public const string PushOverwriteTitle = "Overwrite the Kronos?";
             public const string CancelledPendingDeps = "Cancelled - unresolved dependencies still pending.";
             // A Sync/Commit that threw partway (as opposed to a clean push failure returning an
             // error) - surfaced so the operation doesn't look like it silently did nothing.

@@ -251,7 +251,7 @@
 
         <DockPanel Grid.Row="0" Margin="0 0 0 8">
             <!-- Docked Right so it sits at the top-right of the window, directly above the
-                 "Loaded PCG File" pane (Grid.Column="4" below) - a live filter over that pane's
+                 "Loaded PCG File" pane (Grid.Column="0" below) - a live filter over that pane's
                  tree only (Local Library/Merge Window are untouched). -->
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center" Margin="16 0 0 0">
                 <TextBlock Text="Search PCG:" VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
@@ -260,12 +260,61 @@
                          ToolTip="Filters the tree below by name, bank, category, EXi type, or reference."/>
             </StackPanel>
             <StackPanel Orientation="Horizontal">
-                <Button x:Name="BTN_Sync" Content="Sync Library" Width="120"
-                        Command="{Binding SyncLibraryCommand}"
-                        ToolTip="Pull the library, then push every pending local change."/>
+                <!-- Split button: the main half runs SyncMode (its label always NAMES that mode,
+                     so a remembered destructive choice can never look like the safe default), the
+                     narrow half picks it. Replaces the old Sync Library + Commit Changes pair -
+                     Commit Changes was only ever the push half (SyncPipeline.CommitChangesAsync
+                     aliases PushAsync), and is now the "Push Only" entry below. -->
+                <Border BorderBrush="{StaticResource DividerBrush}" BorderThickness="1" CornerRadius="3">
+                    <StackPanel Orientation="Horizontal">
+                        <Button x:Name="BTN_Sync" MinWidth="104" BorderThickness="0"
+                                Content="{Binding SyncButtonLabel}"
+                                Command="{Binding SyncLibraryCommand}"
+                                ToolTipService.ShowOnDisabled="True" ToolTip="{Binding SyncTooltip}">
+                            <Button.Style>
+                                <!-- Push Only overwrites the instrument, so it wears the same danger
+                                     colours the old Commit Changes button did - losing that with the
+                                     button would have made the destructive direction the least
+                                     conspicuous one. Pull Only is destructive to LOCAL work only and
+                                     always confirms first, so it stays neutral here. -->
+                                <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding SyncModeIsPushOnly}" Value="True">
+                                            <Setter Property="Background" Value="{StaticResource DangerBackgroundBrush}"/>
+                                            <Setter Property="Foreground" Value="{StaticResource DangerTextBrush}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Rectangle Width="1" Fill="{StaticResource DividerBrush}" Margin="0 3"/>
+                        <Button x:Name="BTN_SyncMode" Width="20" BorderThickness="0" Background="Transparent"
+                                Content="&#x25BE;" Padding="0" Click="OnSyncModeDropdown"
+                                ToolTip="Choose sync direction">
+                            <Button.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Pull Only" IsCheckable="True"
+                                              IsChecked="{Binding SyncModeIsPullOnly, Mode=TwoWay}"
+                                              ToolTip="Replace the local library with what is on the Kronos. Pending local changes are discarded (you are asked first)."/>
+                                    <MenuItem Header="Push Only" IsCheckable="True"
+                                              IsChecked="{Binding SyncModeIsPushOnly, Mode=TwoWay}"
+                                              ToolTip="Write every pending local change to the Kronos. If the Kronos has changed since the last sync you are asked before overwriting it."/>
+                                    <MenuItem Header="2-Way Sync" IsCheckable="True"
+                                              IsChecked="{Binding SyncModeIsTwoWay, Mode=TwoWay}"
+                                              ToolTip="Pull the library, then push every pending local change."/>
+                                </ContextMenu>
+                            </Button.ContextMenu>
+                        </Button>
+                    </StackPanel>
+                </Border>
+                <!-- Bounds the PULL half only, so it is inert in Push Only - disabled rather than
+                     hidden, so the control does not jump around as the mode changes. -->
                 <CheckBox Content="Force Full Sync" VerticalAlignment="Center" Margin="10 0 0 0"
                           IsChecked="{Binding ForceFullPull}"
-                          ToolTip="Sync every program, combi, and set list, not just what changed."/>
+                          IsEnabled="{Binding SyncModeHasPullHalf}"
+                          ToolTipService.ShowOnDisabled="True"
+                          ToolTip="Sync every program, combi, and set list, not just what changed. Applies to the pull half only."/>
                 <Button x:Name="BTN_Undo" Content="Undo" Padding="10 2" Margin="16 0 0 0"
                         Command="{Binding UndoCommand}" ToolTip="{Binding UndoLabel}"/>
                 <TextBlock VerticalAlignment="Center" Margin="16 0 0 0"
@@ -364,7 +413,7 @@
                 <ColumnDefinition Width="1*"/>
             </Grid.ColumnDefinitions>
 
-            <GroupBox Grid.Column="0" Header="Local Library">
+            <GroupBox Grid.Column="4" Header="Local Library">
                 <Grid Margin="6">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -570,7 +619,7 @@
                 </Grid>
             </GroupBox>
 
-            <GroupBox Grid.Column="4" Header="Loaded PCG File">
+            <GroupBox Grid.Column="0" Header="Loaded PCG File">
                 <Grid Margin="6">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -746,17 +795,8 @@
         </Border>
 
         <DockPanel Grid.Row="5" Margin="0 8 0 0">
-            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Margin="16 0 0 0">
-                <Button x:Name="BTN_Cancel" Content="Cancel" Width="90" Margin="0 0 8 0"
-                        Click="OnCancelButton"
-                        ToolTip="Close the Librarian. Local edits are already saved."/>
-                <Button x:Name="BTN_Commit" Content="Commit Changes" Width="130"
-                        Style="{StaticResource DangerButtonStyle}"
-                        Command="{Binding CommitChangesCommand}"
-                        ToolTipService.ShowOnDisabled="True" ToolTip="{Binding CommitTooltip}"/>
-            </StackPanel>
             <TextBlock x:Name="TXT_Hint" FontSize="11" Foreground="#FF777777" VerticalAlignment="Center"
-                       Text="Local edits never touch hardware until Sync Library or Commit Changes. Select an item or a whole bank, then Cut/Copy/Paste (toolbar, right-click, or Ctrl+X/C/V) or drag it - Copy fills an empty slot or a whole bank; Cut only swaps onto another occupied slot. F2 to rename, Del to mark for deletion (fades in place - Del again to restore). Drag from the PCG pane to copy in, or right-click it to move into the Merge Window; double-click for properties."/>
+                       Text="Sync Library button (Pull Only, Push Only, or 2-Way) syncs up, down, or both. Drag from the PCG pane to copy in, or right-click it to move into the Merge Window; double-click for properties."/>
         </DockPanel>
     </Grid>
 </local:ThemedWindow>

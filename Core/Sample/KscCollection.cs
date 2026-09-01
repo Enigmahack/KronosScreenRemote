@@ -71,7 +71,7 @@ sealed class KscCollection
         path ??= Path;
         if (path is null) throw new InvalidOperationException("no path given and none stored");
         var bytes = ToBytes(System.IO.Path.GetFileName(path));
-        File.WriteAllBytes(path, bytes);
+        AtomicFile.WriteAllBytes(path, bytes, keepBackup: false);
         Path = path;
     }
 
@@ -173,15 +173,27 @@ sealed class KscCollection
         if (Directory.Exists(contentDir))
         {
             foreach (var path in Directory.EnumerateFiles(contentDir, "*.KSF", SearchOption.AllDirectories))
-            {
-                KsfSample? s;
-                try { s = KsfSample.Open(File.ReadAllBytes(path)); }
-                catch { continue; }
-                if (s == null) continue;
-                if (max == null || s.Sno1 > max) max = s.Sno1;
-            }
+                // Header-only: the old ReadAllBytes + full Open() decoded every sample's entire
+                // PCM payload to reach one 4-byte field.
+                if (KsfSample.ReadSno1(path) is { } sno && (max == null || sno > max)) max = sno;
         }
         return max == null ? 0 : max.Value + 1;
+    }
+
+    // One disk scan for a whole batch of imports, handing out consecutive ids from it.
+    //
+    // NextFreeSno1 has to stay a disk scan (Sno1 is not held in memory anywhere - KmpZone and
+    // KmpMultisample never carry it - so a counter alone would collide across app restarts and
+    // concurrent sessions). But calling it per import is O(imports x existing .KSF files), and
+    // the stereo path calls it TWICE per sample because the second call has to observe the
+    // first half already written. Seeding once and incrementing gives the same uniqueness
+    // guarantee for a batch at the cost of a single scan - and unlike hoisting the call, it
+    // still hands -L and -R distinct ids.
+    public sealed class Sno1Allocator
+    {
+        uint _next;
+        public Sno1Allocator(string contentDir) => _next = NextFreeSno1(contentDir);
+        public uint Next() => _next++;
     }
 
     // Build a fresh manifest by scanning <ksc-dir>/<ksc-basename>/ for .KMP/.KSF files

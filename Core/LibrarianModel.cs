@@ -170,7 +170,7 @@ sealed class MovePlan : IExecutablePlan
 interface IMoveExecutor
 {
     Task BackupObjectsAsync(IReadOnlyList<WriteOp> ops, string path);
-    Task<byte[]?> BankDigestAsync(int obj, int bank);
+    Task<byte[]?> BankDigestAsync(int obj, int bank, CancellationToken ct = default);
     Task<int> WriteObjectAsync(WriteOp op);   // Reply code (0 = OK); -1 = timeout
     Task<int> StoreBankAsync(int obj, int bank);
     Task SendRawAsync(byte[] data);

@@ -373,13 +373,13 @@ internal sealed class FakeSysExService : ISysExService
     public IReadOnlyDictionary<int, string> CachedBankNames(int type, int objBank) => new Dictionary<int, string>();
     public void ApplyMidiSettings(bool midiMonitorEnabled, bool proactivePoll, int pollIntervalSec, bool pollOnChanges) { }
     public Task<bool> SendMidiAsync(string hexBytes) => Task.FromResult(false);
-    public Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index) => Task.FromResult<ObjectDump?>(null);
-    public Task<Dictionary<int, ObjectDump>> DumpBankBulkAsync(int obj, int bank, int count) => Task.FromResult(new Dictionary<int, ObjectDump>());
+    public Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index, CancellationToken ct = default) => Task.FromResult<ObjectDump?>(null);
+    public Task<Dictionary<int, ObjectDump>> DumpBankBulkAsync(int obj, int bank, int count, CancellationToken ct = default) => Task.FromResult(new Dictionary<int, ObjectDump>());
     public ObjLoc? CurrentPerformanceLoc() => null;
     public Task<ProgramBankTypes?> RequestProgramBankTypesAsync() => Task.FromResult<ProgramBankTypes?>(null);
 
     public Task BackupObjectsAsync(IReadOnlyList<WriteOp> ops, string path) => Task.CompletedTask;
-    public Task<byte[]?> BankDigestAsync(int obj, int bank) => Task.FromResult<byte[]?>(null);
+    public Task<byte[]?> BankDigestAsync(int obj, int bank, CancellationToken ct = default) => Task.FromResult<byte[]?>(null);
     public Task<int> WriteObjectAsync(WriteOp op) => Task.FromResult(0);
     public Task<int> StoreBankAsync(int obj, int bank) => Task.FromResult(0);
     public Task<int> ChangeProgramBankTypeAsync(int bank, bool isExi) => Task.FromResult(0);

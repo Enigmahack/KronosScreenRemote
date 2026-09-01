@@ -13,12 +13,20 @@ sealed class LocalLibraryCache
     public string Root { get; }
     readonly LocalLibraryIndex _index;
 
-    // Guards _index.Entries writes (below) and _catalog/_catalogBuildTask/_pendingCatalogPatches
-    // against BuildCatalogInBackground's snapshot phase, which reads _index.Entries from a
-    // thread-pool thread while the UI thread may be mutating it - see BuildCatalogAsync's own
-    // comment. Plain reads (GetCurrentBody, Exists, etc.) stay lock-free: a Dictionary supports
-    // any number of concurrent readers, it's only a read/write or write/write pair racing that
-    // corrupts it, so only writers (and this one background reader) need to coordinate.
+    // Guards EVERY _index.Entries access, read included - not just writes.
+    //
+    // Reads used to be lock-free on the reasoning that "a Dictionary supports any number of
+    // concurrent readers." True, but it never held here: the writers are not all on the UI
+    // thread. LibraryPullPipeline is ConfigureAwait(false) throughout, so RecordPullBaselines
+    // and the push-baseline/RecordEdits/Remove paths commit from a thread-pool thread while the
+    // Librarian window stays live and its tree keeps reading. Those writers ADD and REMOVE
+    // keys, which rehashes - so an unlocked reader could see a half-built bucket chain, and an
+    // unlocked foreach (FindByContentHash, AllObjects) could throw "Collection was modified"
+    // mid-refresh.
+    //
+    // Reads take the lock only for the dictionary lookup itself; the expensive part (a
+    // LocalObjectStore blob read) happens after it is released, so this does not serialise disk
+    // I/O. Also guards _catalog/_catalogBuildTask/_pendingCatalogPatches.
     readonly object _lock = new();
 
     // Lazily built, then kept in sync in-place by PatchCatalog below - NOT rebuilt from disk
@@ -55,16 +63,31 @@ sealed class LocalLibraryCache
 
     // ── Reads ─────────────────────────────────────────────────────────────────
 
+    // The single locked lookup every per-slot reader below is built from. Returning the entry
+    // (an immutable record) rather than exposing the dictionary is what keeps the lock's scope
+    // honest: a caller cannot accidentally hold a reference INTO the collection.
+    LocalIndexEntry? Entry(int objType, int bank, int number)
+    {
+        lock (_lock)
+            return _index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e) ? e : null;
+    }
+
+    // MATERIALISED under the lock, deliberately. The scanning readers below return IEnumerable,
+    // and a lazy LINQ chain over the live dictionary would be enumerated by the caller long
+    // after any lock was released - which is precisely the race being closed.
+    List<KeyValuePair<string, LocalIndexEntry>> EntriesSnapshot()
+    {
+        lock (_lock) return _index.Entries.ToList();
+    }
+
     public byte[]? GetCurrentBody(int objType, int bank, int number) =>
-        _index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e)
-            ? LocalObjectStore.TryGet(Root, e.CurrentHash) : null;
+        Entry(objType, bank, number) is { } e ? LocalObjectStore.TryGet(Root, e.CurrentHash) : null;
 
     public byte[]? GetBaselineBody(int objType, int bank, int number) =>
-        _index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e)
-            ? LocalObjectStore.TryGet(Root, e.BaselineHash) : null;
+        Entry(objType, bank, number) is { } e ? LocalObjectStore.TryGet(Root, e.BaselineHash) : null;
 
     public byte? GetVersion(int objType, int bank, int number) =>
-        _index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e) ? e.Version : null;
+        Entry(objType, bank, number)?.Version;
 
     // The body's CAS hash - index-only, no blob read. Lets a caller key a cache of anything
     // derived purely from the body bytes (see LibrarianShellViewModel's dependency-walk memo)
@@ -72,43 +95,42 @@ sealed class LocalLibraryCache
     // Null for an untracked slot; can also be the empty NoBaselineSentinel, which callers must
     // not treat as an identity (see LocalObjectStore.TryGet's own handling of it).
     public string? GetContentHash(int objType, int bank, int number) =>
-        _index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e) ? e.CurrentHash : null;
+        Entry(objType, bank, number)?.CurrentHash;
 
     public bool IsDirty(int objType, int bank, int number) =>
-        _index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e) &&
-        e.CurrentHash != e.BaselineHash;
+        Entry(objType, bank, number) is { } e && e.CurrentHash != e.BaselineHash;
 
     public bool IsConflicted(int objType, int bank, int number) =>
-        _index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e) && e.Conflicted;
+        Entry(objType, bank, number)?.Conflicted ?? false;
 
     // Cached at write time (see LocalIndexEntry's own doc comment) - index-only, no blob
     // read, safe to call once per node on every tree refresh. Defaults to true (no red dot)
     // for an object that somehow isn't tracked at all.
     public bool HasResolvedDependencies(int objType, int bank, int number) =>
-        !_index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e) || e.HasResolvedDependencies;
+        Entry(objType, bank, number)?.HasResolvedDependencies ?? true;
 
     // Cached at write time (LocalIndexEntry.HasSampleDependency) - index-only, no blob read,
     // safe to call once per node on every tree refresh (LocalLibraryPaneViewModel.MakeLeafNode).
     public bool HasSampleDependency(int objType, int bank, int number) =>
-        _index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e) && e.HasSampleDependency;
+        Entry(objType, bank, number)?.HasSampleDependency ?? false;
 
     // Which wire format a Program's body is in (EXi vs HD-1) - cached at write time (see
     // LocalIndexEntry's own doc comment), index-only, no blob read. Meaningless for Combi/
     // Set List; defaults to true there (never displayed).
     public bool IsExi(int objType, int bank, int number) =>
-        !_index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e) || e.IsExi;
+        Entry(objType, bank, number)?.IsExi ?? true;
 
     // Existence check with NO disk I/O (dictionary lookup only) - use this instead of
     // `GetCurrentBody(...) != null` for a plain "is anything here" test over many slots
     // (e.g. building a tree), since GetCurrentBody reads the full blob from the CAS store.
     public bool Exists(int objType, int bank, int number) =>
-        _index.Entries.ContainsKey(LocalLibraryIndex.Key(objType, bank, number));
+        Entry(objType, bank, number) != null;
 
     // Is this slot's occupant merely an INIT/blank placeholder? Index-only, no blob read - the
     // cached flag when we have one, else the name-only fallback for entries written before that
     // field existed (see LocalIndexEntry's own comment on why null is not "false").
     public bool IsInitSlot(int objType, int bank, int number) =>
-        _index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e)
+        Entry(objType, bank, number) is { } e
         && (e.IsInit ?? InitObjects.IsInitName(objType, e.DisplayName));
 
     // "Is there real content here?" - the test the free-slot search wants, as opposed to Exists,
@@ -174,13 +196,13 @@ sealed class LocalLibraryCache
     // "Does the library hold anything at all?" - index-only, no disk I/O. Drives the pane's
     // empty-state hint (LocalLibraryPaneViewModel.ShowEmptyHint): a fresh install, or the exe
     // run from a folder with no library beside it, starts with zero entries.
-    public bool HasAnyObjects => _index.Entries.Count > 0;
+    public bool HasAnyObjects { get { lock (_lock) return _index.Entries.Count > 0; } }
 
     // The cached name, decoded once at write time - NEVER touches the CAS blob store. Use
     // this for any display purpose (tree labels, dialog pre-fill); reserve GetCurrentBody
     // for callers that actually need the full body (an edit/move/push operation).
     public string GetDisplayName(int objType, int bank, int number) =>
-        _index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e) ? e.DisplayName : "";
+        Entry(objType, bank, number)?.DisplayName ?? "";
 
     // Searches the WHOLE library for an object matching `contentHash`, regardless of where it
     // lives - the primitive the placement pipeline needs to repoint a reference at whatever
@@ -192,7 +214,7 @@ sealed class LocalLibraryCache
     // anywhere (which one doesn't matter - they're byte-identical).
     public ObjLoc? FindByContentHash(int objType, string contentHash)
     {
-        foreach (var kv in _index.Entries)
+        foreach (var kv in EntriesSnapshot())
         {
             if (kv.Value.PendingDelete || kv.Value.CurrentHash != contentHash) continue;
             var loc = ParseKey(kv.Key);
@@ -204,15 +226,15 @@ sealed class LocalLibraryCache
     // The ObjType >= 0 filter drops ParseKey's malformed-key sentinel (-1,-1,-1) so it
     // can never leak into a caller's hardware request or tree node (see ParseKey).
     public IEnumerable<ObjLoc> AllObjects() =>
-        _index.Entries.Keys.Select(ParseKey).Where(loc => loc.ObjType >= 0);
+        EntriesSnapshot().Select(kv => ParseKey(kv.Key)).Where(loc => loc.ObjType >= 0).ToList();
 
     public IEnumerable<ObjLoc> PendingDeleteObjects() =>
-        _index.Entries.Where(kv => kv.Value.PendingDelete).Select(kv => ParseKey(kv.Key))
-              .Where(loc => loc.ObjType >= 0);
+        EntriesSnapshot().Where(kv => kv.Value.PendingDelete).Select(kv => ParseKey(kv.Key))
+              .Where(loc => loc.ObjType >= 0).ToList();
 
     public IEnumerable<ObjLoc> DirtyObjects() =>
-        _index.Entries.Where(kv => kv.Value.CurrentHash != kv.Value.BaselineHash).Select(kv => ParseKey(kv.Key))
-              .Where(loc => loc.ObjType >= 0);
+        EntriesSnapshot().Where(kv => kv.Value.CurrentHash != kv.Value.BaselineHash).Select(kv => ParseKey(kv.Key))
+              .Where(loc => loc.ObjType >= 0).ToList();
 
     public Dictionary<(int ObjType, int Bank), string> BankDigestBaselineHex()
     {
@@ -376,8 +398,8 @@ sealed class LocalLibraryCache
     // and what ResolveConflictsKeepMine walks. Distinct from DirtyObjects(): an object can be
     // dirty without ever having conflicted, and (until resolved) a conflicted one stays dirty.
     public IEnumerable<ObjLoc> ConflictedObjects() =>
-        _index.Entries.Where(kv => kv.Value.Conflicted).Select(kv => ParseKey(kv.Key))
-              .Where(loc => loc.ObjType >= 0);
+        EntriesSnapshot().Where(kv => kv.Value.Conflicted).Select(kv => ParseKey(kv.Key))
+              .Where(loc => loc.ObjType >= 0).ToList();
 
     // Clears the flag WITHOUT touching the edit or the baseline - "I looked, my copy wins."
     // Deliberately not a revert (DiscardLocalEdit is that), and deliberately not enough on its
@@ -601,7 +623,7 @@ sealed class LocalLibraryCache
     // Cached at write time, same discipline as HasResolvedDependencies/IsExi above - index-only,
     // no blob read, safe to call once per node on every tree refresh.
     public bool IsPendingDelete(int objType, int bank, int number) =>
-        _index.Entries.TryGetValue(LocalLibraryIndex.Key(objType, bank, number), out var e) && e.PendingDelete;
+        Entry(objType, bank, number)?.PendingDelete ?? false;
 
     // Local-only "marked for removal" flag (see LocalIndexEntry's own comment on why a fresh
     // Pull clears it with no extra code here). Does NOT touch CurrentHash/BaselineHash - it's

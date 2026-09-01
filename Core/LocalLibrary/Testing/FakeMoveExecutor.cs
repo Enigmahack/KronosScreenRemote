@@ -39,14 +39,14 @@ sealed class FakeMoveExecutor : ILibrarianService
     public void Seed(int obj, int bank, int number, byte version, byte[] body) =>
         _objects[(obj, bank, number)] = (version, body);
 
-    public Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index)
+    public Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index, CancellationToken ct = default)
     {
         CallLog.Add($"Dump:{obj}:{bank}:{index}");
         return Task.FromResult(_objects.TryGetValue((obj, bank, index), out var o)
             ? new ObjectDump(obj, bank, index, o.Version, o.Body) : null);
     }
 
-    public Task<Dictionary<int, ObjectDump>> DumpBankBulkAsync(int obj, int bank, int count)
+    public Task<Dictionary<int, ObjectDump>> DumpBankBulkAsync(int obj, int bank, int count, CancellationToken ct = default)
     {
         CallLog.Add($"BulkDump:{obj}:{bank}");
         var result = new Dictionary<int, ObjectDump>();
@@ -97,7 +97,7 @@ sealed class FakeMoveExecutor : ILibrarianService
     // format as is sent via func 0x73 and 0x75 dumps"; [73]'s "not committed to storage" is about
     // persistence, not about what is present to hash. Confirmed on hardware: the pre-write gate
     // passes and a post-write re-check fails with only our own writes in between.
-    public Task<byte[]?> BankDigestAsync(int obj, int bank)
+    public Task<byte[]?> BankDigestAsync(int obj, int bank, CancellationToken ct = default)
     {
         CallLog.Add($"Digest:{obj}:{bank}");
         if (NoDigestBanks.Contains((obj, bank))) return Task.FromResult<byte[]?>(null);

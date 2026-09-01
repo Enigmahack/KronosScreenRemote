@@ -43,9 +43,21 @@ sealed class SysExDumpCollector
     // LibraryPullPipeline would happily record a Kronos-populated slot as empty.
     public async Task<(List<byte[]> Messages, bool SendFailed)> CollectAsync(
         string requestHex, byte expectObj, int? expectedCount,
-        int idleMs = 600, int noResponseMs = 4000, int stallMs = 4000, int overallMs = 60000)
+        int idleMs = 600, int noResponseMs = 4000, int stallMs = 4000, int overallMs = 60000,
+        CancellationToken ct = default)
     {
-        await _gate.WaitAsync().ConfigureAwait(false);
+        // The gate takes the token too. Closing the Librarian used to leave not just the
+        // RUNNING collect going, but every collect QUEUED behind it - and a cancelled bank
+        // sweep's backlog is exactly what sits in that queue.
+        //
+        // Cancellation returns an EMPTY result rather than throwing. Every caller of this method
+        // handles "no reply" already (that is the whole SendFailed/empty-list contract); none of
+        // them catch OperationCanceledException, so letting one escape would turn closing the
+        // window - the exact thing this token exists to make clean - into an unhandled exception
+        // surfacing out of LibraryPullPipeline.
+        try { await _gate.WaitAsync(ct).ConfigureAwait(false); }
+        catch (OperationCanceledException) { return (new List<byte[]>(), false); }
+
         var  results       = new List<byte[]>();
         long lastMatchTicks = 0;
         long lastActTicks   = 0;
@@ -92,8 +104,16 @@ sealed class SysExDumpCollector
             var start = DateTime.Now;
             while (true)
             {
+                // Deliberately NOT Task.Delay(50, ct): that throws on cancel, and would throw
+                // here before the explicit check below ever ran. Breaking keeps the
+                // (Messages, SendFailed) contract and the `exit` log line describing what
+                // happened. A partial result is safe - LibraryPullPipeline already treats a
+                // missing digest as "changed", which re-checks more next time rather than
+                // losing anything. 50 ms is also the whole worst-case latency of polling the
+                // flag instead of waiting on it.
                 await Task.Delay(50).ConfigureAwait(false);
                 var now = DateTime.Now;
+                if (ct.IsCancellationRequested) { exit = "cancelled"; break; }
                 int c; lock (results) c = results.Count;
 
                 if (expectedCount.HasValue && c >= expectedCount.Value) { exit = "count"; break; }

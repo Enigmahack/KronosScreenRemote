@@ -2436,7 +2436,8 @@ partial class SampleEditorViewModel : ObservableObject
 
     // ── Saving ───────────────────────────────────────────────────────────────
 
-    public void SaveSelectedMultisample()
+    // Returns whether everything pending actually reached disk - see SaveSelectedSample.
+    public bool SaveSelectedMultisample()
     {
         KmpMultisample? m = null;
         string? path = null;
@@ -2462,7 +2463,7 @@ partial class SampleEditorViewModel : ObservableObject
         if (m == null && _dirtyMultisamples.Count == 0)
         {
             StatusText = "No multisample selected.";
-            return;
+            return true;
         }
 
         // Writes every multisample with pending edits, not just the selected one. Zone
@@ -2489,7 +2490,7 @@ partial class SampleEditorViewModel : ObservableObject
             {
                 AppLog.Error($"Sample Editor: multisample save '{msPath}' failed: {ex}");
                 StatusText = $"Save failed for '{Path.GetFileName(msPath)}': {ex.Message}";
-                return;
+                return false;
             }
         }
 
@@ -2498,6 +2499,7 @@ partial class SampleEditorViewModel : ObservableObject
             + (_dirtySamples.Count > 0
                 ? $" NOTE: {_dirtySamples.Count} sample edit(s) are still unsaved - use Save Sample too."
                 : "");
+        return true;
     }
 
     static KmpMultisample? FindMultisampleContaining(IEnumerable<SampleTreeNode> nodes, KmpZone zone)
@@ -2556,9 +2558,18 @@ partial class SampleEditorViewModel : ObservableObject
         if (!hadSamples && !hadZones) { StatusText = "No unsaved changes."; return; }
 
         var messages = new List<string>();
-        if (hadSamples) { SaveSelectedSample(); messages.Add(StatusText); }
-        if (hadZones) { SaveSelectedMultisample(); messages.Add(StatusText); }
-        SweepOrphanedRepositoryFiles();
+        bool allSaved = true;
+        if (hadSamples) { allSaved &= SaveSelectedSample(); messages.Add(StatusText); }
+        if (hadZones) { allSaved &= SaveSelectedMultisample(); messages.Add(StatusText); }
+
+        // ONLY after every write landed. The sweep decides what to delete from the IN-MEMORY
+        // zone names, so running it after a failed save deletes .KSF files the on-disk .KMP
+        // still points at - rename a zone, have its .KMP write fail, and the sweep removes the
+        // audio the surviving manifest references. It used to run unconditionally, because
+        // SaveSelectedSample's early return on failure hands control straight back here.
+        if (allSaved) SweepOrphanedRepositoryFiles();
+        else messages.Add("Orphan cleanup skipped - fix the save error first.");
+
         StatusText = string.Join("  ", messages);
     }
 
@@ -2567,12 +2578,14 @@ partial class SampleEditorViewModel : ObservableObject
     // mirrored operation but was NEVER saved (so the pair diverged on disk, quietly
     // undoing all the mirroring), and edits now survive navigating between zones, so
     // several samples can legitimately be pending at once.
-    public void SaveSelectedSample()
+    // Returns whether everything pending actually reached disk - SaveAllChanges gates the
+    // orphan sweep on it (see there).
+    public bool SaveSelectedSample()
     {
         if (_dirtySamples.Count == 0)
         {
             StatusText = _selectedSample == null ? "No sample loaded." : "No unsaved sample changes.";
-            return;
+            return true;
         }
 
         var saved = new List<string>();
@@ -2588,7 +2601,7 @@ partial class SampleEditorViewModel : ObservableObject
             {
                 AppLog.Error($"Sample Editor: sample save '{path}' failed: {ex}");
                 StatusText = $"Save failed for '{Path.GetFileName(path)}': {ex.Message}";
-                return;
+                return false;
             }
         }
 
@@ -2597,6 +2610,7 @@ partial class SampleEditorViewModel : ObservableObject
             + (_dirtyMultisamples.Count > 0
                 ? $" NOTE: {_dirtyMultisamples.Count} multisample(s) still have unsaved zone edits - use Save Multisample too."
                 : "");
+        return true;
     }
 
     // ── Import / Export (Phase 4) ───────────────────────────────────────────────
@@ -2979,6 +2993,9 @@ partial class SampleEditorViewModel : ObservableObject
         Directory.CreateDirectory(kmpDir);
 
         var failures = new List<string>();
+        // One scan for the whole batch instead of one per file (twice per stereo file) - see
+        // KscCollection.Sno1Allocator.
+        var sno1 = new KscCollection.Sno1Allocator(kmpDir);
         foreach (var audioPath in audioPaths)
         {
             try
@@ -2997,15 +3014,15 @@ partial class SampleEditorViewModel : ObservableObject
                     var (left, right) = AudioImport.ImportStereoToLR44100(audioPath);
                     var leftFileName = UniqueBareKsfFileName($"{sampleName}-L");
                     var rightFileName = UniqueBareKsfFileName($"{sampleName}-R");
-                    // Sno1 must be collection-unique (see
-                    // KscCollection.NextFreeSno1) - re-derived AFTER saving the left half
-                    // so the right half's scan sees it and can't collide with it.
-                    var leftKsf = new KsfSample { Name = sampleName, Suffix = "-L", SampleRate = (uint)AudioImport.TargetSampleRate, Flags = 0x81, Sno1 = KscCollection.NextFreeSno1(kmpDir) };
+                    // Sno1 must be collection-unique (see KscCollection.NextFreeSno1). The
+                    // allocator hands -L and -R consecutive ids, which is what the old
+                    // re-scan-after-saving-the-left-half achieved, without the second scan.
+                    var leftKsf = new KsfSample { Name = sampleName, Suffix = "-L", SampleRate = (uint)AudioImport.TargetSampleRate, Flags = 0x81, Sno1 = sno1.Next() };
                     leftKsf.SetSamples(left);
                     var leftPath = Path.Combine(kmpDir, leftFileName);
                     leftKsf.Save(leftPath);
 
-                    var rightKsf = new KsfSample { Name = sampleName, Suffix = "-R", SampleRate = (uint)AudioImport.TargetSampleRate, Flags = 0x81, Sno1 = KscCollection.NextFreeSno1(kmpDir) };
+                    var rightKsf = new KsfSample { Name = sampleName, Suffix = "-R", SampleRate = (uint)AudioImport.TargetSampleRate, Flags = 0x81, Sno1 = sno1.Next() };
                     rightKsf.SetSamples(right);
                     var rightPath = Path.Combine(kmpDir, rightFileName);
                     rightKsf.Save(rightPath);
@@ -3019,7 +3036,7 @@ partial class SampleEditorViewModel : ObservableObject
                 {
                     var pcm = AudioImport.ImportToMono44100(audioPath);
                     var ksfFileName = UniqueBareKsfFileName(sampleName);
-                    var ksf = new KsfSample { Name = sampleName, SampleRate = (uint)AudioImport.TargetSampleRate, Flags = 0x81, Sno1 = KscCollection.NextFreeSno1(kmpDir) };
+                    var ksf = new KsfSample { Name = sampleName, SampleRate = (uint)AudioImport.TargetSampleRate, Flags = 0x81, Sno1 = sno1.Next() };
                     ksf.SetSamples(pcm);
                     var ksfPath = Path.Combine(kmpDir, ksfFileName);
                     ksf.Save(ksfPath);

@@ -49,7 +49,7 @@ static class LibraryPullPipeline
         foreach (var b in LibraryPullPlanner.AllBanks())
         {
             if (ct.IsCancellationRequested) break;
-            var d = await sysEx.BankDigestAsync(b.ObjType, b.Bank).ConfigureAwait(false);
+            var d = await sysEx.BankDigestAsync(b.ObjType, b.Bank, ct).ConfigureAwait(false);
             if (d != null)
             {
                 fresh[(b.ObjType, b.Bank)] = Convert.ToHexString(d).ToLowerInvariant();
@@ -124,7 +124,7 @@ static class LibraryPullPipeline
             // genuinely fully-empty bank look identical at this layer - and fall back to a
             // full per-slot sweep only in that one case, same as if bulk didn't exist.
             progress?.Invoke(AppMessages.Librarian.Sync.BulkDumping(descriptor.DisplayName, descriptor.BankLabel(bankRef.Bank)));
-            var bulk = await sysEx.DumpBankBulkAsync(bankRef.ObjType, bankRef.Bank, descriptor.SlotCount(bankRef.Bank)).ConfigureAwait(false);
+            var bulk = await sysEx.DumpBankBulkAsync(bankRef.ObjType, bankRef.Bank, descriptor.SlotCount(bankRef.Bank), ct).ConfigureAwait(false);
             bool bulkWorked = bulk.Count > 0;
 
             for (int number = 0; number < descriptor.SlotCount(bankRef.Bank); number++)
@@ -132,7 +132,7 @@ static class LibraryPullPipeline
                 if (ct.IsCancellationRequested) break;
                 ObjectDump? dump = bulk.TryGetValue(number, out var bulkDump) ? bulkDump
                     : bulkWorked ? null   // bulk worked and omitted this slot -> confirmed empty
-                    : await sysEx.DumpObjectAsync(bankRef.ObjType, bankRef.Bank, number).ConfigureAwait(false);
+                    : await sysEx.DumpObjectAsync(bankRef.ObjType, bankRef.Bank, number, ct).ConfigureAwait(false);
                 done++;
                 progress?.Invoke(AppMessages.Librarian.Sync.Pulling(done, total, descriptor.DisplayName, descriptor.BankLabel(bankRef.Bank), number));
                 if (dump == null) continue;   // empty slot - nothing to pull

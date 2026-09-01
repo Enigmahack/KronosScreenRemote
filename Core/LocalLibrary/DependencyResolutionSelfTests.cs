@@ -86,7 +86,7 @@ static class DependencyResolutionSelfTests
             Check("combiX-not-repatched-before-commit", combiBodyStillUnresolved != null &&
                 LibRefs.CombiTimbreRef(combiBodyStillUnresolved, 0) == (fbProgASource, pcgProgALoc.Number));
 
-            await vm.CommitChangesCommand.ExecuteAsync(null);
+            await vm.PushOnlyAsync();
 
             var finalCombiBody = cache.GetCurrentBody(combiDestLoc.ObjType, combiDestLoc.Bank, combiDestLoc.Number);
             int fbProgADest = KronosBanks.ObjBankToFunc33(1, progADestLoc.Bank);
@@ -107,13 +107,13 @@ static class DependencyResolutionSelfTests
 
             bool confirmCalled = false;
             vm.ConfirmContinueWithPendingDependencies = _ => { confirmCalled = true; return Task.FromResult(false); };   // user cancels
-            await vm.CommitChangesCommand.ExecuteAsync(null);
+            await vm.PushOnlyAsync();
             Check("confirm-delegate-invoked-when-unresolved", confirmCalled);
             Check("cancel-leaves-pending-tracked", vm.SessionClipboardRows.Count > 0);
             Check("cancel-status-reflects-it", vm.StatusText.Contains("Cancelled", StringComparison.Ordinal));
 
             vm.ConfirmContinueWithPendingDependencies = _ => Task.FromResult(true);   // user accepts the risk
-            await vm.CommitChangesCommand.ExecuteAsync(null);
+            await vm.PushOnlyAsync();
             Check("continue-clears-pending-regardless-of-eventual-push-outcome", vm.SessionClipboardRows.Count == 0);
         }
         finally { if (Directory.Exists(root)) Directory.Delete(root, recursive: true); }

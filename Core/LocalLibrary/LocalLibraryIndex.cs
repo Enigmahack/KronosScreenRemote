@@ -117,7 +117,20 @@ sealed class LocalLibraryIndex
     public static LocalLibraryIndex Load(string root)
     {
         var idx = new LocalLibraryIndex();
-        var dto = FileFor(root).Read();
+        var (state, dto) = FileFor(root).ReadState();
+        // An index.json that exists but will not parse must NOT degrade to an empty library.
+        // It used to: Read() returned null for "absent" and "corrupt" alike, the empty index
+        // loaded silently, and the session's first Save() wrote that emptiness back over the
+        // one file that still held the user's slot pointers. Refusing to save is what makes
+        // the corruption recoverable by hand (index.json.bak is right beside it) instead of
+        // final.
+        if (state == JsonCacheRead.Unreadable)
+        {
+            AppLog.Error($"[local-library-index] index at '{PathFor(root)}' is unreadable - " +
+                         "starting empty and REFUSING to save over it. Restore index.json.bak to recover.");
+            idx.LoadFailed = true;
+            return idx;
+        }
         if (dto == null) return idx;
         foreach (var kv in dto.Entries) idx.Entries[kv.Key] = kv.Value;
         foreach (var kv in dto.BankDigestBaseline) idx.BankDigestBaseline[kv.Key] = kv.Value;
@@ -126,8 +139,18 @@ sealed class LocalLibraryIndex
         return idx;
     }
 
+    // Set when Load found an unreadable index. Latches for the lifetime of this instance:
+    // nothing in a session that started blind can be trusted to describe the full library, so
+    // no write from it may reach disk.
+    public bool LoadFailed;
+
     public void Save(string root)
     {
+        if (LoadFailed)
+        {
+            AppLog.Warn("[local-library-index] save suppressed - this index never loaded cleanly.");
+            return;
+        }
         try { Directory.CreateDirectory(root); }
         catch (Exception ex)
         {

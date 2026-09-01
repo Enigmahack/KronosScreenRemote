@@ -20,7 +20,15 @@ static class KorgRiffChunk
             int payloadLen = (int)Math.Min(length, (uint)Math.Max(0, data.Length - pos - 8));
             var payload = data.AsSpan(pos + 8, payloadLen).ToArray();
             chunks.Add((tag, payload));
-            pos += 8 + (int)length;
+            // Advance by the CLAMPED length, never the raw one. A corrupt 0xFFFFFFF8 casts to
+            // -8, making the raw step exactly zero - pos never moved and this loop appended
+            // chunks until it ran out of memory. Other oversized values stepped pos negative
+            // and threw out of ReadChunks, breaking the null-not-throw contract KsfSample.Open
+            // and KmpMultisample.Open advertise. payloadLen is already clamped to
+            // [0, remaining], so this step is monotonic by construction and a garbage length
+            // simply consumes the rest of the buffer. Well-formed files are unaffected -
+            // there payloadLen == length.
+            pos += 8 + payloadLen;
         }
         return chunks;
     }

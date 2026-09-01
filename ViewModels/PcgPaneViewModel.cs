@@ -74,14 +74,36 @@ partial class PcgPaneViewModel : ObservableObject
         return anyVisible;
     }
 
-    public void LoadFromComputer(Window owner)
+    // A real Kronos .pcg tops out well under this; the picker's own "All Files" option means
+    // the byte[] here can otherwise be any file the user happens to select, read whole into
+    // memory before anything gets a chance to reject it.
+    public const long MaxPcgBytes = 256L * 1024 * 1024;
+
+    public void LoadFromComputer(Window owner) => _ = LoadFromComputerAsync(owner);
+
+    public async Task LoadFromComputerAsync(Window owner)
     {
         var dlg = new OpenFileDialog { Title = "Load PCG... From Computer", Filter = "Korg PCG Files|*.pcg|All Files|*.*" };
         if (dlg.ShowDialog(owner) != true) return;
+
+        var path = dlg.FileName;
         try
         {
-            var bytes = File.ReadAllBytes(dlg.FileName);
-            Load(bytes, Path.GetFileName(dlg.FileName));
+            var size = new FileInfo(path).Length;
+            if (size > MaxPcgBytes)
+            {
+                ClearLoaded(AppMessages.Librarian.Pcg.LoadFailed(
+                    $"file is {size / (1024 * 1024)} MB, larger than the {MaxPcgBytes / (1024 * 1024)} MB limit"));
+                return;
+            }
+
+            StatusText = AppMessages.Librarian.Pcg.Loading(Path.GetFileName(path));
+            // Read AND parse off the WPF thread. Both used to run inline in this handler, so
+            // picking a large file froze the whole window until PcgFile.Open finished. Only the
+            // tree build below needs the UI thread, and it gets it by virtue of the await
+            // resuming here.
+            var bytes = await Task.Run(() => File.ReadAllBytes(path)).ConfigureAwait(true);
+            Load(bytes, Path.GetFileName(path));
         }
         catch (Exception ex)
         {

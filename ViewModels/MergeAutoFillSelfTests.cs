@@ -117,7 +117,9 @@ static class MergeAutoFillSelfTests
 
             var (ok, message) = await vm.AutoFillFromMergeAsync();
             Check("autofill-ok", ok);
-            Check("autofill-message-mentions-commit", message.Contains("Commit Changes", StringComparison.Ordinal));
+            // Pins that the message still POINTS somewhere real - it named "Commit Changes" until
+            // that button was folded into the Sync Library split button's Push Only mode.
+            Check("autofill-message-points-at-sync", message.Contains("Sync Library", StringComparison.Ordinal));
             Check("nothing-left-staged", vm.MergePane.Entries.Count == 0);
 
             // Property 2 - each Program partition landed in a bank of its OWN format, one slot

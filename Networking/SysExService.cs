@@ -130,6 +130,16 @@ sealed class SysExService : ISysExService
         // Tear down any previously-running transport (e.g. switching TCP → USB).
         if (_transport != null && !ReferenceEquals(_transport, transport))
         {
+            // A gate that is still open means a bulk dump or - far more consequentially - a
+            // Librarian commit's 0x73 write burst is mid-flight. Disposing under it is SAFE, not
+            // silent: WriteObjectAsync re-reads _transport per call and returns -1 once it is
+            // gone, so ApplyMoveAsync's next iteration aborts with its usual "replay backups to
+            // be safe" message. What was missing is any record of WHY, which is the difference
+            // between a diagnosable abort and an inexplicable one.
+            if (_dumpGate.Active)
+                AppLog.Warn("[sysex] transport replaced while a dump/write gate was OPEN - any " +
+                            "in-flight Librarian commit will abort on its next write; earlier writes " +
+                            "in that burst are in the instrument's volatile buffer, replay backups.");
             _transport.Traffic -= OnTransportTraffic;
             _transport.Stop();
             _transport.Dispose();
@@ -753,15 +763,17 @@ sealed class SysExService : ISysExService
     // populated hardware slot as empty just because its dump request's SEND happened to time out.
     async Task<List<byte[]>> CollectRetryingSendAsync(
         SysExDumpCollector dump, string requestHex, byte expectObj, int? expectedCount,
-        int idleMs = 600, int noResponseMs = 4000, int stallMs = 4000, int overallMs = 60000)
+        int idleMs = 600, int noResponseMs = 4000, int stallMs = 4000, int overallMs = 60000,
+        CancellationToken ct = default)
     {
-        var (msgs, sendFailed) = await dump.CollectAsync(requestHex, expectObj, expectedCount, idleMs, noResponseMs, stallMs, overallMs)
+        var (msgs, sendFailed) = await dump.CollectAsync(requestHex, expectObj, expectedCount, idleMs, noResponseMs, stallMs, overallMs, ct)
             .ConfigureAwait(false);
         if (!sendFailed) return msgs;
+        if (ct.IsCancellationRequested) return msgs;
 
         AppLog.Debug($"[sysex-dump] retrying after send failure: {requestHex}");
-        await Task.Delay(200).ConfigureAwait(false);
-        var (retryMsgs, retrySendFailed) = await dump.CollectAsync(requestHex, expectObj, expectedCount, idleMs, noResponseMs, stallMs, overallMs)
+        await Task.Delay(200).ConfigureAwait(false);   // not (ct): see CollectAsync's poll delay
+        var (retryMsgs, retrySendFailed) = await dump.CollectAsync(requestHex, expectObj, expectedCount, idleMs, noResponseMs, stallMs, overallMs, ct)
             .ConfigureAwait(false);
         if (retrySendFailed)
             AppLog.Warn($"[sysex-dump] send failed twice in a row - giving up; this will read as an empty/no reply: {requestHex}");
@@ -922,7 +934,7 @@ sealed class SysExService : ISysExService
     // (via the DumpGate) so it can't steal one of our 0x73/0x24 replies, mirroring the
     // existing DumpSetListAsync / WriteSetListSlotAsync pattern.
 
-    public async Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index)
+    public async Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index, CancellationToken ct = default)
     {
         var dump = _dump;
         if (dump == null || _transport?.CanStream != true) return null;
@@ -934,14 +946,14 @@ sealed class SysExService : ISysExService
             // give their "no activity" window headroom rather than timing out on a reply that
             // was on its way.
             var msgs = await CollectRetryingSendAsync(dump, req, (byte)obj, expectedCount: 1,
-                                    noResponseMs: obj is 0x0D or LibObj.Global ? 10000 : 6000).ConfigureAwait(false);
+                                    noResponseMs: obj is 0x0D or LibObj.Global ? 10000 : 6000, ct: ct).ConfigureAwait(false);
             var msg = msgs.Count > 0 ? msgs[0] : null;
             return msg != null ? KronosSysEx.ParseObjectDump(msg) : null;
         }
         finally { _dumpGate.End(gateEpoch); }
     }
 
-    public async Task<Dictionary<int, ObjectDump>> DumpBankBulkAsync(int obj, int bank, int count)
+    public async Task<Dictionary<int, ObjectDump>> DumpBankBulkAsync(int obj, int bank, int count, CancellationToken ct = default)
     {
         var result = new Dictionary<int, ObjectDump>();
         var dump = _dump;
@@ -957,7 +969,7 @@ sealed class SysExService : ISysExService
             // genuinely-empty bank still exits promptly via CollectAsync's idle/reject
             // fast-paths, so the generous cap only matters when data is actually flowing.
             var msgs = await CollectRetryingSendAsync(dump, req, (byte)obj, expectedCount: count,
-                idleMs: 2000, noResponseMs: 3000, stallMs: 15000, overallMs: 300000).ConfigureAwait(false);
+                idleMs: 2000, noResponseMs: 3000, stallMs: 15000, overallMs: 300000, ct: ct).ConfigureAwait(false);
             foreach (var m in msgs)
             {
                 var parsed = KronosSysEx.ParseObjectDump(m);
@@ -1017,8 +1029,9 @@ sealed class SysExService : ISysExService
         finally { _dumpGate.End(gateEpoch); }
     }
 
-    public async Task<byte[]?> BankDigestAsync(int obj, int bank)
+    public async Task<byte[]?> BankDigestAsync(int obj, int bank, CancellationToken ct = default)
     {
+        if (ct.IsCancellationRequested) return null;
         var transport = _transport;
         if (transport?.CanStream != true) return null;
         int gateEpoch = _dumpGate.Begin();

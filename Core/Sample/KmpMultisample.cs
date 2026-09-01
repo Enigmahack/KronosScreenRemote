@@ -135,7 +135,7 @@ sealed class KmpMultisample
     {
         path ??= Path;
         if (path is null) throw new InvalidOperationException("no path given and none stored");
-        File.WriteAllBytes(path, ToBytes());
+        AtomicFile.WriteAllBytes(path, ToBytes(), keepBackup: false);
         Path = path;
     }
 

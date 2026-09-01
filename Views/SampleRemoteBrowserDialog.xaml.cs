@@ -49,6 +49,7 @@ internal partial class SampleRemoteBrowserDialog : ThemedWindow
         _localRoot = localRoot;
         LST_Items.SelectionChanged += (_, _) => BTN_Select.IsEnabled = LST_Items.SelectedItem is Entry { IsDirectory: false };
         Loaded += async (_, _) => await ConnectAndRefreshAsync();
+        BlockCloseWhileBusy();
         Closed += (_, _) => DisposeInBackground();
     }
 
@@ -74,8 +75,17 @@ internal partial class SampleRemoteBrowserDialog : ThemedWindow
         // like the pull mode's per-file gate above, but still gated on actually being
         // connected rather than enabled unconditionally from the start.
         Loaded += async (_, _) => await ConnectAndRefreshAsync();
+        BlockCloseWhileBusy();
         Closed += (_, _) => DisposeInBackground();
     }
+
+    // A transfer is running. Both transfer methods already disable every in-dialog button, so
+    // this exists for the one route they cannot cover: the title-bar X and Alt+F4, which reach
+    // Closed -> DisposeInBackground and dispose the FTP client out from under an active
+    // download or upload, tearing the transfer and leaving a half-written workspace.
+    bool _busy;
+
+    void BlockCloseWhileBusy() => Closing += (_, e) => e.Cancel = _busy;
 
     // Same fire-and-forget background disconnect+dispose as RemoteFilePickerDialog -
     // FluentFTP's synchronous Dispose() can block on an async cleanup continuation that
@@ -158,6 +168,7 @@ internal partial class SampleRemoteBrowserDialog : ThemedWindow
     // before closing), uploading via SampleFtpPush instead of downloading.
     async Task SelectFolderAndPushAsync()
     {
+        _busy = true;
         BTN_Select.IsEnabled = false;
         BTN_Cancel.IsEnabled = false;
         BTN_Up.IsEnabled = false;
@@ -167,6 +178,7 @@ internal partial class SampleRemoteBrowserDialog : ThemedWindow
             var failures = await SampleFtpPush.PushClosureAsync(_client, _pushLocalKscPath!, _pushCollection!, _dir,
                 msg => TXT_Status.Text = msg);
             SelectedRemoteDir = _dir;
+            _busy = false;
             if (failures.Count > 0)
             {
                 MessageBox.Show(this,
@@ -177,6 +189,7 @@ internal partial class SampleRemoteBrowserDialog : ThemedWindow
         }
         catch (Exception ex)
         {
+            _busy = false;
             TXT_Status.Text = $"Push failed: {ex.Message}";
             BTN_Select.IsEnabled = true;
             BTN_Cancel.IsEnabled = true;
@@ -186,6 +199,7 @@ internal partial class SampleRemoteBrowserDialog : ThemedWindow
 
     async Task SelectAndPullAsync(Entry entry)
     {
+        _busy = true;
         BTN_Select.IsEnabled = false;
         BTN_Cancel.IsEnabled = false;
         BTN_Up.IsEnabled = false;
@@ -196,6 +210,7 @@ internal partial class SampleRemoteBrowserDialog : ThemedWindow
                 msg => TXT_Status.Text = msg);
             PickedLocalPath = localPath;
             RemoteMap = map;
+            _busy = false;
             // Surfaced HERE, before the dialog closes and OpenCollection runs on
             // whatever DID make it to disk - previously a failed .KMP/.KSF download was
             // only ever logged (AppLog.Warn), so the very next thing the user saw was
@@ -213,6 +228,7 @@ internal partial class SampleRemoteBrowserDialog : ThemedWindow
         }
         catch (Exception ex)
         {
+            _busy = false;
             TXT_Status.Text = AppMessages.RemoteSamplePicker.DownloadFailed(ex.Message);
             BTN_Select.IsEnabled = true;
             BTN_Cancel.IsEnabled = true;

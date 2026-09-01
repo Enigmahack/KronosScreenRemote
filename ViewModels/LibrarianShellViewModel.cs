@@ -116,6 +116,56 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         PersistSettings?.Invoke(_settings);
     }
 
+    // Which direction a plain click on Sync Library runs. Write-through persisted, same pattern as
+    // the two Merge toggles above.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SyncButtonLabel))]
+    [NotifyPropertyChangedFor(nameof(SyncTooltip))]
+    LibrarianSyncMode syncMode;
+
+    partial void OnSyncModeChanged(LibrarianSyncMode value)
+    {
+        _settings.LibrarianSyncMode = value;
+        PersistSettings?.Invoke(_settings);
+        // All three must re-raise together: each radio item binds its own bool, so without this
+        // the menu would keep the old tick alongside the new one.
+        OnPropertyChanged(nameof(SyncModeIsPullOnly));
+        OnPropertyChanged(nameof(SyncModeIsPushOnly));
+        OnPropertyChanged(nameof(SyncModeIsTwoWay));
+        OnPropertyChanged(nameof(SyncModeHasPullHalf));
+    }
+
+    // The button always names the mode it will run - the safety property that makes remembering a
+    // destructive last-used choice acceptable.
+    public string SyncButtonLabel => SyncMode.Label();
+
+    public string SyncTooltip => SysExUnavailable
+        ? AppMessages.Librarian.Shell.SysExOffCommitTooltip
+        : SyncMode.Tooltip();
+
+    public bool SyncModeIsPullOnly
+    {
+        get => SyncMode == LibrarianSyncMode.PullOnly;
+        set { if (value) SyncMode = LibrarianSyncMode.PullOnly; }
+    }
+
+    public bool SyncModeIsPushOnly
+    {
+        get => SyncMode == LibrarianSyncMode.PushOnly;
+        set { if (value) SyncMode = LibrarianSyncMode.PushOnly; }
+    }
+
+    public bool SyncModeIsTwoWay
+    {
+        get => SyncMode == LibrarianSyncMode.TwoWay;
+        set { if (value) SyncMode = LibrarianSyncMode.TwoWay; }
+    }
+
+    // Force Full Sync bounds the PULL half, so it is inert in Push Only. A property rather than an
+    // inverse-bool converter because the codebase has no such converter and one binding does not
+    // justify introducing one.
+    public bool SyncModeHasPullHalf => SyncMode != LibrarianSyncMode.PushOnly;
+
     // Set once by LibrarianShellWindow's constructor to a WPF MessageBox prompt - keeps this
     // ViewModel free of WPF types (the established split: confirmations are a code-behind
     // concern). Called from PrepareForPushAsync only when ResolvePendingDependencies couldn't
@@ -130,6 +180,22 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     // self-test) defaults to proceeding - same convention as every other confirm gate here.
     public Func<int, int, Task<bool>>? ConfirmDestinationBankMaybeStale { get; set; }
 
+    // Set once by LibrarianShellWindow's constructor to a WPF MessageBox prompt - same split as
+    // the two gates above (this ViewModel stays free of WPF types; confirmations are code-behind).
+    //
+    // Pull Only is the only action in this window that can destroy local work, so it is the only
+    // one that asks before running rather than reporting afterwards. Receives the count of dirty
+    // objects about to be discarded. Null (a headless self-test) defaults to PROCEEDING, matching
+    // every other confirm gate here - which is why PullOnlyAsync must never be reached in a test
+    // that has unsaved edits it expects to survive.
+    public Func<int, Task<bool>>? ConfirmDiscardLocalChangesForPull { get; set; }
+
+    // Push Only's counterpart, asked only AFTER a non-destructive push attempt has already come
+    // back refused or conflicted - so the prompt can say what specifically is in the way instead
+    // of warning speculatively. Confirming re-runs the push with forceDestructiveWrite, which is
+    // the local-library-wins path ChangesetBuilder already implements.
+    public Func<string, Task<bool>>? ConfirmOverwriteKronosForPush { get; set; }
+
     public LibrarianShellViewModel(ILibrarianService sysEx, LocalLibraryCache cache, AppSettings settings, string host)
     {
         _sysEx = sysEx;
@@ -142,6 +208,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         mergePreserveDuplicatePrograms = settings.MergePreserveDuplicatePrograms;
         mergePreserveDuplicateCombis   = settings.MergePreserveDuplicateCombis;
         forceDestructiveWrite          = settings.LibrarianForceDestructiveWrite;
+        syncMode                       = settings.LibrarianSyncMode;
         LocalPane = new LocalLibraryPaneViewModel(cache);
         MergePane = new MergePaneViewModel(new MergeCache(BuildMergePersistence(settings)));
         LocalPane.BankTypeOf = BankTypeOf;
@@ -611,8 +678,121 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         MergePreserveDuplicateCombis   = settings.MergePreserveDuplicateCombis;
     }
 
+    // The one hardware-facing command the toolbar exposes. Which direction it runs is SyncMode,
+    // picked from the button's own dropdown; each branch is an EXISTING SyncPipeline entry point,
+    // not a new transfer path.
+    //
+    // Replaces the old Sync Library + Commit Changes button pair. Commit Changes was never the
+    // two-way action its footer position implied - SyncPipeline.CommitChangesAsync is a direct
+    // alias for PushAsync - so it survives here verbatim as PushOnlyAsync.
     [RelayCommand(CanExecute = nameof(CanRunHardwareOp))]
     async Task SyncLibraryAsync()
+    {
+        switch (SyncMode)
+        {
+            case LibrarianSyncMode.PullOnly: await PullOnlyAsync();  break;
+            case LibrarianSyncMode.PushOnly: await PushOnlyAsync();  break;
+            default:                         await TwoWaySyncAsync(); break;
+        }
+    }
+
+    // Instrument -> local, and ONLY that: every pending local change is discarded first, so the
+    // result is a true mirror rather than a pull with survivors. That discard is the destructive
+    // part, which is why - alone among the actions here - it confirms BEFORE running rather than
+    // reporting afterwards.
+    //
+    // A plain pull would not do this on its own: LibraryPullPipeline marks a locally-dirty object
+    // whose bank also moved on hardware as Conflicted and leaves both versions intact. That is
+    // right for the two-way path, where the push half still has work to do, and wrong here, where
+    // the user has explicitly asked for the instrument to win.
+    public async Task PullOnlyAsync()
+    {
+        // BOTH kinds of pending local state, not just edits. A slot marked for deletion but not
+        // otherwise edited still has CurrentHash == BaselineHash, so DirtyObjects() does not
+        // report it (SetPendingDelete only flips a flag, it never touches the hashes). Discarding
+        // edits alone would leave those delete flags armed on a library the user was told is now a
+        // mirror of the instrument - and the next Push Only would then erase them on hardware,
+        // which is the opposite of what this action promised.
+        var dirty = _cache.DirtyObjects().ToList();
+        var pendingDeletes = _cache.PendingDeleteObjects().ToList();
+        int pendingCount = dirty.Count + pendingDeletes.Count;
+        if (pendingCount > 0)
+        {
+            bool proceed = ConfirmDiscardLocalChangesForPull == null
+                || await ConfirmDiscardLocalChangesForPull(pendingCount);
+            if (!proceed)
+            {
+                StatusText = AppMessages.Librarian.Shell.PullOnlyCancelled;
+                return;
+            }
+        }
+
+        IsBusy = true; WarningText = null; StatusIsSuccess = false;
+        LocalPane.IsIndexing = true;
+        using var cts = new CancellationTokenSource();
+        _syncCts = cts;
+        try
+        {
+            // BEFORE the pull, not after. Discard reverts an object to its BASELINE, and the pull
+            // is about to move that baseline forward - doing it the other way round would revert
+            // to the version just pulled, a no-op that silently leaves the local edit in place.
+            if (pendingCount > 0)
+            {
+                var discardUtc = DateTime.UtcNow;
+                foreach (var loc in dirty) _cache.Discard(loc.ObjType, loc.Bank, loc.Number, discardUtc);
+                foreach (var loc in pendingDeletes)
+                    _cache.SetPendingDelete(loc.ObjType, loc.Bank, loc.Number, false, discardUtc);
+                _cache.Save();
+
+                // The session clipboard tracks dependencies still owed by Merge/PCG placements
+                // that have just been discarded, so every entry in it now describes work that no
+                // longer exists. Left alone it would survive into the next Push Only's
+                // PrepareForPushAsync and prompt about objects the user can no longer see.
+                _sessionClipboard.Clear();
+                RefreshSessionClipboard();
+            }
+
+            var pull = await SyncPipeline.PullAsync(_sysEx, _cache, ForceFullPull, m => StatusText = m, cts.Token);
+            if (pull.Aborted is { } aborted)
+            {
+                // Raised from here as well as from the probe, for the same reason the two-way path
+                // does it: the probe only runs at open and on demand, so an instrument that goes
+                // quiet mid-session would otherwise leave the button enabled and silently failing.
+                SysExUnavailable = true;
+                StatusText = "";
+                WarningText = aborted.ToString();
+            }
+            else
+            {
+                StatusText = AppMessages.Librarian.Shell.PullOnlyResult(pull.ObjectsFetched, pendingCount);
+                StatusIsSuccess = true;
+            }
+            // No ClearAfterSuccessfulPush: that is about work reaching HARDWARE, and nothing did.
+            // The discard above is deliberately NOT wrapped in an undo scope either - it reverts to
+            // baselines that the pull then immediately moves, so an "undo" could only restore the
+            // edits against a baseline that no longer exists. The confirm is the safety net here,
+            // which is why it is the one gate in this window that asks before acting.
+            AppLog.Info($"[librarian] pull-only done: fetched={pull.ObjectsFetched} " +
+                        $"discarded={dirty.Count} deleteFlagsCleared={pendingDeletes.Count}");
+            InvalidateReadOnlyBankNames();
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"[librarian] pull-only failed: {ex}");
+            WarningText = AppMessages.Librarian.Shell.OperationFailed(ex.Message);
+        }
+        finally
+        {
+            _syncCts = null;
+            LocalPane.RefreshTree();
+            LocalPane.IsIndexing = false;
+            RefreshHistory();
+            RefreshConflictState();
+            IsBusy = false;
+        }
+    }
+
+    public async Task TwoWaySyncAsync()
     {
         IsBusy = true; WarningText = null; StatusIsSuccess = false;
         // Same gate WarmCatalogAsync uses at startup, for the same reason: LibraryPullPipeline
@@ -693,8 +873,16 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         }
     }
 
-    [RelayCommand(CanExecute = nameof(CanRunHardwareOp))]
-    async Task CommitChangesAsync()
+    // Local -> instrument, no pull half. This is the old Commit Changes command verbatim, plus
+    // one addition: when the non-destructive attempt comes back REFUSED or conflicted (the
+    // instrument moved since our baseline), offer to re-run with the local library as the source
+    // of truth rather than only reporting the refusal.
+    //
+    // Asking only AFTER that first attempt is deliberate. It costs an extra changeset build in
+    // the conflict case alone, and buys a prompt that names what is actually in the way instead of
+    // warning speculatively on every push. Running the first attempt unconditionally is safe:
+    // ChangesetBuilder's refusal path returns before touching hardware (SyncPipeline.PushAsync).
+    public async Task PushOnlyAsync()
     {
         IsBusy = true; WarningText = null; StatusIsSuccess = false;
         try
@@ -702,6 +890,24 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
             if (!await PrepareForPushAsync()) return;
             var result = await SyncPipeline.CommitChangesAsync(
                 _sysEx, _cache, _sessionClipboard, m => StatusText = m, ForceDestructiveWrite);
+
+            // Nothing reached hardware on a refusal, and a conflicted object was deliberately
+            // EXCLUDED from Writes rather than written wrongly - so in both cases the instrument
+            // is untouched and re-running is a first attempt, not a repair.
+            if (!ForceDestructiveWrite && (!result.Ok || result.Conflicted.Count > 0))
+            {
+                var reason = result.Error
+                    ?? AppMessages.Librarian.Shell.PushConflictSummary(result.Conflicted.Count);
+                bool overwrite = ConfirmOverwriteKronosForPush != null
+                    && await ConfirmOverwriteKronosForPush(reason);
+                if (overwrite)
+                {
+                    StatusText = AppMessages.Librarian.Shell.PushOverwriting;
+                    result = await SyncPipeline.CommitChangesAsync(
+                        _sysEx, _cache, _sessionClipboard, m => StatusText = m, forceDestructiveWrite: true);
+                }
+            }
+
             StatusText = result.Ok
                 ? AppMessages.Librarian.Shell.CommitResult(result.Written, result.Deleted, result.Conflicted.Count)
                 : AppMessages.Librarian.Shell.CommitFailed;
@@ -715,7 +921,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         {
             // Same rationale as SyncLibraryAsync: refresh the pane from the cache no matter what
             // (finally), and surface a thrown error rather than letting the command swallow it.
-            AppLog.Warn($"[librarian] commit failed: {ex}");
+            AppLog.Warn($"[librarian] push-only failed: {ex}");
             WarningText = AppMessages.Librarian.Shell.OperationFailed(ex.Message);
         }
         finally
@@ -815,18 +1021,13 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     // IBankDumpService.CanDump, which is the LOCAL MIDI-monitor setting, not the instrument's.
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SyncLibraryCommand))]
-    [NotifyCanExecuteChangedFor(nameof(CommitChangesCommand))]
     [NotifyCanExecuteChangedFor(nameof(ResolveConflictsKeepMineCommand))]
-    [NotifyPropertyChangedFor(nameof(CommitTooltip))]
+    [NotifyPropertyChangedFor(nameof(SyncTooltip))]
     bool sysExUnavailable;
 
     public string SysExOffBannerText => AppMessages.Librarian.Shell.SysExOffBanner;
 
-    // Bound rather than static so the disabled Commit button can say WHY it is disabled - the
-    // banner above carries the fix, this only has to name the cause.
-    public string CommitTooltip => SysExUnavailable
-        ? AppMessages.Librarian.Shell.SysExOffCommitTooltip
-        : AppMessages.Librarian.Shell.CommitTooltip;
+
 
     // One func-0x37 bank-digest request against Program INT A - the same detector
     // LibraryPullPipeline's sweep leads with, so the banner and a Sync can never disagree about
@@ -951,7 +1152,6 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     partial void OnIsBusyChanged(bool value)
     {
         SyncLibraryCommand.NotifyCanExecuteChanged();
-        CommitChangesCommand.NotifyCanExecuteChanged();
         UndoCommand.NotifyCanExecuteChanged();   // see CanUndo - undo must not race a push
         AutoFillToLibraryCommand.NotifyCanExecuteChanged();
         ResolveConflictsKeepMineCommand.NotifyCanExecuteChanged();

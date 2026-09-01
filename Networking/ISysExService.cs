@@ -93,7 +93,7 @@ interface IBankDumpService
 
     // Dump one full object (obj 0x00 Program / 0x01 Combi / 0x0D Set List) by
     // bank+index, parsed into header + decoded body. Null if unavailable/no reply.
-    Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index);
+    Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index, CancellationToken ct = default);
 
     // Attempts every object of `obj` in `bank` via ONE func-0x77 Dump Bank Request
     // instead of `count` individual func-0x72 round-trips - much faster when it works.
@@ -104,7 +104,7 @@ interface IBankDumpService
     // - callers MUST treat a missing index as "needs an individual DumpObjectAsync
     // fallback," never as "confirmed empty": a rejected/unsupported bulk request looks
     // identical to a fully-empty bank at this layer (zero results either way).
-    Task<Dictionary<int, ObjectDump>> DumpBankBulkAsync(int obj, int bank, int count);
+    Task<Dictionary<int, ObjectDump>> DumpBankBulkAsync(int obj, int bank, int count, CancellationToken ct = default);
 
     // Best-effort current performance as an ObjLoc (for the live 0x43 dual-write).
     // Null if unknown. (The remaining Librarian primitives - object write, Store,

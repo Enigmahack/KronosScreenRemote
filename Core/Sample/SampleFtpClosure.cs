@@ -14,8 +14,11 @@ static class SampleFtpClosure
     // this is what lets OpenCollection/KmpZone.KsfPath (which independently recompute
     // local paths from the picked .KSC's own path, with no knowledge of the returned
     // map) find exactly what was pulled here, without duplicating their path logic.
-    public static string LocalPathFor(string localRoot, string remoteFullPath) =>
-        Path.Combine(localRoot, remoteFullPath.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+    public static string LocalPathFor(string localRoot, string remoteFullPath)
+    {
+        var combined = Path.Combine(localRoot, remoteFullPath.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+        return SamplePathGuard.EnsureUnder(localRoot, combined, remoteFullPath);
+    }
 
     public static async Task<(string localPath, Dictionary<string, string> remoteMap, List<string> failures)> PullAsync(
         AsyncFtpClient client, string remoteEntryPath, string localRoot, Action<string>? onProgress = null)
@@ -71,7 +74,27 @@ static class SampleFtpClosure
         var localPath = LocalPathFor(localRoot, remotePath);
         Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
         onProgress?.Invoke($"Downloading {Path.GetFileName(remotePath)}...");
-        await client.DownloadFile(localPath, remotePath);
+
+        // Via a temp file, and only promoted on FtpStatus.Success. DownloadFile does NOT throw
+        // on a failed transfer - it returns the status - so ignoring it meant a failure slipped
+        // past every catch in this file and past the `failures` list that exists to put exactly
+        // this in front of the user. Worse, the workspace is persistent: the stale file already
+        // at localPath from a previous pull was then parsed as if freshly downloaded, and
+        // map[localPath] recorded the NEW remote path against those OLD bytes - so a later push
+        // uploaded stale audio to a target it had never been pulled from.
+        var tmpPath = localPath + ".part";
+        try
+        {
+            var status = await client.DownloadFile(tmpPath, remotePath);
+            if (status != FtpStatus.Success)
+                throw new IOException($"FTP download of '{remotePath}' returned {status}");
+            File.Move(tmpPath, localPath, overwrite: true);
+        }
+        finally
+        {
+            try { if (File.Exists(tmpPath)) File.Delete(tmpPath); } catch { }
+        }
+
         map[localPath] = remotePath;
         return await File.ReadAllBytesAsync(localPath);
     }

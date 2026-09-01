@@ -102,6 +102,32 @@ internal partial class LibrarianShellWindow : ThemedWindow
             return Task.FromResult(result == MessageBoxResult.Yes);
         };
 
+        // Sync Library > Pull Only. The one action in this window that can destroy LOCAL work, so
+        // it is the one that asks before running rather than reporting after. Defaults to No -
+        // the safe answer is to cancel and use 2-Way, which pushes those edits instead of binning
+        // them.
+        _vm.ConfirmDiscardLocalChangesForPull = count =>
+        {
+            var result = MessageBox.Show(this,
+                AppMessages.Librarian.Shell.PullDiscardPrompt(count),
+                AppMessages.Librarian.Shell.PullDiscardTitle,
+                MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+            return Task.FromResult(result == MessageBoxResult.Yes);
+        };
+
+        // Sync Library > Push Only, and only after a non-destructive push already came back
+        // refused or conflicted - so `reason` names what is actually in the way. Confirming
+        // re-runs with the local library as the source of truth, which overwrites the instrument.
+        // Defaults to No, same as every other destructive confirm here.
+        _vm.ConfirmOverwriteKronosForPush = reason =>
+        {
+            var result = MessageBox.Show(this,
+                AppMessages.Librarian.Shell.PushOverwritePrompt(reason),
+                AppMessages.Librarian.Shell.PushOverwriteTitle,
+                MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+            return Task.FromResult(result == MessageBoxResult.Yes);
+        };
+
         // Resolve Conflicts overwrites hardware with this library's copy, so it gets the same
         // MessageBox treatment as the other destructive confirms above. Defaults to No: the
         // safe answer is to cancel and Sync Library, which keeps the Kronos copy instead.
@@ -206,7 +232,19 @@ internal partial class LibrarianShellWindow : ThemedWindow
     // Local edits are already persisted as you make them (that's the whole "local edits never
     // touch hardware until Sync/Commit" model) - there's nothing for Cancel to roll back beyond
     // what Clear Changes above already does explicitly, so this is just a close.
-    void OnCancelButton(object sender, RoutedEventArgs e) => Close();
+    // The dropdown half of the Sync split button. A ContextMenu rather than a Popup so the three
+    // modes get standard menu keyboarding and check marks for free; PlacementTarget is set
+    // explicitly so it opens under the button on a CLICK, not at the mouse like a right-click.
+    void OnSyncModeDropdown(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button b || b.ContextMenu is not { } menu) return;
+        menu.PlacementTarget = b;
+        menu.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+        menu.DataContext = DataContext;   // ContextMenus sit outside the visual tree, so they do
+                                          // NOT inherit it - without this the three IsChecked
+                                          // bindings silently bind to nothing.
+        menu.IsOpen = true;
+    }
 
     // ApplicationCommands.Undo (Ctrl+Z, and the top row's Undo button via the same ViewModel
     // command) - see the CommandBinding's own comment in the XAML for why the gesture is routed
@@ -395,7 +433,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
     // it that this object is missing is staged into the Merge Window for placing. The file picker
     // lives here (a WPF concern, same split as every other dialog in this file); the scan itself
     // is LibrarianShellViewModel.ScanPcgForDependencies.
-    void ScanPcgForDependencies(ObjLoc loc)
+    async void ScanPcgForDependencies(ObjLoc loc)
     {
         // Walked once here and handed to the scan below, rather than recomputed inside it.
         var missing = _vm.MissingDependenciesOf(loc);
@@ -416,7 +454,17 @@ internal partial class LibrarianShellWindow : ThemedWindow
         byte[] bytes;
         try
         {
-            bytes = System.IO.File.ReadAllBytes(dlg.FileName);
+            // Same cap and same off-thread read as PcgPaneViewModel.LoadFromComputerAsync -
+            // this picker offers "All Files" too, so it takes arbitrary input by the same route.
+            var path = dlg.FileName;
+            var size = new System.IO.FileInfo(path).Length;
+            if (size > PcgPaneViewModel.MaxPcgBytes)
+            {
+                _vm.LocalPane.StatusText = AppMessages.Librarian.Shell.ScanFailed(
+                    $"file is {size / (1024 * 1024)} MB, larger than the {PcgPaneViewModel.MaxPcgBytes / (1024 * 1024)} MB limit");
+                return;
+            }
+            bytes = await Task.Run(() => System.IO.File.ReadAllBytes(path));
         }
         catch (Exception ex)
         {

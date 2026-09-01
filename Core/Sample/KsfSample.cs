@@ -223,11 +223,44 @@ sealed class KsfSample
 
     public void SetSamples(short[] values) => Pcm = KsfPcm.ToBigEndianBytes(values);
 
+    // Reads ONLY the SNO1 chunk, seeking past every payload instead of materialising it.
+    // NextFreeSno1 scans every .KSF in a collection and used to do it via ReadAllBytes + a full
+    // Open(), decoding megabytes of PCM per file to reach a 4-byte field - over an SMB-mounted
+    // workspace that dominated the cost of every single sample import. Chunk order puts SNO1
+    // second (SMP1 -> SNO1 -> NAME -> SMD1), so in practice this touches the first ~60 bytes.
+    // Returns null for anything it cannot read as a .KSF; callers skip those, exactly as the
+    // Open()-based scan skipped what Open() returned null for.
+    public static uint? ReadSno1(string path)
+    {
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            var header = new byte[8];
+            while (fs.Read(header, 0, 8) == 8)
+            {
+                var tag = System.Text.Encoding.ASCII.GetString(header, 0, 4);
+                uint length = KorgRiffChunk.ReadU32BE(header, 4);
+                if (tag == "SNO1")
+                {
+                    if (length < 4) return null;
+                    var payload = new byte[4];
+                    return fs.Read(payload, 0, 4) == 4 ? KorgRiffChunk.ReadU32BE(payload, 0) : null;
+                }
+                // Same clamp as KorgRiffChunk.ReadChunks: a corrupt length must not seek
+                // backwards (an infinite loop) or past the end.
+                long remaining = fs.Length - fs.Position;
+                fs.Seek(Math.Min(length, (uint)Math.Max(0, remaining)), SeekOrigin.Current);
+            }
+        }
+        catch (Exception ex) { AppLog.Warn($"[ksf] SNO1 read failed for '{path}': {ex.Message}"); }
+        return null;
+    }
+
     public void Save(string? path = null)
     {
         path ??= Path;
         if (path is null) throw new InvalidOperationException("no path given and none stored");
-        File.WriteAllBytes(path, ToBytes());
+        AtomicFile.WriteAllBytes(path, ToBytes(), keepBackup: false);
         Path = path;
     }
 }

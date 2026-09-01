@@ -53,8 +53,20 @@ sealed class FileMergeCachePersistence : IMergeCachePersistence
     {
         try
         {
-            if (!File.Exists(_path)) return null;
-            return JsonSerializer.Deserialize<MergeCacheSnapshot>(File.ReadAllText(_path));
+            // Walks AtomicFile's candidate list rather than just _path: a crash between
+            // Save's two renames leaves the complete new snapshot in .tmp and the previous
+            // one in .bak, and losing a whole batch of staged merge work to that window is
+            // exactly what this persistence mode exists to prevent.
+            foreach (var candidate in AtomicFile.CandidatesForRead(_path))
+            {
+                try
+                {
+                    if (JsonSerializer.Deserialize<MergeCacheSnapshot>(File.ReadAllText(candidate)) is { } snap)
+                        return snap;
+                }
+                catch (Exception ex) { AppLog.Warn($"[merge-cache] snapshot load failed for '{candidate}': {ex.Message}"); }
+            }
+            return null;
         }
         catch (Exception ex)
         {
@@ -68,14 +80,16 @@ sealed class FileMergeCachePersistence : IMergeCachePersistence
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(_path)!);
-            File.WriteAllText(_path, JsonSerializer.Serialize(snapshot));
+            AtomicFile.WriteAllText(_path, JsonSerializer.Serialize(snapshot));
         }
         catch (Exception ex) { AppLog.Warn($"[merge-cache] snapshot save failed: {ex.Message}"); }
     }
 
     public void Clear()
     {
-        try { File.Delete(_path); }
+        // Deletes the swap siblings too - a stale .tmp/.bak left behind would be resurrected
+        // by Load's candidate walk as if it were live staging state.
+        try { foreach (var f in new[] { _path, _path + ".tmp", _path + ".bak" }) File.Delete(f); }
         catch (Exception ex) { AppLog.Warn($"[merge-cache] snapshot clear failed: {ex.Message}"); }
     }
 }
