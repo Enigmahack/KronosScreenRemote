@@ -76,6 +76,29 @@ partial class SysExToolWindow : ThemedWindow
     // Map from MIDI note to its piano key Border, for O(1) lighting updates.
     readonly Dictionary<int, Border> _keyByMidi = new();
 
+    // Physical-key -> note assignments (right-click a piano key to set), and the
+    // capture state while waiting for the next keypress to bind. Only one capture
+    // (piano key or joystick direction) can be pending at a time.
+    readonly Dictionary<Key, int> _keyAssignments = new();
+    (Action<Key> Assign, Action End)? _pendingCapture;
+
+    // Joystick: _jsValue is the live -1..+1 position; _jsTimer glides it toward
+    // whichever of _jsUpKey/_jsDownKey is held (or 0, spring-centered, otherwise).
+    // Mouse drag sets _jsValue directly - only key-driven motion is interpolated,
+    // per spec ("glides to note instead of snaps" when assigned to keys).
+    double _jsValue;
+    bool   _jsDragging;
+    int    _jsLastSentBend = 8192;   // center; avoids resending an unchanged bend every tick
+    Key?   _jsUpKey, _jsDownKey;
+    bool   _jsUpHeld, _jsDownHeld;
+    readonly DispatcherTimer _jsTimer =
+        new(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(16) };
+    // Pitch is for general control, not precision, so the actual MIDI Pitch Bend
+    // sends are capped to 15 Hz - decoupled from the 60fps glide above, which only
+    // drives the puck position and readout. Same producer/flush split as _incoming/_flushTimer.
+    readonly DispatcherTimer _jsSendTimer =
+        new(DispatcherPriority.Background) { Interval = TimeSpan.FromMilliseconds(1000.0 / 15) };
+
     public int SelectedChannel => CMB_OutChannel.SelectedIndex >= 0 ? CMB_OutChannel.SelectedIndex + 1 : 1;
 
     public SysExToolWindow(IRawMidiSend sysEx, int initialChannel = 1)
@@ -116,6 +139,31 @@ partial class SysExToolWindow : ThemedWindow
         _sysEx.SysExTraffic += OnTraffic;
         _flushTimer.Tick += FlushIncoming;
         _flushTimer.Start();
+
+        JoystickTrack.MouseLeftButtonDown  += OnJoyMouseDown;
+        JoystickTrack.MouseMove            += OnJoyMouseMove;
+        JoystickTrack.MouseLeftButtonUp    += OnJoyMouseUp;
+        JoystickTrack.MouseRightButtonDown += OnJoystickRightClick;
+        _jsTimer.Tick += OnJoystickTick;
+        _jsTimer.Start();
+        _jsSendTimer.Tick += (_, _) => FlushJoystickSend();
+        _jsSendTimer.Start();
+
+        PreviewKeyDown += OnWindowPreviewKeyDown;
+        PreviewKeyUp   += OnWindowPreviewKeyUp;
+
+        // A key assigned to a note or a joystick direction only gets its key-up while
+        // this window has focus. Alt-tabbing or clicking another app away mid-press
+        // means that key-up never arrives here, which otherwise leaves the note or the
+        // joystick latched on forever. Release everything the moment focus leaves.
+        Deactivated += (_, _) =>
+        {
+            ReleaseNote();
+            _jsUpHeld = false;
+            _jsDownHeld = false;
+            if (_pendingCapture is { } pc) { pc.End(); _pendingCapture = null; }
+        };
+
         Closed += (_, _) =>
         {
             _sysEx.SysExTraffic -= OnTraffic;
@@ -123,9 +171,22 @@ partial class SysExToolWindow : ThemedWindow
             _flushTimer.Tick -= FlushIncoming;
             ReleaseNote();
             ClearMidiLitKeys();
+
+            _jsTimer.Stop();
+            _jsTimer.Tick -= OnJoystickTick;
+            _jsSendTimer.Stop();
+            if (_jsLastSentBend != 8192)
+            {
+                int ch = SelectedChannel - 1;
+                _ = _sysEx.SendMidiAsync($"{0xE0 | ch:X2} 00 40");   // center the bend on close
+            }
         };
 
-        Loaded += (_, _) => BuildPiano();
+        Loaded += (_, _) =>
+        {
+            BuildPiano();
+            BuildJoystick();
+        };
     }
 
     // Show which MIDI link this monitor's traffic is flowing over (USB / DIN / TCP),
@@ -250,6 +311,7 @@ partial class SysExToolWindow : ThemedWindow
         key.MouseLeave += OnKeyLeave;
         key.MouseDown  += OnKeyDown;
         key.MouseUp    += OnKeyUp;
+        key.MouseRightButtonDown += OnKeyRightClick;
 
         PianoCanvas.Children.Add(key);
         _keyByMidi[midi] = key;
@@ -278,19 +340,109 @@ partial class SysExToolWindow : ThemedWindow
         if (e.LeftButton != MouseButtonState.Pressed) return;
 
         var key = (Border)sender;
-        var (midi, isBlack) = ((int, bool))key.Tag!;
+        var (midi, _) = ((int, bool))key.Tag!;
+        PressNote(key, midi);
+        key.CaptureMouse();
+        e.Handled = true;
+    }
 
+    void OnKeyRightClick(object sender, MouseButtonEventArgs e)
+    {
+        var key = (Border)sender;
+        var (midi, isBlack) = ((int, bool))key.Tag!;
+        var existing = _keyAssignments.Where(kv => kv.Value == midi).Select(kv => (Key?)kv.Key).FirstOrDefault();
+
+        var menu = new ContextMenu();
+        var miAssign = new MenuItem
+        {
+            Header = existing.HasValue ? $"Reassign Key (currently {existing})…" : "Assign Physical Key…"
+        };
+        miAssign.Click += (_, _) => BeginKeyCapture(
+            k => _keyAssignments[k] = midi,
+            onBegin: () => key.Background = StyleFilter.Bg,
+            onEnd:   () => key.Background = isBlack ? BlackNormal : WhiteNormal);
+        menu.Items.Add(miAssign);
+
+        if (existing.HasValue)
+        {
+            var miClear = new MenuItem { Header = $"Clear Assignment ({existing})" };
+            miClear.Click += (_, _) => _keyAssignments.Remove(existing.Value);
+            menu.Items.Add(miClear);
+        }
+
+        menu.PlacementTarget = key;
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    // Common press path for both mouse and physical-key-assigned playback. Mouse
+    // capture (for drag-off release) is applied by the mouse caller only.
+    void PressNote(Border key, int midi)
+    {
+        var (_, isBlack) = ((int, bool))key.Tag!;
         ReleaseNote();
 
         _pressedKey  = key;
         _pressedNote = midi;
         key.Background = isBlack ? BlackPressed : WhitePressed;
-        key.CaptureMouse();
 
         int ch = SelectedChannel - 1;
         _ = _sysEx.SendMidiAsync($"{0x90 | ch:X2} {midi:X2} 64");
         TXT_NoteLabel.Text = NoteName(midi);
-        e.Handled = true;
+    }
+
+    // A key/joystick-direction capture waiting for the next physical keypress.
+    // Escape cancels without assigning; either way onEnd restores the "listening"
+    // highlight applied by onBegin.
+    void BeginKeyCapture(Action<Key> assign, Action onBegin, Action onEnd)
+    {
+        onBegin();
+        _pendingCapture = (assign, onEnd);
+    }
+
+    static bool IsModifierKey(Key k) => k is
+        Key.LeftCtrl or Key.RightCtrl or Key.LeftShift or Key.RightShift or
+        Key.LeftAlt  or Key.RightAlt  or Key.LWin      or Key.RWin       or Key.System;
+
+    void OnWindowPreviewKeyDown(object sender, KeyEventArgs e)
+    {
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+
+        if (_pendingCapture is { } pc)
+        {
+            if (IsModifierKey(key)) return;   // wait for the real key, not the modifier that precedes it
+            _pendingCapture = null;
+            if (key != Key.Escape) pc.Assign(key);
+            pc.End();
+            e.Handled = true;
+            return;
+        }
+
+        // Don't steal ordinary shortcuts (Ctrl+C, etc.) from assigned keys.
+        if (Keyboard.Modifiers != ModifierKeys.None || e.IsRepeat) return;
+
+        if (_jsUpKey == key)   { _jsUpHeld   = true; e.Handled = true; return; }
+        if (_jsDownKey == key) { _jsDownHeld = true; e.Handled = true; return; }
+
+        if (_keyAssignments.TryGetValue(key, out int midi) && _keyByMidi.TryGetValue(midi, out var border))
+        {
+            PressNote(border, midi);
+            e.Handled = true;
+        }
+    }
+
+    void OnWindowPreviewKeyUp(object sender, KeyEventArgs e)
+    {
+        var key = e.Key == Key.System ? e.SystemKey : e.Key;
+
+        if (_jsUpKey == key)   { _jsUpHeld   = false; e.Handled = true; return; }
+        if (_jsDownKey == key) { _jsDownHeld = false; e.Handled = true; return; }
+
+        if (_keyAssignments.TryGetValue(key, out int midi) && _pressedNote == midi)
+        {
+            ReleaseNote();
+            e.Handled = true;
+        }
     }
 
     void OnKeyUp(object sender, MouseButtonEventArgs e)
@@ -326,6 +478,139 @@ partial class SysExToolWindow : ThemedWindow
                 _pressedKey.Background = isBlack ? BlackNormal : WhiteNormal;
             _pressedKey = null;
         }
+    }
+
+    // ── Pitch joystick ───────────────────────────────────────────────────────
+
+    void BuildJoystick()
+    {
+        JoystickTrack.Height = WH;
+        Canvas.SetTop(JoystickCenterLine, (WH - JoystickCenterLine.Height) / 2);
+        PositionJoystickPuck();
+    }
+
+    void PositionJoystickPuck()
+    {
+        double usable = Math.Max(1, WH - JoystickPuck.Height);
+        double top = (1 - (_jsValue + 1) / 2) * usable;
+        Canvas.SetTop(JoystickPuck, top);
+    }
+
+    void OnJoyMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        JoystickTrack.CaptureMouse();
+        _jsDragging = true;
+        UpdateJoystickFromMouse(e.GetPosition(JoystickTrack));
+        e.Handled = true;
+    }
+
+    void OnJoyMouseMove(object sender, MouseEventArgs e)
+    {
+        if (!_jsDragging) return;
+        UpdateJoystickFromMouse(e.GetPosition(JoystickTrack));
+    }
+
+    void OnJoyMouseUp(object sender, MouseButtonEventArgs e)
+    {
+        JoystickTrack.ReleaseMouseCapture();
+        _jsDragging = false;   // OnJoystickTick springs it back to center from here
+        e.Handled = true;
+    }
+
+    void UpdateJoystickFromMouse(Point p)
+    {
+        double usable = Math.Max(1, WH - JoystickPuck.Height);
+        double frac = Math.Clamp((p.Y - JoystickPuck.Height / 2) / usable, 0, 1);
+        _jsValue = 1 - 2 * frac;   // up = +1 (pitch up)
+        PositionJoystickPuck();
+        UpdateJoyLabel();
+    }
+
+    void OnJoystickRightClick(object sender, MouseButtonEventArgs e)
+    {
+        var menu = new ContextMenu();
+
+        var miUp = new MenuItem
+        {
+            Header = _jsUpKey.HasValue ? $"Reassign Bend-Up Key (currently {_jsUpKey})…" : "Assign Bend-Up Key…"
+        };
+        miUp.Click += (_, _) => BeginKeyCapture(
+            k => _jsUpKey = k,
+            onBegin: () => JoystickTrack.BorderBrush = StyleFilter.Border,
+            onEnd:   () => JoystickTrack.BorderBrush = KeyBorder);
+        menu.Items.Add(miUp);
+        if (_jsUpKey.HasValue)
+        {
+            var miClearUp = new MenuItem { Header = $"Clear Bend-Up Key ({_jsUpKey})" };
+            miClearUp.Click += (_, _) => { _jsUpKey = null; _jsUpHeld = false; };
+            menu.Items.Add(miClearUp);
+        }
+
+        menu.Items.Add(new Separator());
+
+        var miDown = new MenuItem
+        {
+            Header = _jsDownKey.HasValue ? $"Reassign Bend-Down Key (currently {_jsDownKey})…" : "Assign Bend-Down Key…"
+        };
+        miDown.Click += (_, _) => BeginKeyCapture(
+            k => _jsDownKey = k,
+            onBegin: () => JoystickTrack.BorderBrush = StyleFilter.Border,
+            onEnd:   () => JoystickTrack.BorderBrush = KeyBorder);
+        menu.Items.Add(miDown);
+        if (_jsDownKey.HasValue)
+        {
+            var miClearDown = new MenuItem { Header = $"Clear Bend-Down Key ({_jsDownKey})" };
+            miClearDown.Click += (_, _) => { _jsDownKey = null; _jsDownHeld = false; };
+            menu.Items.Add(miClearDown);
+        }
+
+        menu.PlacementTarget = JoystickTrack;
+        menu.IsOpen = true;
+        e.Handled = true;
+    }
+
+    // Ticks at 60fps. Mouse drag sets _jsValue directly (handled in
+    // UpdateJoystickFromMouse); everything else - key-held motion and the spring-back
+    // to center after a key/mouse release - glides here so it never snaps.
+    void OnJoystickTick(object? sender, EventArgs e)
+    {
+        if (_jsDragging) return;
+
+        double target = _jsUpHeld && !_jsDownHeld ? 1.0
+                       : _jsDownHeld && !_jsUpHeld ? -1.0
+                       : 0.0;
+        if (Math.Abs(_jsValue - target) < 0.0005)
+        {
+            if (_jsValue == target) return;
+            _jsValue = target;
+        }
+        else
+        {
+            _jsValue += (target - _jsValue) * 0.18;
+        }
+
+        PositionJoystickPuck();
+        UpdateJoyLabel();
+    }
+
+    void UpdateJoyLabel()
+    {
+        TXT_JoyLabel.Text = Math.Abs(_jsValue) < 0.005 ? "0" : (_jsValue > 0 ? $"+{_jsValue:0.00}" : $"{_jsValue:0.00}");
+    }
+
+    // Runs at 15 Hz (see _jsSendTimer) - samples whatever _jsValue currently is and
+    // sends only if it actually moved. Independent of how often the value itself
+    // changes (60fps glide, or every mouse-move while dragging).
+    void FlushJoystickSend()
+    {
+        int bend14 = Math.Clamp(8192 + (int)Math.Round(_jsValue * 8191), 0, 16383);
+        if (bend14 == _jsLastSentBend) return;
+        _jsLastSentBend = bend14;
+
+        byte lsb = (byte)(bend14 & 0x7F);
+        byte msb = (byte)((bend14 >> 7) & 0x7F);
+        int ch = SelectedChannel - 1;
+        _ = _sysEx.SendMidiAsync($"{0xE0 | ch:X2} {lsb:X2} {msb:X2}");
     }
 
     static string NoteName(int midi)

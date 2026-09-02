@@ -105,6 +105,39 @@
                               FontSize="11"
                               HorizontalAlignment="Stretch"/>
                 </StackPanel>
+                <StackPanel DockPanel.Dock="Left" VerticalAlignment="Center"
+                            Width="66" Margin="0 0 12 0">
+                    <TextBlock x:Name="TXT_JoyLabel"
+                               FontFamily="Consolas" FontSize="13" FontWeight="Bold"
+                               Foreground="#FF88AADD"
+                               HorizontalAlignment="Center"
+                               Text="0"/>
+                    <Border x:Name="JoystickTrack"
+                            Width="30"
+                            HorizontalAlignment="Center"
+                            Margin="0 5 0 0"
+                            Background="#FF1A1A1A"
+                            BorderBrush="#FF444444" BorderThickness="1"
+                            CornerRadius="3"
+                            Cursor="SizeNS">
+                        <Canvas x:Name="JoystickCanvas" ClipToBounds="False">
+                            <Border x:Name="JoystickCenterLine"
+                                    Width="30" Height="1" Background="#FF333333"/>
+                            <Border x:Name="JoystickPuck"
+                                    Width="26" Height="16"
+                                    Canvas.Left="2"
+                                    Background="#FF88AADD"
+                                    BorderBrush="#FFBBDDFF" BorderThickness="1"
+                                    CornerRadius="2"/>
+                        </Canvas>
+                    </Border>
+                    <TextBlock Text="Pitch Joystick"
+                               FontFamily="Consolas" FontSize="9"
+                               Foreground="#FF444444"
+                               HorizontalAlignment="Center"
+                               TextAlignment="Center"
+                               Margin="0 5 0 0"/>
+                </StackPanel>
                 <Canvas x:Name="PianoCanvas" ClipToBounds="True"/>
             </DockPanel>
         </Border>
