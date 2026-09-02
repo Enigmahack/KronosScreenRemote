@@ -81,6 +81,11 @@ public partial class SampleEditorWindow : ThemedWindow
         BtnSelectTool.IsChecked = true;
         BtnMoveTool.IsChecked = false;
         _vm.IsMoveToolActive = false;
+        // Scroll to Zoom is checked by default (today's only behavior) - set here, after
+        // InitializeComponent() has already built WaveformLeft/WaveformRight, rather than
+        // inline in XAML, which would fire OnScrollToZoomChanged mid-parse before those
+        // fields exist (same hazard BtnSelectTool's own comment describes).
+        ChkScrollToZoom.IsChecked = true;
         SampleTree.ItemsSource = _vm.Roots;
         _vm.TreeRefreshed += () => { }; // ItemsSource already bound to the live collection - no rebind needed
         VolumeControl.Volume = _vm.Volume;
@@ -733,6 +738,15 @@ public partial class SampleEditorWindow : ThemedWindow
 
     void OnUseZeroChanged(object sender, RoutedEventArgs e) => _vm.UseZeroCrossing = UseZeroBox.IsChecked == true;
 
+    // Pure UI preference, no VM state - both panes read SampleWaveformControl.ScrollToZoom
+    // directly (see its own comment for what unchecked does).
+    void OnScrollToZoomChanged(object sender, RoutedEventArgs e)
+    {
+        bool on = ChkScrollToZoom.IsChecked == true;
+        WaveformLeft.ScrollToZoom = on;
+        WaveformRight.ScrollToZoom = on;
+    }
+
     // Unlike UseZeroCrossing (pure VM-side state with no immediate visual feedback),
     // LoopLockEnabled also drives WaveformLeft/Right directly (the whole-region-drag
     // gate and its green/blue fill - see SampleWaveformControl's own comments) - that
@@ -874,6 +888,11 @@ public partial class SampleEditorWindow : ThemedWindow
         bool anythingLoaded = _vm.Roots.Count > 0;
         EmptyStateText.Visibility = anythingLoaded ? Visibility.Collapsed : Visibility.Visible;
         EditorContent.Visibility = anythingLoaded ? Visibility.Visible : Visibility.Collapsed;
+        // Moved ahead of the early return below: with nothing loaded, HasUnsavedChanges is
+        // false, and Save Changes must show that (faded/disabled) from the moment the window
+        // opens rather than sitting enabled - its XAML default - until the first title update
+        // some later action happens to trigger.
+        UpdateWindowTitle();
         if (!anythingLoaded) return; // nothing else below has anything meaningful to set
 
         // The Index/Sample/Orig.Key/Top Key panel is available as soon as a multisample
@@ -900,7 +919,6 @@ public partial class SampleEditorWindow : ThemedWindow
         // it stays visible either way.
         Keymap.Visibility = _vm.CurrentMultisampleZones != null ? Visibility.Visible : Visibility.Collapsed;
         NoSelectionText.Visibility = _vm.HasZoneSelected ? Visibility.Collapsed : Visibility.Visible;
-        UpdateWindowTitle();
         MNU_UnloadCollection.IsEnabled = _vm.HasActiveCollection;
         MNU_RevertKsc.IsEnabled = _vm.HasActiveCollection;
         MNU_RevertAll.IsEnabled = _vm.Roots.Count > 0;

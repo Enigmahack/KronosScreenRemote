@@ -201,6 +201,21 @@ public sealed class SampleWaveformControl : FrameworkElement
         set => SetValue(MoveToolActiveProperty, value);
     }
 
+    public static readonly DependencyProperty ScrollToZoomProperty =
+        DependencyProperty.Register(nameof(ScrollToZoom), typeof(bool), typeof(SampleWaveformControl),
+            new FrameworkPropertyMetadata(true));
+
+    // The window's own "Scroll to Zoom" checkbox (SampleEditorWindow.xaml, checked by
+    // default - today's only behavior). Unchecked: OnMouseWheel below leaves the event
+    // unhandled instead of zooming, so it bubbles up exactly like scrolling anywhere
+    // OUTSIDE this control already does - a plain vertical scroll of the outer pane, not
+    // a zoom or a horizontal pan of the waveform's own view.
+    public bool ScrollToZoom
+    {
+        get => (bool)GetValue(ScrollToZoomProperty);
+        set => SetValue(ScrollToZoomProperty, value);
+    }
+
     public static readonly DependencyProperty CanMoveWaveformProperty =
         DependencyProperty.Register(nameof(CanMoveWaveform), typeof(bool), typeof(SampleWaveformControl),
             new FrameworkPropertyMetadata(false));
@@ -858,7 +873,7 @@ public sealed class SampleWaveformControl : FrameworkElement
     protected override void OnMouseWheel(MouseWheelEventArgs e)
     {
         base.OnMouseWheel(e);
-        if (FrameCount == 0) return;
+        if (!ScrollToZoom || FrameCount == 0) return;
         e.Handled = true;
 
         int viewLen = ViewEndFrame - _viewStart;
