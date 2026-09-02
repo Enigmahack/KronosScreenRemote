@@ -28,6 +28,24 @@ partial class PcgPaneViewModel : ObservableObject
     [ObservableProperty] string statusText = "";
     [ObservableProperty] string? loadedFileName;
 
+    // What's in the loaded file, by type, plus how many of its objects reference something
+    // absent from both this file AND Keyboard Library - mirrors MergePaneViewModel's own tally,
+    // shown the same way in LibrarianShellWindow.xaml. Rebuilt by RefreshTally on every load.
+    [ObservableProperty] string tallyText = "";
+    [ObservableProperty] int missingDependencyCount;
+
+    // Drives the tally's red styling in LibrarianShellWindow.xaml, same as MergePaneViewModel's.
+    public bool HasMissingDependencies => MissingDependencyCount > 0;
+
+    partial void OnMissingDependencyCountChanged(int value) => OnPropertyChanged(nameof(HasMissingDependencies));
+
+    // Set by LibrarianShellViewModel (same "Func injected post-construction" pattern as
+    // GetCategoryNames): whether Keyboard Library already covers a reference this file doesn't -
+    // an address absent from the PCG isn't a real gap when Keyboard Library resolves it (same rule
+    // ShowPcgObjectDependencies' own DescribeGapOrLocal applies). Null in a headless self-test
+    // just means every PCG-external reference counts as missing.
+    public Func<ObjLoc, bool>? IsAvailableLocally { get; set; }
+
     // Live filter text for the top-right search box (LibrarianShellWindow.xaml, above the "Loaded
     // PCG File" pane). Set on every keystroke (UpdateSourceTrigger=PropertyChanged) - ApplyFilter
     // below is a single pass over an already-loaded tree (no disk/network I/O), so this stays cheap
@@ -161,6 +179,7 @@ partial class PcgPaneViewModel : ObservableObject
         _view = new PcgLibraryView(file);
         LoadedFileName = fileName;
         RefreshTree();
+        RefreshTally();
 
         StatusText = AppMessages.Librarian.Pcg.Loaded(fileName, file.Objects.Count);
         if (file.RejectedBanks.Count > 0)
@@ -188,7 +207,39 @@ partial class PcgPaneViewModel : ObservableObject
         LoadedFileName = null;
         Roots.Clear();
         StatusText = statusText;
+        RefreshTally();
         TreeRefreshed?.Invoke();
+    }
+
+    // Whole-file counts by type, and how many objects have at least one reference this file
+    // doesn't satisfy and Keyboard Library doesn't either. A direct (one-hop) check per object,
+    // not MergePaneViewModel's transitive walk - there's no per-reference-site cache to drive
+    // it here, and re-deriving one on every load, over what can be a 5,000+ object file, is the
+    // exact cost RefreshTree's own leaf-building already accepts once per leaf (see
+    // PcgPaneViewModel's header comment on why a decode-per-leaf is fine with the whole file
+    // already resident in memory) - this is simply a second such pass.
+    void RefreshTally()
+    {
+        if (_view == null) { TallyText = ""; MissingDependencyCount = 0; return; }
+
+        var all = _view.AllObjects.ToList();
+        int Count(int objType) => all.Count(l => l.ObjType == objType);
+        TallyText = $"Programs: {Count(LibObj.Program)}   Combis: {Count(LibObj.Combi)}   " +
+                    $"Drum Kits: {Count(LibObj.DrumKit)}   Wave Seq: {Count(LibObj.WaveSequence)}   " +
+                    $"Set Lists: {Count(LibObj.SetList)}";
+
+        int missing = 0;
+        foreach (var loc in all)
+        {
+            var entry = _view.Get(loc);
+            if (entry == null) continue;
+            byte[]? body = ProgramFormatConverter.WireBodyFromPcgEntry(loc.ObjType, entry);
+            if (body == null) continue;
+            bool hasGap = ObjectReferenceWalker.WalkResolvable(loc.ObjType, body)
+                .Any(r => _view.Get(r.Ref) == null && IsAvailableLocally?.Invoke(r.Ref) != true);
+            if (hasGap) missing++;
+        }
+        MissingDependencyCount = missing;
     }
 
     // Testing-only entry point: LoadFromComputer/LoadFromKronosAsync both need a real Window
@@ -197,6 +248,7 @@ partial class PcgPaneViewModel : ObservableObject
     {
         _view = view;
         RefreshTree();
+        RefreshTally();
     }
 
     // Testing-only entry point for the "last attempted load wins" self-test - drives the
@@ -232,7 +284,7 @@ partial class PcgPaneViewModel : ObservableObject
 
     // The populated banks of one Program/Combi object type from the loaded view, banks in numeric
     // order and each bank's leaves in slot order - matching what the same objects look like once
-    // placed into Local Library.
+    // placed into Keyboard Library.
     IReadOnlyList<ObjectTreeScaffold.Bank> PcgBanksFor(int objType, Dictionary<int, List<ObjLoc>> byType) =>
         byType.TryGetValue(objType, out var locs)
             ? locs.GroupBy(l => l.Bank).OrderBy(g => g.Key)

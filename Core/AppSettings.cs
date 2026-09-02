@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Windows.Input;
 
 namespace KronosScreenRemote;
@@ -30,10 +30,10 @@ public class AppSettings
     // Librarian: Merge Window staging cache - see MergeCacheBehavior's own doc comment.
     public MergeCacheBehavior MergeBehavior { get; set; } = MergeCacheBehavior.TemporaryMemory;
 
-    // Merge Window -> Local Library duplication policy (Settings > Librarian; also mirrored as
+    // Merge Window -> Keyboard Library duplication policy (Settings > Librarian; also mirrored as
     // quick toggles in the Merge Window toolbar - see LibrarianShellViewModel's same-named
     // properties). When checked, placing a staged object whose content already exists somewhere
-    // in Local Library still writes a FRESH copy ("preserve duplication"); when unchecked, the
+    // in Keyboard Library still writes a FRESH copy ("preserve duplication"); when unchecked, the
     // existing copy is reused instead of writing a duplicate (LibrarianShellViewModel.
     // FindExistingLocalCopy). Defaults mirror the long-standing behavior: Programs dedup,
     // Combis copy as-is.
@@ -47,7 +47,7 @@ public class AppSettings
     // LaunchPullAsync for why it is sequenced behind the catalog warm-up and the SysEx probe.
     public bool LibrarianFullSyncOnLaunch { get; set; } = false;
 
-    // Librarian push: treat the LOCAL LIBRARY as the source of truth and skip the conflict
+    // Librarian push: treat the KEYBOARD LIBRARY as the source of truth and skip the conflict
     // pre-scan (ChangesetBuilder step 2), which normally excludes every dirty object in a bank
     // whose hardware digest moved since the last pull. On = Commit/Sync writes over whatever
     // changed on the Kronos without flagging a conflict or asking - the standing form of the

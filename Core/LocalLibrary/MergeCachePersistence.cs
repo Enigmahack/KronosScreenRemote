@@ -11,7 +11,7 @@ sealed record MergeEntrySnapshot(
     List<MergeOrigin> Origins, List<string> ReferencedBy, List<MergeRefSite> RefSites);
 
 // Full on-disk state: the staged entries themselves, plus which content hashes have already
-// been placed into Local Library THIS batch and where (PlacedAddresses) - needed too, not
+// been placed into Keyboard Library THIS batch and where (PlacedAddresses) - needed too, not
 // just the still-pending entries, so that if the app crashes mid-batch (some items placed,
 // others not yet), resuming after restart still correctly resolves a not-yet-placed Combi's
 // reference to a dependency that WAS placed before the crash (see MergeCache.

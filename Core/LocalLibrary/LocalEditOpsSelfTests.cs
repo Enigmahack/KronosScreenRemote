@@ -246,7 +246,7 @@ static class LocalEditOpsSelfTests
                 LocalEditOps.FindNextFreeSlot(cache, LibObj.Combi, 0x01) == 1);
 
             // ── Read-only factory banks: browsable, never writable ──────────────────────────
-            // GM/g Program banks are shown in Local Library so their content can be looked up, and
+            // GM/g Program banks are shown in Keyboard Library so their content can be looked up, and
             // that is the whole risk: a bank the user can SEE is a bank a drop can land on. BatchPlace
             // is the single choke point every drop/paste/auto-fill goes through, so the refusal has to
             // hold there, not only in the handlers that remember to ask.

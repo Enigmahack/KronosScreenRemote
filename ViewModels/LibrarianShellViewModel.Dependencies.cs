@@ -106,7 +106,7 @@ partial class LibrarianShellViewModel
             if (!seen.Add(refLoc)) continue;
             string parentInfo = DescribeParent(loc, parentName, RefKinds.Describe(refKind, site));
             // A ROM (GM/g) reference is shown, but never as missing - it resolves on the
-            // instrument no matter what the local library holds (ObjectReferenceWalker.
+            // instrument no matter what the keyboard library holds (ObjectReferenceWalker.
             // IsAlwaysAvailable), and nothing can be pulled or placed to "fix" it.
             if (ObjectReferenceWalker.IsAlwaysAvailable(refLoc))
             {
@@ -250,7 +250,7 @@ partial class LibrarianShellViewModel
                 continue;
             }
             // Absent from the PCG is NOT the same as missing: the reference is an ADDRESS, so
-            // whatever Local Library already holds there is what the Kronos will play. Checking
+            // whatever Keyboard Library already holds there is what the Kronos will play. Checking
             // that before calling it a gap is the difference between "you need to find this" and
             // "you already have this" - see DescribeAvailableLocally.
             rows.Add(DescribeGapOrLocal(refLoc, parentInfo, "in this PCG"));
@@ -305,13 +305,13 @@ partial class LibrarianShellViewModel
     // clicks empty space (that list is the pre-Commit checklist; a checklist that vanishes on a
     // stray click is worse than none).
     // One reference that its own source (a loaded PCG, the Merge Window) doesn't satisfy - which
-    // is only half the question. The reference is an ADDRESS, so if Local Library already holds
+    // is only half the question. The reference is an ADDRESS, so if Keyboard Library already holds
     // something there, the Kronos resolves it on load and there is nothing for the user to go
     // find: that gets an ordinary row naming what's actually there, not a red one. Only an
     // address nothing local covers is a real gap.
     // Present locally AND still going to be there after the next Commit. _cache.Exists alone
     // counts an object already marked pending-delete, so reassuring the user that a dependency is
-    // "already in your Local Library" off Exists would be pointing at something Commit is about to
+    // "already in your Keyboard Library" off Exists would be pointing at something Commit is about to
     // remove. Only used for the green-light direction - saying something IS satisfied is the claim
     // that has to be strict.
     bool AvailableLocally(ObjLoc loc) =>
@@ -418,7 +418,7 @@ partial class LibrarianShellViewModel
         return (found, null);
     }
 
-    // A display name for an address, wherever it can be found - Local Library first (the cached
+    // A display name for an address, wherever it can be found - Keyboard Library first (the cached
     // DisplayName, no blob read), then the loaded PCG. Empty when neither knows it, which is itself
     // informative in the unresolved list: nothing loaded has this object at all.
     public string DescribeMissingName(ObjLoc loc)
@@ -505,7 +505,7 @@ partial class LibrarianShellViewModel
         var rows = new List<ObjectDependencyRow>();
         foreach (var group in MergePane.UnresolvedDependencies
                      .GroupBy(s => s.TargetLoc)
-                     // Local Library already covers this address, so the reference resolves on the
+                     // Keyboard Library already covers this address, so the reference resolves on the
                      // instrument and there is nothing to go find - the gap is only in the Merge
                      // Window's own pull source, which is not the user's problem. Filtering here
                      // rather than styling it differently keeps the red section to exactly the
@@ -581,7 +581,7 @@ partial class LibrarianShellViewModel
         return lines;
     }
 
-    // Same as DescribeLocalChildren, sourced from a loaded PCG instead of Local Library.
+    // Same as DescribeLocalChildren, sourced from a loaded PCG instead of Keyboard Library.
     IReadOnlyList<string> DescribePcgChildren(PcgLibraryView view, ObjLoc loc)
     {
         var entry = view.Get(loc);

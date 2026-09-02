@@ -995,7 +995,7 @@ sealed class SysExService : ISysExService
             // Stamp the CURRENT, correct object-version byte at the moment of the actual
             // hardware write - never trust whatever's stored on op.Version. This is the one
             // choke point every push goes through, so it retroactively heals any object
-            // already sitting in Local Library or the Merge Window with a stale/placeholder
+            // already sitting in Keyboard Library or the Merge Window with a stale/placeholder
             // version (e.g. every PCG-imported Program used to carry 0 instead of 5) without
             // needing to re-place or re-pull anything. See LibObj.CurrentObjectVersion.
             byte version = LibObj.CurrentObjectVersion(op.Obj) ?? op.Version;

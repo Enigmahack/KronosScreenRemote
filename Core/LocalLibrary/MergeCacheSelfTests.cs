@@ -132,7 +132,7 @@ static class MergeCacheSelfTests
             Check("patch-combiZ-reported-unresolved", combiZUnresolved.Count == 1 &&
                 combiZUnresolved[0].TargetLoc.Equals(progMissingLoc) && combiZUnresolved[0].ResolvedContentHash == progMissingEntry!.ContentHash);
 
-            // ── ResolveReferencesForPlacement's localLookup - a Local Library search, not
+            // ── ResolveReferencesForPlacement's localLookup - a Keyboard Library search, not
             // just _placedAddresses. Simulated here with a plain dictionary standing in for
             // LocalLibraryCache.FindByContentHash, since this file tests MergeCache in
             // isolation from the rest of Core/LocalLibrary.
@@ -158,9 +158,9 @@ static class MergeCacheSelfTests
             Check("placedAddresses-takes-priority-over-localLookup", bankX2 == fbDest && numX2 == progADest.Number);
 
             // ── Requirement 3: PullFromLocal - the same transitive/dedup/gap pull, sourced
-            // from Local Library instead of a PCG. Seed a tiny local cache (a Combi referencing
+            // from Keyboard Library instead of a PCG. Seed a tiny local cache (a Combi referencing
             // a Program) via RecordPullBaselines and pull the Combi in; both must stage, the
-            // referrer bookkeeping must be wired, and the origin must be labeled Local Library. ─
+            // referrer bookkeeping must be wired, and the origin must be labeled Keyboard Library. ─
             string localRoot = Path.Combine(root, "local_lib");
             var localCache = new LocalLibraryCache(localRoot);
             // I-B again, and for the same reason as fbProg0 above: a lone (0, 0) timbre makes the

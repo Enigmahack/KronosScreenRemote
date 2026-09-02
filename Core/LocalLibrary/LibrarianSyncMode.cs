@@ -10,7 +10,7 @@ public enum LibrarianSyncMode
     // On its own a pull never destroys a local edit: LibraryPullPipeline records fresh baselines
     // and marks a locally-dirty object whose bank ALSO moved on hardware as Conflicted, leaving
     // both versions intact. "Pull Only" as a user-facing action means something stronger - make
-    // the local library a mirror of the instrument - so the shell discards every pending local
+    // the keyboard library a mirror of the instrument - so the shell discards every pending local
     // change first, behind a confirm. See LibrarianShellViewModel.PullOnlyAsync.
     PullOnly,
 
@@ -38,7 +38,7 @@ public static class LibrarianSyncModeText
     public static string Tooltip(this LibrarianSyncMode mode) => mode switch
     {
         LibrarianSyncMode.PullOnly =>
-            "Replace the local library with what is on the Kronos. Pending local changes are discarded (you are asked first).",
+            "Replace the keyboard library with what is on the Kronos. Pending local changes are discarded (you are asked first).",
         LibrarianSyncMode.PushOnly =>
             "Write every pending local change to the Kronos. If the Kronos has changed since the last sync you are asked before overwriting it.",
         _ =>

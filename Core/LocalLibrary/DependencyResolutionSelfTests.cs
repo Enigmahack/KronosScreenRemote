@@ -27,7 +27,7 @@ static class DependencyResolutionSelfTests
         {
             var exec = new FakeMoveExecutor();
             var cache = new LocalLibraryCache(root);
-            await LibraryPullPipeline.PullAsync(exec, cache, full: true);   // nothing seeded - empty local library
+            await LibraryPullPipeline.PullAsync(exec, cache, full: true);   // nothing seeded - empty keyboard library
 
             // A UNIQUE host key, never the empty one: LibrarianShellViewModel's constructor seeds
             // its Program bank types from the REAL, global, host-keyed cache file next to the exe,

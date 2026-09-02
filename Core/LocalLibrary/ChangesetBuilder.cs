@@ -1,4 +1,4 @@
-﻿namespace KronosScreenRemote;
+namespace KronosScreenRemote;
 
 // Builds a ChangesetPlan from whatever's currently dirty in the local cache - the Push
 // half of the Sync/Commit pipeline. In order:
@@ -8,7 +8,7 @@
 //     against hardware's CURRENT digest. A mismatch excludes every dirty object in that
 //     bank from this push (flagged Conflicted, same marker Pull uses) instead of silently
 //     overwriting a possible concurrent front-panel edit. Skipped entirely when
-//     `forceDestructiveWrite` says the local library is the source of truth.
+//     `forceDestructiveWrite` says the keyboard library is the source of truth.
 //  3. Defense-in-depth referential check: any surviving dirty Combi/Set List whose
 //     references point at a target with NO local body at all (never pulled/placed) is
 //     REFUSEd - catches an edit+discard interaction leaving a referrer pointing at
@@ -19,7 +19,7 @@
 static class ChangesetBuilder
 {
     // forceDestructiveWrite (Settings > Librarian, AppSettings.LibrarianForceDestructiveWrite):
-    // the local library is authoritative, so step 2 below is skipped outright rather than run and
+    // the keyboard library is authoritative, so step 2 below is skipped outright rather than run and
     // ignored - its digest round trip per dirty bank exists only to decide what to exclude, and a
     // MarkConflicted here would flag objects this very push is about to write anyway. The gates
     // that survive it (steps 3 and 3.5, and ApplyMoveAsync's own staleness gate) guard against

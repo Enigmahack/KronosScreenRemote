@@ -4,7 +4,7 @@ using System.IO;
 using System.Text;
 
 // Off-hardware self-test for the Merge Window's "Auto-Fill" button
-// (LibrarianShellViewModel.AutoFillFromMergeAsync): place EVERYTHING staged into Local Library's next
+// (LibrarianShellViewModel.AutoFillFromMergeAsync): place EVERYTHING staged into Keyboard Library's next
 // free slots in one gesture, instead of one drag per type per bank.
 //
 // Three properties carry the feature, and each is the thing that would silently rot:
@@ -59,7 +59,7 @@ static class MergeAutoFillSelfTests
         {
             var exec = new FakeMoveExecutor();
             var cache = new LocalLibraryCache(root);
-            await LibraryPullPipeline.PullAsync(exec, cache, full: true);   // nothing seeded - empty local library
+            await LibraryPullPipeline.PullAsync(exec, cache, full: true);   // nothing seeded - empty keyboard library
 
             var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), AutoFillHost);
 
@@ -509,7 +509,7 @@ static class MergeAutoFillSelfTests
 
     const int ChainCount = 3;
 
-    // Shared scaffold for the three scenarios above: an empty local library whose Program bank
+    // Shared scaffold for the three scenarios above: an empty keyboard library whose Program bank
     // I-B is known-EXi, real content seeded at Combi I-A:000 and Program I-B:000 (so every
     // placement lands one slot along from the address the PCG encoded - a repoint that no-ops
     // would prove nothing), and the chain PCG loaded. Same bank-types cache backup/restore

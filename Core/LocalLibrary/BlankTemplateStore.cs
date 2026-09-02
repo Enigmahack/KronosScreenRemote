@@ -7,7 +7,7 @@ using System.IO;
 // encoding, so the only faithful way to blank a slot is to write back the exact bytes the
 // instrument itself uses for a blank object (see BlankTemplates.EnsureAsync).
 //
-// Rooted at the local library's own directory so it inherits that dir's isolation (a temp dir in
+// Rooted at the keyboard library's own directory so it inherits that dir's isolation (a temp dir in
 // the self-tests, {DataDir}/local_library in the app) rather than a process-wide global.
 sealed class BlankTemplateStore
 {

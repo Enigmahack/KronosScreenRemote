@@ -113,7 +113,7 @@ static class LocalEditOps
     // Repoints ONE reference site inside an already-placed Program/Combi/Set List to a NEW destination
     // - the repair half of the auto-heal placement pipeline (LibrarianShellViewModel.
     // ResolvePendingDependencies): a dependency that wasn't resolvable when `requiredBy` was
-    // originally placed has since turned up somewhere in Local Library (found by content hash,
+    // originally placed has since turned up somewhere in Keyboard Library (found by content hash,
     // not necessarily at the address the reference originally encoded), so its reference needs
     // rewriting to point there. This is a REAL edit - goes through RecordEdit like any other
     // local change (re-dirties requiredBy, appends OpLog/History, feeds the next push
@@ -301,7 +301,7 @@ static class LocalEditOps
         return firstUnverifiable;
     }
 
-    // The HD-1/EXi format of a Program bank as Local Library currently sees it - the cached IsExi
+    // The HD-1/EXi format of a Program bank as Keyboard Library currently sees it - the cached IsExi
     // of the first Program already in that bank (index-only, no blob read; every Program in one
     // bank shares its format). Null if the bank is empty locally, i.e. nothing to infer from.
     public static bool? LocalProgramBankFormat(LocalLibraryCache cache, int bank)

@@ -2,7 +2,7 @@ namespace KronosScreenRemote;
 
 // Walks a Combi/Set List body's own outgoing references (Combi timbre -> Program; Set List
 // slot -> Combi/Program), independent of what "resolves" a reference - callers decide how to
-// interpret an ObjLoc (does it exist in the Local Library? in a loaded PCG? nowhere?). Reused
+// interpret an ObjLoc (does it exist in the Keyboard Library? in a loaded PCG? nowhere?). Reused
 // by DependencyScanner.Scan/HasAllDependencies below and by MergeCache's own transitive
 // auto-pull, so the reference-site layout (Combi timbre bytes, Set List slot bytes) is
 // decoded in exactly one place regardless of which cache is being checked against.
@@ -82,7 +82,7 @@ static class ObjectReferenceWalker
     // are factory content burned into the instrument; LibraryPullPlanner deliberately never fetches
     // them (ObjectTypeRegistry.EditableBanks scopes to the 21 writable Program banks), no .pcg file
     // carries them, and nothing can ever place one - so a Combi timbre or Set List slot pointing at
-    // GM:012 always resolves ON THE INSTRUMENT, however empty the local library is.
+    // GM:012 always resolves ON THE INSTRUMENT, however empty the keyboard library is.
     //
     // Without this, every such reference read as a permanently-unresolvable dependency: a red dot on
     // the Combi forever, a pending session-clipboard entry that no retry could ever clear, and -
@@ -96,7 +96,7 @@ static class ObjectReferenceWalker
     //
     // GM Drum Kit (object bank 0x10) is the same kind of factory ROM content as GM Programs -
     // a Drums-mode oscillator zone pointing at linear 152..160 resolves on the instrument
-    // regardless of the local library.
+    // regardless of the keyboard library.
     public static bool IsAlwaysAvailable(ObjLoc reference) =>
         (reference.ObjType == LibObj.Program && KronosBanks.IsReadOnlyProgramBank(reference.Bank)) ||
         (reference.ObjType == LibObj.DrumKit && KronosBanks.IsReadOnlyDrumKitBank(reference.Bank));
@@ -136,7 +136,7 @@ static class DependencyScanner
             .Select(r => (r.Ref, r.RefKind));
 
     // Index-only existence check (no blob reads) - for anything called once PER NODE across a
-    // whole tree (e.g. the Local Library tree's dependency-completeness marker), where Scan's
+    // whole tree (e.g. the Keyboard Library tree's dependency-completeness marker), where Scan's
     // GetCurrentBody-per-reference cost (fine for a single placement action) would re-read
     // every referenced blob on every tree refresh - the same synchronous full-disk-read stall
     // already fixed once for LocalLibraryCache.BuildCatalog.
@@ -152,7 +152,7 @@ static class DependencyScanner
     // successful repoint look like its own mismatch) - and for each one:
     //   - looks up what the PCG itself holds at that address (the one place this object's own
     //     unpatched reference actually points) to compute the dependency's real content hash;
-    //   - searches the WHOLE Local Library for that content (LocalLibraryCache.
+    //   - searches the WHOLE Keyboard Library for that content (LocalLibraryCache.
     //     FindByContentHash) and repoints the byte site there if found, wherever it lives -
     //     not just at the literal address the reference happens to encode;
     //   - otherwise reports it in Unresolved, carrying whatever expected hash was computed (null

@@ -1,4 +1,4 @@
-﻿namespace KronosScreenRemote;
+namespace KronosScreenRemote;
 
 using System.IO;
 
@@ -207,7 +207,7 @@ static class SyncPipelineSelfTests
         // ── E: an instrument that answers nothing (SysEx switched off at the panel - every
         //      request times out rather than erroring) must make the pull give up within a few
         //      banks, not grind through all 65 digests and then a Force Full Sync's ~19,000
-        //      individual object dumps. That difference is hours of "Indexing local library..."
+        //      individual object dumps. That difference is hours of "Indexing keyboard library..."
         //      versus a message naming the fix. ──
         {
             string root = ScratchRoot + "_e";
@@ -393,7 +393,7 @@ static class SyncPipelineSelfTests
                 // precisely what distinguishes the two, so don't "fix" this to match EraseBody.
                 Check("g-program-erased-on-hardware", hwProg != null && ProgramBody.ReadName(hwProg.Body) == "Init Program");
 
-                // The slots STAY in the local library, reverted to the init/blank object at their
+                // The slots STAY in the keyboard library, reverted to the init/blank object at their
                 // address (requirement 2 - a bank slot never vanishes), clean + no longer pending.
                 Check("g-setlist-kept-locally", cache.Exists(slLoc.ObjType, slLoc.Bank, slLoc.Number));
                 Check("g-setlist-reverted-blank",
@@ -767,7 +767,7 @@ static class SyncPipelineSelfTests
         }
 
         // ── M: "Force destructive write" (Settings > Librarian) - case B's exact scenario, but
-        //      with the local library declared the source of truth. The bank that moved on
+        //      with the keyboard library declared the source of truth. The bank that moved on
         //      hardware must now be WRITTEN rather than excluded, and no conflict raised. The
         //      inverse (flag off) is case B, so the pair pins both directions: getting this
         //      backwards would either silently clobber front-panel edits by default, or make the

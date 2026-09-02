@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Media;
 
@@ -390,11 +390,11 @@ public partial class HelpWindow : ThemedWindow
 
         Add(SectionHead("Librarian  (Tools → Librarian...)"));
         Add(Body("The Librarian manages Kronos programs, combis, and set lists: pull everything from the " +
-                 "Kronos into a local library, import .pcg files, stage objects in a Merge Window, and " +
+                 "Kronos into a keyboard library, import .pcg files, stage objects in a Merge Window, and " +
                  "place them back onto the instrument with dependency resolution."));
         Add(Body("• PCG pane: load a .pcg file and pull programs/combis/set lists (transitively - a set " +
                  "list pulls its combis, which pull their programs) into the Merge Window.\n" +
-                 "• Local Library: the on-disk cache synced from the Kronos (Sync Library). Move, edit, " +
+                 "• Keyboard Library: the on-disk cache synced from the Kronos (Sync Library). Move, edit, " +
                  "and place objects; writes are committed to the Kronos with a Store-Bank step.\n" +
                  "• Merge Window: a staging area. Auto-Fill places everything staged into the next free " +
                  "slots of the right type; dependencies are placed before their referrers so references " +
@@ -403,7 +403,7 @@ public partial class HelpWindow : ThemedWindow
                  "app closes; Local Storage persists it across sessions. Switching between them takes " +
                  "effect immediately, carrying whatever is already staged across.\n" +
                  "• Preserve duplicate Programs/Combis (Merge Window toolbar, or Settings → Librarian): " +
-                 "when checked, placing staged content that already exists in Local Library still writes " +
+                 "when checked, placing staged content that already exists in Keyboard Library still writes " +
                  "a fresh copy; when unchecked, the existing copy is reused instead of writing a " +
                  "duplicate. Defaults: Programs are reused, Combis are copied as-is.\n" +
                  "• Full sync on launch (Settings → Librarian, off by default): pulls every bank from the " +
@@ -412,7 +412,7 @@ public partial class HelpWindow : ThemedWindow
                  "local changes still wait for you to press Sync Library.\n" +
                  "• Force destructive write (Settings → Librarian, off by default): normally a bank that " +
                  "changed on the Kronos since this library last pulled it is excluded from the push and " +
-                 "flagged as a conflict for you to resolve. With this on, the local library is treated as " +
+                 "flagged as a conflict for you to resolve. With this on, the keyboard library is treated as " +
                  "the source of truth and 2-Way Sync overwrites those changes silently - the standing form of " +
                  "the Resolve Conflicts button. Front-panel edits made since the last pull are lost, and the " +
                  "pre-write backup does NOT cover them - it saves this library's last known copy of " +
@@ -435,9 +435,9 @@ public partial class HelpWindow : ThemedWindow
                  "• The PCG search box matches name, bank (e.g. 'I-A'), category, EXi engine type (e.g. " +
                  "'AL-1' matches both a name containing it and a Program that IS one), and what the object " +
                  "references. Case-insensitive.\n" +
-                 "• Delete and Clear Changes affect the local library only - hardware is untouched until " +
+                 "• Delete and Clear Changes affect the keyboard library only - hardware is untouched until " +
                  "Sync/Commit, and a fresh Pull restores what was deleted. Clear History deletes the local " +
-                 "audit log alone: local library, pending edits, and hardware are all unaffected.\n" +
+                 "audit log alone: keyboard library, pending edits, and hardware are all unaffected.\n" +
                  "• Tree dots and tints: a dot marks an object staged or referenced more than once, a blue " +
                  "dot marks a sample reference (see the legend at the bottom of the window), and a " +
                  "conflicted, pending-delete, or read-only row is tinted instead of dotted."));

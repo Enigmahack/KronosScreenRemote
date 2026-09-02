@@ -286,7 +286,7 @@ static class Storage
 
     // ── Librarian clipboard (Core/BatchMoveModel.cs's BatchClipboard) ───────────
     // A flat list, not a Dictionary<host,...> like the caches above - deliberately not
-    // host-keyed, because the local library it belongs to (Core/LocalLibrary) is a single
+    // host-keyed, because the keyboard library it belongs to (Core/LocalLibrary) is a single
     // global store: the Kronos's IP can change but the objects don't.
 
     public sealed record ClipboardEntryDto(
@@ -303,7 +303,7 @@ static class Storage
     // load-modify-save of the whole thing costs O(file) on every single placement. Measured on
     // a real 49 MB store over the SMB-mounted DataDir this app runs from: 715 MB allocated and
     // ~10.5 s of blocking write per drop, both scaling with the file, which is what made a
-    // drag from the Merge Window into Local Library stall and thrash the GC. Appending one
+    // drag from the Merge Window into Keyboard Library stall and thrash the GC. Appending one
     // line is O(new entries) instead. It also removes a latent lost-update: load-add-save
     // silently discarded anything another writer appended in between.
     //

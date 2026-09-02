@@ -1,4 +1,4 @@
-﻿namespace KronosScreenRemote;
+namespace KronosScreenRemote;
 
 /// <summary>
 /// The single catalog for every user-facing <b>popup, dialog, status-bar, and notification</b>
@@ -261,21 +261,21 @@ public static class AppMessages
         public const string Placed      = "Placed.";
         public const string PlaceFailed = "Place failed.";
 
-        /// <summary>Local Library pane - clipboard, paste/move results, per-item edit status.</summary>
+        /// <summary>Keyboard Library pane - clipboard, paste/move results, per-item edit status.</summary>
         public static class Local
         {
             // Shown in place of the tree while the referrer catalog is (re)indexing - editing is
             // blocked until it finishes, so the tree isn't shown against a half-built index.
             public const string IndexingPlaceholder =
-                "Indexing local library...\nThe library will appear here once indexing is complete.";
+                "Indexing keyboard library...\nThe library will appear here once indexing is complete.";
 
-            // Shown in place of the tree when the local library holds no objects at all - a
+            // Shown in place of the tree when the keyboard library holds no objects at all - a
             // fresh install, or the exe run from a folder that has no library beside it (DataDir
             // is the exe's own directory). The tree (even its bare type-root headers) stays
             // hidden until the first Sync populates it, so an empty library reads as "nothing
             // synced yet" rather than a broken, un-expandable tree.
             public const string EmptyLibraryHint =
-                "Your local library is empty.\nClick “Sync Library” to pull it from your Kronos.";
+                "Your keyboard library is empty.\nClick “Sync Library” to pull it from your Kronos.";
 
             public const string NothingToCut = "Nothing selected to cut.";
             public const string CutOneAtATime =
@@ -353,11 +353,11 @@ public static class AppMessages
             public static string PulledWithGapsInPcg(int staged, int gaps) =>
                 $"Pulled {staged} object(s); {gaps} not found in this PCG.";
             // Same report, split by whether the user can still satisfy the miss without hunting
-            // down another PCG - a gap whose address Local Library already fills needs no file at
+            // down another PCG - a gap whose address Keyboard Library already fills needs no file at
             // all, so lumping it in with the genuinely missing ones sends the user looking for
             // objects they already have.
             public static string PulledWithGapsPartlyLocal(int staged, int gaps, int inLibrary, int stillMissing) =>
-                $"Pulled {staged} object(s); {gaps} not found in this PCG. {inLibrary} found in Local Library, {stillMissing} still missing.";
+                $"Pulled {staged} object(s); {gaps} not found in this PCG. {inLibrary} found in Keyboard Library, {stillMissing} still missing.";
             public static string PulledWithGapsLocally(int staged, int gaps) =>
                 $"Pulled {staged} object(s); {gaps} not found locally.";
             public const string Cleared    = "Merge Window cleared.";
@@ -365,7 +365,7 @@ public static class AppMessages
             public static string RemovedMany(int removed) => $"Removed {removed} item(s) from the Merge Window.";
 
             // ── Auto-Fill (LibrarianShellViewModel.AutoFillFromMerge) ──
-            // Staging only: everything it reports has landed in Local Library, not on the
+            // Staging only: everything it reports has landed in Keyboard Library, not on the
             // instrument, so the wording must never read as "pushed".
             public const string AutoFillNothingStaged = "Nothing staged in the Merge Window to auto-fill.";
             // Shown per bank as the sweep runs (LibrarianShellViewModel.AutoFillToLibraryAsync's
@@ -387,7 +387,7 @@ public static class AppMessages
             // destination is full" without saying full OF WHAT leaves the user hunting through
             // every bank of every type for the free space that isn't there.
             public static string AutoFillNoRoom(IReadOnlyList<(string What, int Count)> noRoom) =>
-                "Local Library has no free slots left for: " +
+                "Keyboard Library has no free slots left for: " +
                 string.Join(", ", noRoom.Select(n => $"{n.Count} {n.What}(s)")) +
                 ". These stay staged - free slots in a bank of the matching type, then run Auto-Fill again.";
 
@@ -427,7 +427,7 @@ public static class AppMessages
                 "On the Kronos: GLOBAL > MIDI, and check every MIDI Filter box (Program Change, " +
                 "Bank Change, Combi Change, After Touch, Control Change and Exclusive).";
             public const string SysExOffBanner =
-                "The Kronos is not answering SysEx. Local Library, the Merge Window and PCG files " +
+                "The Kronos is not answering SysEx. Keyboard Library, the Merge Window and PCG files " +
                 "still work; Sync and Commit are disabled until it answers. " + SysExOffFix;
             public const string SysExOffCommitTooltip = "Disabled - the Kronos is not answering SysEx.";
 
@@ -449,8 +449,8 @@ public static class AppMessages
                 + "To keep the Kronos copy instead, cancel and run Sync Library in 2-Way or Pull Only.";
 
             // ── Sync-row status (LibrarianShellViewModel) ──
-            public const string Indexing        = "Indexing local library...";
-            public const string IndexingFailed  = "Local library indexing failed - see log";
+            public const string Indexing        = "Indexing keyboard library...";
+            public const string IndexingFailed  = "Keyboard library indexing failed - see log";
             // `notPushed` is the count the conflict pre-scan EXCLUDED from this push - deliberately
             // in the headline, not only in the warning below it: the same line used to read
             // "Pushed 99 object(s)." for a run that dropped 50 more without saying so.
@@ -487,7 +487,7 @@ public static class AppMessages
                 $"Pull complete - {fetched} object(s) pulled"
                 + (discarded > 0 ? $", {discarded} local change(s) discarded." : ", no local changes to discard.");
             public static string PullDiscardPrompt(int count) =>
-                "Pull Only replaces the local library with what is on the Kronos."
+                "Pull Only replaces the keyboard library with what is on the Kronos."
                 + Environment.NewLine + Environment.NewLine
                 + $"{count} pending local change(s) - edits and slots marked for deletion - will be "
                 + "DISCARDED. This cannot be undone."
@@ -499,9 +499,9 @@ public static class AppMessages
                 "Push Only could not write safely:"
                 + Environment.NewLine + Environment.NewLine + reason
                 + Environment.NewLine + Environment.NewLine
-                + "Overwrite the Kronos with the local library anyway? This is DESTRUCTIVE - "
+                + "Overwrite the Kronos with the keyboard library anyway? This is DESTRUCTIVE - "
                 + "whatever is on the instrument for those objects is replaced.";
-            public const string PushOverwriting = "Overwriting Kronos from local library...";
+            public const string PushOverwriting = "Overwriting Kronos from keyboard library...";
             public const string PullDiscardTitle   = "Discard Local Changes?";
             public const string PushOverwriteTitle = "Overwrite the Kronos?";
             public const string CancelledPendingDeps = "Cancelled - unresolved dependencies still pending.";
@@ -538,13 +538,13 @@ public static class AppMessages
                 $"Changing the bank type ERASES everything currently in {bankLabel} on the Kronos and replaces it with this whole bank. This takes effect on Commit.\n\n" +
                 $"Proceed?";
 
-            // Cross-pane placement gate (Merge Window / Loaded PCG File -> Local Library):
-            // the destination bank's Local Library copy has never been confirmed against the
+            // Cross-pane placement gate (Merge Window / Loaded PCG File -> Keyboard Library):
+            // the destination bank's Keyboard Library copy has never been confirmed against the
             // Kronos (no digest baseline yet, or the Kronos didn't answer the last time one was
             // requested) - see LibrarianShellViewModel.ConfirmDestinationBankAsync.
-            public const string ConfirmStaleBankTitle = "Local Library may be out of sync";
+            public const string ConfirmStaleBankTitle = "Keyboard Library may be out of sync";
             public static string ConfirmStaleBank(string bankLabel) =>
-                $"{bankLabel} in Local Library has never been confirmed against the Kronos this session " +
+                $"{bankLabel} in Keyboard Library has never been confirmed against the Kronos this session " +
                 $"(no successful Sync has checked it yet).\n\n" +
                 $"If it changed on the instrument - a front-panel edit, or a write from elsewhere - placing here " +
                 $"bases the edit on a copy that may already be stale, and Sync's own conflict check only catches " +
@@ -570,7 +570,7 @@ public static class AppMessages
             public static string PlacedAtWhere(string where)         => $"Placed at {where}";
             public static string PlaceFailedDetail(string? error)    => $"Place failed: {error}";
             // Duplicate-content guard (Merge -> Local): content byte-identical to something
-            // already elsewhere in Local Library is reused instead of written a second time.
+            // already elsewhere in Keyboard Library is reused instead of written a second time.
             public static string ReusedExistingContent(string existingWhere) =>
                 $"Identical content already at {existingWhere} - reused it instead of copying";
             public static string ReusedExistingContentCount(int count) =>
@@ -585,12 +585,12 @@ public static class AppMessages
             // the sound the referrer wants. See ProgramBody.IsInit.
             public const string InitPlaceholderSuffix = "(INIT placeholder)";
 
-            // A reference the loaded PCG / Merge Window can't satisfy but Local Library CAN, since
-            // the reference is an address and Local Library already holds that address. Says where
+            // A reference the loaded PCG / Merge Window can't satisfy but Keyboard Library CAN, since
+            // the reference is an address and Keyboard Library already holds that address. Says where
             // it was looked for AND where it was found, so the row can't be misread as either a
             // gap or as having come out of the source being browsed.
             public static string ResolvedFromLocalLibrary(string whereMissing) =>
-                $"(not {whereMissing}; already in your Local Library at this address)";
+                $"(not {whereMissing}; already in your Keyboard Library at this address)";
 
             // ── Properties dialog: dependency lists + "Scan PCG..." ──
             public const string DependenciesHeader   = "Dependencies";
@@ -621,7 +621,7 @@ public static class AppMessages
             public static string UndoPlacedAt(string what, string where)   => $"Placed {what} at {where}";
             public static string UndoPlacedMergeItemAt(string where)       => $"Placed a Merge Window item at {where}";
             public static string UndoPlacedGroup(int count, string bank)   => $"Placed {count} item(s) into {bank}";
-            public static string UndoAutoFilled(int count)                 => $"Auto-Filled {count} staged item(s) into Local Library";
+            public static string UndoAutoFilled(int count)                 => $"Auto-Filled {count} staged item(s) into Keyboard Library";
             public static string UndoCopiedBankWithTypeChange(string bank) => $"Copied a whole bank into {bank} with a type change";
             public static string UndoPulledIntoMerge(int count)            => $"Pulled {count} item(s) into the Merge Window";
             public static string UndoRemovedFromMerge(int count)           => $"Removed {count} item(s) from the Merge Window";
@@ -738,10 +738,10 @@ public static class AppMessages
     {
         // Says plainly WHAT is wrong and WHERE the address lives, because the old wording didn't:
         // "I-C:008 - needed by 1 object" left it ambiguous whether that address was a Program or a
-        // Combi, whether it referred to something in the loaded PCG or in Local Library, and what
+        // Combi, whether it referred to something in the loaded PCG or in Keyboard Library, and what
         // the user was supposed to do about it other than pick one of two buttons.
         public static string Heading(int count) =>
-            $"{count} reference{(count == 1 ? "" : "s")} below point at an object that isn't in your Local Library.\n\n" +
+            $"{count} reference{(count == 1 ? "" : "s")} below point at an object that isn't in your Keyboard Library.\n\n" +
             "These are addresses INSIDE the Combis/Set Lists you're about to push: each one names a slot the " +
             "Kronos will look in, which is currently empty (or holds something else). Those objects will load, " +
             "but the listed timbres/slots will sound wrong.\n\n" +
@@ -754,7 +754,7 @@ public static class AppMessages
         // are placed and the next Sync/Commit runs.
         public const string AllLocated =
             "Every missing object below has been found and staged in the Merge Window.\n\n" +
-            "They aren't placed yet - drop them into Local Library, and the references that " +
+            "They aren't placed yet - drop them into Keyboard Library, and the references that " +
             "needed them are repointed automatically at the next Sync/Commit.";
 
         // Type name first ("Program I-C:008", never a bare "I-C:008" - Program and Combi bank

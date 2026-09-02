@@ -236,6 +236,13 @@ sealed class LocalLibraryCache
         EntriesSnapshot().Where(kv => kv.Value.CurrentHash != kv.Value.BaselineHash).Select(kv => ParseKey(kv.Key))
               .Where(loc => loc.ObjType >= 0).ToList();
 
+    // Whole-library count of objects whose cached HasResolvedDependencies bit is false - the
+    // same index-only bit the tree's own dependency dot reads (see that method's comment), just
+    // summed instead of shown per-node. Safe to call on every tree refresh even over an
+    // SMB-mounted DataDir: no blob reads, no per-object body walk.
+    public int UnresolvedDependencyCount() =>
+        EntriesSnapshot().Count(kv => !kv.Value.HasResolvedDependencies);
+
     public Dictionary<(int ObjType, int Bank), string> BankDigestBaselineHex()
     {
         var result = new Dictionary<(int, int), string>();

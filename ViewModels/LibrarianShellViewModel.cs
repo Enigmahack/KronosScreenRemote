@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -89,10 +89,10 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     [ObservableProperty] string? warningText;
     [ObservableProperty] bool forceFullPull;
 
-    // Merge Window -> Local Library duplication policy, seeded from AppSettings in the ctor and
+    // Merge Window -> Keyboard Library duplication policy, seeded from AppSettings in the ctor and
     // mirrored by the Merge Window toolbar's quick toggles (persisted defaults live in Settings >
     // Librarian). ON = always write a FRESH copy, even when byte-identical content already sits
-    // somewhere in Local Library ("preserve duplication"); OFF = reuse the existing copy instead
+    // somewhere in Keyboard Library ("preserve duplication"); OFF = reuse the existing copy instead
     // of writing a duplicate (see FindExistingLocalCopy). Read at the moment of placement, same
     // as MergePane.ForceOverwrite - flipping one doesn't retroactively change anything placed.
     [ObservableProperty] bool mergePreserveDuplicatePrograms;
@@ -236,7 +236,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         // Kicks off the cache's one-time referrer-catalog build (see LocalLibraryCache.
         // BuildCatalogAsync's own comment) on a background thread as soon as the window
         // opens, instead of it running inline the first time a placement needs it - a real
-        // 10-20s freeze on a large library. While it runs, the Local Library pane hides its
+        // 10-20s freeze on a large library. While it runs, the Keyboard Library pane hides its
         // tree and disables its toolbar (LocalPane.IsIndexing) so nothing can be moved/edited
         // against a half-built index; the pane reveals itself once the build completes.
         var catalogWarm = WarmCatalogAsync();
@@ -282,6 +282,9 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         // NOT re-evaluated per keystroke: a search only filters the haystack each leaf's
         // SearchText already has, it doesn't rebuild it - see PcgPaneViewModel.BuildSearchText.
         PcgPane.GetCategoryNames = () => CategoryNames;
+        // Same "absent from this source isn't the same as missing" rule ShowPcgObjectDependencies'
+        // own DescribeGapOrLocal applies - feeds PcgPaneViewModel.RefreshTally's tally line.
+        PcgPane.IsAvailableLocally = AvailableLocally;
 
         // The missing-dependency rows are a property of what's STAGED, not of what's selected, so
         // they're rebuilt on every merge mutation (TreeRefreshed fires on pull, remove, clear,
@@ -875,7 +878,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
 
     // Local -> instrument, no pull half. This is the old Commit Changes command verbatim, plus
     // one addition: when the non-destructive attempt comes back REFUSED or conflicted (the
-    // instrument moved since our baseline), offer to re-run with the local library as the source
+    // instrument moved since our baseline), offer to re-run with the keyboard library as the source
     // of truth rather than only reporting the refusal.
     //
     // Asking only AFTER that first attempt is deliberate. It costs an extra changeset build in
@@ -935,7 +938,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
 
     // Runs right before every Sync/Commit - the "lazy" half of the auto-heal placement
     // pipeline (see ResolvePendingDependencies): retries every still-pending dependency
-    // against Local Library's CURRENT state (time has passed since it was placed; the
+    // against Keyboard Library's CURRENT state (time has passed since it was placed; the
     // dependency may now exist anywhere), then - only for whatever's STILL unresolved after
     // that - asks the user via ConfirmContinueWithPendingDependencies whether to proceed
     // anyway or cancel. Returns false to abort the Sync/Commit before it touches SyncPipeline
@@ -962,8 +965,8 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
         return true;
     }
 
-    // ── Cross-pane placement staleness gate (Merge Window / Loaded PCG File -> Local Library) ──
-    // A destination bank Local Library has never digested against the Kronos - no
+    // ── Cross-pane placement staleness gate (Merge Window / Loaded PCG File -> Keyboard Library) ──
+    // A destination bank Keyboard Library has never digested against the Kronos - no
     // BankDigestBaselineHex entry at all, or the Kronos didn't answer the last time one was
     // requested (LibraryPullPipeline.NoDigest) - might already differ from what's about to be
     // built on top of it (a front-panel edit, a write from elsewhere). This is deliberately a
@@ -1016,7 +1019,7 @@ partial class LibrarianShellViewModel : ObservableObject, IDisposable
     // With SysEx switched off on the Kronos (GLOBAL > MIDI) every request times out rather than
     // erroring, so without this the Librarian looked functional and then sat for hours. True =
     // the instrument answered nothing; the window stays fully usable for browsing, staging and
-    // organising Local Library / the Merge Window / a loaded PCG, and only the two commands that
+    // organising Keyboard Library / the Merge Window / a loaded PCG, and only the two commands that
     // actually talk to hardware (Sync, Commit) are disabled. Deliberately NOT a read of
     // IBankDumpService.CanDump, which is the LOCAL MIDI-monitor setting, not the instrument's.
     [ObservableProperty]

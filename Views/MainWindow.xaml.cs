@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Windows;
 using Microsoft.Win32;
 using System.Windows.Automation;
@@ -176,7 +176,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         _fps      = _settings.MaxFps;
         ParseArgs();
 
-        // Kick off the Local Library's one-time referrer-catalog build (LocalLibraryCache.
+        // Kick off the Keyboard Library's one-time referrer-catalog build (LocalLibraryCache.
         // BuildCatalogAsync - see its own comment for why this is otherwise a real 10-20s
         // stall) as soon as the app starts, not when the Librarian menu item is first clicked.
         // BuildCatalogAsync memoizes (a no-op if already built/building), so opening the
@@ -1632,7 +1632,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     // own exception handling - without an explicit catch/log here, a blob-IO failure (e.g. the
     // library share going away) would be an unobserved task exception, invisible until the
     // Librarian window is opened and pays the same cost again. LocalPane.IsIndexing (which hides
-    // the Local Library tree mid-build) is owned by LibrarianShellViewModel, not this window, so
+    // the Keyboard Library tree mid-build) is owned by LibrarianShellViewModel, not this window, so
     // it isn't touched here - nothing local-library-shaped is on screen yet at app startup.
     async Task WarmLocalLibraryCatalogAsync()
     {

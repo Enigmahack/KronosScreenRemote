@@ -5,7 +5,7 @@ using System.Text;
 using KronosScreenRemote.ViewModels;
 
 // Off-hardware self-test for the cross-pane placement staleness gate (Merge Window / Loaded
-// PCG File -> Local Library): LibrarianShellViewModel.ConfirmDestinationBankAsync and the
+// PCG File -> Keyboard Library): LibrarianShellViewModel.ConfirmDestinationBankAsync and the
 // PlaceFromPcgAsync/PlaceFromMergeAsync wrappers around the pre-existing synchronous
 // placement methods. Covers the three baseline states a destination bank can be in
 // (never pulled at all, pulled but the Kronos answered NoDigest, and a real confirmed

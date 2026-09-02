@@ -1,7 +1,7 @@
 namespace KronosScreenRemote;
 
 // Converts a Program body between the .pcg on-disk storage format and the wire SysEx
-// Object Dump format actually used by the local library cache / push pipeline. See
+// Object Dump format actually used by the keyboard library cache / push pipeline. See
 // PcgObjectExtractor's class comment for the empirical evidence: EXi programs are
 // byte-identical in both formats (4960 bytes); HD-1 programs' wire dump (3706 bytes) is an
 // exact truncation of the .pcg slot's first 3706 bytes. Combi and Set List need no

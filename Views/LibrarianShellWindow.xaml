@@ -1,4 +1,4 @@
-﻿<local:ThemedWindow x:Class="KronosScreenRemote.LibrarianShellWindow"
+<local:ThemedWindow x:Class="KronosScreenRemote.LibrarianShellWindow"
         x:ClassModifier="internal"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -83,7 +83,7 @@
                         <MenuItem x:Name="MI_Properties" Header="Properties..." Click="OnOpenProperties"/>
                         <Separator x:Name="SEP_2"/>
                         <MenuItem x:Name="MI_Delete" Header="Delete" InputGestureText="Del" Click="OnDeleteMenuItem"
-                                  ToolTip="Deletes from the local library only - hardware is untouched until Commit."/>
+                                  ToolTip="Deletes from the keyboard library only - hardware is untouched until Commit."/>
                         <Separator/>
                         <MenuItem Header="Expand Selected" Click="OnLocalExpandSelectedMenuItem"/>
                         <MenuItem Header="Collapse Selected" Click="OnLocalCollapseSelectedMenuItem"/>
@@ -240,7 +240,7 @@
         </Style>
     </Window.Resources>
     <DockPanel>
-        <!-- The window had no menu bar at all: Close, and the Local Library's own
+        <!-- The window had no menu bar at all: Close, and the Keyboard Library's own
              Cut/Copy/Paste/Rename/Delete, were reachable only from the toolbar, that tree's
              context menu, or a keyboard shortcut nothing advertised. Enabled state is
              recomputed in OnEditMenuOpened rather than bound, because the selection these
@@ -260,7 +260,7 @@
                 <Separator/>
                 <MenuItem x:Name="MNU_LocalRename" Header="_Rename..." InputGestureText="F2" Click="OnRenameButton"/>
                 <MenuItem x:Name="MNU_LocalDelete" Header="_Delete" InputGestureText="Del" Click="OnDeleteButton"
-                          ToolTip="Deletes from the local library only - hardware is untouched until Commit."/>
+                          ToolTip="Deletes from the keyboard library only - hardware is untouched until Commit."/>
                 <Separator/>
                 <MenuItem x:Name="MNU_LocalClearChanges" Header="Clear C_hanges" Click="OnClearChangesButton"
                           ToolTip="Revert every pending edit and deletion. Hardware is untouched."/>
@@ -279,7 +279,7 @@
 
         <!-- Column widths mirror the pane grid in Row 2 (1*,10,1*,10,1*) so each control group
              sits directly above the pane it acts on: Search PCG over "Loaded PCG File", the Sync
-             split-button over "Local Library" - the pane a sync actually rewrites. -->
+             split-button over "Keyboard Library" - the pane a sync actually rewrites. -->
         <Grid Grid.Row="0" Margin="0 0 0 8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="1*"/>
@@ -344,7 +344,7 @@
                                 <ContextMenu>
                                     <MenuItem Header="Pull Only" IsCheckable="True"
                                               IsChecked="{Binding SyncModeIsPullOnly, Mode=TwoWay}"
-                                              ToolTip="Replace the local library with what is on the Kronos. Pending local changes are discarded (you are asked first)."/>
+                                              ToolTip="Replace the keyboard library with what is on the Kronos. Pending local changes are discarded (you are asked first)."/>
                                     <MenuItem Header="Push Only" IsCheckable="True"
                                               IsChecked="{Binding SyncModeIsPushOnly, Mode=TwoWay}"
                                               ToolTip="Write every pending local change to the Kronos. If the Kronos has changed since the last sync you are asked before overwriting it."/>
@@ -445,12 +445,13 @@
                 <ColumnDefinition Width="1*"/>
             </Grid.ColumnDefinitions>
 
-            <GroupBox Grid.Column="4" Header="Local Library">
+            <GroupBox Grid.Column="4" Header="Keyboard Library">
                 <Grid Margin="6">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
@@ -467,7 +468,7 @@
                                 Click="OnRenameButton" ToolTip="Rename the selected item (F2)"/>
                         <Button x:Name="BTN_LocalDelete" Content="Delete" Padding="10 2" Margin="0 0 4 0"
                                 Click="OnDeleteButton"
-                                ToolTip="Deletes from the local library only - hardware is untouched until Commit. (Del)"/>
+                                ToolTip="Deletes from the keyboard library only - hardware is untouched until Commit. (Del)"/>
                         <Button x:Name="BTN_LocalClearChanges" Content="Clear Changes" Padding="10 2"
                                 Click="OnClearChangesButton"
                                 ToolTip="Revert every pending edit and deletion. Hardware is untouched."/>
@@ -500,7 +501,30 @@
                                Foreground="{StaticResource AccentBrush}"/>
 
 
-                    <Border Grid.Row="3" Margin="0 6 0 0" Padding="0 5 0 0"
+                    <!-- What's in the library, and how much of it has an unresolved dependency -
+                         see LocalLibraryPaneViewModel.RefreshTally. Same shape as the Merge
+                         Window's and Loaded PCG File's own tallies. -->
+                    <StackPanel Grid.Row="3" Margin="0 6 0 0"
+                                ToolTip="What Keyboard Library holds right now.">
+                        <TextBlock Text="{Binding LocalPane.TallyText}" FontSize="10"
+                                   TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}"/>
+                        <TextBlock FontSize="10" Margin="0 2 0 0"
+                                   Text="{Binding LocalPane.MissingDependencyCount, StringFormat='Total missing dependencies: {0}'}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding LocalPane.HasMissingDependencies}" Value="True">
+                                            <Setter Property="Foreground" Value="{StaticResource MissingDependencyTextBrush}"/>
+                                            <Setter Property="FontWeight" Value="Bold"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+
+                    <Border Grid.Row="4" Margin="0 6 0 0" Padding="0 5 0 0"
                             BorderThickness="0 1 0 0" BorderBrush="{StaticResource MutedTextBrush}"
                             ToolTip="Conflicted, pending-delete, and read-only rows are tinted, not dotted.">
                         <StackPanel Orientation="Vertical">
@@ -508,21 +532,21 @@
                                 <StackPanel Orientation="Horizontal" Margin="0 0 12 2">
                                     <TextBlock Text="●" FontSize="9" VerticalAlignment="Center"
                                                Foreground="{StaticResource DangerTextBrush}"/>
-                                    <TextBlock Text="edited locally" FontSize="10" Margin="4 0 0 0"
+                                    <TextBlock Text="Edited locally" FontSize="10" Margin="4 0 0 0"
                                                VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
                                 </StackPanel>
 
                                 <StackPanel Orientation="Horizontal" Margin="0 0 12 2">
                                     <TextBlock Text="●" FontSize="9" VerticalAlignment="Center"
                                                Foreground="{StaticResource CommittedHighlightBrush}"/>
-                                    <TextBlock Text="dependencies OK" FontSize="10" Margin="4 0 0 0"
+                                    <TextBlock Text="Dependencies OK" FontSize="10" Margin="4 0 0 0"
                                                VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
                                 </StackPanel>
 
                                 <StackPanel Orientation="Horizontal" Margin="0 0 0 2">
                                     <TextBlock Text="!" FontSize="11" FontWeight="Bold" VerticalAlignment="Center"
                                                Foreground="{StaticResource DangerTextBrush}"/>
-                                    <TextBlock Text="dependencies missing" FontSize="10" Margin="4 0 0 0"
+                                    <TextBlock Text="Dependencies missing" FontSize="10" Margin="4 0 0 0"
                                                VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
                                 </StackPanel>
                             </WrapPanel>
@@ -531,7 +555,7 @@
                                 <StackPanel Orientation="Horizontal" Margin="0 0 12 2">
                                     <TextBlock Text="⚠" FontSize="11" VerticalAlignment="Center"
                                                Foreground="{StaticResource WarningTriangleBrush}"/>
-                                    <TextBlock Text="conflicted" FontSize="10" Margin="4 0 0 0"
+                                    <TextBlock Text="Conflicted" FontSize="10" Margin="4 0 0 0"
                                                VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
                                 </StackPanel>
 
@@ -539,14 +563,14 @@
                                     <Border Width="11" Height="11" VerticalAlignment="Center" Opacity="0.6"
                                             BorderThickness="1" BorderBrush="{StaticResource MutedTextBrush}"
                                             Background="{StaticResource PendingDeleteHighlightBrush}"/>
-                                    <TextBlock Text="marked for deletion" FontSize="10" Margin="4 0 0 0"
+                                    <TextBlock Text="Marked for deletion" FontSize="10" Margin="4 0 0 0"
                                                VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
                                 </StackPanel>
 
                                 <StackPanel Orientation="Horizontal" Margin="0 0 0 2">
                                     <TextBlock Text="Aa" FontSize="10" FontFamily="Consolas" Opacity="0.6"
                                                VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
-                                    <TextBlock Text="read-only (GM/g)" FontSize="10" Margin="4 0 0 0"
+                                    <TextBlock Text="Read-only (GM/g)" FontSize="10" Margin="4 0 0 0"
                                                VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
                                 </StackPanel>
                             </WrapPanel>
@@ -643,7 +667,7 @@
                         <WrapPanel Orientation="Horizontal">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="●" FontSize="9" VerticalAlignment="Center" Foreground="#FFD4C020"/>
-                                <TextBlock Text="shared by multiple Combis/Songs" FontSize="10" Margin="4 0 0 0"
+                                <TextBlock Text="Shared by multiple Combis/Songs" FontSize="10" Margin="4 0 0 0"
                                            VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
                             </StackPanel>
                         </WrapPanel>
@@ -657,6 +681,7 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
                     <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0 0 0 6">
@@ -676,6 +701,28 @@
                               Style="{StaticResource LibraryTreeStyle}"
                               ItemTemplate="{StaticResource PcgNodeTemplate}"
                               ItemContainerStyle="{StaticResource PcgTreeItemStyle}"/>
+
+                    <!-- What's in the loaded file, and what's missing - see
+                         PcgPaneViewModel.RefreshTally. Same shape as the Merge Window's own tally. -->
+                    <StackPanel Grid.Row="3" Margin="0 6 0 0"
+                                ToolTip="What the loaded PCG file holds right now.">
+                        <TextBlock Text="{Binding PcgPane.TallyText}" FontSize="10"
+                                   TextWrapping="Wrap" Foreground="{StaticResource MutedTextBrush}"/>
+                        <TextBlock FontSize="10" Margin="0 2 0 0"
+                                   Text="{Binding PcgPane.MissingDependencyCount, StringFormat='Total missing dependencies: {0}'}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding PcgPane.HasMissingDependencies}" Value="True">
+                                            <Setter Property="Foreground" Value="{StaticResource MissingDependencyTextBrush}"/>
+                                            <Setter Property="FontWeight" Value="Bold"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
                 </Grid>
             </GroupBox>
         </Grid>
@@ -690,15 +737,11 @@
             <GroupBox Grid.Column="0" Header="History">
                 <Grid Margin="6">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
 
-                    <Button Grid.Row="0" Content="Clear History" Padding="10 2" Margin="0 0 0 6"
-                            HorizontalAlignment="Left" Click="OnClearHistoryButton"
-                            ToolTip="Permanently delete the local audit log. Nothing else is affected."/>
-
-                    <ListBox Grid.Row="1" ItemsSource="{Binding History}" FontFamily="Consolas" FontSize="11"
+                    <ListBox Grid.Row="0" ItemsSource="{Binding History}" FontFamily="Consolas" FontSize="11"
                              Background="{StaticResource PanelBackgroundBrush}" Foreground="{StaticResource TextBrush}"
                              BorderBrush="{StaticResource BorderBrush1}">
                         <ListBox.ItemTemplate>
@@ -714,6 +757,10 @@
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
+
+                    <Button Grid.Row="1" Content="Clear History" Padding="10 2" Margin="0 6 0 0"
+                            HorizontalAlignment="Right" Click="OnClearHistoryButton"
+                            ToolTip="Permanently delete the local audit log. Nothing else is affected."/>
                 </Grid>
             </GroupBox>
 
@@ -815,7 +862,7 @@
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0 0 12 2">
                     <TextBlock Text="■" FontSize="10" VerticalAlignment="Center" Foreground="{StaticResource SampleRamTextBrush}"/>
-                    <TextBlock Text="live Sampling Mode (RAM)" FontSize="10" Margin="4 0 0 0"
+                    <TextBlock Text="Live Sampling Mode (RAM)" FontSize="10" Margin="4 0 0 0"
                                VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" Margin="0 0 0 2">

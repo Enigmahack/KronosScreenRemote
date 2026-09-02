@@ -77,7 +77,7 @@ partial class ObjectTreeNode : ObservableObject
     // the fade look instead of the row disappearing outright.
     [ObservableProperty] bool isPendingDelete;
 
-    // Local Library's dependency-completeness dot - a SEPARATE signal from IsDirty/
+    // Keyboard Library's dependency-completeness dot - a SEPARATE signal from IsDirty/
     // IsConflicted above (not a replacement for either), only ever set for a dirty Combi/Set
     // List: null = no dot shown; true = green (every reference resolves locally, still
     // pending Sync/Commit); false = red (at least one reference is still missing).

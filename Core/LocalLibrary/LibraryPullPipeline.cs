@@ -23,7 +23,7 @@ static class LibraryPullPipeline
     //
     // Without this the failure was invisible rather than loud: every request times out instead of
     // erroring, so the sweep alone is 65 banks x 5 s, and a Force Full Sync then goes on to
-    // attempt every registry bank's 128 slots at 6 s each - days of "Indexing local library..."
+    // attempt every registry bank's 128 slots at 6 s each - days of "Indexing keyboard library..."
     // with no way to tell it apart from a hang.
     const int NoReplyGiveUp = 4;
 

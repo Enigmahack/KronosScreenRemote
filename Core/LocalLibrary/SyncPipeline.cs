@@ -1,4 +1,4 @@
-﻿namespace KronosScreenRemote;
+namespace KronosScreenRemote;
 
 // The user-facing Sync/Commit pipeline (requirement 10): "Commit Changes" and "Sync
 // Library" share this one push mechanism - Sync Library = pull, then push, in one click;
@@ -15,7 +15,7 @@ static class SyncPipeline
         string.Join(", ", locs.Select(l => (l.ObjType, l.Bank)).Distinct()
                               .Select(b => Librarian.StoreLabel(b.ObjType, b.Bank)));
 
-    // forceDestructiveWrite: the local library wins outright - see ChangesetBuilder.BuildAsync's
+    // forceDestructiveWrite: the keyboard library wins outright - see ChangesetBuilder.BuildAsync's
     // own comment for exactly which gate that skips and which ones deliberately still run.
     public static async Task<PushResult> PushAsync(
         ILibrarianService sysEx, LocalLibraryCache cache, SessionDependencyClipboard sessionClip,

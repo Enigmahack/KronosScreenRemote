@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace KronosScreenRemote.ViewModels;
@@ -7,8 +7,8 @@ namespace KronosScreenRemote.ViewModels;
 // Library (see MergeCache's own class doc for the full design). Owns the MergeCache and
 // builds a folder-style tree from it - Set Lists (each expanding into its Combis, which
 // expand into their own Program dependencies), plus independent top-level Combis/Programs
-// sections for anything pulled standalone, mirroring Local Library's own type-grouped tree.
-// Placement into Local Library (the one address-sensitive, manual step) is driven by
+// sections for anything pulled standalone, mirroring Keyboard Library's own type-grouped tree.
+// Placement into Keyboard Library (the one address-sensitive, manual step) is driven by
 // LibrarianShellViewModel.PlaceFromMerge, same split as PlaceFromPcg/BatchPlaceFromPcg -
 // this pane owns staging, LibrarianShellViewModel owns the cross-pane action.
 partial class MergePaneViewModel : ObservableObject
@@ -113,7 +113,7 @@ partial class MergePaneViewModel : ObservableObject
             : AppMessages.Librarian.Merge.PulledWithGapsPartlyLocal(staged, gaps.Count, inLibrary, gaps.Count - inLibrary);
     }
 
-    // Requirement 3: stage a Local Library object (transitively, same as PullFromPcg) back into
+    // Requirement 3: stage a Keyboard Library object (transitively, same as PullFromPcg) back into
     // the Merge Window, so it can be rearranged and pushed to a different destination. The
     // LocalLibraryCache is supplied by the caller (LibrarianShellViewModel, which owns it) - this
     // pane only ever holds the MergeCache.
@@ -207,7 +207,7 @@ partial class MergePaneViewModel : ObservableObject
     }
 
     // Called by LibrarianShellViewModel.PlaceFromMerge ONLY after LocalEditOps has already
-    // written `entry` into Local Library - records where it landed (so any sibling entry
+    // written `entry` into Keyboard Library - records where it landed (so any sibling entry
     // still staged, sharing the same dependency, patches to point at the SAME destination -
     // the "many-to-one" dedup payoff) and removes it from the Merge Window (move semantics:
     // this pane only ever shows what's still pending placement).

@@ -37,7 +37,7 @@ interface IObjectTypeDescriptor
     // for these; only names are shown (see LocalLibraryPaneViewModel's read-only name source).
     IEnumerable<int> ReadOnlyBanks();
 
-    // Everything the Local Library TREE shows: writable banks plus read-only ones. Display
+    // Everything the Keyboard Library TREE shows: writable banks plus read-only ones. Display
     // scope only - never a write scope.
     IEnumerable<int> BrowsableBanks() => EditableBanks().Concat(ReadOnlyBanks());
 

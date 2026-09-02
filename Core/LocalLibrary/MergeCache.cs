@@ -40,9 +40,9 @@ sealed class MergeEntry
 }
 
 // The Librarian's Merge Window: a bag-based staging cache for objects pulled out of loaded
-// PCG files, before they're placed into Local Library. Deliberately bag-based, not addressed -
+// PCG files, before they're placed into Keyboard Library. Deliberately bag-based, not addressed -
 // two different PCGs can each have something at the SAME (bank,number), so staging can't use
-// Local Library's own address space without inventing conflicts that don't need to exist yet;
+// Keyboard Library's own address space without inventing conflicts that don't need to exist yet;
 // address resolution happens only once, at placement time (LocalEditOps.PlaceObject, unchanged).
 sealed class MergeCache
 {
@@ -53,7 +53,7 @@ sealed class MergeCache
     // have it) can retroactively resolve it. See ReconcileGaps.
     readonly Dictionary<ObjLoc, List<MergeRefSite>> _pendingGapSites = new();
 
-    // Where a content hash has already been placed in Local Library this batch - the
+    // Where a content hash has already been placed in Keyboard Library this batch - the
     // mechanism behind "two Combis sharing one deduped Program get patched to point at the
     // SAME destination slot" (see ResolveReferencesForPlacement).
     readonly Dictionary<string, ObjLoc> _placedAddresses = new();
@@ -145,12 +145,12 @@ sealed class MergeCache
         Save();
     }
 
-    // Origin label used for anything pulled from Local Library rather than a loaded .pcg file
+    // Origin label used for anything pulled from Keyboard Library rather than a loaded .pcg file
     // (requirement 3) - occupies the same MergeOrigin.PcgFileName slot a real filename would.
-    public const string LocalSourceLabel = "Local Library";
+    public const string LocalSourceLabel = "Keyboard Library";
 
     // A source of wire bodies + display names for a merge pull - a loaded PCG file (PullFromPcg)
-    // or the Local Library (PullFromLocal). Returns null when this source has nothing at `loc`
+    // or the Keyboard Library (PullFromLocal). Returns null when this source has nothing at `loc`
     // (an empty slot, or a malformed record) - treated as a gap by the shared recursion below.
     delegate (byte[] Body, string Name)? MergePullSource(ObjLoc loc);
 
@@ -178,7 +178,7 @@ sealed class MergeCache
         return Pull(source, pcgFileName, loc, stagedHashes);
     }
 
-    // Requirement 3: the same transitive, deduping pull, sourced from Local Library instead of a
+    // Requirement 3: the same transitive, deduping pull, sourced from Keyboard Library instead of a
     // loaded PCG - so an already-placed object (and everything it references locally) can be
     // staged back in the Merge Window to be rearranged and pushed somewhere else. Bodies come
     // from the cache's CURRENT state (cache.GetCurrentBody); references resolve against whatever
@@ -299,7 +299,7 @@ sealed class MergeCache
 
     public MergeEntry? TryGet(string contentHash) => _byHash.GetValueOrDefault(contentHash);
 
-    // Removes one entry - called after it's successfully placed into Local Library (move
+    // Removes one entry - called after it's successfully placed into Keyboard Library (move
     // semantics: the Merge Window only ever shows what's still pending placement) or when the
     // user abandons it without placing it. _placedAddresses is untouched: if this WAS placed,
     // RecordPlacement already captured where, which is exactly what lets a sibling entry still
@@ -325,7 +325,7 @@ sealed class MergeCache
         Save();
     }
 
-    // Records that `contentHash` now lives at `destLoc` in Local Library - the mechanism
+    // Records that `contentHash` now lives at `destLoc` in Keyboard Library - the mechanism
     // behind the "many-to-one" dependency dedup: every OTHER still-staged entry whose
     // RefSites resolved to this same hash will patch to point at exactly this address the
     // next time ResolveReferencesForPlacement runs on it.
@@ -373,7 +373,7 @@ sealed class MergeCache
     //   1. _placedAddresses - it was placed via THIS cache, this session (or a prior session
     //      recovered via Local Storage). Cheapest, most authoritative - always wins if present.
     //   2. localLookup (objType, contentHash) -> ObjLoc? - an optional caller-supplied search
-    //      over Local Library as a WHOLE, by content identity, for a dependency that already
+    //      over Keyboard Library as a WHOLE, by content identity, for a dependency that already
     //      exists there regardless of how it got there (a prior Pull, a prior Commit, a manual
     //      placement - anything). This is what lets a Combi's reference repoint correctly even
     //      when its dependency was never placed FROM this Merge Window at all. Null (the

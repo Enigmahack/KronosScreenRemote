@@ -115,7 +115,7 @@ partial class LibrarianShellViewModel
     // stays staged too (never lost), same "flag what didn't fit" convention BatchPlaceFromPcg
     // uses.
     // Duplicate-content guard (same as PlaceFromMerge's single-item path): anything whose
-    // content already lives elsewhere in Local Library is repointed there instead of consuming
+    // content already lives elsewhere in Keyboard Library is repointed there instead of consuming
     // a destination slot for a second copy - never needs a bank, let alone a free slot in one.
     // Honours the per-type preserve-duplication toggles (FindExistingLocalCopy). Shared by
     // PlaceMergeGroupSequentially and AutoFillFromMergeAsync so a duplicate is caught the same
@@ -210,7 +210,7 @@ partial class LibrarianShellViewModel
     // ── Auto-Fill: place EVERYTHING staged into the next free slots ──────────────────────
     // One button for what the Merge Window otherwise costs a drag per type per bank: take every
     // staged Set List / Combi / Program / Drum Kit / Wave Sequence (top-level pulls AND the
-    // dependencies that came with them) and fill them into Local Library's next free slots of
+    // dependencies that came with them) and fill them into Keyboard Library's next free slots of
     // their own type. Purely LOCAL - it stages, exactly like every other placement in this pane;
     // nothing reaches the instrument until Commit Changes. One Ctrl+Z undoes the whole sweep
     // (LibrarianUndo's nested Begins join the outer step, so the per-bank scopes inside
@@ -393,7 +393,7 @@ partial class LibrarianShellViewModel
         return destIsExi is bool d && d != groupIsExi ? groupIsExi : null;
     }
 
-    // The HD-1/EXi format of a destination Program bank as Local Library currently sees it. Null if
+    // The HD-1/EXi format of a destination Program bank as Keyboard Library currently sees it. Null if
     // the bank is empty locally (nothing to infer a type from) - see LocalEditOps' own comment.
     bool? LocalProgramBankFormat(int bank) => LocalEditOps.LocalProgramBankFormat(_cache, bank);
 
@@ -495,7 +495,7 @@ partial class LibrarianShellViewModel
     // partially-filled one should be continued; see this feature's own design conversation). ──
 
     // The duplicate-content guard below only applies to genuinely NEW content (pulled from a
-    // .pcg file) - an entry the Merge Window staged FROM Local Library itself (PullLocalIntoMerge,
+    // .pcg file) - an entry the Merge Window staged FROM Keyboard Library itself (PullLocalIntoMerge,
     // "Move to Merge Window") already has a known local home; placing it elsewhere is the whole
     // point of that feature (an intentional copy/rearrange), not an accidental duplicate to warn
     // about or redirect. Without this exclusion, FindByContentHash would always find the entry's
@@ -513,7 +513,7 @@ partial class LibrarianShellViewModel
     };
 
     // The duplicate-content guard shared by PlaceFromMerge and PlaceMergeGroupSequentially:
-    // returns the Local Library location whose content already IS this entry (so the placement
+    // returns the Keyboard Library location whose content already IS this entry (so the placement
     // should repoint at it instead of writing a second copy), or null when the entry must be
     // written - because it was staged FROM Local (its placement elsewhere is the whole point),
     // because the user asked for duplication to be preserved for its type, or because nothing
@@ -560,7 +560,7 @@ partial class LibrarianShellViewModel
 
         // Duplicate-content guard: this entry's OWN content (not just its references - see
         // ResolveReferencesForPlacement below for that) may already be sitting somewhere else
-        // in Local Library, byte-identical. Rather than writing a second copy, repoint this
+        // in Keyboard Library, byte-identical. Rather than writing a second copy, repoint this
         // hash at that existing location the same way a dependency would (RecordPlacement),
         // so any Merge-staged sibling that references it resolves to the ONE copy. Skipped
         // when the match IS the requested destination - that's just re-placing onto its own
@@ -574,7 +574,7 @@ partial class LibrarianShellViewModel
 
         // Patches whatever of this entry's OWN dependency references resolve - either because
         // the dependency was ALSO placed via Merge this session (_placedAddresses), or because
-        // it already exists ANYWHERE in Local Library (LocalLookup, by content) - the
+        // it already exists ANYWHERE in Keyboard Library (LocalLookup, by content) - the
         // many-to-one dedup payoff, generalized beyond just this-session Merge placements.
         // Anything still unresolved is tracked for a later retry (TrackMergeDependencies).
         var (body, unresolved) = MergePane.ResolveReferencesForPlacement(entry, LocalLookup);
@@ -634,7 +634,7 @@ partial class LibrarianShellViewModel
         if (placed.Count == 0) return (false, "nothing could be placed (bank full or type mismatch)");
 
         // Repoint each placed item's OWN references before writing, same as the single-item
-        // path - every dependency that already resolves somewhere in Local Library gets
+        // path - every dependency that already resolves somewhere in Keyboard Library gets
         // pointed there; whatever doesn't is tracked per item below.
         var view = PcgPane.View;
         var bodies = new byte[placed.Count][];
@@ -673,7 +673,7 @@ partial class LibrarianShellViewModel
 
     // Requirement 14's dependency-completeness gate feeds off this: whatever
     // ResolveReferencesForPlacement (Merge path) couldn't resolve gets tracked so
-    // ResolvePendingDependencies can retry it later, by content, against Local Library's
+    // ResolvePendingDependencies can retry it later, by content, against Keyboard Library's
     // then-current state - not just re-checking the one address it currently encodes.
     void TrackMergeDependencies(List<MergeRefSite> stillUnresolved, ObjLoc placedAt)
     {
@@ -702,7 +702,7 @@ partial class LibrarianShellViewModel
     }
 
     // Runs right before every Sync/Commit (see PrepareForPushAsync) - retries every pending
-    // dependency against Local Library's CURRENT state (time has passed; the dependency may
+    // dependency against Keyboard Library's CURRENT state (time has passed; the dependency may
     // now exist anywhere, not necessarily at the address it was originally tracked against),
     // and repatches whatever's found via a REAL edit (LocalEditOps.RepatchReference -
     // re-dirties the referrer, appears in History, feeds the next push changeset; never a

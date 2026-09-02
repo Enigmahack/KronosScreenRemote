@@ -27,7 +27,7 @@ static class MergeGroupPlacementSelfTests
         {
             var exec = new FakeMoveExecutor();
             var cache = new LocalLibraryCache(root);
-            await LibraryPullPipeline.PullAsync(exec, cache, full: true);   // nothing seeded - empty local library
+            await LibraryPullPipeline.PullAsync(exec, cache, full: true);   // nothing seeded - empty keyboard library
 
             var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), MergeGroupHost);
 
@@ -189,7 +189,7 @@ static class MergeGroupPlacementSelfTests
         finally { if (Directory.Exists(tcRoot)) Directory.Delete(tcRoot, recursive: true); }
 
         // ── Duplicate-content guard: placing a Merge-staged item whose content is byte-
-        //    identical to something ALREADY elsewhere in Local Library reuses that location
+        //    identical to something ALREADY elsewhere in Keyboard Library reuses that location
         //    instead of writing a second copy - single-item (PlaceFromMerge) and group
         //    (PlaceMergeGroupSequentially) paths both covered. Gated per type by the
         //    preserve-duplication toggles, so the block opts Combis out of preservation
@@ -200,7 +200,7 @@ static class MergeGroupPlacementSelfTests
         {
             var exec = new FakeMoveExecutor();
             var cache = new LocalLibraryCache(dedupRoot);
-            await LibraryPullPipeline.PullAsync(exec, cache, full: true);   // empty local library
+            await LibraryPullPipeline.PullAsync(exec, cache, full: true);   // empty keyboard library
 
             var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), MergeGroupHost);
             // This block exercises the duplicate-REUSE path, which is no longer the default for

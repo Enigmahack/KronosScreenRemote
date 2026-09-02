@@ -1,4 +1,4 @@
-﻿# Kronos ScreenRemote - User Guide
+# Kronos ScreenRemote - User Guide
 
 Windows client for the Kronos ScreenRemote system. View and interact with the Kronos touchscreen from your PC over a wired LAN connection.
 
@@ -364,7 +364,7 @@ All rebindable actions are listed. Double-click any row to capture a new key com
 |---|---|
 | Merge behavior | **Temporary Memory** (staging cleared on close) or **Local Storage** (persisted across sessions) |
 | Full sync on launch | Off by default. Pulls every bank as soon as the Librarian opens, rather than only the banks whose digest changed. Pull only - it never pushes, so nothing reaches the Kronos without an explicit Sync Library. |
-| Force destructive write | Off by default. Treats the local library as the source of truth: 2-Way Sync skips the conflict pre-scan and overwrites banks that changed on the Kronos since the last pull, without asking. Front-panel edits made since then are lost, and the pre-write backup does not cover them. A red banner in the Librarian shows while it is armed. |
+| Force destructive write | Off by default. Treats the keyboard library as the source of truth: 2-Way Sync skips the conflict pre-scan and overwrites banks that changed on the Kronos since the last pull, without asking. Front-panel edits made since then are lost, and the pre-write backup does not cover them. A red banner in the Librarian shows while it is armed. |
 
 ### Macros
 
@@ -410,7 +410,7 @@ The footer badge shows which link is live: **USB** (green, fast), **DIN** (amber
 
 ## Librarian (Tools → Librarian...)
 
-The Librarian is a full library manager for Kronos programs, combis, and set lists: it can pull the whole instrument into a local library, import `.pcg` files, stage objects in a Merge Window, and place them back onto the Kronos with dependency resolution. Everything is undoable (Ctrl+Z) and every write to the Kronos is preceded by a backup.
+The Librarian is a full library manager for Kronos programs, combis, and set lists: it can pull the whole instrument into a keyboard library, import `.pcg` files, stage objects in a Merge Window, and place them back onto the Kronos with dependency resolution. Everything is undoable (Ctrl+Z) and every write to the Kronos is preceded by a backup.
 
 ### PCG pane (left)
 
@@ -422,28 +422,28 @@ Load a `.pcg` file to browse its banks. Pull objects into the Merge Window (righ
 - The search box above the tree matches name, bank (e.g. `I-A`), category, EXi engine type (e.g. `AL-1` matches both a name containing it and a program that *is* one), and what the object itself references. Case-insensitive.
 - Loading a `.pcg` also resolves EXs/3rd-party **sample bank names** from the shipped EXs catalog (a local read - no connection, no login). A catalog hit identifies the product; it is not proof the pack is installed on the instrument.
 
-### Local Library (center)
+### Keyboard Library (center)
 
-- **Sync Library** pulls every program/combi/set list from the Kronos into the on-disk local library (content-addressed, with per-bank SHA-1 digests).
+- **Sync Library** pulls every program/combi/set list from the Kronos into the on-disk keyboard library (content-addressed, with per-bank SHA-1 digests).
 - Cut/copy/paste to rearrange within the library, including whole-bank moves (Program banks can be copied across an EXi/HD-1 boundary, which stages a bank-type reformat for the next Commit).
 - **Commit** writes pending edits to the Kronos and issues the Store-Bank step. Conflicts (the bank changed on the Kronos since baseline) are flagged, never silently overwritten.
 - Read-only factory banks (GM, g1–g9, gd) are browseable but never writable.
 
 ### Merge Window (right)
 
-A staging area between a loaded `.pcg` file / the local library and the instrument:
+A staging area between a loaded `.pcg` file / the keyboard library and the instrument:
 
-- Stage objects from the PCG pane or from Local Library ("Move to Merge Window").
+- Stage objects from the PCG pane or from Keyboard Library ("Move to Merge Window").
 - **Auto-Fill** places everything staged into the next free slots of the correct type - dependencies are placed before their referrers, so a combi's timbres point at where its programs actually landed. Placement follows the Merge Window's own display order (source bank, then slot), so re-copying the same `.pcg` and auto-filling again lands in the same order every time.
 - Auto-Fill sends nothing to the Kronos - it only stages, exactly like dragging items across yourself. Review the result, then **Commit Changes** to push. Anything that doesn't fit (no bank of the matching type has room) stays staged.
 - Placing is address-sensitive (you choose the destination); dependencies are resolved automatically.
 - **Force Overwrite**: placing onto a slot another combi or set list still references normally refuses, to avoid silently breaking that reference. Force Overwrite places anyway - those referrers then resolve to the *new* object, and the old occupant is diverted to the session clipboard rather than lost.
 - **Object Dependencies** (bottom right): red rows at the top are dependencies nothing staged provides. Right-click one to search a `.pcg` for it; anything found is staged, so the gap can be filled before you Commit. Below them is every program/combi/drum kit/wave sequence the selection references, nested ones included - double-click a row for more info.
 - Tree dots and tints: a dot marks an object staged or referenced more than once, a blue dot marks a sample reference (legend at the bottom of the window), and a conflicted, pending-delete, or read-only row is tinted instead of dotted.
-- **Preserve duplicate Programs/Combis** (Merge Window toolbar, mirrored in Settings → Librarian): when checked, placing staged content that already exists in Local Library still writes a fresh copy ("preserve duplication"); when unchecked, the existing byte-identical copy is reused instead of consuming a slot. Combis are compared *after* their program references are re-pointed at local reality, so a re-copied chain still matches. Defaults: Programs reused (unchecked), Combis copied as-is (checked).
+- **Preserve duplicate Programs/Combis** (Merge Window toolbar, mirrored in Settings → Librarian): when checked, placing staged content that already exists in Keyboard Library still writes a fresh copy ("preserve duplication"); when unchecked, the existing byte-identical copy is reused instead of consuming a slot. Combis are compared *after* their program references are re-pointed at local reality, so a re-copied chain still matches. Defaults: Programs reused (unchecked), Combis copied as-is (checked).
 - **Merge behavior** (Settings → Librarian): **Temporary Memory** clears the staging when the app closes; **Local Storage** persists it across sessions. Switching between them takes effect as soon as you press OK, even with the Librarian open, and carries whatever is already staged across: Temporary Memory → Local Storage writes the current staging out immediately, and Local Storage → Temporary Memory deletes the stored snapshot while keeping the staging in memory for the rest of the session. The snapshot is deleted rather than left on disk so that switching back later cannot silently re-adopt a batch from an old session.
 - **Full sync on launch** (Settings → Librarian): off by default. Pulls every bank the moment the Librarian opens instead of only the changed ones. It runs unattended, so it is deliberately a *pull only* - it never pushes, and it waits for the local-library index and the SysEx probe before starting.
-- **Force destructive write** (Settings → Librarian): off by default. Normally a bank whose contents moved on the Kronos since the last pull is excluded from the push and flagged as a conflict. With this on the local library wins outright and Commit overwrites those banks silently - the standing equivalent of clicking **Resolve Conflicts** on every conflict. Anything edited at the front panel since the last pull is lost. Note that the pre-write backup does **not** protect those slots: it is built from this library's last known copy of each object, which in exactly these banks is the stale one - so the `.syx` written before the push cannot restore what was on the Kronos. It does *not* disable the gates that catch writes the Kronos would reject (a missing reference, an HD-1 body headed for an EXi bank, or a bank changing mid-write); those still refuse.
+- **Force destructive write** (Settings → Librarian): off by default. Normally a bank whose contents moved on the Kronos since the last pull is excluded from the push and flagged as a conflict. With this on the keyboard library wins outright and Commit overwrites those banks silently - the standing equivalent of clicking **Resolve Conflicts** on every conflict. Anything edited at the front panel since the last pull is lost. Note that the pre-write backup does **not** protect those slots: it is built from this library's last known copy of each object, which in exactly these banks is the stale one - so the `.syx` written before the push cannot restore what was on the Kronos. It does *not* disable the gates that catch writes the Kronos would reject (a missing reference, an HD-1 body headed for an EXi bank, or a bank changing mid-write); those still refuse.
 
 ---
 
@@ -528,7 +528,7 @@ Application data is stored next to the executable (portable - the exe's own fold
   palette_override.json    - palette overrides
   screenremote.log         - diagnostic log (written when Debug Logging is enabled)
 
-  local_library/           - the Librarian's local library (index.json, oplog.jsonl, content-addressable blobs)
+  local_library/           - the Librarian's keyboard library (index.json, oplog.jsonl, content-addressable blobs)
   name_cache.json          - per-Kronos program/combi name cache (program-change follow)
   setlist_cache.json       - per-Kronos set-list cache
   dumped_banks.json        - per-Kronos ledger of name banks already dumped
@@ -537,9 +537,9 @@ Application data is stored next to the executable (portable - the exe's own fold
   local_library_clipboard.json - the Librarian's cross-session clipboard
 ```
 
-All files are JSON (the local library uses JSON + append-only op-log + SHA-1-addressed blobs) and can be hand-edited. The **Export/Import** feature in Settings backs up/restores `settings.json` (including key bindings and macros); the local library and caches are separate.
+All files are JSON (the keyboard library uses JSON + append-only op-log + SHA-1-addressed blobs) and can be hand-edited. The **Export/Import** feature in Settings backs up/restores `settings.json` (including key bindings and macros); the keyboard library and caches are separate.
 
-> **Note:** the local library and caches are keyed per Kronos (by host for TCP, by device match for USB), so reconnecting to the same instrument reuses them.
+> **Note:** the keyboard library and caches are keyed per Kronos (by host for TCP, by device match for USB), so reconnecting to the same instrument reuses them.
 
 ---
 

@@ -42,7 +42,7 @@ internal partial class UnresolvedDependenciesDialog : ThemedWindow
     // push everything else out of view.
     //
     // `nameOf` resolves a display name for an address when something is known about it (the loaded
-    // PCG, or Local Library) - optional, since neither is guaranteed to be available.
+    // PCG, or Keyboard Library) - optional, since neither is guaranteed to be available.
     public static UnresolvedDependenciesDialog For(
         IReadOnlyList<SessionDependencyEntry> pending, Func<ObjLoc, string>? nameOf = null)
     {

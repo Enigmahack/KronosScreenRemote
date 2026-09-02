@@ -27,7 +27,7 @@ using System.IO;
 // EXi (4960 bytes) vs HD-1 (3706 bytes, ProgramFormatConverter.WireSizeExi/WireSizeHd1) - is
 // derivable from the body's own length alone (verified against ~1000 real hardware-pulled
 // bodies, see PcgObjectExtractor's class comment), so it's captured once at write time
-// instead of the Local Library tree reading a body just to label a Program bank "(EXi)"/
+// instead of the Keyboard Library tree reading a body just to label a Program bank "(EXi)"/
 // "(HD-1)" the way the PCG pane's own BankNodeLabel already does for a loaded .pcg file.
 // Meaningless for Combi/Set List - defaults to true (EXi) there, never displayed.
 // PendingDelete (local-only "marked for removal" flag - see LocalLibraryCache.SetPendingDelete)
@@ -63,7 +63,7 @@ sealed record LocalIndexEntry(
 // Persisted at {root}/index.json. This is a CACHE, not a second source of truth:
 // CurrentHash is exactly "fold the op-log forward from Baseline" (RebuildCurrentFromOpLog
 // reproduces it), so a lost/corrupted index.json is recoverable from oplog.jsonl alone.
-// Deliberately NOT host-keyed (unlike every Storage.cs cache) - the local library is a
+// Deliberately NOT host-keyed (unlike every Storage.cs cache) - the keyboard library is a
 // single global store; the Kronos's IP can change but the objects don't.
 sealed class LocalLibraryIndex
 {

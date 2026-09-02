@@ -1,4 +1,4 @@
-﻿using System.Windows;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -89,7 +89,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
             return Task.FromResult(dlg.ShowDialog() == true);
         };
 
-        // Cross-pane placement staleness gate (Merge Window / Loaded PCG File -> Local Library) -
+        // Cross-pane placement staleness gate (Merge Window / Loaded PCG File -> Keyboard Library) -
         // see LibrarianShellViewModel.ConfirmDestinationBankAsync for what triggers this. A plain
         // MessageBox is enough here (unlike the dependency dialog above, this never lists more
         // than one bank at a time - same reasoning as the bank-type-change confirm below).
@@ -117,7 +117,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
 
         // Sync Library > Push Only, and only after a non-destructive push already came back
         // refused or conflicted - so `reason` names what is actually in the way. Confirming
-        // re-runs with the local library as the source of truth, which overwrites the instrument.
+        // re-runs with the keyboard library as the source of truth, which overwrites the instrument.
         // Defaults to No, same as every other destructive confirm here.
         _vm.ConfirmOverwriteKronosForPush = reason =>
         {
@@ -739,7 +739,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
     void OnCloseWindowMenuItem(object sender, RoutedEventArgs e) => Close();
 
     // Recomputed every time the menu drops, so it can never go stale the way a pushed
-    // enabled-state can. Same rules UpdateToolbarEnabled applies to the Local Library
+    // enabled-state can. Same rules UpdateToolbarEnabled applies to the Keyboard Library
     // toolbar - Cut/Copy/Delete need a selection, Rename needs exactly one, Paste needs a
     // clipboard - plus the pane's own IsReady gate (indexing / mid-sync input lock), which
     // the toolbar gets for free from the StackPanel it sits in.
@@ -772,7 +772,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
     // LocalDragFormat (the Local pane dragging onto itself - new). A Local-sourced drop is
     // sugar over Cut/Copy + Paste: Ctrl-held-during-drop means Copy, otherwise Cut, exactly
     // reusing the same LocalLibraryPaneViewModel methods the menu/toolbar/keyboard paths do.
-    // MergeDragFormat: the Merge Window dragging OUT onto Local Library - a single item goes
+    // MergeDragFormat: the Merge Window dragging OUT onto Keyboard Library - a single item goes
     // through exact-slot placement, a multi-item/group drag instead auto-fills sequentially
     // starting at the target bank's first free slot (see OnMergeToLocalDrop/
     // LibrarianShellViewModel.PlaceMergeGroupSequentially).
@@ -1162,7 +1162,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
     // PCG/Local -> Merge: every dropped item is pulled in fully automatically along with its own
     // dependencies (see LibrarianShellViewModel.PullIntoMerge/PullLocalIntoMerge) - no destination
     // to pick, since the Merge Window is bag-based (no addressing at all until placement into
-    // Local Library).
+    // Keyboard Library).
     void OnMergeDrop(object sender, DragEventArgs e)
     {
         // Both go through the list overloads so one drag - however many items it carried - is one

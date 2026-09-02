@@ -2,7 +2,7 @@ namespace KronosScreenRemote;
 
 using System.IO;
 
-// Crash-safe whole-file replacement. Every persisted file this app owns (the Local Library
+// Crash-safe whole-file replacement. Every persisted file this app owns (the Keyboard Library
 // index, the merge-cache snapshot, .KSF/.KMP/.KSC) is rewritten whole rather than patched,
 // and DataDir is routinely an SMB-mounted share where that rewrite is a multi-second window -
 // long enough that an interrupted in-place write is a realistic outcome, not a theoretical

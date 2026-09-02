@@ -2,7 +2,7 @@ namespace KronosScreenRemote.ViewModels;
 
 using System.IO;
 
-// Off-hardware coverage for the read-only factory (GM/g) Program banks in the Local Library
+// Off-hardware coverage for the read-only factory (GM/g) Program banks in the Keyboard Library
 // pane. Those banks are browse-only: shown so their content can be looked up, never written to,
 // and never body-pulled - only names, read from the shared name cache via the service.
 //

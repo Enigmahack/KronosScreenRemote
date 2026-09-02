@@ -30,7 +30,7 @@ This application has not been vibe-coded - Some AI was used in the development o
 - **MIDI / SysEx Integration** - Live MIDI-out monitoring with a SysEx/MIDI traffic window; automatic program-change follow, mode follow, and VALUE-slider mirroring from the hardware. Runs over the daemon's TCP MIDI bridge (port 9875) or a direct USB-MIDI link (selectable in Settings → MIDI/SysEx; Auto prefers USB, with live hot-plug)
 <img width="1191" height="445" alt="2026-08-10 14_31_07-SysEx _ MIDI Monitor" src="https://github.com/user-attachments/assets/73eda485-7b3d-4e39-97c0-72116f87891e" />
 
-- **Librarian** - Full library manager: sync programs/combis/set lists to an on-disk local library, import `.pcg` files, stage objects in a Merge Window, and place them back onto the Kronos with transitive dependency resolution and undo
+- **Librarian** - Full library manager: sync programs/combis/set lists to an on-disk keyboard library, import `.pcg` files, stage objects in a Merge Window, and place them back onto the Kronos with transitive dependency resolution and undo
 <img width="951" height="596" alt="2026-08-10 14_21_27-Librarian" src="https://github.com/user-attachments/assets/3bc298f2-5738-4126-b258-0ece2ccf40af" />
 <img width="951" height="596" alt="2026-08-10 14_22_33-Select File on Kronos" src="https://github.com/user-attachments/assets/b4bced91-238e-4ed8-9eff-637dd0a33c34" />
 <img width="951" height="596" alt="2026-08-10 14_23_21-Librarian" src="https://github.com/user-attachments/assets/f92bc283-3e26-4ace-9f87-6078d15fc67f" />
@@ -121,7 +121,7 @@ A PowerShell helper script is included for self-signed or CA-signed code signing
 ```
 KronosScreenRemote/
 ├── Audio/          # WASAPI audio capture and VU meter engine
-├── Core/           # Logging, settings, models, JSON persistence, local library & PCG
+├── Core/           # Logging, settings, models, JSON persistence, keyboard library & PCG
 ├── Detection/      # Help-overlay detection
 ├── Networking/     # Stream receiver, control client, FTP, MIDI/SysEx transports
 ├── Rendering/      # Overlay, palette, and button rendering helpers
@@ -143,7 +143,7 @@ KronosScreenRemote/
 2. Launch **KronosScreenRemote** and enter the Kronos IP in the connection bar (the app probes UDP discovery to find the daemon's ports automatically).
 3. The application connects on **TCP 7373** (screen stream) and **TCP 7374** (control commands). MIDI/SysEx monitoring uses the daemon's internal bridge on **TCP 9875**, or a direct USB-MIDI connection (Auto prefers USB when a Kronos is plugged in).
 4. FTP access (file manager) uses the standard FTP port **21** with the credentials configured on the Kronos.
-5. The **Librarian** (Tools → Librarian...) additionally syncs programs/combis/set lists from the Kronos into a local library (see the [user guide](Documentation/KronosScreenRemote_Guide.md)).
+5. The **Librarian** (Tools → Librarian...) additionally syncs programs/combis/set lists from the Kronos into a keyboard library (see the [user guide](Documentation/KronosScreenRemote_Guide.md)).
 
 ---
 

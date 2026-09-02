@@ -36,7 +36,7 @@ static class CrossPanePlacementSelfTests
         {
             var exec = new FakeMoveExecutor();
             var cache = new LocalLibraryCache(root);
-            await LibraryPullPipeline.PullAsync(exec, cache, full: true);   // nothing seeded - empty local library
+            await LibraryPullPipeline.PullAsync(exec, cache, full: true);   // nothing seeded - empty keyboard library
 
             var vm = new LibrarianShellViewModel(exec, cache, new AppSettings(), bankTypesHost);
 
@@ -54,7 +54,7 @@ static class CrossPanePlacementSelfTests
             // ── Auto-heal for a DIRECT PCG -> Local placement (no Merge Window involved) -
             // this path used to leave every reference exactly as the PCG encoded it. See
             // DependencyScanner.RepointPcgReferences / LibrarianShellViewModel.
-            // StageAndTrackPcgDependencies. Runs FIRST, before Local Library has anything in
+            // StageAndTrackPcgDependencies. Runs FIRST, before Keyboard Library has anything in
             // it, so "the dependency exists elsewhere" / "the dependency exists nowhere" are
             // unambiguous - every OTHER test below places these same two Programs at several
             // more addresses, which would otherwise make FindByContentHash's result ambiguous.

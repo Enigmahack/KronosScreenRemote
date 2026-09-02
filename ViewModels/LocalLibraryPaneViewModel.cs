@@ -74,6 +74,17 @@ partial class LocalLibraryPaneViewModel : ObservableObject
 
     [ObservableProperty] string statusText = "";
 
+    // What's in the library, by type, plus how many objects have an unresolved dependency -
+    // mirrors MergePaneViewModel's own tally, shown the same way in LibrarianShellWindow.xaml.
+    // Rebuilt by RefreshTally on every tree rebuild.
+    [ObservableProperty] string tallyText = "";
+    [ObservableProperty] int missingDependencyCount;
+
+    // Drives the tally's red styling in LibrarianShellWindow.xaml, same as MergePaneViewModel's.
+    public bool HasMissingDependencies => MissingDependencyCount > 0;
+
+    partial void OnMissingDependencyCountChanged(int value) => OnPropertyChanged(nameof(HasMissingDependencies));
+
     // True while the referrer catalog is (re)building (see LibrarianShellViewModel.WarmCatalogAsync).
     // The view hides the tree and disables the toolbar until this clears, so a move/edit can't run
     // against a half-built index. Defaults true so the pane starts hidden until indexing completes.
@@ -150,7 +161,21 @@ partial class LocalLibraryPaneViewModel : ObservableObject
             bankLabel: (objType, bank) => BankNodeLabel(objType, ObjectTypeRegistry.Get(objType), bank),
             keepEmptyRoots: true);
         IsLibraryEmpty = !_cache.HasAnyObjects;
+        RefreshTally();
         TreeRefreshed?.Invoke();
+    }
+
+    // Whole-library counts by type, and how many objects have an unresolved dependency - both
+    // index-only (LocalLibraryCache.AllObjects/UnresolvedDependencyCount), so this stays cheap
+    // on every refresh even over an SMB-mounted DataDir.
+    void RefreshTally()
+    {
+        var all = _cache.AllObjects().ToList();
+        int Count(int objType) => all.Count(l => l.ObjType == objType);
+        TallyText = $"Programs: {Count(LibObj.Program)}   Combis: {Count(LibObj.Combi)}   " +
+                    $"Drum Kits: {Count(LibObj.DrumKit)}   Wave Seq: {Count(LibObj.WaveSequence)}   " +
+                    $"Set Lists: {Count(LibObj.SetList)}";
+        MissingDependencyCount = _cache.UnresolvedDependencyCount();
     }
 
     // The populated banks of one Program/Combi object type, in BrowsableBanks() order - a
@@ -204,7 +229,7 @@ partial class LocalLibraryPaneViewModel : ObservableObject
 
     // Mirrors PcgPaneViewModel.BankNodeLabel's own "(EXi)"/"(HD-1)" suffix exactly - which
     // wire format a bank holds matters just as much once it's local as it did in a loaded
-    // .pcg file (a real prior gap: Local Library showed no format indicator at all). Derived
+    // .pcg file (a real prior gap: Keyboard Library showed no format indicator at all). Derived
     // from the first occupied slot's cached IsExi bit (LocalLibraryCache.IsExi - index-only,
     // no blob read), since every Program in one bank shares the same format. Only ever called
     // for a populated bank (the scaffold skips empty ones), so bank.Locs is never empty here.

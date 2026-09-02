@@ -21,7 +21,7 @@ sealed record PcgRejectedBank(string Tag, long Offset, int Count, int ItemSize, 
 // What this catches is the case that matters most for a "Load PCG..." file picker: a
 // truncated/corrupted download or a hand-edited file whose bytes are no longer what the
 // Kronos itself wrote - the file still parses, but silently trusting it risks pushing
-// garbage into Local Library. Surfaced by PcgPaneViewModel.Load exactly like RejectedBanks.
+// garbage into Keyboard Library. Surfaced by PcgPaneViewModel.Load exactly like RejectedBanks.
 sealed record PcgChecksumWarning(string Tag, long Offset, int Expected, int Actual);
 
 // Extracts raw Program/Combi/Set List/Drum Kit/Wave Sequence/Global records directly from a
