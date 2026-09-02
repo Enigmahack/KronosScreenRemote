@@ -82,6 +82,22 @@ public partial class HelpWindow : ThemedWindow
             return p;
         }
 
+        // Lightweight sub-grouping within one SectionHead - for a feature big enough to need
+        // internal structure (Librarian) without implying it's several separate features (which
+        // is what another full SectionHead would say). Same idea Touch Calibration's "Observe
+        // mode:"/"Warp mode:" lead-ins already used ad hoc; this just names and reuses it.
+        Paragraph SubHead(string text)
+        {
+            var p = new Paragraph { Margin = new Thickness(0, 12, 0, 3) };
+            p.Inlines.Add(new Run(text)
+            {
+                Foreground = Br(CGreen),
+                FontSize   = 12,
+                FontWeight = FontWeights.SemiBold,
+            });
+            return p;
+        }
+
         Paragraph Body(string text, Color? color = null)
         {
             var p = new Paragraph { Margin = new Thickness(0, 0, 0, 5) };
@@ -138,7 +154,7 @@ public partial class HelpWindow : ThemedWindow
         Add(SubTitle("Stream and control your Korg Kronos synthesizer over a local network."));
 
         Add(SectionHead("Getting Started"));
-        Add(Body("1.  Open Settings (Settings menu → Settings...) and enter your Kronos IP address."));
+        Add(Body("1.  Open Settings (File → Settings...) and enter your Kronos IP address."));
         Add(Body("2.  Use Connection → Connect, or simply launch the app - it attempts to connect automatically."));
         Add(Body("3.  If no credentials are saved, a login dialog appears. Enter the FTP username and password\n" +
                  "    for the Kronos. Check  \"Save password\"  to skip the prompt on future connections.\n" +
@@ -214,7 +230,7 @@ public partial class HelpWindow : ThemedWindow
 
         Add(SectionHead("Keyboard Shortcuts"));
         Add(Body("These shortcuts work when the app window is focused and keyboard capture is not active.\n" +
-                 "All shortcuts (except Ctrl combos) can be rebound in Settings → Settings... → Keybindings."));
+                 "All shortcuts (except Ctrl combos) can be rebound in File → Settings... → Keybindings."));
         var ks = ShortcutTable(200);
         Row(ks, K("Help",          "F1"),     "Open this help window.");
         Row(ks, K("Mode Setlist",  "F2"),     "Switch Kronos to Setlist mode.");
@@ -324,7 +340,7 @@ public partial class HelpWindow : ThemedWindow
         Add(Note("Only use this if you understand the risk. This feature is intended for diagnostics\n" +
                  "and hardware verification."));
 
-        Add(SectionHead($"VGA Mirror  ({K("Mirror", "M")}  or  Settings → Settings...)"));
+        Add(SectionHead($"VGA Mirror  ({K("Mirror", "M")}  or  File → Settings...)"));
         Add(Body("Toggles VGA output mirroring on the Kronos. When enabled, the Kronos display is duplicated " +
                  "to the VGA output port. The setting is pushed to the Kronos daemon on every connection."));
 
@@ -334,27 +350,32 @@ public partial class HelpWindow : ThemedWindow
                  "Internal and User list single letters A through G and correspond to the internal and user " +
                  "bank rows; User (AA–GG) lists the doubled-letter pairs (AA, BB, ...) and sends a chord of " +
                  "both the U and I buttons simultaneously, selecting the combined user/internal bank slot."));
-        Add(Note("Bank select shortcuts are unassigned by default. Bind them in Settings → Settings... → Keybindings."));
+        Add(Note("Bank select shortcuts are unassigned by default. Bind them in File → Settings... → Keybindings."));
 
-        Add(SectionHead("File Manager  (Connection → File Manager)"));
+        Add(SectionHead("File Manager  (Tools → File Manager...)"));
         Add(Body("A dual-pane file browser for transferring files between your PC and the Kronos over FTP.\n" +
                  "Uses the same credentials as the screen stream."));
         var fm = ShortcutTable(200);
-        Row(fm, "Left pane",           "Local PC  (starts at the Desktop folder).");
-        Row(fm, "Right pane",          "Kronos filesystem  (/ by default).");
-        Row(fm, "Drag left → right",   "Upload files to the Kronos.");
-        Row(fm, "Drag right → left",   "Download files to your PC.");
-        Row(fm, "Double-click folder", "Navigate into it.");
-        Row(fm, "Backspace",           "Go up to the parent folder.");
-        Row(fm, "F2",                  "Rename the selected item.");
-        Row(fm, "F5",                  "Refresh the active pane.");
-        Row(fm, "Del",                 "Delete the selected item.");
-        Row(fm, "Ctrl+A",              "Select all items in the active pane.");
+        Row(fm, "Left pane",                 "Local PC  (starts at the Desktop folder, or your own default -\n" +
+                                              "see the note below).");
+        Row(fm, "Right pane",                "Kronos filesystem  (/ by default).");
+        Row(fm, "\"..\"  (top of either pane)", "Navigate up to the parent folder - same as Backspace or the ↑ button.");
+        Row(fm, "Drag left → right",         "Upload files to the Kronos.");
+        Row(fm, "Drag right → left",         "Download files to your PC.");
+        Row(fm, "Double-click folder",       "Navigate into it.");
+        Row(fm, "Backspace",                 "Go up to the parent folder.");
+        Row(fm, "F2",                        "Rename the selected item.");
+        Row(fm, "F5  /  ↺ button",           "Refresh the active pane.");
+        Row(fm, "Del",                       "Delete the selected item.");
+        Row(fm, "Ctrl+A",                    "Select all items in the active pane.");
         Add(fm);
+        Add(Note("Right-click a folder in the local pane for \"Set Default Start Folder\" - the local pane\n" +
+                 "opens there on every future launch. If that folder no longer exists, the local pane falls\n" +
+                 "back to C:\\ rather than silently reverting to the Desktop."));
         Add(Note("When a file already exists at the destination, a conflict dialog offers Rename / Overwrite / Skip / Cancel\n" +
                  "with an option to apply the choice to all remaining conflicts."));
 
-        Add(SectionHead("Settings  (Settings → Settings...)"));
+        Add(SectionHead("Settings  (File → Settings...)"));
         var st = ShortcutTable(200);
         Row(st, "Kronos Host",             "IP address of the Kronos.");
         Row(st, "Stream Port",             "TCP port for the screen stream  (default: 7373).");
@@ -381,10 +402,24 @@ public partial class HelpWindow : ThemedWindow
         Add(Body("The app monitors the Kronos' live MIDI output - program-change and mode-change follow, " +
                  "the VALUE slider mirror, and the SysEx traffic window all run off it. The link can be the " +
                  "daemon's TCP MIDI bridge (port 9875) or a direct USB-MIDI connection to the Kronos - " +
-                 "chosen in Settings → MIDI/SysEx (Auto prefers USB). The footer badge shows which link " +
+                 "chosen in the MIDI/SysEx tab in Settings (Auto prefers USB). The footer badge shows which link " +
                  "is live:  USB  (green, fast),  DIN  (amber, 5-pin interface),  TCP  (blue, network)."));
-        Add(Body("The SysEx/MIDI tool (Tools → SysEx/MIDI Monitor) shows live traffic, lets you send raw " +
-                 "MIDI, and performs bulk dumps (Sync Names, Set Lists) off the same stream."));
+        Add(Body("The MIDI Monitor (Tools → MIDI Monitor...) shows live MIDI + SysEx traffic in one list, " +
+                 "with per-type filter buttons (click cycles On → Solo → Off) and a virtual piano + pitch " +
+                 "joystick for sending notes and pitch bend on the selected OUT CH."));
+        var mm = ShortcutTable(200);
+        Row(mm, "Click a piano key",          "Play that note on OUT CH  (send Note On, then Note Off on release).");
+        Row(mm, "Right-click a piano key",    "Assign a physical keyboard key to that note - press the next\n" +
+                                               "key you type. Once assigned, that key plays the note directly.");
+        Row(mm, "Drag the pitch joystick",    "Send Pitch Bend directly, proportional to how far you drag.");
+        Row(mm, "Right-click the joystick",   "Assign a physical key to \"bend up\" or \"bend down\". Holding\n" +
+                                               "an assigned key glides the bend toward that extreme instead of\n" +
+                                               "snapping to it, and releasing glides it back to center.");
+        Row(mm, "Copy  /  Copy All Shown",    "Copy the selected row(s), or every row currently passing the\n" +
+                                               "filters, to the clipboard.");
+        Add(mm);
+        Add(Note("Assigning a key while the Monitor doesn't have keyboard focus won't see the keypress - " +
+                 "click inside the window first. Escape cancels an assignment in progress."));
         Add(Note("If you use a DAW on the same PC, the USB port is exclusive - open the DAW first and " +
                  "this app falls back to TCP, or vice versa."));
 
@@ -392,69 +427,125 @@ public partial class HelpWindow : ThemedWindow
         Add(Body("The Librarian manages Kronos programs, combis, and set lists: pull everything from the " +
                  "Kronos into a keyboard library, import .pcg files, stage objects in a Merge Window, and " +
                  "place them back onto the instrument with dependency resolution."));
+        Add(SubHead("The Panes"));
         Add(Body("• PCG pane: load a .pcg file and pull programs/combis/set lists (transitively - a set " +
-                 "list pulls its combis, which pull their programs) into the Merge Window.\n" +
-                 "• Keyboard Library: the on-disk cache synced from the Kronos (Sync Library). Move, edit, " +
-                 "and place objects; writes are committed to the Kronos with a Store-Bank step.\n" +
-                 "• Merge Window: a staging area. Auto-Fill places everything staged into the next free " +
+                 "list pulls its combis, which pull their programs) into the Merge Window."));
+        Add(Body("• Keyboard Library: the on-disk cache synced from the Kronos (Sync Library). Move, edit, " +
+                 "and place objects; writes are committed to the Kronos with a Store-Bank step."));
+        Add(Body("• Loaded PCG File and Keyboard Library each show a summary line below their tree - " +
+                 "counts of Programs/Combis/Drum Kits/Wave Sequences/Set Lists, plus a missing-dependency " +
+                 "count that turns red once anything is actually missing."));
+        Add(Body("• Merge Window: a staging area. Auto-Fill places everything staged into the next free " +
                  "slots of the right type; dependencies are placed before their referrers so references " +
-                 "resolve to where things actually landed.\n" +
-                 "• Merge behavior (Settings → Librarian): Temporary Memory clears the staging when the " +
-                 "app closes; Local Storage persists it across sessions. Switching between them takes " +
-                 "effect immediately, carrying whatever is already staged across.\n" +
-                 "• Preserve duplicate Programs/Combis (Merge Window toolbar, or Settings → Librarian): " +
-                 "when checked, placing staged content that already exists in Keyboard Library still writes " +
-                 "a fresh copy; when unchecked, the existing copy is reused instead of writing a " +
-                 "duplicate. Defaults: Programs are reused, Combis are copied as-is.\n" +
-                 "• Full sync on launch (Settings → Librarian, off by default): pulls every bank from the " +
-                 "Kronos as soon as the Librarian opens, instead of only the banks whose digest changed. " +
-                 "It is a pull ONLY - an action nobody clicked never writes to the instrument, so pending " +
-                 "local changes still wait for you to press Sync Library.\n" +
-                 "• Force destructive write (Settings → Librarian, off by default): normally a bank that " +
-                 "changed on the Kronos since this library last pulled it is excluded from the push and " +
-                 "flagged as a conflict for you to resolve. With this on, the keyboard library is treated as " +
-                 "the source of truth and 2-Way Sync overwrites those changes silently - the standing form of " +
-                 "the Resolve Conflicts button. Front-panel edits made since the last pull are lost, and the " +
-                 "pre-write backup does NOT cover them - it saves this library's last known copy of " +
-                 "each slot, which is exactly what has gone stale. The " +
-                 "Librarian shows a red banner for as long as it is armed."));
+                 "resolve to where things actually landed."));
+        Add(SubHead("Settings  (Librarian tab)"));
+        Add(Body("• Merge behavior: Temporary Memory clears the staging when " +
+                 "the app closes; Local Storage persists it across sessions. Switching between them takes " +
+                 "effect immediately, carrying whatever is already staged across."));
+        Add(Body("• Preserve duplicate Programs/Combis  (also on the Merge Window toolbar): when checked, " +
+                 "placing staged content that already exists in Keyboard Library " +
+                 "still writes a fresh copy; when unchecked, the existing copy is reused instead of writing " +
+                 "a duplicate. Defaults: Programs are reused, Combis are copied as-is."));
+        Add(Body("• Full sync on launch  (off by default): pulls every bank from " +
+                 "the Kronos as soon as the Librarian opens, instead of only the banks whose digest " +
+                 "changed. It is a pull ONLY - an action nobody clicked never writes to the instrument, so " +
+                 "pending local changes still wait for you to press Sync Library."));
+        Add(Body("• Force destructive write  (off by default): normally a bank " +
+                 "that changed on the Kronos since this library last pulled it is excluded from the push " +
+                 "and flagged as a conflict for you to resolve. With this on, the keyboard library is " +
+                 "treated as the source of truth and 2-Way Sync overwrites those changes silently - the " +
+                 "standing form of the Resolve Conflicts button. Front-panel edits made since the last pull " +
+                 "are lost, and the pre-write backup does NOT cover them - it saves this library's last " +
+                 "known copy of each slot, which is exactly what has gone stale. The Librarian shows a red " +
+                 "banner for as long as it is armed."));
+        Add(SubHead("Working in the Merge Window"));
         Add(Body("• Auto-Fill sends nothing to the Kronos - it only stages, exactly like dragging items " +
                  "across yourself. Review the result, then Commit Changes to push. Anything that doesn't " +
-                 "fit (no bank of the matching type has room) stays staged.\n" +
-                 "• Force Overwrite (Merge Window): placing onto a slot another Combi or Set List still " +
+                 "fit (no bank of the matching type has room) stays staged."));
+        Add(Body("• Force Overwrite (Merge Window): placing onto a slot another Combi or Set List still " +
                  "references normally refuses, to avoid silently breaking that reference. Force Overwrite " +
                  "places anyway - those referrers then resolve to the NEW object, and the old occupant is " +
-                 "diverted to the session clipboard rather than lost.\n" +
-                 "• Object Dependencies: red rows at the top are dependencies nothing staged provides. " +
+                 "diverted to the session clipboard rather than lost."));
+        Add(Body("• Object Dependencies: red rows at the top are dependencies nothing staged provides. " +
                  "Right-click one to search a .pcg for it; anything found is staged, so the gap can be " +
                  "filled before you Commit. Below them is every Program/Combi/Drum Kit/Wave Sequence the " +
-                 "selection references, nested ones included - double-click a row for more info.\n" +
-                 "• Sample bank names (EXs and 3rd-party) are resolved automatically from the shipped EXs " +
+                 "selection references, nested ones included - double-click a row for more info."));
+        Add(Body("• Sample bank names (EXs and 3rd-party) are resolved automatically from the shipped EXs " +
                  "catalog when you load a .pcg. A catalog hit identifies the product, and is not proof " +
-                 "the pack is installed on the instrument.\n" +
-                 "• The PCG search box matches name, bank (e.g. 'I-A'), category, EXi engine type (e.g. " +
+                 "the pack is installed on the instrument."));
+        Add(Body("• The PCG search box matches name, bank (e.g. 'I-A'), category, EXi engine type (e.g. " +
                  "'AL-1' matches both a name containing it and a Program that IS one), and what the object " +
-                 "references. Case-insensitive.\n" +
-                 "• Delete and Clear Changes affect the keyboard library only - hardware is untouched until " +
-                 "Sync/Commit, and a fresh Pull restores what was deleted. Clear History deletes the local " +
-                 "audit log alone: keyboard library, pending edits, and hardware are all unaffected.\n" +
-                 "• Tree dots and tints: a dot marks an object staged or referenced more than once, a blue " +
+                 "references. Case-insensitive."));
+        Add(SubHead("Good to Know"));
+        Add(Body("• Delete and Clear Changes affect the keyboard library only - hardware is untouched " +
+                 "until Sync/Commit, and a fresh Pull restores what was deleted. Clear History (bottom-" +
+                 "right of the History pane) deletes the local audit log alone: keyboard library, pending " +
+                 "edits, and hardware are all unaffected."));
+        Add(Body("• Tree dots and tints: a dot marks an object staged or referenced more than once, a blue " +
                  "dot marks a sample reference (see the legend at the bottom of the window), and a " +
                  "conflicted, pending-delete, or read-only row is tinted instead of dotted."));
+
+        Add(SectionHead("Sample Editor  (Tools → Sample Editor...)"));
+        Add(Body("View and edit .KSC/.KMP/.KSF sample content directly on disk - key ranges, loop points, " +
+                 "sample rate, and destructive DSP edits. Works on a local copy; nothing reaches the " +
+                 "Kronos itself from here  (use the File Manager or Librarian to move files)."));
+        Add(Body("• Open a .KSC collection via File → Open... (or drag-and-drop) to populate the tree on " +
+                 "the left. Selecting a multisample shows its piano keymap and zone list; selecting a zone " +
+                 "loads its sample into the waveform view below."));
+        Add(Body("• Multisample (MS) panel: the dropdown and Create/Rename/Delete buttons pick which " +
+                 "multisample is being edited. Its piano keymap shows the zone layout - click a key to " +
+                 "jump to the zone covering it, drag a zone's boundary to resize it, and drag a zone to " +
+                 "reorder it."));
+        Add(Body("• Zone panel: Index/Sample/Orig. Key/Top Key fields for the selected zone. Create adds " +
+                 "an empty zone at the end of the keymap; Import Sample... decodes one or more audio files " +
+                 "into the collection and assigns the first to the selected zone."));
+        Add(Body("The transport, zoom, and undo/redo controls sit directly above the waveform display, " +
+                 "in the same bordered section, so they stay attached to what they control regardless of " +
+                 "where the fields above scroll to:"));
+        var se = ShortcutTable(220);
+        Row(se, "Play / Stop  (Space)",              "Play or stop the loaded sample.");
+        Row(se, "Pause",                              "Pause / resume playback.");
+        Row(se, "Locate Start / End  (Home / End)",   "Jump the scrub position to the start or end.");
+        Row(se, "Rewind / Fast-Forward",              "Step the scrub position back or forward.");
+        Row(se, "Zoom In / Out  (Ctrl+ / Ctrl-)",     "Zoom the waveform view, centred on the current view.");
+        Row(se, "Zoom to Selection",                  "Fit the highlighted range to the full width.");
+        Row(se, "Fit  (Ctrl+0)",                      "Show the whole sample  (also: double-click the waveform).");
+        Row(se, "Scroll wheel over waveform",         "Zoom in/out, centred on the cursor - see \"Scroll to\n" +
+                                                       "Zoom\" below.");
+        Row(se, "Undo / Redo",                        "Step back or forward through waveform edits.");
+        Add(se);
+        Add(Note("\"Scroll to Zoom\"  (checked by default, next to the zoom buttons): unchecked, the mouse " +
+                 "wheel over the waveform just scrolls the pane up/down instead of zooming - the same as " +
+                 "scrolling anywhere outside the waveform."));
+        Add(Body("• LOCAL EDITS  (orange panel): Select/Move tool toggle, Use Zero  (snap Sample Start/" +
+                 "Loop points to the nearest zero-crossing), Loop Lock  (keep Loop Start/End the same " +
+                 "length while dragging), and destructive DSP buttons - Normalize, Amplify, Soften, Trim " +
+                 "Silence, Reverse, Remove DC Offset, Insert Silence. Each acts on the current selection, " +
+                 "or the whole sample when nothing is highlighted. These only ever touch this app's own " +
+                 "in-memory buffer and undo stack."));
+        Add(Body("• KRONOS  (blue panel): fields that get written into the .KSF and reflected on the " +
+                 "hardware once pushed - Loop Enabled and its Sample Start/Loop Start/Loop End/Loop Tune " +
+                 "points, plus the Reverse and +12dB Boost sample-level flags."));
+        Add(Body("• Save Changes  (bottom right) writes every pending edit to disk - it's greyed out until " +
+                 "there's actually something unsaved. Edit → Revert KSC Changes / Revert All Changes " +
+                 "discards pending edits instead of saving them."));
+        Add(Note("A stereo instrument (two multisamples with a shared name and opposite \"-L\"/\"-R\" " +
+                 "suffix) shows both channels stacked in the waveform view, and an edit to one mirrors onto " +
+                 "its stereo partner automatically."));
 
         Add(SectionHead("Command Palette  (Ctrl+K)"));
         Add(Body("A fuzzy-search launcher for all app commands. Start typing to filter; press Enter or click " +
                  "an entry to run it. Useful for infrequently used actions - bank select, layout changes, " +
                  "mirror toggle - without navigating menus."));
 
-        Add(SectionHead("Screenshot  (Tools menu  or  Ctrl+S)"));
+        Add(SectionHead("Screenshot  (File menu  or  Ctrl+S)"));
         Add(Body("Saves the current Kronos screen frame as a PNG file. Requires an active connection."));
         var sc = ShortcutTable(240);
         Row(sc, "Save Screenshot...  (Ctrl+S)",  "Shows a save dialog to choose filename and location.");
         Row(sc, "Quick Save Screenshot",        "Saves instantly to the Screenshot Directory (or desktop if unset).");
         Row(sc, "Copy Frame to Clipboard",      "Copies the current frame to the system clipboard.");
         Add(sc);
-        Add(Note("Use Tools → Open Screenshots Folder to browse previously saved files."));
+        Add(Note("Use File → Open Screenshots Folder to browse previously saved files."));
 
         Add(SectionHead("Status Bar"));
         Add(Body("The status bar at the bottom of the window shows:"));
