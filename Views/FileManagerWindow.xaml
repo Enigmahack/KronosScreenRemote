@@ -122,7 +122,7 @@
                 <Button x:Name="BtnLocalDelete"    Content="Delete"           Click="OnLocalDelete" Margin="0 0 4 0"/>
                 <Button x:Name="BtnLocalRename"    Content="Rename"           Click="OnLocalRename" Margin="0 0 4 0"/>
                 <Button x:Name="BtnLocalRefresh"   Content="↺"               Click="OnLocalRefresh"
-                        Width="32" Margin="0"/>
+                        Width="32" Margin="0" ToolTip="Refresh"/>
             </StackPanel>
         </Border>
         <Rectangle Grid.Row="2" Grid.Column="1" Fill="#FF444444"/>
@@ -135,7 +135,7 @@
                 <Button x:Name="BtnRemoteDelete"    Content="Delete"          Click="OnRemoteDelete" Margin="0 0 4 0"/>
                 <Button x:Name="BtnRemoteRename"    Content="Rename"          Click="OnRemoteRename" Margin="0 0 4 0"/>
                 <Button x:Name="BtnRemoteRefresh"   Content="↺"              Click="OnRemoteRefresh"
-                        Width="32" Margin="0"/>
+                        Width="32" Margin="0" ToolTip="Refresh"/>
             </StackPanel>
         </Border>
 

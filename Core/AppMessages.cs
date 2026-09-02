@@ -194,6 +194,7 @@ public static class AppMessages
 
         // ── New folder / rename ──
         public static string Created(string path) => $"Created {path}";
+        public static string DefaultStartFolderSet(string path) => $"Default start folder set to {path}";
         public static string Failed(string detail) => $"Failed: {detail}";
         public const string SelectItemsToDelete   = "Select items to delete.";
         public static string Deleted(int done, int total) => $"Deleted {done}/{total} item(s).";

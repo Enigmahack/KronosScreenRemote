@@ -122,6 +122,13 @@ public class AppSettings
     public string FtpPassword { get; set; } = "";
     public int    FtpPort     { get; set; } = 21;
 
+    // File Manager's local ("On PC") pane starting folder - set via right-click "Set Default
+    // Start Folder" on a folder there. Empty means "no default set yet" (falls back to the
+    // Desktop, today's hardcoded starting point); a non-empty path that no longer exists (moved,
+    // deleted, removable drive not present) falls back to the system drive's root instead - see
+    // FileManagerWindow.ResolveStartFolder.
+    public string FileManagerDefaultLocalFolder { get; set; } = "";
+
     public Dictionary<string, Keybind> Keybinds { get; set; } = new();
 
     public string? VuDeviceId { get; set; } = null;

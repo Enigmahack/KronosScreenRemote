@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -175,8 +176,7 @@ public partial class FileManagerWindow : ThemedWindow
 
     AsyncFtpClient? _ftp;
 
-    readonly Pane _local  = new(isRemote: false, nameHeader: "Name (Local)",
-                                dir: Environment.GetFolderPath(Environment.SpecialFolder.Desktop));
+    readonly Pane _local  = new(isRemote: false, nameHeader: "Name (Local)", dir: ResolveStartFolder());
     readonly Pane _remote = new(isRemote: true,  nameHeader: "Name (Kronos)", dir: "/");
 
     bool _busy;
@@ -190,6 +190,16 @@ public partial class FileManagerWindow : ThemedWindow
     readonly SemaphoreSlim _ftpGate = new(1, 1);
 
     ClipboardPayload? _clipboard;
+
+    // The synthetic "move up" row every listing gets (unless already at a drive/FTP root) - a
+    // real FileEntry (IsDirectory=true, FullPath=parent), not a separate model, so every
+    // navigate-into-a-folder code path already handles it for free. RealItems() is what keeps it
+    // OUT of anything that acts destructively on a selection (Delete/Rename/Cut/Copy/transfer/
+    // drag-source) - navigation itself needs no such filter (see RefreshRemoteAsync's comment).
+    const string ParentEntryName = "..";
+
+    static List<FileEntry> RealItems(IEnumerable<FileEntry> items) =>
+        items.Where(f => f.Name != ParentEntryName).ToList();
 
     const string DragDataFormat = "KronosScreenRemote.FileEntries";
     ListView?    _dragSource;
@@ -212,6 +222,17 @@ public partial class FileManagerWindow : ThemedWindow
     ScrollViewer?            _dragScrollViewer;
     double                   _dragScrollDelta;
 
+
+    // The local pane's starting folder: unset (never configured via right-click "Set Default
+    // Start Folder") keeps today's Desktop default; set but no longer reachable (moved, deleted,
+    // a removable/network drive not currently present) falls back to the system drive's root,
+    // per the explicit ask, rather than silently reverting to Desktop.
+    static string ResolveStartFolder()
+    {
+        var saved = Storage.LoadSettings().FileManagerDefaultLocalFolder;
+        if (string.IsNullOrWhiteSpace(saved)) return Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+        return Directory.Exists(saved) ? saved : "C:\\";
+    }
 
     // ── Constructor ───────────────────────────────────────────────────────────
     public FileManagerWindow(string host, int ftpPort, string user, string pass)
@@ -378,6 +399,13 @@ public partial class FileManagerWindow : ThemedWindow
                 .ToList();
             _remote.Items.Clear();
             foreach (var entry in entries) _remote.Items.Add(entry);
+            // ".." - a real directory entry pointing at the parent, not a special case: every
+            // existing navigate-into-a-folder path (double-click, Enter, Open, drag-hover-dwell,
+            // drop-onto) already just works once IsDirectory/FullPath are set this way. Only
+            // multi-select actions that ACT on a selection (Delete/Rename/Cut/Copy/transfer/drag-
+            // source) need to filter it back out - see ParentEntryName's own callers.
+            var parent = GetFtpParent(_remote.Dir);
+            if (parent != _remote.Dir) _remote.Items.Add(new FileEntry(ParentEntryName, parent, true, 0, default));
             ApplySort(_remote.Items, _remote.SortCol, _remote.SortAsc);
             RemotePathBox.Text = _remote.Dir;   // reflect only after a successful listing
             SetStatus(AppMessages.FileManager.ItemsIn(entries.Count, _remote.Dir));
@@ -393,12 +421,16 @@ public partial class FileManagerWindow : ThemedWindow
         try
         {
             _local.Items.Clear();
+            int count = 0;
             foreach (var d in Directory.GetDirectories(_local.Dir).Select(p => new DirectoryInfo(p)))
-                _local.Items.Add(new FileEntry(d.Name, d.FullName, true, 0, d.LastWriteTime));
+                { _local.Items.Add(new FileEntry(d.Name, d.FullName, true, 0, d.LastWriteTime)); count++; }
             foreach (var f in Directory.GetFiles(_local.Dir).Select(p => new FileInfo(p)))
-                _local.Items.Add(new FileEntry(f.Name, f.FullName, false, f.Length, f.LastWriteTime));
+                { _local.Items.Add(new FileEntry(f.Name, f.FullName, false, f.Length, f.LastWriteTime)); count++; }
+            // ".." - see RefreshRemoteAsync's own comment on why this is a plain directory entry.
+            if (Directory.GetParent(_local.Dir)?.FullName is { } parent)
+                _local.Items.Add(new FileEntry(ParentEntryName, parent, true, 0, default));
             ApplySort(_local.Items, _local.SortCol, _local.SortAsc);
-            SetStatus(AppMessages.FileManager.ItemsIn(_local.Items.Count, _local.Dir));
+            SetStatus(AppMessages.FileManager.ItemsIn(count, _local.Dir));
         }
         catch (Exception ex) { SetStatus(AppMessages.FileManager.ErrorListingLocal(ex.Message)); }
     }
@@ -406,7 +438,7 @@ public partial class FileManagerWindow : ThemedWindow
     // ── Upload (local → Kronos) ───────────────────────────────────────────────
     async void OnUpload(object s, RoutedEventArgs e)
     {
-        var items = LocalList.SelectedItems.Cast<FileEntry>().ToList();
+        var items = RealItems(LocalList.SelectedItems.Cast<FileEntry>());
         if (items.Count == 0) { SetStatus(AppMessages.FileManager.SelectLocalFilesToUpload); return; }
         var files = items.Where(f => !f.IsDirectory).ToList();
         var dirs  = items.Where(f =>  f.IsDirectory).ToList();
@@ -464,7 +496,7 @@ public partial class FileManagerWindow : ThemedWindow
     // ── Download (Kronos → local) ─────────────────────────────────────────────
     async void OnDownload(object s, RoutedEventArgs e)
     {
-        var items = RemoteList.SelectedItems.Cast<FileEntry>().ToList();
+        var items = RealItems(RemoteList.SelectedItems.Cast<FileEntry>());
         if (items.Count == 0) { SetStatus(AppMessages.FileManager.SelectKronosFilesToDownload); return; }
         var files = items.Where(f => !f.IsDirectory).ToList();
         var dirs  = items.Where(f =>  f.IsDirectory).ToList();
@@ -590,7 +622,7 @@ public partial class FileManagerWindow : ThemedWindow
     // ── Delete ────────────────────────────────────────────────────────────────
     async void OnRemoteDelete(object s, RoutedEventArgs e)
     {
-        var items = RemoteList.SelectedItems.Cast<FileEntry>().ToList();
+        var items = RealItems(RemoteList.SelectedItems.Cast<FileEntry>());
         if (items.Count == 0) { SetStatus(AppMessages.FileManager.SelectItemsToDelete); return; }
         if (MessageBox.Show(AppMessages.FileManager.ConfirmDeleteRemote(items.Count), AppMessages.Titles.Delete,
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
@@ -615,7 +647,7 @@ public partial class FileManagerWindow : ThemedWindow
 
     void OnLocalDelete(object s, RoutedEventArgs e)
     {
-        var items = LocalList.SelectedItems.Cast<FileEntry>().ToList();
+        var items = RealItems(LocalList.SelectedItems.Cast<FileEntry>());
         if (items.Count == 0) { SetStatus(AppMessages.FileManager.SelectItemsToDelete); return; }
         if (MessageBox.Show(AppMessages.FileManager.ConfirmDeleteLocal(items.Count), AppMessages.Titles.Delete,
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
@@ -637,7 +669,8 @@ public partial class FileManagerWindow : ThemedWindow
     // ── Rename ────────────────────────────────────────────────────────────────
     async void OnRemoteRename(object s, RoutedEventArgs e)
     {
-        if (RemoteList.SelectedItems.Count != 1) { SetStatus(AppMessages.FileManager.SelectOneToRename); return; }
+        if (RemoteList.SelectedItems.Count != 1 || RemoteList.SelectedItem is FileEntry { Name: ParentEntryName })
+            { SetStatus(AppMessages.FileManager.SelectOneToRename); return; }
         var item    = (FileEntry)RemoteList.SelectedItem!;
         var newName = PromptInput(AppMessages.Prompts.NewName, item.Name);
         if (string.IsNullOrWhiteSpace(newName) || newName == item.Name) return;
@@ -652,7 +685,8 @@ public partial class FileManagerWindow : ThemedWindow
 
     void OnLocalRename(object s, RoutedEventArgs e)
     {
-        if (LocalList.SelectedItems.Count != 1) { SetStatus(AppMessages.FileManager.SelectOneToRename); return; }
+        if (LocalList.SelectedItems.Count != 1 || LocalList.SelectedItem is FileEntry { Name: ParentEntryName })
+            { SetStatus(AppMessages.FileManager.SelectOneToRename); return; }
         var item    = (FileEntry)LocalList.SelectedItem!;
         var newName = PromptInput(AppMessages.Prompts.NewName, item.Name);
         if (string.IsNullOrWhiteSpace(newName) || newName == item.Name) return;
@@ -667,9 +701,37 @@ public partial class FileManagerWindow : ThemedWindow
         catch (Exception ex) { SetStatus(AppMessages.FileManager.RenameFailed(ex.Message)); }
     }
 
+    // Persists immediately (same "load fresh, mutate, save" pattern SampleEditorViewModel's own
+    // recent-files methods use - this window is never handed the shared AppSettings instance),
+    // so it survives even if the window is closed without any other settings-saving action.
+    void SetDefaultStartFolder(string path)
+    {
+        var settings = Storage.LoadSettings();
+        settings.FileManagerDefaultLocalFolder = path;
+        Storage.SaveSettings(settings);
+        SetStatus(AppMessages.FileManager.DefaultStartFolderSet(path));
+    }
+
     // ── Drag-to-select (rubber-band) ──────────────────────────────────────────
+    // The ListView's own vertical/horizontal ScrollBar lives inside its default template,
+    // so a mouse-down on its thumb/track/arrows still tunnels through this Preview handler
+    // first. Without this check, GetEntryAt below finds no FileEntry under the scrollbar
+    // (it isn't a row) and falls into BeginRubberBand, which steals the drag - the reported
+    // bug: dragging the scrollbar thumb just started a highlight-select instead of scrolling.
+    static bool IsScrollBarHit(DependencyObject? d)
+    {
+        while (d != null)
+        {
+            if (d is ScrollBar) return true;
+            d = VisualTreeHelper.GetParent(d);
+        }
+        return false;
+    }
+
     void OnListPreviewMouseDown(object s, MouseButtonEventArgs e)
     {
+        if (IsScrollBarHit(e.OriginalSource as DependencyObject)) return; // let the ScrollBar handle its own drag
+
         var lv    = (ListView)s;
         var entry = GetEntryAt(lv, e.GetPosition(lv));
         _dragSource = null;
@@ -879,8 +941,8 @@ public partial class FileManagerWindow : ThemedWindow
     // ── Drag+drop (file transfer) ─────────────────────────────────────────────
     void InitiateFileDrag(ListView lv)
     {
-        var items = lv.SelectedItems.Cast<FileEntry>().ToList();
-        if (items.Count == 0) return;
+        var items = RealItems(lv.SelectedItems.Cast<FileEntry>());
+        if (items.Count == 0) return; // dragging only the ".." row - nothing real to move
         var payload = new DragPayload(lv == RemoteList, items);
         var data    = new DataObject(DragDataFormat, payload);
         DragDrop.DoDragDrop(lv, data, DragDropEffects.Copy | DragDropEffects.Move);
@@ -1228,9 +1290,15 @@ public partial class FileManagerWindow : ThemedWindow
 
     ContextMenu BuildContextMenu(ListView lv, bool isRemote, FileEntry? entry)
     {
-        bool onFolder     = entry is { IsDirectory: true };
-        bool hasSelection = lv.SelectedItems.Count > 0;
-        bool isSingle     = lv.SelectedItems.Count == 1;
+        bool onFolder      = entry is { IsDirectory: true };
+        bool isParentEntry = entry?.Name == ParentEntryName;
+        // Excludes ".." from what Cut/Copy/Rename/Delete consider "selected" - right-clicking
+        // it (or Ctrl+A/rubber-band catching it alongside real items) must never offer to act
+        // on it destructively; navigating INTO it via Open is unaffected (see `onFolder`, which
+        // still reads the raw right-clicked entry).
+        var realSelected  = RealItems(lv.SelectedItems.Cast<FileEntry>());
+        bool hasSelection = realSelected.Count > 0;
+        bool isSingle     = realSelected.Count == 1;
 
         var cm = new ContextMenu();
 
@@ -1241,6 +1309,9 @@ public partial class FileManagerWindow : ThemedWindow
                 if (isRemote) await NavigateRemoteAsync(entry!.FullPath);
                 else          { _local.Dir  = entry!.FullPath; RefreshLocal(); }
             }));
+            if (!isRemote && !isParentEntry)
+                cm.Items.Add(MakeItem("Set Default Start Folder", true,
+                    (_, _) => SetDefaultStartFolder(entry!.FullPath)));
         }
         else
         {
@@ -1278,7 +1349,7 @@ public partial class FileManagerWindow : ThemedWindow
     // ── Clipboard operations ──────────────────────────────────────────────────
     void DoCut(ListView lv, bool isRemote)
     {
-        var items = lv.SelectedItems.Cast<FileEntry>().ToList();
+        var items = RealItems(lv.SelectedItems.Cast<FileEntry>());
         if (items.Count == 0) return;
         _clipboard = new ClipboardPayload(IsCut: true, FromRemote: isRemote, Items: items);
         SetStatus(AppMessages.FileManager.CutToMove(items.Count));
@@ -1286,7 +1357,7 @@ public partial class FileManagerWindow : ThemedWindow
 
     void DoCopy(ListView lv, bool isRemote)
     {
-        var items = lv.SelectedItems.Cast<FileEntry>().ToList();
+        var items = RealItems(lv.SelectedItems.Cast<FileEntry>());
         if (items.Count == 0) return;
         _clipboard = new ClipboardPayload(IsCut: false, FromRemote: isRemote, Items: items);
         SetStatus(AppMessages.FileManager.CopiedToCopy(items.Count));
@@ -1572,10 +1643,16 @@ public partial class FileManagerWindow : ThemedWindow
                 : src.OrderBy(e => e.IsDirectory ? 0 : 1).ThenByDescending(e => e.Name, StringComparer.OrdinalIgnoreCase),
         };
 
+    // ".." always floats to the top regardless of sort column/direction - filtered out before
+    // sorting and re-added first, rather than made part of the sort key, so a manual column-
+    // header re-sort (which calls this directly, bypassing Refresh*'s own insertion order) can't
+    // scatter it into the middle of the listing.
     void ApplySort(ObservableCollection<FileEntry> items, SortColumn col, bool asc)
     {
-        var sorted = SortEntries(items, col, asc).ToList();
+        var parent = items.FirstOrDefault(f => f.Name == ParentEntryName);
+        var sorted = SortEntries(items.Where(f => f.Name != ParentEntryName), col, asc).ToList();
         items.Clear();
+        if (parent != null) items.Add(parent);
         foreach (var e in sorted) items.Add(e);
     }
 
