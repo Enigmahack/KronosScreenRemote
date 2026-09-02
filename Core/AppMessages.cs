@@ -472,7 +472,7 @@ public static class AppMessages
             // point of the setting is that the push stops asking, so the state has to be visible
             // somewhere that isn't a dialog.
             public const string DestructiveWriteArmed =
-                "Force destructive write is ON - Commit overwrites the Kronos without conflict checks.";
+                "Force destructive write is ON - 2-Way Sync overwrites the Kronos without conflict checks.";
             public static string CommitResult(int written, int deleted, int notPushed = 0) =>
                 $"Pushed {written} object(s)." + (deleted > 0 ? $" Deleted {deleted}." : "")
                 + (notPushed > 0 ? $" {notPushed} NOT pushed - see below." : "");

@@ -29,6 +29,12 @@ sealed class SamplePlayback : IDisposable
     float _pendingVolume = 1f;
     Func<int>? _positionGetter;
 
+    // WASAPI render-endpoint id (AudioEngine.GetPlaybackDevices()) to play through; empty
+    // uses the system default. Takes effect on the next Start(), same "next connect" precedent
+    // as AudioEngine's own device selection - not re-routed live mid-playback.
+    public string OutputDeviceId { get; set; } = "";
+    NAudio.CoreAudioApi.MMDevice? _outputDevice;   // backs _output; must outlive it, disposed in Stop()
+
     // Which Start() call an in-flight PlaybackStopped notification belongs to. Every
     // Play* entry point calls Stop() first, and WasapiOut.Stop() raises PlaybackStopped
     // - on NAudio's own thread, and the UI-side handler adds another Dispatcher hop on
@@ -239,6 +245,28 @@ sealed class SamplePlayback : IDisposable
         Start(provider.ToSampleProvider());
     }
 
+    // Falls back to the default-device ctor when no device is chosen, or when the chosen
+    // one no longer exists (unplugged since the setting was saved) - playback must never
+    // die over a stale device id.
+    WasapiOut CreateOutput()
+    {
+        if (!string.IsNullOrEmpty(OutputDeviceId))
+        {
+            try
+            {
+                using var enumerator = new NAudio.CoreAudioApi.MMDeviceEnumerator();
+                _outputDevice = enumerator.GetDevice(OutputDeviceId);
+                return new WasapiOut(_outputDevice, NAudio.CoreAudioApi.AudioClientShareMode.Shared, useEventSync: true, latency: 40);
+            }
+            catch
+            {
+                _outputDevice?.Dispose();
+                _outputDevice = null;
+            }
+        }
+        return new WasapiOut(NAudio.CoreAudioApi.AudioClientShareMode.Shared, useEventSync: true, latency: 40);
+    }
+
     void Start(ISampleProvider source)
     {
         _volumeProvider = new VolumeSampleProvider(source);
@@ -281,7 +309,7 @@ sealed class SamplePlayback : IDisposable
         // wait handle the audio engine itself signals when it actually needs more data
         // - no fixed poll interval to be late for.
         int generation = ++_generation;
-        _output = new WasapiOut(NAudio.CoreAudioApi.AudioClientShareMode.Shared, useEventSync: true, latency: 40);
+        _output = CreateOutput();
         _output.Init(meter.ToWaveProvider());
         _output.PlaybackStopped += (_, _) =>
         {
@@ -299,6 +327,8 @@ sealed class SamplePlayback : IDisposable
         _output?.Stop();
         _output?.Dispose();
         _output = null;
+        _outputDevice?.Dispose();
+        _outputDevice = null;
         _volumeProvider = null;
         _panProvider = null;
         _positionGetter = null;

@@ -363,8 +363,8 @@ All rebindable actions are listed. Double-click any row to capture a new key com
 | Setting | Description |
 |---|---|
 | Merge behavior | **Temporary Memory** (staging cleared on close) or **Local Storage** (persisted across sessions) |
-| Full sync on launch | Off by default. Pulls every bank as soon as the Librarian opens, rather than only the banks whose digest changed. Pull only - it never pushes, so nothing reaches the Kronos without an explicit Sync/Commit. |
-| Force destructive write | Off by default. Treats the local library as the source of truth: Commit/Sync skips the conflict pre-scan and overwrites banks that changed on the Kronos since the last pull, without asking. Front-panel edits made since then are lost, and the pre-write backup does not cover them. A red banner in the Librarian shows while it is armed. |
+| Full sync on launch | Off by default. Pulls every bank as soon as the Librarian opens, rather than only the banks whose digest changed. Pull only - it never pushes, so nothing reaches the Kronos without an explicit Sync Library. |
+| Force destructive write | Off by default. Treats the local library as the source of truth: 2-Way Sync skips the conflict pre-scan and overwrites banks that changed on the Kronos since the last pull, without asking. Front-panel edits made since then are lost, and the pre-write backup does not cover them. A red banner in the Librarian shows while it is armed. |
 
 ### Macros
 

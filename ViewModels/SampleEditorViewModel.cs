@@ -66,7 +66,7 @@ partial class SampleEditorViewModel : ObservableObject
     // ── Waveform editing (Phase 3) ──────────────────────────────────────────────
 
     SampleEditUndo _sampleUndo = new(Storage.LoadSettings().SampleUndoByteCapMb * 1024L * 1024L);
-    readonly SamplePlayback _playback = new();
+    readonly SamplePlayback _playback = new() { OutputDeviceId = Storage.LoadSettings().SampleEditorOutputDeviceId };
 
     // Zone-list undo (KmpZone edits - boundary drag today) is a SEPARATE stack from
     // _sampleUndo (different object graph entirely: a multisample's zone list vs. one

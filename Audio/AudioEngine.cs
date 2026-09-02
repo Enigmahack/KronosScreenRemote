@@ -28,6 +28,21 @@ public sealed class AudioEngine : IDisposable
         catch { return []; }
     }
 
+    // Render-endpoint counterpart to GetDevices() (which is capture-only) - feeds the
+    // Sample Editor's Output device picker (Settings > Sample Editor).
+    public static IReadOnlyList<AudioDevice> GetPlaybackDevices()
+    {
+        try
+        {
+            using var enumerator = new MMDeviceEnumerator();
+            return enumerator
+                .EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active)
+                .Select(d => new AudioDevice(d.ID, d.FriendlyName))
+                .ToList();
+        }
+        catch { return []; }
+    }
+
     public void Start(string deviceId)
     {
         Stop();

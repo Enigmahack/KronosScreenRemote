@@ -51,13 +51,16 @@ public partial class MainWindow
             {
                 Left = Math.Max(_settings.WindowLeft, SystemParameters.VirtualScreenLeft);
                 Top  = Math.Max(_settings.WindowTop,  SystemParameters.VirtualScreenTop);
-                if (_settings.WindowWidth > 200 && _settings.WindowHeight > 100)
+                if (_settings.DefaultWindowSize == DefaultWindowSizeMode.LastUsed
+                    && _settings.WindowWidth > 200 && _settings.WindowHeight > 100)
                 {
                     Width  = _settings.WindowWidth;
                     Height = _settings.WindowHeight;
                 }
             }
-            if (_settings.WindowMaximized)
+            if (_settings.DefaultWindowSize != DefaultWindowSizeMode.LastUsed)
+                ApplyDefaultWindowSize(_settings.DefaultWindowSize);
+            else if (_settings.WindowMaximized)
                 WindowState = WindowState.Maximized;
         }, DispatcherPriority.Loaded);
 
@@ -360,6 +363,9 @@ public partial class MainWindow
 
         if (IsAction("HideDataInput",  e)) { ToggleHideDataInput();  return; }
         if (IsAction("HideValueInput", e)) { ToggleHideValueInput(); return; }
+
+        if (IsAction("Sample Editor", e)) { RunCommand("Sample Editor"); return; }
+        if (IsAction("Librarian",     e)) { RunCommand("Librarian");     return; }
 
         if (e.Key == Key.Return)
         {

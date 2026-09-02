@@ -93,6 +93,13 @@ public partial class SettingsWindow : ThemedWindow
         // Debug
         ChkDebugLogging.IsChecked = Result.DebugLogging;
 
+        // Sample Editor - Playback
+        var outputDevices = new List<OutputDeviceOption> { new("", "(System Default)") };
+        outputDevices.AddRange(AudioEngine.GetPlaybackDevices().Select(d => new OutputDeviceOption(d.Id, d.Name)));
+        CMB_SampleOutputDevice.ItemsSource   = outputDevices;
+        CMB_SampleOutputDevice.SelectedValue = Result.SampleEditorOutputDeviceId;
+        if (CMB_SampleOutputDevice.SelectedItem == null) CMB_SampleOutputDevice.SelectedIndex = 0;
+
         // Sample Editor - Create Zone Preferences
         (Result.SampleZoneCreatePosition == SampleZoneCreatePosition.Left ? RadZoneCreateLeft : RadZoneCreateRight).IsChecked = true;
         TxtZoneCreateRange.Text = Result.SampleZoneCreateRange.ToString();
@@ -129,6 +136,7 @@ public partial class SettingsWindow : ThemedWindow
         ChkLibrarianForceDestructiveWrite.IsChecked = Result.LibrarianForceDestructiveWrite;
 
         // View
+        CMB_DefaultWindowSize.SelectedIndex = (int)Result.DefaultWindowSize;
         SlZoomLevel.Value      = Result.ZoomDefaultLevel;
         SlZoomWindowSize.Value = Result.ZoomWindowSize;
 
@@ -166,12 +174,63 @@ public partial class SettingsWindow : ThemedWindow
         // Raw key map
         RawList.ItemsSource = RawKeyMap.Entries;
 
+        // Sub-windows with GridView headers auto-scale to the window's width instead of
+        // staying at a fixed pixel size - fractions preserve each column's original ratio.
+        WireProportionalColumns(KeyList,   250, 160);
+        WireProportionalColumns(RawList,   100, 110, 210);
+        WireProportionalColumns(MacroList, 170, 110, 44, 54);
+
         // Capture key events at the window level for macro recording/trigger-listen
         PreviewKeyDown += OnWinPreviewKeyDown;
         PreviewKeyUp   += OnWinPreviewKeyUp;
 
         if (initialTab != SettingsTab.General)
             Loaded += (_, _) => SettingsTabControl.SelectedIndex = (int)initialTab;
+    }
+
+    // Double-click any slider in this window to reset it to its AppSettings default -
+    // wired via the implicit Slider style in Window.Resources, so this fires for every
+    // slider without a per-control handler. Value assignment alone re-fires the slider's
+    // own ValueChanged, which already updates its label (and, for image sliders, the live
+    // preview) - nothing else to refresh here.
+    static readonly AppSettings DefaultSettings = new();
+
+    void OnSliderPreviewMouseLeftButtonDown(object s, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount != 2 || s is not Slider slider) return;
+        double? def = slider.Name switch
+        {
+            nameof(SlFps)            => DefaultSettings.MaxFps,
+            nameof(SlZoomLevel)      => DefaultSettings.ZoomDefaultLevel,
+            nameof(SlZoomWindowSize) => DefaultSettings.ZoomWindowSize,
+            nameof(SlBrightness)     => DefaultSettings.ImageBrightness,
+            nameof(SlContrast)       => DefaultSettings.ImageContrast,
+            nameof(SlGamma)          => DefaultSettings.ImageGamma,
+            nameof(SlSaturation)     => DefaultSettings.ImageSaturation,
+            nameof(SlSharpen)        => DefaultSettings.ImageSharpen,
+            nameof(SlMacroDelay)     => new MacroDefinition().StepDelayMs,
+            _                        => null,
+        };
+        if (def.HasValue) slider.Value = def.Value;
+        e.Handled = true;
+    }
+
+    // Rescales a ListView's GridViewColumns to fill its own available width whenever the
+    // window (and so the ListView) resizes, preserving each column's original pixel-width
+    // RATIO rather than leaving them at a fixed size that leaves dead space or clips.
+    static void WireProportionalColumns(ListView lv, params double[] fractions)
+    {
+        double total = fractions.Sum();
+        void Resize()
+        {
+            if (lv.View is not GridView gv || gv.Columns.Count == 0) return;
+            double avail = lv.ActualWidth - SystemParameters.VerticalScrollBarWidth - 10;
+            if (avail <= 0) return;
+            for (int i = 0; i < gv.Columns.Count && i < fractions.Length; i++)
+                gv.Columns[i].Width = Math.Max(40, avail * fractions[i] / total);
+        }
+        lv.SizeChanged += (_, _) => Resize();
+        lv.Loaded      += (_, _) => Resize();
     }
 
     void SlFps_ValueChanged(object s, RoutedPropertyChangedEventArgs<double> e)
@@ -347,6 +406,9 @@ public partial class SettingsWindow : ThemedWindow
         // Debug
         Result.DebugLogging = ChkDebugLogging.IsChecked == true;
 
+        // Sample Editor - Playback
+        Result.SampleEditorOutputDeviceId = CMB_SampleOutputDevice.SelectedValue as string ?? "";
+
         // Sample Editor - Create Zone Preferences
         Result.SampleZoneCreatePosition = RadZoneCreateLeft.IsChecked == true
             ? SampleZoneCreatePosition.Left : SampleZoneCreatePosition.Right;
@@ -386,6 +448,7 @@ public partial class SettingsWindow : ThemedWindow
         Result.LibrarianForceDestructiveWrite = ChkLibrarianForceDestructiveWrite.IsChecked == true;
 
         // View
+        Result.DefaultWindowSize = (DefaultWindowSizeMode)Math.Max(0, CMB_DefaultWindowSize.SelectedIndex);
         Result.ZoomDefaultLevel = SlZoomLevel.Value;
         Result.ZoomWindowSize   = SlZoomWindowSize.Value;
 
@@ -635,15 +698,28 @@ public partial class SettingsWindow : ThemedWindow
         _showInputTester?.Invoke();
     }
 
-    void OnRawSelectionChanged(object s, SelectionChangedEventArgs e)
-        => BtnRawRemove.IsEnabled = RawList.SelectedItem != null;
+    // Selecting an existing row lights up the (always-visible) editor panel to edit it
+    // directly - no separate Add-only "open" gesture needed. Suppressed while THIS class
+    // changes RawList.SelectedItem itself (Add/Save/Cancel below), so those don't re-enter
+    // back into BeginRawEdit/CloseRawEditor.
+    bool _rawSelectionGuard;
 
-    void OnRawDoubleClick(object s, MouseButtonEventArgs e)
+    void OnRawSelectionChanged(object s, SelectionChangedEventArgs e)
     {
+        BtnRawRemove.IsEnabled = RawList.SelectedItem != null;
+        if (_rawSelectionGuard) return;
         if (RawList.SelectedItem is RawMapping rm) BeginRawEdit(rm);
+        else CloseRawEditor();
     }
 
-    void OnRawAdd(object s, RoutedEventArgs e) => BeginRawEdit(null);
+    void OnRawAdd(object s, RoutedEventArgs e)
+    {
+        _rawSelectionGuard = true;
+        RawList.SelectedItem = null;
+        _rawSelectionGuard = false;
+        BeginRawEdit(null);
+    }
+
     void OnRawRemove(object s, RoutedEventArgs e)
     {
         if (RawList.SelectedItem is RawMapping rm) { RawKeyMap.Remove(rm); _rawEdited = true; }
@@ -664,8 +740,14 @@ public partial class SettingsWindow : ThemedWindow
         BtnRawCaptureKey.Content = keyStr;
         _rawEditPrevBtn          = keyStr;
 
-        RawEditor.Visibility = Visibility.Visible;
+        SetRawEditorLit(true);
         TxtRawLabel.Focus();
+    }
+
+    void SetRawEditorLit(bool lit)
+    {
+        RawEditor.IsEnabled = lit;
+        RawEditor.Opacity   = lit ? 1.0 : 0.35;
     }
 
     void OnRawCaptureKey(object s, RoutedEventArgs e)
@@ -690,6 +772,10 @@ public partial class SettingsWindow : ThemedWindow
             return;
         }
 
+        // Upsert mutates RawKeyMap.Entries, which IS RawList's ItemsSource - clearing the
+        // selection under the guard first stops WPF's own reaction to that mutation from
+        // re-entering OnRawSelectionChanged (and re-populating this form) mid-save.
+        _rawSelectionGuard = true;
         if (_rawEditOriginal != null) RawKeyMap.Remove(_rawEditOriginal);
         RawKeyMap.Upsert(new RawMapping
         {
@@ -700,16 +786,29 @@ public partial class SettingsWindow : ThemedWindow
             Label     = TxtRawLabel.Text.Trim(),
         });
         _rawEdited = true;
+        RawList.SelectedItem = null;
+        _rawSelectionGuard = false;
         CloseRawEditor();
     }
 
-    void OnRawCancelEdit(object s, RoutedEventArgs e) => CloseRawEditor();
+    void OnRawCancelEdit(object s, RoutedEventArgs e)
+    {
+        _rawSelectionGuard = true;
+        RawList.SelectedItem = null;
+        _rawSelectionGuard = false;
+        CloseRawEditor();
+    }
 
     void CloseRawEditor()
     {
         _rawEditListening    = false;
         _rawEditOriginal     = null;
-        RawEditor.Visibility = Visibility.Collapsed;
+        TxtRawLabel.Text     = "";
+        TxtRawCode.Text      = "";
+        ChkRawShift.IsChecked = false;
+        BtnRawCaptureKey.Content = "(none)";
+        _rawEditPrevBtn      = "(none)";
+        SetRawEditorLit(false);
     }
 
     void OnProactivePollChanged(object s, RoutedEventArgs e)
@@ -826,6 +925,16 @@ public partial class SettingsWindow : ThemedWindow
         WasReset = true;
         DialogResult = true;
     }
+}
+
+// Output-device combo entry. ToString() override is deliberate - WPF's ComboBox closed-box
+// display falls back to the item's own ToString() for the selected entry even with
+// DisplayMemberPath set (same fix as SampleEditorWindow.xaml.cs's ZoneSampleOption and
+// MainWindow.Audio.cs's AudioDeviceItem - AudioDevice is a record, so without this it showed
+// "AudioDevice { Id = ..., Name = ... }" instead of the friendly name).
+sealed record OutputDeviceOption(string Id, string Name)
+{
+    public override string ToString() => Name;
 }
 
 class MacroRow : INotifyPropertyChanged

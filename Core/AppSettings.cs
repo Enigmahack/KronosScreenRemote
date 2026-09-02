@@ -90,6 +90,9 @@ public class AppSettings
     public double WindowWidth    { get; set; } = -1;
     public double WindowHeight   { get; set; } = -1;
     public bool   WindowMaximized { get; set; } = false;
+    // Overrides the restored/saved geometry above with a fixed preset at every launch.
+    // LastUsed (default) leaves the WindowLeft/Top/Width/Height restore behavior alone.
+    public DefaultWindowSizeMode DefaultWindowSize { get; set; } = DefaultWindowSizeMode.LastUsed;
 
     // Geometry for every OTHER window, keyed by type name - see ThemedWindow's own placement
     // handling for which windows opt in. MainWindow keeps the dedicated fields above instead:
@@ -122,6 +125,10 @@ public class AppSettings
     public Dictionary<string, Keybind> Keybinds { get; set; } = new();
 
     public string? VuDeviceId { get; set; } = null;
+
+    // Sample Editor playback output - a WASAPI render-endpoint id from AudioEngine's
+    // GetPlaybackDevices(). Empty means "use the system default output device".
+    public string SampleEditorOutputDeviceId { get; set; } = "";
 
     // Sample Editor waveform-edit undo (Core/Sample/SampleEditUndo.cs): a bounded
     // byte-size cap, not a step count - a single crop/tempo/pitch snapshot is a
@@ -163,6 +170,8 @@ public class AppSettings
         ("Calibrate",     "Toggle Calibration Mode", Key.C),
         ("HideDataInput",  "Hide/Show Data Input",    Key.None),
         ("HideValueInput", "Hide/Show Value Input",   Key.None),
+        ("Sample Editor",  "Sample Editor",           Key.None),
+        ("Librarian",      "Librarian",               Key.None),
         // Mode select
         ("Mode Setlist",  "Mode: Setlist",           Key.F2),
         ("Mode Combi",    "Mode: Combi",             Key.F3),

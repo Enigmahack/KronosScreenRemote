@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:KronosScreenRemote"
-        Title="Settings" Width="520" Height="620" MinHeight="480"
+        Title="Settings" Width="520" Height="700" MinWidth="560" MinHeight="480"
         ResizeMode="CanResizeWithGrip"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False">
@@ -15,6 +15,13 @@
                     <Setter Property="BorderBrush" Value="#FFDD9933"/>
                 </DataTrigger>
             </Style.Triggers>
+        </Style>
+
+        <!-- Every slider in this window: double-click resets it to its AppSettings default
+             (see OnSliderPreviewMouseLeftButtonDown). Thumb eats MouseDoubleClick, so this
+             hooks the Preview tunneling event instead, gated on ClickCount. -->
+        <Style TargetType="Slider" BasedOn="{StaticResource {x:Type Slider}}">
+            <EventSetter Event="PreviewMouseLeftButtonDown" Handler="OnSliderPreviewMouseLeftButtonDown"/>
         </Style>
     </Window.Resources>
 
@@ -29,6 +36,7 @@
 
             <!-- ── General ───────────────────────────────────────────────── -->
             <TabItem Header="General">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Margin="0 4 0 0">
                     <TextBlock Text="General" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 0 0 8"/>
                     <CheckBox x:Name="ChkPromptQuit"   Content="Prompt before quitting"    Margin="0 0 0 10"
@@ -92,10 +100,12 @@
                     <TextBlock Margin="0 8 0 0" Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
                                Text="Removes all saved settings, key mappings, calibration data, and other customizations. The app returns to its default state. This cannot be undone."/>
                 </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
             <!-- ── Connection ───────────────────────────────────────────── -->
             <TabItem Header="Connection">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel>
                     <Grid Margin="0 4 0 0">
                         <Grid.ColumnDefinitions>
@@ -165,10 +175,12 @@
                     <TextBlock Margin="0 12 0 0" Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
                                Text="FTP credentials are used for the File Manager and for stream authentication. If left empty, you will be prompted when connecting."/>
                 </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
             <!-- ── Streaming ─────────────────────────────────────────────── -->
             <TabItem Header="Streaming">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel>
                     <TextBlock Text="Stream mode" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 4 0 8"/>
                     <ComboBox x:Name="CMB_StreamMode" HorizontalAlignment="Left" MinWidth="200"
@@ -193,11 +205,35 @@
                                Text="Change-driven mode consumes no CPU when the Kronos screen is idle. Pull mode may help if frames are occasionally missed. Streaming changes take effect on the next connect."/>
 
                 </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
             <!-- ── View ─────────────────────────────────────────────────── -->
             <TabItem Header="View">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Margin="0 4 0 0">
+                    <TextBlock Text="Window" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 0 0 8"/>
+                    <Grid Margin="0 0 0 6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="160"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Default window size" VerticalAlignment="Center"
+                                   ToolTip="Window size applied at launch."/>
+                        <ComboBox Grid.Column="1" x:Name="CMB_DefaultWindowSize" MinWidth="150"
+                                  BorderBrush="#FF555555"
+                                  ToolTip="Last Used keeps remembering the size/position you leave the window at.">
+                            <ComboBoxItem Content="Last Used"/>
+                            <ComboBoxItem Content="Small"/>
+                            <ComboBoxItem Content="Medium"/>
+                            <ComboBoxItem Content="Large"/>
+                            <ComboBoxItem Content="Maximized"/>
+                        </ComboBox>
+                    </Grid>
+                    <TextBlock Margin="0 6 0 0" Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
+                               Text="Size applied to the main window at launch. Last Used remembers the size and position you leave it at."/>
+
+                    <Border Background="#FF444444" Margin="0 16 0 12" Height="1"/>
                     <TextBlock Text="Zoom" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 0 0 8"/>
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -239,10 +275,12 @@
                     <TextBlock Margin="0 6 0 0" Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
                                Text="Size of the zoom window overlay at 1× (200×150 px). Snaps to 1×–3.5× at 0.5× intervals; slide freely between snap points."/>
                 </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
             <!-- ── Image ─────────────────────────────────────────────────── -->
             <TabItem Header="Image">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Margin="0 4 0 0">
                     <TextBlock Text="Upscaling filter" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 0 0 8"/>
                     <ComboBox x:Name="CMB_ScalingMode" HorizontalAlignment="Left" MinWidth="200"
@@ -353,6 +391,7 @@
                     <TextBlock Margin="0 8 0 0" Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
                                Text="Brightness, contrast, gamma, and saturation are applied for free through the palette; sharpen adds a light per-frame pass. All adjustments are baked into screenshots and clipboard copies."/>
                 </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
             <!-- ── Key Bindings ──────────────────────────────────────────── -->
@@ -405,11 +444,10 @@
                         </DockPanel>
                         <TextBlock DockPanel.Dock="Bottom" Margin="0 6 0 0"
                                    Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
-                                   Text="Custom mappings override the default key map and take effect immediately. Double-click a row to edit it."/>
+                                   Text="Custom mappings override the default key map and take effect immediately. Select a row to edit it below."/>
                         <ListView x:Name="RawList" SelectionMode="Single"
                                   SelectionChanged="OnRawSelectionChanged"
-                                  MouseDoubleClick="OnRawDoubleClick"
-                                  ToolTip="Custom host-key → Kronos keycode mappings. These override the default key map and apply immediately. Double-click a row to edit it.">
+                                  ToolTip="Custom host-key → Kronos keycode mappings. These override the default key map and apply immediately. Select a row to edit it below.">
                             <ListView.View>
                                 <GridView>
                                     <GridViewColumn Header="Host Key" Width="100" DisplayMemberBinding="{Binding HostKeyDisplay}"/>
@@ -420,8 +458,9 @@
                         </ListView>
                     </DockPanel>
 
-                    <!-- Inline edit panel (collapsed until Add or double-click) -->
-                    <Grid Grid.Row="1" x:Name="RawEditor" Visibility="Collapsed">
+                    <!-- Inline edit panel - always present; faded/disabled until a row is
+                         selected or Add is clicked (see SetRawEditorLit), never collapsed. -->
+                    <Grid Grid.Row="1" x:Name="RawEditor" Opacity="0.35" IsEnabled="False">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="1"/>
                             <RowDefinition Height="8"/>
@@ -471,13 +510,13 @@
                                        Margin="12 0 0 0" VerticalAlignment="Center"/>
                         </Grid>
 
-                        <!-- Save / Cancel -->
-                        <DockPanel Grid.Row="8">
-                            <Button x:Name="BtnRawSave"       Content="Save"   Width="60" Margin="0 0 6 0"
-                                    DockPanel.Dock="Left" Click="OnRawSave"/>
-                            <Button x:Name="BtnRawCancelEdit" Content="Cancel" Width="60"
-                                    DockPanel.Dock="Left" Click="OnRawCancelEdit"/>
-                        </DockPanel>
+                        <!-- Save / Cancel - bottom right of this pane, matching the window's own Cancel/OK order -->
+                        <StackPanel Grid.Row="8" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button x:Name="BtnRawCancelEdit" Content="Cancel" Width="60" Margin="0 0 6 0"
+                                    Click="OnRawCancelEdit"/>
+                            <Button x:Name="BtnRawSave"       Content="Save"   Width="60"
+                                    Click="OnRawSave"/>
+                        </StackPanel>
                     </Grid>
                 </Grid>
             </TabItem>
@@ -606,6 +645,7 @@
 
             <!-- ── Debug ─────────────────────────────────────────────────── -->
             <TabItem Header="Debug">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Margin="0 4 0 0">
                     <!-- Logging -->
                     <CheckBox x:Name="ChkDebugLogging" Content="Enable debug logging"
@@ -614,10 +654,12 @@
                     <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
                                Text="When enabled, verbose DEBUG entries are written to the log file. Only Info, Warn, and Error are logged when this is off. Takes effect immediately."/>
                 </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
             <!-- ── MIDI / SysEx ──────────────────────────────────────────────── -->
             <TabItem Header="MIDI/SysEx">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Margin="0 4 0 0">
                     <Grid Margin="0 0 0 6">
                         <Grid.ColumnDefinitions>
@@ -700,9 +742,11 @@
                     <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap" Margin="0 6 0 0"
                                Text="Keeps the on-screen value slider in sync with physical VALUE slider moves on the Kronos. Requires Monitor MIDI and SysEx transmit enabled on the Kronos."/>
                 </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
             <TabItem Header="Librarian">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Margin="0 4 0 0">
                     <Grid Margin="0 0 0 6">
                         <Grid.ColumnDefinitions>
@@ -742,15 +786,35 @@
 
                     <CheckBox x:Name="ChkLibrarianForceDestructiveWrite" Content="Force destructive write"
                               Margin="0 0 0 6"
-                              ToolTip="Commit overwrites the Kronos even where it changed since the last pull, without asking."/>
+                              ToolTip="2-Way Sync overwrites the Kronos even where it changed since the last pull, without asking."/>
                     <TextBlock Foreground="#FFCC8888" FontSize="11" TextWrapping="Wrap"
-                               Text="With this on, the local library is treated as the source of truth and 2-Way Sync will write over what's on the Kronos to make the Kronos match the local library."/>
+                               Text="With this on, the local library is treated as the source of truth and 2-Way Sync overwrites the Kronos to match it, without asking."/>
                 </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
             <!-- ── Sample Editor ────────────────────────────────────────── -->
             <TabItem Header="Sample Editor">
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel Margin="0 4 0 0">
+                    <TextBlock Text="Playback" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 0 0 8"/>
+                    <Grid Margin="0 0 0 6">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="110"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Output device" VerticalAlignment="Center"
+                                   Foreground="#FF888888" FontSize="11"/>
+                        <ComboBox Grid.Column="1" x:Name="CMB_SampleOutputDevice"
+                                  BorderBrush="#FF555555" MinWidth="220"
+                                  DisplayMemberPath="Name" SelectedValuePath="Id"
+                                  ToolTip="Which audio output the Sample Editor plays samples through."/>
+                    </Grid>
+                    <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap" Margin="0 0 0 16"
+                               Text="Takes effect the next time the Sample Editor window is opened."/>
+
+                    <Border Background="#FF444444" Margin="0 0 0 14" Height="1"/>
+
                     <TextBlock Text="Create Zone Preferences" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 0 0 8"/>
 
                     <TextBlock Text="Position" Foreground="#FF888888" FontSize="11" Margin="0 0 0 4"/>
@@ -783,6 +847,7 @@
                     <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
                                Text="Where the Original Key (the root/tracking key - independent of the trigger range itself) lands within a newly created zone's key range."/>
                 </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
         </TabControl>

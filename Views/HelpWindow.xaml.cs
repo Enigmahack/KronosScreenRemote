@@ -409,11 +409,11 @@ public partial class HelpWindow : ThemedWindow
                  "• Full sync on launch (Settings → Librarian, off by default): pulls every bank from the " +
                  "Kronos as soon as the Librarian opens, instead of only the banks whose digest changed. " +
                  "It is a pull ONLY - an action nobody clicked never writes to the instrument, so pending " +
-                 "local changes still wait for you to press Sync Library or Commit Changes.\n" +
+                 "local changes still wait for you to press Sync Library.\n" +
                  "• Force destructive write (Settings → Librarian, off by default): normally a bank that " +
                  "changed on the Kronos since this library last pulled it is excluded from the push and " +
                  "flagged as a conflict for you to resolve. With this on, the local library is treated as " +
-                 "the source of truth and Commit overwrites those changes silently - the standing form of " +
+                 "the source of truth and 2-Way Sync overwrites those changes silently - the standing form of " +
                  "the Resolve Conflicts button. Front-panel edits made since the last pull are lost, and the " +
                  "pre-write backup does NOT cover them - it saves this library's last known copy of " +
                  "each slot, which is exactly what has gone stale. The " +

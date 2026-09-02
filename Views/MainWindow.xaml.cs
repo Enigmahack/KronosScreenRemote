@@ -1652,6 +1652,8 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             new("LayoutFocused",   "Layout: Focused", "", () => ApplyLayoutPreset(LayoutPreset.Focused)),
             // ── Tools
             new("KeyboardInfo",    "Keyboard Info",           "",              () => OpenKeyboardInfoWindow()),
+            new("Sample Editor",   "Sample Editor",           K("Sample Editor"), () => OpenSampleEditorWindow()),
+            new("Librarian",       "Librarian",               K("Librarian"),     () => OpenLibrarianShellWindow()),
             new("Mirror",          "Toggle VGA Mirror",       K("Mirror"),        () => { _mirrorState = !_mirrorState; Ctrl(DaemonCommand.VgaMirror(_mirrorState)); }),
             new("Calibrate",       "Toggle Calibration Mode", K("Calibrate"),     () => { _cal.Mode = !_cal.Mode; if (_cal.Mode) EnterCalMode(); else ExitCalMode(); OverlayLayer.InvalidateVisual(); }),
             new("SaveScreenshot",  "Save Screenshot...",        "",              () => SaveScreenshot()),
@@ -1927,6 +1929,20 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         Width  = targetW * scale + chromeW;
         Height = FrameDesignHeight * scale + menuH + chromeH;
         _scaledW = Width; _scaledH = Height;
+    }
+
+    // Settings > View > "Default Window Size" - applied once at launch (OnLoaded) in place
+    // of the restored WindowWidth/Height. Maximized bypasses SetWindowSize (which requires
+    // WindowState.Normal); the rest reuse the same scale factors as the Ctrl+1..5 shortcuts.
+    void ApplyDefaultWindowSize(DefaultWindowSizeMode mode)
+    {
+        if (mode == DefaultWindowSizeMode.Maximized) { WindowState = WindowState.Maximized; return; }
+        SetWindowSize(mode switch
+        {
+            DefaultWindowSizeMode.Small => 0.75,
+            DefaultWindowSizeMode.Large => 1.25,
+            _                           => 1.0,
+        });
     }
 
     void ResizeAndRefresh()
