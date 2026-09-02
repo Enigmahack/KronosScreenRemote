@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Input;
 
 namespace KronosScreenRemote;
 
@@ -65,4 +66,20 @@ public partial class AboutWindow : ThemedWindow
     }
 
     void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
+
+    // Shared by every link (both GitHub repo lines, the mailto: email line, and the Donate
+    // button) - each carries its own target in Tag. MouseLeftButtonDown and Click use different
+    // event-arg types, so each keeps its own thin handler; both just forward to OpenLinkFromTag.
+    void OnLinkClick(object sender, MouseButtonEventArgs e) => OpenLinkFromTag(sender);
+    void OnDonateClick(object sender, RoutedEventArgs e)    => OpenLinkFromTag(sender);
+
+    // Same UseShellExecute pattern MainWindow's own "Check for Updates"/"Report Issue" menu
+    // items already use to open a URL in the system default browser (or, for mailto:, the
+    // default mail client).
+    static void OpenLinkFromTag(object sender)
+    {
+        if (sender is not FrameworkElement { Tag: string url }) return;
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true }); }
+        catch (Exception ex) { AppLog.Debug($"[about] failed to open link '{url}': {ex.Message}"); }
+    }
 }
