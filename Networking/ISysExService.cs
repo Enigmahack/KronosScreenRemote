@@ -21,6 +21,12 @@ interface IPerformanceFollow : INotifyPropertyChanged
 {
     string PerformanceDisplay { get; }
 
+    // The identity (type/bank/number) behind PerformanceDisplay - null unless the Kronos
+    // is definitely in Program or Combi mode right now (BankId.Decode/FromFunc33 don't
+    // resolve Setlist/Sequence/Global/Disk, so there is no reliable "current object" for
+    // those). Feeds the status bar's Pull from Kronos > This program/This bank/This mode.
+    BankId? CurrentBankId { get; }
+
     // CC# the Kronos VALUE slider transmits (default 18). Incoming CCs with this
     // controller number drive ValueSliderChanged so the UI slider can follow the
     // hardware. Assignment-dependent on the Kronos; settable to match.

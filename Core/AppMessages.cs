@@ -225,6 +225,9 @@ public static class AppMessages
         public static string ScreenshotFailed(string detail)   => $"Screenshot failed: {detail}";
         public static string CopyFailed(string detail)         => $"Copy failed: {detail}";
         public static string CouldNotOpenFolder(string detail) => $"Could not open folder: {detail}";
+        public static string PullComplete(int fetched, int conflicts) =>
+            $"Pulled {fetched} object(s)." + (conflicts > 0 ? $" {conflicts} conflict(s) - resolve in the Librarian." : "");
+        public static string PullFailed(string detail) => $"Pull failed: {detail}";
 
         // Bubble tooltip chrome shown around every notification / when idle.
         public const string LogHintSuffix   = "\n- click to open log";

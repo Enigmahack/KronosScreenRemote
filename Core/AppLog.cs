@@ -46,4 +46,21 @@ static class AppLog
         Info("=== KronosScreenRemote closing ===");
         lock (_lock) { _writer?.Dispose(); _writer = null; }
     }
+
+    // Truncates and reopens the current log file in place - same append:false mode Init
+    // uses, so a mid-session clear behaves like a fresh run's log.
+    public static void Clear()
+    {
+        if (LogPath is not string path) return;
+        lock (_lock)
+        {
+            try
+            {
+                _writer?.Dispose();
+                _writer = new StreamWriter(path, append: false, Encoding.UTF8) { AutoFlush = true };
+            }
+            catch (Exception ex) { Console.Error.WriteLine($"[AppLog] cannot clear {path}: {ex.Message}"); }
+        }
+        Info("=== Log cleared ===");
+    }
 }

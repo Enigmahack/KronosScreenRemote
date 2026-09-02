@@ -25,6 +25,26 @@ public class KronosButton : Button
     // ── Radio group registry (weak refs so GC can collect removed buttons) ────
     static readonly Dictionary<string, List<WeakReference<KronosButton>>> _groups = new();
 
+    // ── Remote-typing-aware tab stop (weak refs, same pattern as the radio groups) ────
+    // Every KronosButton is Focusable so a screen reader can reach it, but Tab/Space only
+    // route to it while remote typing is OFF - see the ctor's own comment. MainWindow's
+    // UpdateKbdStatus (the single point _kbdSendEnabled changes land) flips this for every
+    // live instance at once instead of each button needing to know about that field itself.
+    static readonly List<WeakReference<KronosButton>> _allButtons = new();
+    static bool _remoteTypingArmed = true;
+
+    public static bool RemoteTypingArmed
+    {
+        get => _remoteTypingArmed;
+        set
+        {
+            if (_remoteTypingArmed == value) return;
+            _remoteTypingArmed = value;
+            foreach (var wref in _allButtons)
+                if (wref.TryGetTarget(out var btn)) btn.IsTabStop = !value;
+        }
+    }
+
     // ── Dependency Properties ─────────────────────────────────────────────────
 
     // String paths - avoid ImageSourceConverter at XAML parse time so missing
@@ -80,10 +100,10 @@ public class KronosButton : Button
         Padding          = new Thickness(0);
         BorderThickness  = new Thickness(0);
         Background       = Brushes.Transparent; // Transparent = hit-testable
-        FocusVisualStyle = null;
-        Focusable        = false;  // keep keyboard focus on the main window
-        IsTabStop        = false;
+        Focusable        = true;   // screen readers and Tab navigation need this reachable
+        IsTabStop        = !_remoteTypingArmed;   // off while remote typing owns Tab/Space (see RemoteTypingArmed)
         RenderTransform  = _depress;
+        _allButtons.Add(new WeakReference<KronosButton>(this));
 
         _flash = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(FlashMs) };
         _flash.Tick += (_, _) => { _flash.Stop(); IsActive = false; };

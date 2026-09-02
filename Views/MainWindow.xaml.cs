@@ -1,6 +1,7 @@
 ﻿using System.IO;
 using System.Windows;
 using Microsoft.Win32;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -225,6 +226,10 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
 
         NotifyBubble.MouseLeftButtonDown += (_, _) => OnNotifyBubbleClick();
         KbdInfoBtn.MouseLeftButtonDown   += (_, _) => OpenKeyboardInfoWindow();
+        LibrarianStatusBtn.MouseLeftButtonDown    += (_, _) => OpenLibrarianShellWindow();
+        FileTransferStatusBtn.MouseLeftButtonDown += (_, _) => OpenFileManagerWindow();
+        SampleEditorStatusBtn.MouseLeftButtonDown += (_, _) => OpenSampleEditorWindow();
+        MidiMonitorStatusBtn.MouseLeftButtonDown  += (_, _) => OpenSysExToolWindow();
 
         _hideDataInput  = _settings.HideDataInput;
         _scrollDirection = _settings.ReverseScrolling;
@@ -410,9 +415,21 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         Data_Wheel.MouseMove        += OnWheelMouseMove;
         Data_Wheel.MouseUp          += OnWheelMouseUp;
         Data_Wheel.LostMouseCapture += (sender, e) => _wheel.DragActive = false;
+        Data_Wheel.PreviewKeyDown   += OnWheelPreviewKeyDown;
 
         _wheel.AnimTimer.Interval = TimeSpan.FromMilliseconds(WheelState.AnimIntervalMs);
         _wheel.AnimTimer.Tick    += (sender, e) => AdvanceWheelAnim();
+    }
+
+    // Keyboard counterpart to the mouse-drag path above - only reachable at all once
+    // Data_Wheel.Focusable is armed (remote typing off; see UpdateKbdStatus). Space is
+    // explicitly swallowed rather than left unhandled: the wheel has no "press" action, and
+    // an unhandled Space would otherwise bubble up to whatever routed command treats it as one.
+    void OnWheelPreviewKeyDown(object s, KeyEventArgs e)
+    {
+        if (e.Key == Key.Up)        { Ctrl(DaemonCommand.Wheel(true));  TriggerWheelAnim(1);  e.Handled = true; }
+        else if (e.Key == Key.Down) { Ctrl(DaemonCommand.Wheel(false)); TriggerWheelAnim(-1); e.Handled = true; }
+        else if (e.Key == Key.Space) e.Handled = true;
     }
 
     // Capturing the mouse AND marking the event Handled is a dangerous pair: if the MouseUp that
@@ -500,6 +517,26 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         ValueSliderCanvas.MouseMove        += OnVSliderMouseMove;
         ValueSliderCanvas.MouseUp          += OnVSliderMouseUp;
         ValueSliderCanvas.LostMouseCapture += (_, _) => _vsliderDragActive = false;
+        ValueSliderCanvas.PreviewKeyDown   += OnVSliderPreviewKeyDown;
+        AutomationProperties.SetItemStatus(ValueSliderCanvas, _vsliderValue.ToString());
+    }
+
+    // Keyboard counterpart to the mouse-drag path - only reachable once ValueSliderCanvas.
+    // Focusable is armed (remote typing off; see UpdateKbdStatus). Space is explicitly
+    // swallowed, same reasoning as OnWheelPreviewKeyDown.
+    void OnVSliderPreviewKeyDown(object s, KeyEventArgs e)
+    {
+        if (e.Key == Key.Up)        { StepVSlider(1);  e.Handled = true; }
+        else if (e.Key == Key.Down) { StepVSlider(-1); e.Handled = true; }
+        else if (e.Key == Key.Space) e.Handled = true;
+    }
+
+    void StepVSlider(int delta)
+    {
+        int newVal = Math.Clamp(_vsliderValue + delta, 0, 127);
+        if (newVal == _vsliderValue) return;
+        SetVSliderValue(newVal);
+        Ctrl(DaemonCommand.ValueSlider(_vsliderValue));
     }
 
     // Same capture-plus-Handled hazard as the data wheel - see EndWheelDrag.
@@ -551,6 +588,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         {
             _vsliderValue = newVal;
             Ctrl(DaemonCommand.ValueSlider(_vsliderValue));
+            AutomationProperties.SetItemStatus(ValueSliderCanvas, _vsliderValue.ToString());
         }
     }
 
@@ -562,6 +600,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         double thumbTop = VSliderTravel * (127 - val) / 127.0;
         System.Windows.Controls.Canvas.SetTop(ValueSliderThumb, thumbTop);
         _vsliderValue = val;
+        AutomationProperties.SetItemStatus(ValueSliderCanvas, val.ToString());
     }
 
     // ── SysEx-driven UI sync (runs on the UI thread - events are marshaled
@@ -811,6 +850,13 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         CTX_KbdEnable.Click         += (sender, e) => { _kbdSendEnabled = true;  _instantKeys.Clear(); StopRepeat(); UpdateKbdStatus(); OverlayLayer.InvalidateVisual(); };
         CTX_KbdDisable.Click        += (sender, e) => { _kbdSendEnabled = false; _instantKeys.Clear(); StopRepeat(); ReleaseActiveRawKeys(); UpdateKbdStatus(); OverlayLayer.InvalidateVisual(); };
         CTX_SetMaxFps.Click         += (sender, e) => OpenSettingsDialog(SettingsTab.Streaming);
+
+        CTX_PerfPullMenu.Opened    += (_, _) => UpdatePullMenuState();
+        CTX_PullThisProgram.Click += async (_, _) => await RunPullAsync(PullScope.Program);
+        CTX_PullThisBank.Click    += async (_, _) => await RunPullAsync(PullScope.Bank);
+        CTX_PullThisMode.Click    += async (_, _) => await RunPullAsync(PullScope.Mode);
+        CTX_PullAll.Click         += async (_, _) => await RunPullAsync(PullScope.All);
+
         WireCommand(CTX_Mode_Setlist,  "Mode Setlist");
         WireCommand(CTX_Mode_Combi,    "Mode Combi");
         WireCommand(CTX_Mode_Program,  "Mode Program");
@@ -819,6 +865,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         WireCommand(CTX_Mode_Global,   "Mode Global");
         WireCommand(CTX_Mode_Disk,     "Mode Disk");
         CTX_OpenLogFile.Click       += (sender, e) => OnNotifyBubbleClick();
+        CTX_ClearLogs.Click         += (sender, e) => AppLog.Clear();
         CTX_ClearNotification.Click += (sender, e) => ClearNotification();
 
         MNU_HideDataInput.IsChecked  = _hideDataInput;
@@ -1267,7 +1314,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         {
             color = new SolidColorBrush(Color.FromRgb(0xFF, 0x55, 0x55));
             slash = true;
-            tip   = "Keyboard send disabled";
+            tip   = "Remote typing disabled";
         }
         else if (!_kbdCapture)
         {
@@ -1285,12 +1332,28 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         KbdStatusIcon.Foreground = color;
         KbdStatusSlash.Stroke    = color;
         KbdStatusSlash.Visibility = slash ? Visibility.Visible : Visibility.Hidden;
+
+        // Main-panel keyboard accessibility (Tab/Space on the KronosButtons, arrow keys on
+        // the Value slider/Data wheel) only participates while remote typing is OFF - Tab and
+        // Space belong to the Kronos while it's armed. See KronosButton's own ctor comment.
+        KronosButton.RemoteTypingArmed = _kbdSendEnabled;
+        // Canvas/Image aren't Control, so they have no IsTabStop of their own - the
+        // KeyboardNavigation attached property is the WPF-wide equivalent for any element.
+        bool panelFocusable = !_kbdSendEnabled;
+        ValueSliderCanvas.Focusable = panelFocusable;
+        KeyboardNavigation.SetIsTabStop(ValueSliderCanvas, panelFocusable);
+        Data_Wheel.Focusable = panelFocusable;
+        KeyboardNavigation.SetIsTabStop(Data_Wheel, panelFocusable);
+        foreach (var b in new System.Windows.Controls.Primitives.ButtonBase[]
+                 { BTN_SeqLocate, BTN_SeqRew, BTN_SeqFf, BTN_SeqPause,
+                   BTN_SeqRec, BTN_SeqStart, BTN_TapTempo, BTN_SeqSave })
+            b.IsTabStop = panelFocusable;
         KbdStatusGrid.ToolTip    = tip;
     }
 
     // ── Notification bubble ───────────────────────────────────────────────────
 
-    static readonly Color NotifyColorIdle  = Color.FromRgb(0x3A, 0x3A, 0x3A);
+    static readonly Color NotifyColorIdle  = Color.FromRgb(0xB4, 0xB4, 0xB4);
     static readonly Color NotifyColorError = Color.FromRgb(0xCC, 0x33, 0x33);
 
     // Thread-safe: dispatches to UI thread if called from a background thread.
@@ -1497,11 +1560,54 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         if (!rxActive && !txActive) _sysExDimTimer.Stop();
     }
 
+    // Status bar > current performance > right-click > Pull from Kronos. This/Bank/Mode need
+    // a resolved CurrentBankId (Program or Combi only - see ISysExService.CurrentBankId's own
+    // comment); All always works, it's just the existing full-library pull.
+    enum PullScope { Program, Bank, Mode, All }
+
+    void UpdatePullMenuState()
+    {
+        var id = _sysExService.CurrentBankId;
+        bool have = id.HasValue;
+        CTX_PullThisProgram.Header    = id?.Type == 1 ? "This _Program" : "This _Combi";
+        CTX_PullThisProgram.IsEnabled = have;
+        CTX_PullThisBank.IsEnabled    = have;
+        CTX_PullThisMode.IsEnabled    = have;
+    }
+
+    async Task RunPullAsync(PullScope scope)
+    {
+        var id = _sysExService.CurrentBankId;
+        if (scope != PullScope.All && id == null) return;   // menu already gates this; defensive only
+
+        int objType = id is { } bid && bid.Type == 1 ? LibObj.Program : LibObj.Combi;
+        int objBank = id?.ObjBank ?? 0;
+        int number  = id?.Number ?? 0;
+        try
+        {
+            var result = scope switch
+            {
+                PullScope.Program => await LibraryPullPipeline.PullObjectAsync(_sysExService, _localLibraryCache, objType, objBank, number),
+                PullScope.Bank    => await LibraryPullPipeline.PullBankAsync(_sysExService, _localLibraryCache, objType, objBank),
+                PullScope.Mode    => await LibraryPullPipeline.PullModeAsync(_sysExService, _localLibraryCache, objType),
+                _                 => await LibraryPullPipeline.PullAsync(_sysExService, _localLibraryCache, full: false),
+            };
+            SetNotification(AppMessages.Notify.PullComplete(result.ObjectsFetched, result.Conflicts), isError: false);
+        }
+        catch (Exception ex)
+        {
+            AppLog.Warn($"[pull] {scope} pull failed: {ex.Message}");
+            SetNotification(AppMessages.Notify.PullFailed(ex.Message), isError: true);
+        }
+    }
+
     void ApplyMidiMonitorMenuState()
     {
         bool enabled = _settings.MidiMonitorEnabled;
         MNU_SysExTool.IsEnabled = enabled;
         MNU_SysExTool.Opacity   = enabled ? 1.0 : 0.4;
+        MidiMonitorStatusBtn.IsEnabled = enabled;
+        MidiMonitorStatusBtn.Opacity   = enabled ? 1.0 : 0.4;
     }
 
     void OpenSysExToolWindow()
@@ -1657,7 +1763,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             new("Mirror",          "Toggle VGA Mirror",       K("Mirror"),        () => { _mirrorState = !_mirrorState; Ctrl(DaemonCommand.VgaMirror(_mirrorState)); }),
             new("Calibrate",       "Toggle Calibration Mode", K("Calibrate"),     () => { _cal.Mode = !_cal.Mode; if (_cal.Mode) EnterCalMode(); else ExitCalMode(); OverlayLayer.InvalidateVisual(); }),
             new("SaveScreenshot",  "Save Screenshot...",        "",              () => SaveScreenshot()),
-            new("ToggleKeyboardSend", "Toggle Keyboard Send", "",              () => { _kbdSendEnabled = !_kbdSendEnabled; _instantKeys.Clear(); StopRepeat(); ReleaseActiveRawKeys(); UpdateKbdStatus(); OverlayLayer.InvalidateVisual(); }),
+            new("ToggleKeyboardSend", "Toggle Remote Typing", "",              () => { _kbdSendEnabled = !_kbdSendEnabled; _instantKeys.Clear(); StopRepeat(); ReleaseActiveRawKeys(); UpdateKbdStatus(); OverlayLayer.InvalidateVisual(); }),
             // ── Mode select (Id = action name; also wired to mode buttons + menu + context menu + keybinds)
             new("Mode Setlist",  "Mode: Setlist",  K("Mode Setlist"),  () => SendMode(Mode.Setlist)),
             new("Mode Combi",    "Mode: Combi",    K("Mode Combi"),    () => SendMode(Mode.Combi)),

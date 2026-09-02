@@ -94,6 +94,11 @@ sealed class SysExService : ISysExService
         private set => SetProperty(ref _performanceDisplay, value);
     }
 
+    // _lastBankId can be stale (the func-33 poll only overwrites it when the reply decodes
+    // as Program/Combi - see PerfMetadataLoop's own comment), so only trust it while
+    // _stateMode itself says we're currently in one of those two modes.
+    public BankId? CurrentBankId => _stateMode is 2 or 3 ? _lastBankId : null;
+
     public bool IsAvailable
     {
         get => _isAvailable;

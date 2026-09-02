@@ -357,6 +357,7 @@ internal sealed class FakeSysExService : ISysExService
     public event Action<SysExTrafficEntry>? SysExTraffic;
 
     public string PerformanceDisplay => "";
+    public BankId? CurrentBankId => null;
     public bool IsAvailable => false;
     public int ValueSliderCc { get; set; } = 18;
     public bool PullNamesOnChange { get; set; }

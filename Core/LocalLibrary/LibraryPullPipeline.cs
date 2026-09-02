@@ -88,10 +88,91 @@ static class LibraryPullPipeline
             foreach (var key in noDigest) fresh[key] = NoDigest;
 
         var plan = LibraryPullPlanner.PlanPull(persisted, fresh, full);
+        var banksToFetch = plan.BanksToFetch.Select(b => (b.ObjType, b.Bank)).ToList();
+        var (fetched, conflicts) = await FetchAndReconcileAsync(sysEx, cache, banksToFetch, persisted, fresh, progress, ct).ConfigureAwait(false);
+        return new PullResult(plan.BanksToFetch.Count, fetched, conflicts);
+    }
 
+    // Pulls exactly one object (Pull from Kronos > This program/combi). No bank-wide bulk
+    // dump - a single DumpObjectAsync round trip, reconciled the same way a full pull's
+    // per-slot step is.
+    public static async Task<PullResult> PullObjectAsync(
+        ILibrarianService sysEx, LocalLibraryCache cache, int objType, int bank, int number,
+        CancellationToken ct = default)
+    {
+        var d = await sysEx.BankDigestAsync(objType, bank, ct).ConfigureAwait(false);
+        string freshHex = d != null ? Convert.ToHexString(d).ToLowerInvariant() : NoDigest;
+        var persisted = cache.BankDigestBaselineHex();
+        bool bankChangedOnHardware = !persisted.TryGetValue((objType, bank), out var baseHex) || freshHex != baseHex;
+
+        var dump = await sysEx.DumpObjectAsync(objType, bank, number, ct).ConfigureAwait(false);
+        if (dump == null) return new PullResult(1, 0, 0);
+
+        // Same "never overwrite a dirty object" rule as the bulk path - see
+        // FetchAndReconcileAsync's own comment on this exact check.
+        if (cache.IsDirty(objType, bank, number))
+        {
+            if (!bankChangedOnHardware) return new PullResult(1, 0, 0);
+            cache.MarkConflicted(objType, bank, number);
+            return new PullResult(1, 0, 1);
+        }
+
+        cache.RecordPullBaselines(
+            new[] { (objType, bank, number, dump.Version, dump.Body) }, DateTime.UtcNow);
+        cache.SetBankDigestBaseline(objType, bank, freshHex);
+        cache.Save();
+        return new PullResult(1, 1, 0);
+    }
+
+    // Pulls every slot of one bank (Pull from Kronos > This bank).
+    public static Task<PullResult> PullBankAsync(
+        ILibrarianService sysEx, LocalLibraryCache cache, int objType, int bank,
+        Action<string>? progress = null, CancellationToken ct = default)
+        => PullBanksAsync(sysEx, cache, new[] { (objType, bank) }, progress, ct);
+
+    // Pulls every bank of one object type (Pull from Kronos > This mode - "program" means
+    // every Program bank, etc.).
+    public static Task<PullResult> PullModeAsync(
+        ILibrarianService sysEx, LocalLibraryCache cache, int objType,
+        Action<string>? progress = null, CancellationToken ct = default)
+        => PullBanksAsync(sysEx, cache,
+            LibraryPullPlanner.AllBanks().Where(b => b.ObjType == objType).Select(b => (b.ObjType, b.Bank)).ToList(),
+            progress, ct);
+
+    // Shared by PullBankAsync/PullModeAsync: digest just the banks in scope (not a full
+    // registry sweep - the caller already knows exactly which banks it wants), then run the
+    // same bulk-dump/reconcile step PullAsync uses.
+    static async Task<PullResult> PullBanksAsync(
+        ILibrarianService sysEx, LocalLibraryCache cache, IReadOnlyList<(int ObjType, int Bank)> banks,
+        Action<string>? progress, CancellationToken ct)
+    {
+        var persisted = cache.BankDigestBaselineHex();
+        var fresh = new Dictionary<(int, int), string>();
+        foreach (var (objType, bank) in banks)
+        {
+            if (ct.IsCancellationRequested) break;
+            var d = await sysEx.BankDigestAsync(objType, bank, ct).ConfigureAwait(false);
+            fresh[(objType, bank)] = d != null ? Convert.ToHexString(d).ToLowerInvariant() : NoDigest;
+        }
+        var (fetched, conflicts) = await FetchAndReconcileAsync(sysEx, cache, banks, persisted, fresh, progress, ct).ConfigureAwait(false);
+        return new PullResult(banks.Count, fetched, conflicts);
+    }
+
+    // The actual bulk-dump/per-slot reconcile step, shared by PullAsync (given its full
+    // registry sweep's persisted/fresh digests) and the scoped Pull*Async methods above
+    // (given only the digests for the banks they're targeting). `fresh` drives which bank
+    // baselines get written at the end - PullAsync passes every bank it swept (so an
+    // unchanged bank's baseline still advances); the scoped callers pass only their own
+    // targeted banks, so nothing outside their scope is touched.
+    static async Task<(int Fetched, int Conflicts)> FetchAndReconcileAsync(
+        ILibrarianService sysEx, LocalLibraryCache cache, IReadOnlyList<(int ObjType, int Bank)> banksToFetch,
+        IReadOnlyDictionary<(int ObjType, int Bank), string> persisted,
+        IReadOnlyDictionary<(int ObjType, int Bank), string> fresh,
+        Action<string>? progress, CancellationToken ct)
+    {
         var utcNow = DateTime.UtcNow;
         int fetched = 0, conflicts = 0, done = 0;
-        int total = plan.BanksToFetch.Sum(b => ObjectTypeRegistry.Get(b.ObjType).SlotCount(b.Bank));
+        int total = banksToFetch.Sum(b => ObjectTypeRegistry.Get(b.ObjType).SlotCount(b.Bank));
         // Accumulated in memory and written in ONE batch after the loop - see
         // LocalLibraryCache.RecordPullBaselines's own comment for why: appending one
         // op-log line per object (a full pull can mean thousands) meant thousands of
@@ -99,7 +180,7 @@ static class LibraryPullPipeline
         // routine Sync Library into a multi-minute stall.
         var pulled = new List<(int ObjType, int Bank, int Number, byte Version, byte[] Body)>();
 
-        foreach (var bankRef in plan.BanksToFetch)
+        foreach (var bankRef in banksToFetch)
         {
             // Same reasoning as the digest sweep above: without this, a cancelled pull still
             // issued one more full DumpBankBulkAsync round trip per remaining bank before the
@@ -162,11 +243,11 @@ static class LibraryPullPipeline
 
         if (!ct.IsCancellationRequested)
         {
-            foreach (var ((objType, bank), hex) in fresh)
-                cache.SetBankDigestBaseline(objType, bank, hex);
+            foreach (var (key, hex) in fresh)
+                cache.SetBankDigestBaseline(key.ObjType, key.Bank, hex);
             cache.Save();
         }
 
-        return new PullResult(plan.BanksToFetch.Count, fetched, conflicts);
+        return (fetched, conflicts);
     }
 }

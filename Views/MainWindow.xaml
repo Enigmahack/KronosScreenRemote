@@ -91,7 +91,7 @@
                 <MenuItem x:Name="MNU_InputTester"  Header="_Input Tester..." Visibility="Collapsed"/>
                 <MenuItem x:Name="MNU_TestMode"     Header="Enter Kronos _Test Mode"/>
                 <Separator/>
-                <MenuItem x:Name="MNU_DisableKbd"   Header="_Disable Typing Send" IsCheckable="True" ToolTip="Disable sending keystrokes to the Kronos. All keyboard input remains local."/>
+                <MenuItem x:Name="MNU_DisableKbd"   Header="_Disable Remote Typing" IsCheckable="True" ToolTip="Disable sending keystrokes to the Kronos. All keyboard input remains local."/>
             </MenuItem>
             <MenuItem x:Name="MENU_ModeSelect" Header="_Mode Select">
                 <MenuItem x:Name="MNU_Mode_Setlist"  Header="_Setlist" InputGestureText="S"/>
@@ -322,30 +322,36 @@
                                 IsEnabled="{Binding IsTransportEnabled}"
                                 ToolTip="Sequencer transport - sends the front-panel SEQUENCER buttons to the Kronos">
                         <Button x:Name="BTN_SeqLocate" Style="{StaticResource SeqTransportBtn}"
+                                TabIndex="280" AutomationProperties.Name="Locate"
                                 ToolTip="Locate - return to the locate point">
                             <Path Fill="#FFB4B4B4" Data="M0,0 H1.8 V10 H0 Z M10,0 L3,5 L10,10 Z"/>
                         </Button>
                         <Button x:Name="BTN_SeqRew" Style="{StaticResource SeqTransportBtn}"
+                                TabIndex="290" AutomationProperties.Name="Rewind"
                                 ToolTip="Rewind (&lt;&lt;)">
                             <Path Fill="#FFB4B4B4" Data="M5,0 L0,5 L5,10 Z M10,0 L5,5 L10,10 Z"/>
                         </Button>
                         <Button x:Name="BTN_SeqFf" Style="{StaticResource SeqTransportBtn}"
+                                TabIndex="300" AutomationProperties.Name="Fast-forward"
                                 ToolTip="Fast-forward (&gt;&gt;)">
                             <Path Fill="#FFB4B4B4" Data="M0,0 L5,5 L0,10 Z M5,0 L10,5 L5,10 Z"/>
                         </Button>
                         <Button x:Name="BTN_SeqPause" Style="{StaticResource SeqTransportBtn}"
+                                TabIndex="310" AutomationProperties.Name="Pause"
                                 ToolTip="Pause">
                             <Path Fill="#FFB4B4B4" Data="M0.5,0 H3 V10 H0.5 Z M6,0 H8.5 V10 H6 Z"/>
                         </Button>
                         <ToggleButton x:Name="BTN_SeqRec" Style="{StaticResource SeqRecordToggleBtn}"
                                 IsChecked="{Binding IsRecording, Mode=TwoWay}"
                                 Command="{Binding RecordCommand}"
+                                TabIndex="320" AutomationProperties.Name="Record"
                                 ToolTip="Record">
                             <Ellipse Width="10" Height="10" Fill="#FFE05656"/>
                         </ToggleButton>
                         <ToggleButton x:Name="BTN_SeqStart" Style="{StaticResource SeqTransportToggleBtn}"
                                 IsChecked="{Binding IsPlaying, Mode=TwoWay}"
                                 Command="{Binding StartStopCommand}"
+                                TabIndex="330" AutomationProperties.Name="Start / Stop"
                                 ToolTip="Start / Stop">
                             <Grid>
                                 <Path Fill="#FF5EC26A" Data="M0.5,0 L10,5 L0.5,10 Z"
@@ -369,6 +375,7 @@
             <StatusBarItem x:Name="TapTempoBarItem" DockPanel.Dock="Right" Padding="2 0" VerticalContentAlignment="Center">
                 <Button x:Name="BTN_TapTempo" Style="{StaticResource SeqTransportBtn}"
                         Width="30" Height="24" IsEnabled="False"
+                        TabIndex="340" AutomationProperties.Name="Tap Tempo"
                         ToolTip="Tap Tempo - tap in quarter-notes to set the Kronos tempo (two taps is enough)">
                     <Path Fill="#FFB4B4B4" Width="12" Height="12" Stretch="Uniform"
                           Data="F0 M3,0 L7,0 L9.5,10 L0.5,10 Z M5.3,2 L6.2,2 L4.7,8 L3.8,8 Z"/>
@@ -384,6 +391,7 @@
                         Width="30" Height="24"
                         Command="{Binding RecordCommand}"
                         IsEnabled="{Binding IsSaveEnabled}"
+                        TabIndex="350" AutomationProperties.Name="Write / Save"
                         ToolTip="Write - Save your changes (Setlist/Combi/Program/Global)">
                     <Path Fill="#FFB4B4B4" Width="12" Height="12" Stretch="Uniform"
                           Data="M0,0 H8 L10,2 V10 H0 Z M2,0 H6 V3 H2 Z"/>
@@ -412,8 +420,8 @@
                       ToolTip="Keyboard: click screen panel to capture">
                     <Grid.ContextMenu>
                         <ContextMenu>
-                            <MenuItem x:Name="CTX_KbdEnable"  Header="_Enable Keyboard Send"/>
-                            <MenuItem x:Name="CTX_KbdDisable" Header="_Disable Keyboard Send"/>
+                            <MenuItem x:Name="CTX_KbdEnable"  Header="_Enable Remote Typing"/>
+                            <MenuItem x:Name="CTX_KbdDisable" Header="_Disable Remote Typing"/>
                         </ContextMenu>
                     </Grid.ContextMenu>
                     <TextBlock x:Name="KbdStatusIcon" Text="⌨"
@@ -488,6 +496,8 @@
                     <Border.ContextMenu>
                         <ContextMenu>
                             <MenuItem x:Name="CTX_OpenLogFile"        Header="Open _Log..."/>
+                            <MenuItem x:Name="CTX_ClearLogs"          Header="Clear _Logs"
+                                      ToolTip="Truncate the current log file. Cannot be undone."/>
                             <MenuItem x:Name="CTX_ClearNotification"  Header="_Clear Notification"/>
                         </ContextMenu>
                     </Border.ContextMenu>
@@ -495,7 +505,7 @@
                           Width="14" Height="13"
                           Stretch="Uniform"
                           VerticalAlignment="Center"
-                          Fill="#FF3A3A3A"
+                          Fill="#FFB4B4B4"
                           Data="M 1.5,0 L 12,0 Q 14,0 14,2 L 14,8.5 Q 14,10 12,10 L 5.5,10 L 2.5,13 L 3.5,10 L 2,10 Q 0,10 0,8.5 L 0,2 Q 0,0 1.5,0 Z"/>
                 </Border>
             </StatusBarItem>
@@ -510,9 +520,74 @@
                     <TextBlock Text="&#xE147;"
                                FontFamily="Segoe UI Symbol"
                                FontSize="18"
-                               Foreground="#FF3A3A3A"
+                               Foreground="#FFB4B4B4"
                                VerticalAlignment="Center"
                                HorizontalAlignment="Center"/>
+                </Border>
+            </StatusBarItem>
+            <StatusBarItem Padding="2 0" VerticalContentAlignment="Center">
+                <Border x:Name="LibrarianStatusBtn"
+                        Cursor="Hand"
+                        Background="Transparent"
+                        Padding="2 1"
+                        VerticalAlignment="Center"
+                        ToolTip="Librarian"
+                        AutomationProperties.Name="Librarian">
+                    <!-- Single open book - two pages splayed from a center spine. -->
+                    <Path Width="14" Height="13" Stretch="Uniform" Fill="#FFB4B4B4"
+                          Data="M 7,3 C 5,1.5 2,1 0,1.5 L 0,11.5 C 2,11 5,11.5 7,13
+                                C 9,11.5 12,11 14,11.5 L 14,1.5 C 12,1 9,1.5 7,3 Z"/>
+                </Border>
+            </StatusBarItem>
+            <StatusBarItem Padding="2 0" VerticalContentAlignment="Center">
+                <Border x:Name="FileTransferStatusBtn"
+                        Cursor="Hand"
+                        Background="Transparent"
+                        Padding="2 1"
+                        VerticalAlignment="Center"
+                        ToolTip="File Transfer"
+                        AutomationProperties.Name="File Transfer">
+                    <!-- Folder with the tab at the top-left, matching the default Windows folder icon. -->
+                    <Polygon Points="1,1 7,1 8,3 14,3 14,11 0,11 0,3" Fill="#FFB4B4B4"/>
+                </Border>
+            </StatusBarItem>
+            <StatusBarItem Padding="2 0" VerticalContentAlignment="Center">
+                <Border x:Name="SampleEditorStatusBtn"
+                        Cursor="Hand"
+                        Background="Transparent"
+                        Padding="2 1"
+                        VerticalAlignment="Center"
+                        ToolTip="Sample Editor"
+                        AutomationProperties.Name="Sample Editor">
+                    <!-- Waveform: five bars of varying height, tallest in the middle. -->
+                    <Canvas Width="14" Height="13">
+                        <Rectangle Canvas.Left="0"  Canvas.Top="5" Width="2" Height="3"  Fill="#FFB4B4B4"/>
+                        <Rectangle Canvas.Left="3"  Canvas.Top="2" Width="2" Height="9"  Fill="#FFB4B4B4"/>
+                        <Rectangle Canvas.Left="6"  Canvas.Top="4" Width="2" Height="5"  Fill="#FFB4B4B4"/>
+                        <Rectangle Canvas.Left="9"  Canvas.Top="0" Width="2" Height="13" Fill="#FFB4B4B4"/>
+                        <Rectangle Canvas.Left="12" Canvas.Top="4" Width="2" Height="5"  Fill="#FFB4B4B4"/>
+                    </Canvas>
+                </Border>
+            </StatusBarItem>
+            <StatusBarItem Padding="2 0" VerticalContentAlignment="Center">
+                <Border x:Name="MidiMonitorStatusBtn"
+                        Cursor="Hand"
+                        Background="Transparent"
+                        Padding="2 1"
+                        VerticalAlignment="Center"
+                        ToolTip="MIDI Monitor"
+                        AutomationProperties.Name="MIDI Monitor">
+                    <!-- Mini piano: five white keys, three black keys overlaid (C-D#, D-D#, F-F# pattern). -->
+                    <Canvas Width="15" Height="13">
+                        <Rectangle Canvas.Left="0"  Canvas.Top="0" Width="3" Height="13" Fill="#FFB4B4B4" Stroke="#FF262626" StrokeThickness="0.5"/>
+                        <Rectangle Canvas.Left="3"  Canvas.Top="0" Width="3" Height="13" Fill="#FFB4B4B4" Stroke="#FF262626" StrokeThickness="0.5"/>
+                        <Rectangle Canvas.Left="6"  Canvas.Top="0" Width="3" Height="13" Fill="#FFB4B4B4" Stroke="#FF262626" StrokeThickness="0.5"/>
+                        <Rectangle Canvas.Left="9"  Canvas.Top="0" Width="3" Height="13" Fill="#FFB4B4B4" Stroke="#FF262626" StrokeThickness="0.5"/>
+                        <Rectangle Canvas.Left="12" Canvas.Top="0" Width="3" Height="13" Fill="#FFB4B4B4" Stroke="#FF262626" StrokeThickness="0.5"/>
+                        <Rectangle Canvas.Left="2"  Canvas.Top="0" Width="2" Height="8" Fill="#FF1A1A1A"/>
+                        <Rectangle Canvas.Left="5"  Canvas.Top="0" Width="2" Height="8" Fill="#FF1A1A1A"/>
+                        <Rectangle Canvas.Left="11" Canvas.Top="0" Width="2" Height="8" Fill="#FF1A1A1A"/>
+                    </Canvas>
                 </Border>
             </StatusBarItem>
             <Separator Margin="2 4" Background="#FF444444" Width="1"/>
@@ -520,7 +595,23 @@
                 <TextBlock Foreground="#FF88AADD" FontSize="11"
                            VerticalAlignment="Center"
                            Text="{Binding PerformanceDisplay}"
-                           ToolTip="Current performance - bank, number, and name (via SysEx)"/>
+                           ToolTip="Current performance - bank, number, and name (via SysEx). Right-click to pull from the Kronos.">
+                    <TextBlock.ContextMenu>
+                        <ContextMenu x:Name="CTX_PerfPullMenu">
+                            <MenuItem Header="_Pull names from Kronos...">
+                                <MenuItem x:Name="CTX_PullThisProgram" Header="This _Program"
+                                          ToolTip="Pull only the program/combi currently showing."/>
+                                <MenuItem x:Name="CTX_PullThisBank"    Header="This _Bank"
+                                          ToolTip="Pull every object in the current bank."/>
+                                <MenuItem x:Name="CTX_PullThisMode"    Header="This _Mode"
+                                          ToolTip="Pull every bank of the current object type."/>
+                                <Separator/>
+                                <MenuItem x:Name="CTX_PullAll"         Header="_All"
+                                          ToolTip="Full library pull - every program, combi, set list, drum kit, and wave sequence."/>
+                            </MenuItem>
+                        </ContextMenu>
+                    </TextBlock.ContextMenu>
+                </TextBlock>
             </StatusBarItem>
         </StatusBar>
 
@@ -543,18 +634,23 @@
                         <local:KronosButton x:Name="BTN_Inc"
                             Margin="114,72,118,504"
                             ToolTip="Increment value"
+                            TabIndex="10" AutomationProperties.Name="Increment value"
                             UnlitSource="/Resources/Images/UnlitThinButton.png"
                             ButtonMode="None"/>
                         <local:KronosButton x:Name="BTN_Dec"
                             Margin="114,146,118,430"
                             ToolTip="Decrement value"
+                            TabIndex="20" AutomationProperties.Name="Decrement value"
                             UnlitSource="/Resources/Images/UnlitThinButton.png"
                             ButtonMode="None"/>
 
                         <Canvas x:Name="ValueSliderCanvas"
                                 Margin="87,300,87,30"
                                 Background="Transparent"
-                                Cursor="Hand">
+                                Cursor="Hand"
+                                KeyboardNavigation.TabIndex="30"
+                                AutomationProperties.Name="Value slider"
+                                AutomationProperties.HelpText="Up/Down arrow keys adjust the value, 0 to 127.">
                             <Image x:Name="ValueSliderThumb"
                                    Width="72" Height="42"
                                    Source="/Resources/Images/Slider.png"
@@ -652,42 +748,49 @@
                         <local:KronosButton x:Name="BTN_Setlist"
                             Margin="87,90,603,483"
                             ToolTip="Setlist mode (F2)"
+                            TabIndex="40" AutomationProperties.Name="Setlist mode"
                             UnlitSource="/Resources/Images/UnlitWideButton.png"
                             LitSource="/Resources/Images/LitWideButton.png"
                             ButtonMode="None" RadioGroup="ModeGroup"/>
                         <local:KronosButton x:Name="BTN_Combi"
                             Margin="289,91,401,482"
                             ToolTip="Combi mode (F3)"
+                            TabIndex="50" AutomationProperties.Name="Combi mode"
                             UnlitSource="/Resources/Images/UnlitWideButton.png"
                             LitSource="/Resources/Images/LitWideButton.png"
                             ButtonMode="None" RadioGroup="ModeGroup"/>
                         <local:KronosButton x:Name="BTN_Program"
                             Margin="407,91,283,482"
                             ToolTip="Program mode (F4)"
+                            TabIndex="60" AutomationProperties.Name="Program mode"
                             UnlitSource="/Resources/Images/UnlitWideButton.png"
                             LitSource="/Resources/Images/LitWideButton.png"
                             ButtonMode="None" RadioGroup="ModeGroup"/>
                         <local:KronosButton x:Name="BTN_Sequence"
                             Margin="522,91,168,482"
                             ToolTip="Sequence mode (F5)"
+                            TabIndex="70" AutomationProperties.Name="Sequence mode"
                             UnlitSource="/Resources/Images/UnlitWideButton.png"
                             LitSource="/Resources/Images/LitWideButton.png"
                             ButtonMode="None" RadioGroup="ModeGroup"/>
                         <local:KronosButton x:Name="BTN_Sampling"
                             Margin="289,169,401,404"
                             ToolTip="Sampling mode (F6)"
+                            TabIndex="80" AutomationProperties.Name="Sampling mode"
                             UnlitSource="/Resources/Images/UnlitWideButton.png"
                             LitSource="/Resources/Images/LitWideButton.png"
                             ButtonMode="None" RadioGroup="ModeGroup"/>
                         <local:KronosButton x:Name="BTN_Global"
                             Margin="407,169,283,404"
                             ToolTip="Global mode (F7)"
+                            TabIndex="90" AutomationProperties.Name="Global mode"
                             UnlitSource="/Resources/Images/UnlitWideButton.png"
                             LitSource="/Resources/Images/LitWideButton.png"
                             ButtonMode="None" RadioGroup="ModeGroup"/>
                         <local:KronosButton x:Name="BTN_Disk"
                             Margin="522,169,168,404"
                             ToolTip="Disk mode (F8)"
+                            TabIndex="100" AutomationProperties.Name="Disk mode"
                             UnlitSource="/Resources/Images/UnlitWideButton.png"
                             LitSource="/Resources/Images/LitWideButton.png"
                             ButtonMode="None" RadioGroup="ModeGroup"/>
@@ -696,12 +799,14 @@
                         <local:KronosButton x:Name="BTN_Help"
                             Margin="671,91,79,482"
                             ToolTip="Send HELP button to Kronos (F1)"
+                            TabIndex="110" AutomationProperties.Name="Help"
                             UnlitSource="/Resources/Images/UnlitThinButton.png"
                             LitSource="/Resources/Images/LitThinButton.png"
                             ButtonMode="Toggle"/>
                         <local:KronosButton x:Name="BTN_Compare"
                             Margin="671,169,79,404"
                             ToolTip="Send COMPARE button to Kronos"
+                            TabIndex="120" AutomationProperties.Name="Compare"
                             UnlitSource="/Resources/Images/UnlitThinButton.png"
                             LitSource="/Resources/Images/LitThinButton.png"
                             ButtonMode="Toggle"/>
@@ -710,61 +815,73 @@
                         <local:KronosButton x:Name="BTN_data7"
                             Margin="289,250,401,325"
                             ToolTip="Send 7 to Kronos"
+                            TabIndex="130" AutomationProperties.Name="7"
                             UnlitSource="/Resources/Images/UnlitWideButton.png"
                             ButtonMode="None"/>
                         <local:KronosButton x:Name="BTN_data8"
                             Margin="407,250,283,325"
                             ToolTip="Send 8 to Kronos"
+                            TabIndex="140" AutomationProperties.Name="8"
                             UnlitSource="/Resources/Images/UnlitWideButton.png"
                             ButtonMode="None"/>
                         <local:KronosButton x:Name="BTN_data9"
                             Margin="522,250,168,325"
                             ToolTip="Send 9 to Kronos"
+                            TabIndex="150" AutomationProperties.Name="9"
                             UnlitSource="/Resources/Images/UnlitWideButton.png"
                             ButtonMode="None"/>
                         <local:KronosButton x:Name="BTN_data4"
                             Margin="289,328,401,245"
                             ToolTip="Send 4 to Kronos"
+                            TabIndex="160" AutomationProperties.Name="4"
                             UnlitSource="/Resources/Images/UnlitWideButton.png"
                             ButtonMode="None"/>
                         <local:KronosButton x:Name="BTN_data5"
                             Margin="407,328,283,245"
                             ToolTip="Send 5 to Kronos"
+                            TabIndex="170" AutomationProperties.Name="5"
                             UnlitSource="/Resources/Images/UnlitWideButton.png"
                             ButtonMode="None"/>
                         <local:KronosButton x:Name="BTN_data6"
                             Margin="524,328,166,245"
                             ToolTip="Send 6 to Kronos"
+                            TabIndex="180" AutomationProperties.Name="6"
                             UnlitSource="/Resources/Images/UnlitWideButton.png"
                             ButtonMode="None"/>
                         <local:KronosButton x:Name="BTN_data1"
                             Margin="289,409,401,164"
                             ToolTip="Send 1 to Kronos"
+                            TabIndex="190" AutomationProperties.Name="1"
                             UnlitSource="/Resources/Images/UnlitWideButton.png"
                             ButtonMode="None"/>
                         <local:KronosButton x:Name="BTN_data2"
                             Margin="407,409,283,164"
                             ToolTip="Send 2 to Kronos"
+                            TabIndex="200" AutomationProperties.Name="2"
                             UnlitSource="/Resources/Images/UnlitWideButton.png"
                             ButtonMode="None"/>
                         <local:KronosButton x:Name="BTN_data3"
                             Margin="524,409,166,164"
                             ToolTip="Send 3 to Kronos"
+                            TabIndex="210" AutomationProperties.Name="3"
                             UnlitSource="/Resources/Images/UnlitWideButton.png"
                             ButtonMode="None"/>
                         <local:KronosButton x:Name="BTN_data_dash"
                             Margin="290,489,400,84"
                             ToolTip="Send – (dash) to Kronos"
+                            TabIndex="220" AutomationProperties.Name="Dash"
                             UnlitSource="/Resources/Images/UnlitWideButton.png"
                             ButtonMode="None"/>
                         <local:KronosButton x:Name="BTN_data0"
                             Margin="407,489,283,84"
                             ToolTip="Send 0 to Kronos"
+                            TabIndex="230" AutomationProperties.Name="0"
                             UnlitSource="/Resources/Images/UnlitWideButton.png"
                             ButtonMode="None"/>
                         <local:KronosButton x:Name="BTN_data_period"
                             Margin="524,489,166,84"
                             ToolTip="Send . (period) to Kronos"
+                            TabIndex="240" AutomationProperties.Name="Period"
                             UnlitSource="/Resources/Images/UnlitWideButton.png"
                             ButtonMode="None"/>
 
@@ -772,11 +889,13 @@
                         <local:KronosButton x:Name="BTN_Exit"
                             Margin="80,493,603,80"
                             ToolTip="Send EXIT button to Kronos (Esc)"
+                            TabIndex="250" AutomationProperties.Name="Exit"
                             UnlitSource="/Resources/Images/ExitButton.png"
                             ButtonMode="None"/>
                         <local:KronosButton x:Name="BTN_Enter"
                             Margin="639,489,44,84"
                             ToolTip="Send ENTER button to Kronos (Enter)"
+                            TabIndex="260" AutomationProperties.Name="Enter"
                             UnlitSource="/Resources/Images/ExitButton.png"
                             ButtonMode="None"/>
 
@@ -786,6 +905,9 @@
                            Source="/Resources/Images/DataWheelTransparent.png"
                            RenderTransformOrigin="0.5,0.5"
                            Cursor="SizeNS"
+                           KeyboardNavigation.TabIndex="270"
+                           AutomationProperties.Name="Data wheel"
+                           AutomationProperties.HelpText="Up/Down arrow keys rotate the wheel one step at a time."
                            ToolTip="Data wheel - drag up/down or scroll to rotate; Ctrl+scroll to zoom frame">
                             <Image.ContextMenu>
                                 <ContextMenu>

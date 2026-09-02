@@ -262,7 +262,7 @@ public partial class HelpWindow : ThemedWindow
         var ki = ShortcutTable(200);
         Row(ki, "⌨  (blue)",        "Capture active - keystrokes are forwarded to the Kronos.",  CHead);
         Row(ki, "⌨/ (gray slash)",  "Capture inactive - click the screen panel to enable.",       CDim);
-        Row(ki, "⌨/ (red slash)",   "Keyboard send disabled  (Tools → Disable Keyboard Send).",   CRed);
+        Row(ki, "⌨/ (red slash)",   "Remote typing disabled  (Tools → Disable Remote Typing).",   CRed);
         Add(ki);
         Add(Note("Click outside the screen panel - on the control surface, wheel, or menu bar - to release keyboard capture."));
 
