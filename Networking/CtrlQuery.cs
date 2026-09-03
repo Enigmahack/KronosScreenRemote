@@ -27,7 +27,7 @@ static class CtrlQuery
             s.NoDelay = true;
             using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(timeoutMs));
             await s.ConnectAsync(host, port, cts.Token);
-            await s.SendAsync(Encoding.ASCII.GetBytes(cmd + "\n"), SocketFlags.None, cts.Token);
+            await s.SendAllAsync(Encoding.ASCII.GetBytes(cmd + "\n"), cts.Token);
             var sb  = new StringBuilder();
             var buf = new byte[256];
             while (!sb.ToString().Contains('\n'))
@@ -60,7 +60,7 @@ static class CtrlQuery
             s.NoDelay = true;
             using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(timeoutMs));
             await s.ConnectAsync(host, port, cts.Token);
-            await s.SendAsync(Encoding.ASCII.GetBytes(cmd + "\n"), SocketFlags.None, cts.Token);
+            await s.SendAllAsync(Encoding.ASCII.GetBytes(cmd + "\n"), cts.Token);
             var sb  = new StringBuilder();
             var buf = new byte[1024];
             while (true)

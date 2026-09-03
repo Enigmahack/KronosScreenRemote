@@ -95,7 +95,18 @@ internal sealed class ScreenSession : IDisposable
             if (ct.IsCancellationRequested) return;
 
             var receiver = _receiverFactory(connection);
-            receiver.Disconnected += () => ReceiverDisconnected(id, receiver);
+            // StreamReceiver's receive thread starts at the tail of its own handshake, BEFORE
+            // ConnectAsync's await below returns control here - so an immediate post-handshake
+            // disconnect can fire this event while `receiver` isn't `_receiver` yet.
+            // ReceiverDisconnected bails out in that case (nothing to compare against), so
+            // latch it here instead: the publish step below checks it and, if set, treats this
+            // receiver as already-dead rather than publishing it and reporting Connected.
+            int earlyDisconnect = 0;
+            receiver.Disconnected += () =>
+            {
+                Interlocked.Exchange(ref earlyDisconnect, 1);
+                ReceiverDisconnected(id, receiver);
+            };
             try
             {
                 await receiver.ConnectAsync(ct).ConfigureAwait(false);
@@ -115,12 +126,19 @@ internal sealed class ScreenSession : IDisposable
             bool published;
             lock (_gate)
             {
-                published = _id == id && ReferenceEquals(_connectCts, cts) && !ct.IsCancellationRequested;
+                published = _id == id && ReferenceEquals(_connectCts, cts) && !ct.IsCancellationRequested
+                            && Volatile.Read(ref earlyDisconnect) == 0;
                 if (published) _receiver = receiver;
             }
             if (!published)
             {
                 receiver.Dispose();
+                // Replay the early disconnect as a real connect failure - it fired before this
+                // receiver was published, so ReceiverDisconnected's own bail-out means nothing
+                // else will ever tell the caller this attempt didn't actually succeed.  Fail()
+                // itself already no-ops if a newer attempt has since superseded this one.
+                if (Volatile.Read(ref earlyDisconnect) != 0 && !ct.IsCancellationRequested)
+                    Fail(id, cts, null);
                 return;
             }
 

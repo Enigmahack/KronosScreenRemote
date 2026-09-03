@@ -106,6 +106,16 @@ partial class SampleEditorViewModel : ObservableObject
     [ObservableProperty] int selectionEndFrame;
     [ObservableProperty] bool isPlaying;
 
+    // False while the audio actually sounding came from a DIFFERENT sample than the one
+    // shown in the waveform view (a keymap piano-key trigger for a zone other than the
+    // currently selected one - PlayZoneAtKey plays THAT key's own zone regardless of
+    // selection, see its own comment). The window gates the waveform's playhead line on
+    // this so it never animates over a waveform that isn't the audio actually playing -
+    // confusing, since it looks like the wrong sample is "playing". True for every other
+    // playback path (transport Play, scrub-click, Rewind/FF/Resume), which always play
+    // _selectedSample.
+    [ObservableProperty] bool playbackMatchesSelection = true;
+
     // "Use Zero": when set, SetMarker snaps every proposed Sample Start/Loop Start/Loop
     // End value to the nearest zero-crossing (where the waveform crosses its center
     // line) rather than the raw dragged/typed frame - avoids audible clicks at loop/
@@ -1445,7 +1455,14 @@ partial class SampleEditorViewModel : ObservableObject
     // (the bulk field-apply, SetLoopFromSelection, MoveLoopRegion, SetMarker) routes
     // through here, so the invariant can't be bypassed by editing one path and not
     // another. LoopEnd is likewise floored at the (possibly just-raised) LoopStart.
-    static void ApplySampleFieldsTo(KsfSample sample, int sampleRate, bool loopEnabled, int sampleStart, int loopStart, int loopEnd)
+    // The one funnel every loop/sample-start edit (SetMarker, MoveLoopRegion,
+    // SetLoopFromSelection, the bulk field-apply) routes through - also the one place
+    // that retargets an already-playing loop live, rather than each caller doing it
+    // separately. Only fires for `sample` itself, never a mirrored stereo partner's own
+    // call - the two share one combined LoopingSampleProvider (keyed to _selectedSample,
+    // the primary side), so updating once per commit is correct. A no-op whenever
+    // nothing is currently looping (SamplePlayback.UpdateLoopBounds's own guard).
+    void ApplySampleFieldsTo(KsfSample sample, int sampleRate, bool loopEnabled, int sampleStart, int loopStart, int loopEnd)
     {
         sampleStart = Math.Max(0, sampleStart);
         loopStart = Math.Max(loopStart, sampleStart);
@@ -1458,6 +1475,9 @@ partial class SampleEditorViewModel : ObservableObject
         sample.LoopStart = (uint)loopStart;
         sample.LoopEnd = (uint)loopEnd;
         sample.ClearPreservedLoopDuplicate();
+
+        if (ReferenceEquals(sample, _selectedSample))
+            _playback.UpdateLoopBounds(loopStart, loopEnd);
     }
 
     // ── Waveform editing (Phase 3) ──────────────────────────────────────────────
@@ -2180,6 +2200,7 @@ partial class SampleEditorViewModel : ObservableObject
         {
             _playback.PlayFrom(_selectedSample.Samples(), (int)_selectedSample.SampleRate, oneShotStartFrame, SampleReverseEnabled);
         }
+        PlaybackMatchesSelection = true;
         IsPlaying = true;
         IsPaused = false;
     }
@@ -2256,6 +2277,7 @@ partial class SampleEditorViewModel : ObservableObject
                             _playback.PlayStereoLoopedAtKey(left, right, (int)s.SampleRate, zone.OriginalKey, playedKey, startFrame, loopStart, loopEnd, s.IsReversed);
                         else
                             _playback.PlayStereoAtKey(left, right, (int)s.SampleRate, zone.OriginalKey, playedKey, startFrame, s.IsReversed);
+                        PlaybackMatchesSelection = ReferenceEquals(zone, _selectedZone);
                         IsPlaying = true;
                         IsPaused = false;
                         _pianoKeyPlaybackGeneration = _playback.Generation;
@@ -2269,6 +2291,7 @@ partial class SampleEditorViewModel : ObservableObject
             _playback.PlayLoopedAtKey(s.Samples(), (int)s.SampleRate, zone.OriginalKey, playedKey, startFrame, loopStart, loopEnd, s.IsReversed);
         else
             _playback.PlayAtKey(s.Samples(), (int)s.SampleRate, zone.OriginalKey, playedKey, startFrame, s.IsReversed);
+        PlaybackMatchesSelection = ReferenceEquals(zone, _selectedZone);
         IsPlaying = true;
         IsPaused = false;
         _pianoKeyPlaybackGeneration = _playback.Generation;
@@ -2349,6 +2372,7 @@ partial class SampleEditorViewModel : ObservableObject
 
         if (stereo) _playback.PlayStereoFrom(LeftSampleWaveform!, RightSampleWaveform!, (int)_selectedSample.SampleRate, frame, reverse);
         else _playback.PlayFrom(_selectedSample.Samples(), (int)_selectedSample.SampleRate, frame, reverse);
+        PlaybackMatchesSelection = true;
         IsPlaying = true;
         IsPaused = false;
     }

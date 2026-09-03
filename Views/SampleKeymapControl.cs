@@ -239,11 +239,25 @@ sealed class SampleKeymapControl : FrameworkElement
     }
 
     // Black keys are hit-tested first (they visually sit on top of the white keys near
-    // a boundary), falling back to whichever white key's slot contains x.
-    int PixelToKey(double x, double[] leftX, double[] rightX)
+    // a boundary), falling back to whichever white key's slot contains x - but only
+    // within the vertical band a black key is actually DRAWN in (see OnRender's own
+    // blackHeight, pianoTop*0.6 from the top of the piano). Without the y check, a click
+    // in a black key's x-range but BELOW its rendered height - a white key showing
+    // through there, exactly like a real piano - still hit the black key instead of the
+    // white key visibly under the cursor. y is relative to this control's own origin,
+    // same coordinate space e.GetPosition(this) already uses; pass double.NaN from a
+    // caller that only ever resolves a column (never a rendered key), which always skips
+    // the y-gated black-key pass and keeps its old x-only behavior.
+    int PixelToKey(double x, double y, double[] leftX, double[] rightX)
     {
-        for (int k = 0; k <= 127; k++)
-            if (IsBlackKey(k) && x >= leftX[k] && x < rightX[k]) return k;
+        if (!double.IsNaN(y))
+        {
+            double pianoTop = RaisedLabelHeight + ZoneBarHeight;
+            double blackKeyBottom = pianoTop + Math.Max(1, ActualHeight - pianoTop - RangeBarsTotalHeight) * 0.6;
+            if (y < blackKeyBottom)
+                for (int k = 0; k <= 127; k++)
+                    if (IsBlackKey(k) && x >= leftX[k] && x < rightX[k]) return k;
+        }
         for (int k = 0; k <= 127; k++)
             if (!IsBlackKey(k) && x >= leftX[k] && x < rightX[k]) return k;
         return x < 0 ? 0 : 127;
@@ -288,7 +302,7 @@ sealed class SampleKeymapControl : FrameworkElement
 
         if (_dragZoneOrigin != null)
         {
-            int key = PixelToKey(x, leftX, rightX);
+            int key = PixelToKey(x, double.NaN, leftX, rightX);
             var hover = ZoneAt(key, ranges);
             if (!ReferenceEquals(hover, _dragZoneHover))
             {
@@ -334,7 +348,7 @@ sealed class SampleKeymapControl : FrameworkElement
         if (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) && ctrlPos.Y >= RaisedLabelHeight + ZoneBarHeight)
         {
             var (_, ctrlLeftX, ctrlRightX) = BuildLayout();
-            PianoKeyCtrlClicked?.Invoke(PixelToKey(ctrlPos.X, ctrlLeftX, ctrlRightX));
+            PianoKeyCtrlClicked?.Invoke(PixelToKey(ctrlPos.X, ctrlPos.Y, ctrlLeftX, ctrlRightX));
             return;
         }
 
@@ -363,7 +377,7 @@ sealed class SampleKeymapControl : FrameworkElement
 
         // A click above the zone bar (in the raised-label strip) or on the bar itself
         // but off any boundary handle still needs to resolve to a key/zone below.
-        int key = PixelToKey(x, leftX, rightX);
+        int key = PixelToKey(x, pos.Y, leftX, rightX);
         var hitZone = ZoneAt(key, ranges);
         if (hitZone == null) return;
 
@@ -440,7 +454,7 @@ sealed class SampleKeymapControl : FrameworkElement
         {
             var (_, leftX, rightX) = BuildLayout();
             var ranges = ComputeRanges();
-            int key = PixelToKey(e.GetPosition(this).X, leftX, rightX);
+            int key = PixelToKey(e.GetPosition(this).X, double.NaN, leftX, rightX);
             var dropZone = ZoneAt(key, ranges);
 
             // Ended on a DIFFERENT zone than where the drag started -> reorder. Ended

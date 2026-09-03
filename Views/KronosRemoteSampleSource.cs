@@ -69,14 +69,26 @@ sealed class KronosRemoteSampleSource : IRemoteSampleSource
                 await client.Connect(connectCts.Token).ConfigureAwait(false);
             connected = true;
 
+            // Upload to a unique sibling and promote only once verifiably complete - same
+            // pattern as FileManagerWindow.UploadItemsAsync - so a disconnect/timeout mid-upload
+            // can never truncate a previously-valid remote file.
+            var part = $"{remotePath}.{Guid.NewGuid().ToString("N")[..8]}.part";
             FtpStatus status;
             using (var uploadCts = new CancellationTokenSource(PushUploadTimeout))
-                status = await client.UploadFile(localPath, remotePath, FtpRemoteExists.Overwrite,
+                status = await client.UploadFile(localPath, part, FtpRemoteExists.Overwrite,
                                                  createRemoteDir: true, token: uploadCts.Token).ConfigureAwait(false);
 
-            return status == FtpStatus.Success
-                ? RemoteSamplePushResult.Success($"Pushed '{Path.GetFileName(localPath)}' to the Kronos.")
-                : RemoteSamplePushResult.Failed($"Push of '{Path.GetFileName(localPath)}' did not complete ({status}).");
+            if (status != FtpStatus.Success)
+            {
+                try { await client.DeleteFile(part).ConfigureAwait(false); } catch { }
+                return RemoteSamplePushResult.Failed($"Push of '{Path.GetFileName(localPath)}' did not complete ({status}).");
+            }
+
+            if (await client.FileExists(remotePath).ConfigureAwait(false))
+                await client.DeleteFile(remotePath).ConfigureAwait(false);
+            await client.Rename(part, remotePath).ConfigureAwait(false);
+
+            return RemoteSamplePushResult.Success($"Pushed '{Path.GetFileName(localPath)}' to the Kronos.");
         }
         catch (OperationCanceledException)
         {

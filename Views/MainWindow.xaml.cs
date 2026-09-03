@@ -1274,11 +1274,17 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
 
     // ── Control port helper ───────────────────────────────────────────────────
 
-    void Ctrl(string cmd)
+    void Ctrl(string cmd) => Ctrl(cmd, _ctrl);
+
+    // Explicit-target overload for a multi-step sequence (macro, clipboard paste) that must
+    // stay pinned to the SAME endpoint for its whole run - see RunUserMacroAsync/
+    // PasteClipboardToKronos, which capture `_ctrl` once and send every step through it rather
+    // than re-resolving `_ctrl` (and so implicitly following a host/settings change) per step.
+    void Ctrl(string cmd, ICtrlClient ctrl)
     {
         AppLog.Debug($"[ctrl] {cmd}");
         _sysExService.NotifyUserActivity();
-        _ctrl.Send(cmd);
+        ctrl.Send(cmd);
     }
 
     // Single funnel for (re)pointing the ctrl client at an endpoint. CtrlClient is now a
@@ -1618,6 +1624,13 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             _sysExToolWin.Focus();
             return;
         }
+        // IsAvailable reflects the Kronos's own SysEx probe (KronosSysEx.ProbeAsync, run once
+        // per host on connect) - false here means the instrument's own SysEx/MIDI setting is
+        // off, not this app's "Monitor MIDI" toggle (that already gates whether this window can
+        // be reached at all, see ApplyMidiMonitorMenuState). Non-blocking: the window still
+        // opens, since traffic can start flowing the moment the user fixes it on the Kronos.
+        if (!_sysExService.IsAvailable)
+            SetNotification(AppMessages.Notify.SysExUnavailable, isError: true);
         _sysExToolWin = new SysExToolWindow(_sysExService, _settings.MidiOutputChannel).OwnedBy(this);
         _sysExToolWin.Closed += (_, _) =>
         {
@@ -1931,6 +1944,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         _focusedDataExpanded = !_focusedDataExpanded;
         _settings.FocusedDataExpanded = _focusedDataExpanded;
         Storage.SaveSettings(_settings);
+        AdjustWindowWidthForPanelChange((_focusedDataExpanded ? 1 : -1) * (FrameDesignWidth - 28.0));
         ControlViewbox.Visibility = _focusedDataExpanded ? Visibility.Visible : Visibility.Collapsed;
         ((TextBlock)BtnRailExpand.Content).Text = _focusedDataExpanded ? "‹" : "›";
         BtnRailExpand.ToolTip = _focusedDataExpanded ? "Collapse data input" : "Expand data input";
@@ -1946,6 +1960,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         _focusedValueExpanded = !_focusedValueExpanded;
         _settings.FocusedValueExpanded = _focusedValueExpanded;
         Storage.SaveSettings(_settings);
+        AdjustWindowWidthForPanelChange((_focusedValueExpanded ? 1 : -1) * (282.0 - 28.0));
         ((TextBlock)BtnValueRailExpand.Content).Text = _focusedValueExpanded ? "›" : "‹";
         BtnValueRailExpand.ToolTip = _focusedValueExpanded ? "Collapse value input" : "Expand value input";
         ShowLeftPanel(_focusedValueExpanded, showRail: true);
@@ -2051,6 +2066,25 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         });
     }
 
+    // Grows/shrinks the actual window Width by exactly the design-width a panel's
+    // show/hide just added or removed, scaled the same way SetWindowSize's own targetW
+    // is - unlike SetWindowSize (which recomputes an ABSOLUTE target and only applies
+    // when the window is still untouched, see ResizeAndRefresh's own userResized check),
+    // this keeps whatever size the user has already dragged the window to. Without it,
+    // hiding a panel collapsed its Grid column to 0 but left the window's own physical
+    // Width unchanged - the vacated Star-sizing space was redistributed into the
+    // Viewbox-wrapped screen/panel content instead of actually shrinking the window,
+    // which reads as blank grey letterboxing rather than the panel's space disappearing.
+    // Keeps _scaledW in lockstep so ResizeAndRefresh's own "has the user resized since
+    // the last programmatic size change" check stays meaningful after this runs.
+    void AdjustWindowWidthForPanelChange(double deltaDesignWidth)
+    {
+        if (!IsLoaded || _fs.Active || WindowState == WindowState.Maximized) return;
+        double delta = deltaDesignWidth * _currentScale;
+        Width = Math.Max(MinWidth, Width + delta);
+        if (!double.IsNaN(_scaledW)) _scaledW += delta;
+    }
+
     void ResizeAndRefresh()
     {
         if (!IsLoaded) return;
@@ -2114,6 +2148,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         _hideDataInput = !_hideDataInput;
         _settings.HideDataInput = _hideDataInput;
         Storage.SaveSettings(_settings);
+        AdjustWindowWidthForPanelChange(_hideDataInput ? -FrameDesignWidth : FrameDesignWidth);
         ApplyHideInputPanels();
         MNU_HideDataInput.IsChecked = _hideDataInput;
     }
@@ -2123,6 +2158,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         _hideValueInput = !_hideValueInput;
         _settings.HideValueInput = _hideValueInput;
         Storage.SaveSettings(_settings);
+        AdjustWindowWidthForPanelChange(_hideValueInput ? -282.0 : 282.0);
         ApplyHideInputPanels();
         MNU_HideValueInput.IsChecked = _hideValueInput;
     }

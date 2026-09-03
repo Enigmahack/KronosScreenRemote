@@ -28,6 +28,7 @@ sealed class SamplePlayback : IDisposable
     VolumeSampleProvider? _volumeProvider;
     float _pendingVolume = 1f;
     Func<int>? _positionGetter;
+    LoopingSampleProvider? _activeLoop; // set only while a *Looped* provider is playing - see UpdateLoopBounds
 
     // WASAPI render-endpoint id (AudioEngine.GetPlaybackDevices()) to play through; empty
     // uses the system default. Takes effect on the next Start(), same "next connect" precedent
@@ -219,6 +220,7 @@ sealed class SamplePlayback : IDisposable
         if (pcm.Length == 0) return;
         var provider = new LoopingSampleProvider(pcm, null, sampleRate, sampleStartFrame, loopStartFrame, loopEndFrame, reverse);
         _positionGetter = () => provider.PositionFrame;
+        _activeLoop = provider;
         Start(provider.ToSampleProvider());
     }
 
@@ -242,6 +244,7 @@ sealed class SamplePlayback : IDisposable
         if (left.Length == 0 && right.Length == 0) return;
         var provider = new LoopingSampleProvider(left, right, sampleRate, sampleStartFrame, loopStartFrame, loopEndFrame, reverse);
         _positionGetter = () => provider.PositionFrame;
+        _activeLoop = provider;
         Start(provider.ToSampleProvider());
     }
 
@@ -332,10 +335,17 @@ sealed class SamplePlayback : IDisposable
         _volumeProvider = null;
         _panProvider = null;
         _positionGetter = null;
+        _activeLoop = null;
         PeakLevel = 0f;
         PeakLevelLeft = 0f;
         PeakLevelRight = 0f;
     }
+
+    // Retargets the currently-looping playback's loop points live - a no-op when nothing
+    // is looping (one-shot playback, or nothing playing at all). See
+    // LoopingSampleProvider.UpdateLoopBounds's own comment for why this is safe without a
+    // lock and what "takes effect" means for in-flight audio.
+    public void UpdateLoopBounds(int loopStartFrame, int loopEndFrame) => _activeLoop?.UpdateLoopBounds(loopStartFrame, loopEndFrame);
 
     public void Dispose() => Stop();
 }
@@ -445,7 +455,7 @@ sealed class LoopingSampleProvider : IWaveProvider
     readonly short[] _left;
     readonly short[]? _right; // null for mono
     readonly int _channels;
-    readonly int _loopStartFrame, _loopEndFrame;
+    int _loopStartFrame, _loopEndFrame;
     readonly bool _reverse;
 
     bool _inIntro;
@@ -465,15 +475,8 @@ sealed class LoopingSampleProvider : IWaveProvider
 
         int totalFrames = right != null ? Math.Max(left.Length, right.Length) : left.Length;
         int startFrame = Math.Clamp(sampleStartFrame, 0, totalFrames);
-        int loopStart = Math.Clamp(loopStartFrame, 0, totalFrames);
-        int loopEnd = Math.Clamp(loopEndFrame, 0, totalFrames);
-        // Degenerate loop points (end <= start, or a loop-disabled sample with both
-        // still at their default 0) fall back to looping the whole buffer rather than
-        // producing silence or a zero-length loop that would spin Read() forever.
-        if (loopEnd <= loopStart) { loopStart = 0; loopEnd = totalFrames; }
-
-        _loopStartFrame = loopStart;
-        _loopEndFrame = loopEnd;
+        (_loopStartFrame, _loopEndFrame) = ClampLoop(loopStartFrame, loopEndFrame, totalFrames);
+        int loopStart = _loopStartFrame, loopEnd = _loopEndFrame;
 
         // Reverse's intro is NOT "the same forward intro, reversed at the end" (the bug
         // this fixes - it used to always read _cursorFrame forward here regardless of
@@ -496,6 +499,29 @@ sealed class LoopingSampleProvider : IWaveProvider
             _cursorFrame = _inIntro ? startFrame : loopStart;
         }
         _reverseFrame = loopEnd - 1;
+    }
+
+    // Degenerate loop points (end <= start, or a loop-disabled sample with both still at
+    // their default 0) fall back to looping the whole buffer rather than producing
+    // silence or a zero-length loop that would spin Read() forever.
+    static (int start, int end) ClampLoop(int loopStartFrame, int loopEndFrame, int totalFrames)
+    {
+        int start = Math.Clamp(loopStartFrame, 0, totalFrames);
+        int end = Math.Clamp(loopEndFrame, 0, totalFrames);
+        return end <= start ? (0, totalFrames) : (start, end);
+    }
+
+    // Lets a live loop-marker drag retarget an already-playing loop instead of it
+    // finishing out the old bounds - the fields it writes are read from Read() on the
+    // audio thread with no lock, same "plain int, no torn reads, worst case one extra
+    // buffer on the stale bounds" tradeoff every other cursor field in this class already
+    // makes. The audible result is exactly "takes effect on the next loop repeat," not a
+    // mid-repeat jump - Read()'s own wrap check (_cursorFrame/_reverseFrame vs
+    // _loopEndFrame/_loopStartFrame) picks up the new bounds the next time it fires.
+    public void UpdateLoopBounds(int loopStartFrame, int loopEndFrame)
+    {
+        int totalFrames = _right != null ? Math.Max(_left.Length, _right.Length) : _left.Length;
+        (_loopStartFrame, _loopEndFrame) = ClampLoop(loopStartFrame, loopEndFrame, totalFrames);
     }
 
     void WriteFrame(byte[] buffer, int bi, int frame)

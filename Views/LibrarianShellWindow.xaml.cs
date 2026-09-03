@@ -72,7 +72,20 @@ internal partial class LibrarianShellWindow : ThemedWindow
         // sometimes sending MainWindow to the system tray) can't happen without an Owner.
         // Disposing the ViewModel here releases the undo recorder's subscriptions to the
         // LocalLibraryCache, which outlives this window (see LibrarianShellViewModel.Dispose).
-        Closing += (_, _) => _vm.Dispose();
+        //
+        // Blocked while IsBusy - same pattern as FileManagerWindow.OnClosing. A Push/Sync
+        // write burst is NOT cancelled by Dispose() (its CTS only ever bounds the pull half -
+        // see SyncPipeline.PushAsync's own comment), so closing this window mid-write used to
+        // leave that write running orphaned in the background while nothing else references
+        // it, right up until MainWindow.OnClosing's unconditional _sysExService.Reset() could
+        // tear the transport down under it - the one shutdown-triggered instance of finding 1
+        // that transport-swap deferral (MidiTransportCoordinator) cannot reach, since it never
+        // goes through the coordinator at all.
+        Closing += (_, e) =>
+        {
+            if (_vm.IsBusy) { e.Cancel = true; return; }
+            _vm.Dispose();
+        };
 
         // Step 4 of the auto-heal placement pipeline - the ViewModel stays free of WPF types
         // (same split as every other confirmation in this file), so it calls back into this

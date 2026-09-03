@@ -359,6 +359,7 @@ internal sealed class FakeSysExService : ISysExService
     public string PerformanceDisplay => "";
     public BankId? CurrentBankId => null;
     public bool IsAvailable => false;
+    public bool DumpGateActive => false;
     public int ValueSliderCc { get; set; } = 18;
     public bool PullNamesOnChange { get; set; }
     public bool CanDump => false;

@@ -51,6 +51,14 @@ interface IMidiBackendControl
 {
     bool IsAvailable { get; }
 
+    // True while a bulk dump/write (a Librarian commit's 0x73 write burst, a bank sweep, ...)
+    // is in flight for the CURRENT transport generation - see DumpGate. MidiTransportCoordinator
+    // checks this before swapping the active transport out from under an in-flight hardware
+    // transaction (finding 1): disposing mid-burst is safe (WriteObjectAsync/ApplyMoveAsync
+    // already abort cleanly - see SysExService.Start's own comment) but can still leave a bank
+    // erased-then-abandoned, so a swap that CAN wait, waits.
+    bool DumpGateActive { get; }
+
     // Start (or switch) the MIDI backend. The transport is chosen by the caller
     // (TCP daemon or direct USB); every SysEx feature works over either. Disposes
     // any previously-running transport.

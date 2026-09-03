@@ -52,6 +52,7 @@ public partial class App : Application
             fails.AddRange(RawKeyMapSelfTests.SelfTest());
             fails.AddRange(DetectionSelfTests.SelfTest());
             fails.AddRange(DumpGateSelfTests.SelfTest());
+            fails.AddRange(MidiTransportCoordinatorSelfTests.SelfTest());
             fails.AddRange(ScreenSessionSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(MidiTransportReplySelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(MergeGroupPlacementSelfTests.SelfTestAsync().GetAwaiter().GetResult());
@@ -83,6 +84,7 @@ public partial class App : Application
             fails.AddRange(SamplePhase17SelfTests.SelfTest());
             fails.AddRange(SamplePhase18SelfTests.SelfTest());
             fails.AddRange(SamplePhase19SelfTests.SelfTest());
+            fails.AddRange(SamplePhase20SelfTests.SelfTest());
             });
             var outPath = Path.Combine(Path.GetTempPath(), "kronos_librarian_selftest.txt");
             File.WriteAllText(outPath, fails.Count == 0 ? "OK" : "FAIL: " + string.Join(", ", fails));

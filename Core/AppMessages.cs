@@ -229,6 +229,7 @@ public static class AppMessages
         public static string PullComplete(int fetched, int conflicts) =>
             $"Pulled {fetched} object(s)." + (conflicts > 0 ? $" {conflicts} conflict(s) - resolve in the Librarian." : "");
         public static string PullFailed(string detail) => $"Pull failed: {detail}";
+        public const string SysExUnavailable = "SysEx unavailable - check the Kronos's own SysEx/MIDI setting";
 
         // Bubble tooltip chrome shown around every notification / when idle.
         public const string LogHintSuffix   = "\n- click to open log";

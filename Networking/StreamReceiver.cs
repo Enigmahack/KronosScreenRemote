@@ -117,7 +117,7 @@ sealed class StreamReceiver : IStreamReceiver
             throw new ArgumentException("FTP username or password exceeds allowed length.");
         byte[] hello = [.. Magic, 0x02, _mode, _fps, (byte)uBytes.Length, (byte)pBytes.Length,
                         .. uBytes, .. pBytes];
-        await _sock.SendAsync(hello.AsMemory(), ct);
+        await _sock.SendAllAsync(hello, ct);
         Console.WriteLine("[stream] awaiting server handshake response...");
 
         // Read 5-byte status header first; full payload only follows on success.

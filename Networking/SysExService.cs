@@ -105,6 +105,8 @@ sealed class SysExService : ISysExService
         private set => SetProperty(ref _isAvailable, value);
     }
 
+    public bool DumpGateActive => _dumpGate.Active;
+
     public SysExService(Dispatcher dispatcher)
     {
         _dispatcher = dispatcher;
@@ -952,8 +954,18 @@ sealed class SysExService : ISysExService
             // was on its way.
             var msgs = await CollectRetryingSendAsync(dump, req, (byte)obj, expectedCount: 1,
                                     noResponseMs: obj is 0x0D or LibObj.Global ? 10000 : 6000, ct: ct).ConfigureAwait(false);
-            var msg = msgs.Count > 0 ? msgs[0] : null;
-            return msg != null ? KronosSysEx.ParseObjectDump(msg) : null;
+            // The collector matches replies on object TYPE only (SysExDumpCollector.CollectAsync's
+            // OnMsg), so a delayed reply to an earlier request, or an unsolicited dump of the same
+            // object type, can arrive here for the wrong bank/index. Revalidate against what was
+            // actually requested rather than trusting the first (or only) reply that showed up -
+            // otherwise it can be stored under the caller's bank/slot.
+            foreach (var m in msgs)
+            {
+                var candidate = KronosSysEx.ParseObjectDump(m);
+                if (candidate != null && candidate.Bank == bank && candidate.Index == index)
+                    return candidate;
+            }
+            return null;
         }
         finally { _dumpGate.End(gateEpoch); }
     }
@@ -977,8 +989,12 @@ sealed class SysExService : ISysExService
                 idleMs: 2000, noResponseMs: 3000, stallMs: 15000, overallMs: 300000, ct: ct).ConfigureAwait(false);
             foreach (var m in msgs)
             {
+                // Same revalidation as DumpObjectAsync, keyed on bank rather than bank+index - a
+                // bulk reply's own index values are what select the dictionary slot, so a wrong-
+                // bank stray reply would otherwise silently overwrite a real slot in THIS bank's
+                // result under a matching index from a different bank.
                 var parsed = KronosSysEx.ParseObjectDump(m);
-                if (parsed != null) result[parsed.Index] = parsed;
+                if (parsed != null && parsed.Bank == bank) result[parsed.Index] = parsed;
             }
         }
         finally { _dumpGate.End(gateEpoch); }

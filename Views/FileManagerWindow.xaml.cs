@@ -309,6 +309,16 @@ public partial class FileManagerWindow : ThemedWindow
 
     void OnClosing(object? s, System.ComponentModel.CancelEventArgs e)
     {
+        // Title-bar close and Alt+F4 bypass every button's IsEnabled=false, so without this
+        // check a close mid-transfer would still run the cleanup below - nulling and
+        // disconnecting _ftp out from under an in-flight operation that never coordinated
+        // with it (same failure mode SampleRemoteBrowserDialog's BlockCloseWhileBusy guards
+        // against). Checked FIRST and returns immediately: a plain CLR event still invokes
+        // every subscriber regardless of what an earlier one sets on a shared CancelEventArgs,
+        // so the guard has to live inside the one handler that does the actual cleanup rather
+        // than in a second Closing subscriber.
+        if (_busy) { e.Cancel = true; return; }
+
         // Break the Owner link before closing so WPF doesn't minimize the parent
         // when this window had focus (known WPF owner-activation bug).
         Owner = null;
@@ -371,6 +381,25 @@ public partial class FileManagerWindow : ThemedWindow
         await _ftpGate.WaitAsync();
         try { await op(); }
         finally { _ftpGate.Release(); }
+    }
+
+    // Owns SetBusy(true)/SetBusy(false) around a transfer/move/copy body via try/finally, so a
+    // throw anywhere inside it (including the post-loop refresh call) can never leave the window
+    // stuck busy with every button disabled - the failure mode BlockCloseWhileBusy below would
+    // otherwise turn into an unclosable window. `op` does its own operation-specific status/
+    // refresh calls; this only guarantees the busy flag itself always clears.
+    async Task<T> RunBusyAsync<T>(string message, Func<Task<T>> op)
+    {
+        SetBusy(true, message);
+        try { return await op(); }
+        finally { SetBusy(false); }
+    }
+
+    async Task RunBusyAsync(string message, Func<Task> op)
+    {
+        SetBusy(true, message);
+        try { await op(); }
+        finally { SetBusy(false); }
     }
 
     // Navigate the remote pane to a folder, rolling the path back if the listing fails so the
@@ -459,38 +488,57 @@ public partial class FileManagerWindow : ThemedWindow
         if (!await EnsureConnectedAsync()) return moved;
         var remoteNames = _remote.Items.Where(f => !f.IsDirectory)
             .Select(f => f.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        SetBusy(true, AppMessages.FileManager.Uploading(items.Count));
-        int done = 0;
-        var resolve = MakeConflictResolver();
-        foreach (var (local, idx) in items.Select((x, i) => (x, i)))
+        return await RunBusyAsync(AppMessages.FileManager.Uploading(items.Count), async () =>
         {
-            var fileName = Path.GetFileName(local.FullPath);
-            var dest     = $"{_remote.Dir.TrimEnd('/')}/{fileName}";
-            if (remoteNames.Contains(fileName))
+            int done = 0;
+            var resolve = MakeConflictResolver();
+            foreach (var (local, idx) in items.Select((x, i) => (x, i)))
             {
-                var r = resolve(fileName);
-                if (r.Action == ConflictAction.Cancel) break;
-                if (r.Action == ConflictAction.Skip)   continue;
-                if (r.Action == ConflictAction.Rename) { fileName = r.Name; dest = $"{_remote.Dir.TrimEnd('/')}/{fileName}"; }
-            }
-            try
-            {
-                var progress = new Progress<FtpProgress>(p => Dispatcher.InvokeAsync(() =>
+                var fileName = Path.GetFileName(local.FullPath);
+                var dest     = $"{_remote.Dir.TrimEnd('/')}/{fileName}";
+                if (remoteNames.Contains(fileName))
                 {
-                    TransferProgress.Value = p.Progress;
-                    SetStatus(AppMessages.FileManager.ItemProgress(idx + 1, items.Count, local.Name, p.Progress));
-                }));
-                var st = await _ftp!.UploadFile(local.FullPath, dest, FtpRemoteExists.Overwrite,
-                                                createRemoteDir: true, progress: progress);
-                if (st == FtpStatus.Success) { done++; moved.Add(local); }
-                else SetStatus(AppMessages.FileManager.UploadIncomplete(local.Name, st));
+                    var r = resolve(fileName);
+                    if (r.Action == ConflictAction.Cancel) break;
+                    if (r.Action == ConflictAction.Skip)   continue;
+                    if (r.Action == ConflictAction.Rename) { fileName = r.Name; dest = $"{_remote.Dir.TrimEnd('/')}/{fileName}"; }
+                }
+                // Upload to a unique sibling path first, so a disconnect mid-transfer can never
+                // truncate a previously-valid remote file - the real dest is only replaced (via
+                // Rename, already proven against the Kronos's BusyBox ftpd by MoveRemoteItemsAsync)
+                // once the whole upload has verifiably succeeded.
+                var part = $"{dest}.{Guid.NewGuid().ToString("N")[..8]}.part";
+                try
+                {
+                    var progress = new Progress<FtpProgress>(p => Dispatcher.InvokeAsync(() =>
+                    {
+                        TransferProgress.Value = p.Progress;
+                        SetStatus(AppMessages.FileManager.ItemProgress(idx + 1, items.Count, local.Name, p.Progress));
+                    }));
+                    var st = await _ftp!.UploadFile(local.FullPath, part, FtpRemoteExists.Overwrite,
+                                                    createRemoteDir: true, progress: progress);
+                    if (st == FtpStatus.Success)
+                    {
+                        if (await _ftp!.FileExists(dest)) await _ftp!.DeleteFile(dest);
+                        await _ftp!.Rename(part, dest);
+                        done++; moved.Add(local);
+                    }
+                    else
+                    {
+                        SetStatus(AppMessages.FileManager.UploadIncomplete(local.Name, st));
+                        try { await _ftp!.DeleteFile(part); } catch { }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SetStatus(AppMessages.FileManager.FailedItem(local.Name, ex.Message));
+                    try { await _ftp!.DeleteFile(part); } catch { }
+                }
             }
-            catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(local.Name, ex.Message)); }
-        }
-        await RefreshRemoteAsync();
-        SetStatus(AppMessages.FileManager.Uploaded(done, items.Count, _remote.Dir));
-        SetBusy(false);
-        return moved;
+            await RefreshRemoteAsync();
+            SetStatus(AppMessages.FileManager.Uploaded(done, items.Count, _remote.Dir));
+            return moved;
+        });
     }
 
     // ── Download (Kronos → local) ─────────────────────────────────────────────
@@ -513,38 +561,55 @@ public partial class FileManagerWindow : ThemedWindow
     {
         var moved = new List<FileEntry>();
         if (!await EnsureConnectedAsync()) return moved;
-        SetBusy(true, AppMessages.FileManager.Downloading(items.Count));
-        int done = 0;
-        var resolve = MakeConflictResolver();
-        foreach (var (remote, idx) in items.Select((x, i) => (x, i)))
+        return await RunBusyAsync(AppMessages.FileManager.Downloading(items.Count), async () =>
         {
-            var fileName = Path.GetFileName(remote.FullPath);
-            var dest     = Path.Combine(_local.Dir, fileName);
-            if (File.Exists(dest))
+            int done = 0;
+            var resolve = MakeConflictResolver();
+            foreach (var (remote, idx) in items.Select((x, i) => (x, i)))
             {
-                var r = resolve(fileName);
-                if (r.Action == ConflictAction.Cancel) break;
-                if (r.Action == ConflictAction.Skip)   continue;
-                if (r.Action == ConflictAction.Rename) { fileName = r.Name; dest = Path.Combine(_local.Dir, fileName); }
-            }
-            try
-            {
-                var progress = new Progress<FtpProgress>(p => Dispatcher.InvokeAsync(() =>
+                var fileName = Path.GetFileName(remote.FullPath);
+                var dest     = Path.Combine(_local.Dir, fileName);
+                if (File.Exists(dest))
                 {
-                    TransferProgress.Value = p.Progress;
-                    SetStatus(AppMessages.FileManager.ItemProgress(idx + 1, items.Count, remote.Name, p.Progress));
-                }));
-                var st = await _ftp!.DownloadFile(dest, remote.FullPath, FtpLocalExists.Overwrite,
-                                                  FtpVerify.None, progress);
-                if (st == FtpStatus.Success) { done++; moved.Add(remote); }
-                else SetStatus(AppMessages.FileManager.DownloadIncomplete(remote.Name, st));
+                    var r = resolve(fileName);
+                    if (r.Action == ConflictAction.Cancel) break;
+                    if (r.Action == ConflictAction.Skip)   continue;
+                    if (r.Action == ConflictAction.Rename) { fileName = r.Name; dest = Path.Combine(_local.Dir, fileName); }
+                }
+                // Download to a unique sibling path first - a disconnect mid-transfer must not
+                // truncate a previously-valid local file. Promote via File.Move only once the
+                // whole download has verifiably succeeded.
+                var part = $"{dest}.{Guid.NewGuid().ToString("N")[..8]}.part";
+                try
+                {
+                    var progress = new Progress<FtpProgress>(p => Dispatcher.InvokeAsync(() =>
+                    {
+                        TransferProgress.Value = p.Progress;
+                        SetStatus(AppMessages.FileManager.ItemProgress(idx + 1, items.Count, remote.Name, p.Progress));
+                    }));
+                    var st = await _ftp!.DownloadFile(part, remote.FullPath, FtpLocalExists.Overwrite,
+                                                      FtpVerify.None, progress);
+                    if (st == FtpStatus.Success)
+                    {
+                        File.Move(part, dest, overwrite: true);
+                        done++; moved.Add(remote);
+                    }
+                    else
+                    {
+                        SetStatus(AppMessages.FileManager.DownloadIncomplete(remote.Name, st));
+                        try { if (File.Exists(part)) File.Delete(part); } catch { }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    SetStatus(AppMessages.FileManager.FailedItem(remote.Name, ex.Message));
+                    try { if (File.Exists(part)) File.Delete(part); } catch { }
+                }
             }
-            catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(remote.Name, ex.Message)); }
-        }
-        RefreshLocal();
-        SetStatus(AppMessages.FileManager.Downloaded(done, items.Count, _local.Dir));
-        SetBusy(false);
-        return moved;
+            RefreshLocal();
+            SetStatus(AppMessages.FileManager.Downloaded(done, items.Count, _local.Dir));
+            return moved;
+        });
     }
 
     // ── Folder transfer (local ↔ Kronos, recursive) ───────────────────────────
@@ -556,44 +621,46 @@ public partial class FileManagerWindow : ThemedWindow
     {
         var moved = new List<FileEntry>();
         if (dirs.Count == 0 || !await EnsureConnectedAsync()) return moved;
-        SetBusy(true, AppMessages.FileManager.Uploading(dirs.Count));
-        foreach (var dir in dirs)
+        return await RunBusyAsync(AppMessages.FileManager.Uploading(dirs.Count), async () =>
         {
-            SetStatus(AppMessages.FileManager.UploadingFolder(dir.Name));
-            try
+            foreach (var dir in dirs)
             {
-                var dest = $"{_remote.Dir.TrimEnd('/')}/{dir.Name}";
-                var res  = await _ftp!.UploadDirectory(dir.FullPath, dest, FtpFolderSyncMode.Update);
-                if (res.All(r => r.IsSuccess || r.IsSkipped)) moved.Add(dir);
-                else SetStatus(AppMessages.FileManager.FolderSomeFailedUpload(dir.Name));
+                SetStatus(AppMessages.FileManager.UploadingFolder(dir.Name));
+                try
+                {
+                    var dest = $"{_remote.Dir.TrimEnd('/')}/{dir.Name}";
+                    var res  = await _ftp!.UploadDirectory(dir.FullPath, dest, FtpFolderSyncMode.Update);
+                    if (res.All(r => r.IsSuccess || r.IsSkipped)) moved.Add(dir);
+                    else SetStatus(AppMessages.FileManager.FolderSomeFailedUpload(dir.Name));
+                }
+                catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(dir.Name, ex.Message)); }
             }
-            catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(dir.Name, ex.Message)); }
-        }
-        await RefreshRemoteAsync();
-        SetBusy(false);
-        return moved;
+            await RefreshRemoteAsync();
+            return moved;
+        });
     }
 
     async Task<List<FileEntry>> DownloadFoldersAsync(IList<FileEntry> dirs)
     {
         var moved = new List<FileEntry>();
         if (dirs.Count == 0 || !await EnsureConnectedAsync()) return moved;
-        SetBusy(true, AppMessages.FileManager.Downloading(dirs.Count));
-        foreach (var dir in dirs)
+        return await RunBusyAsync(AppMessages.FileManager.Downloading(dirs.Count), async () =>
         {
-            SetStatus(AppMessages.FileManager.DownloadingFolder(dir.Name));
-            try
+            foreach (var dir in dirs)
             {
-                var dest = Path.Combine(_local.Dir, dir.Name);
-                var res  = await _ftp!.DownloadDirectory(dest, dir.FullPath, FtpFolderSyncMode.Update);
-                if (res.All(r => r.IsSuccess || r.IsSkipped)) moved.Add(dir);
-                else SetStatus(AppMessages.FileManager.FolderSomeFailedDownload(dir.Name));
+                SetStatus(AppMessages.FileManager.DownloadingFolder(dir.Name));
+                try
+                {
+                    var dest = Path.Combine(_local.Dir, dir.Name);
+                    var res  = await _ftp!.DownloadDirectory(dest, dir.FullPath, FtpFolderSyncMode.Update);
+                    if (res.All(r => r.IsSuccess || r.IsSkipped)) moved.Add(dir);
+                    else SetStatus(AppMessages.FileManager.FolderSomeFailedDownload(dir.Name));
+                }
+                catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(dir.Name, ex.Message)); }
             }
-            catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(dir.Name, ex.Message)); }
-        }
-        RefreshLocal();
-        SetBusy(false);
-        return moved;
+            RefreshLocal();
+            return moved;
+        });
     }
 
     // ── New Folder ────────────────────────────────────────────────────────────
@@ -1155,9 +1222,9 @@ public partial class FileManagerWindow : ThemedWindow
         });
     }
 
-    async Task MoveLocalItemsAsync(IList<FileEntry> items, string destFolder)
+    async Task MoveLocalItemsAsync(IList<FileEntry> items, string destFolder) =>
+        await RunBusyAsync(AppMessages.FileManager.MovingItems(items.Count), async () =>
     {
-        SetBusy(true, AppMessages.FileManager.MovingItems(items.Count));
         int done = 0;
         var resolve = MakeConflictResolver();
         foreach (var item in items)
@@ -1187,8 +1254,37 @@ public partial class FileManagerWindow : ThemedWindow
                 {
                     if (item.IsDirectory)
                     {
-                        if (overwrite && Directory.Exists(dest)) Directory.Delete(dest, recursive: true);
-                        Directory.Move(item.FullPath, dest);   // File.Move does NOT work on directories
+                        bool sameVolume = string.Equals(
+                            Path.GetPathRoot(Path.GetFullPath(item.FullPath)),
+                            Path.GetPathRoot(Path.GetFullPath(dest)),
+                            StringComparison.OrdinalIgnoreCase);
+
+                        if (sameVolume)
+                        {
+                            if (overwrite && Directory.Exists(dest)) Directory.Delete(dest, recursive: true);
+                            Directory.Move(item.FullPath, dest);   // File.Move does NOT work on directories
+                        }
+                        else
+                        {
+                            // Directory.Move cannot cross volumes - it throws, and only AFTER doing
+                            // the delete-then-move naively would already have destroyed dest with
+                            // nothing left to replace it. Copy to a staging sibling next to dest and
+                            // verify it landed BEFORE touching either the old dest or the source, so
+                            // a failure at any point up to the final renames leaves both intact.
+                            var staging = dest + ".stage_" + Guid.NewGuid().ToString("N")[..8];
+                            try
+                            {
+                                CopyDirectoryRecursive(item.FullPath, staging);
+                            }
+                            catch
+                            {
+                                try { if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true); } catch { }
+                                throw;
+                            }
+                            if (overwrite && Directory.Exists(dest)) Directory.Delete(dest, recursive: true);
+                            Directory.Move(staging, dest);   // same-volume rename now, so this can't fail partway
+                            Directory.Delete(item.FullPath, recursive: true);
+                        }
                     }
                     else
                     {
@@ -1201,23 +1297,23 @@ public partial class FileManagerWindow : ThemedWindow
         }
         RefreshLocal();
         SetStatus(AppMessages.FileManager.MovedItems(done, items.Count, destFolder));
-        SetBusy(false);
-    }
+    });
 
     async Task MoveRemoteItemsAsync(IList<FileEntry> items, string destFolder)
     {
         if (!await EnsureConnectedAsync()) return;
-        SetBusy(true, AppMessages.FileManager.MovingFiles(items.Count));
-        int done = 0;
-        foreach (var item in items)
+        await RunBusyAsync(AppMessages.FileManager.MovingFiles(items.Count), async () =>
         {
-            var dest = $"{destFolder.TrimEnd('/')}/{item.Name}";
-            try { await _ftp!.Rename(item.FullPath, dest); done++; }
-            catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(item.Name, ex.Message)); }
-        }
-        await RefreshRemoteAsync();
-        SetStatus(AppMessages.FileManager.MovedFiles(done, items.Count, destFolder));
-        SetBusy(false);
+            int done = 0;
+            foreach (var item in items)
+            {
+                var dest = $"{destFolder.TrimEnd('/')}/{item.Name}";
+                try { await _ftp!.Rename(item.FullPath, dest); done++; }
+                catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(item.Name, ex.Message)); }
+            }
+            await RefreshRemoteAsync();
+            SetStatus(AppMessages.FileManager.MovedFiles(done, items.Count, destFolder));
+        });
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -1432,9 +1528,9 @@ public partial class FileManagerWindow : ThemedWindow
         SetStatus(AppMessages.FileManager.MovedKeptOnClipboard(moved.Count, unmoved.Count));
     }
 
-    async Task CopyLocalItemsAsync(IList<FileEntry> items, string destFolder)
+    async Task CopyLocalItemsAsync(IList<FileEntry> items, string destFolder) =>
+        await RunBusyAsync(AppMessages.FileManager.CopyingItems(items.Count), async () =>
     {
-        SetBusy(true, AppMessages.FileManager.CopyingItems(items.Count));
         int done = 0;
         var resolve = MakeConflictResolver();
         foreach (var item in items)
@@ -1463,8 +1559,7 @@ public partial class FileManagerWindow : ThemedWindow
         }
         RefreshLocal();
         SetStatus(AppMessages.FileManager.Copied(done, items.Count, destFolder));
-        SetBusy(false);
-    }
+    });
 
     static void CopyDirectoryRecursive(string src, string dest)
     {
@@ -1478,51 +1573,63 @@ public partial class FileManagerWindow : ThemedWindow
     async Task CopyRemoteItemsAsync(IList<FileEntry> items, string destFolder)
     {
         if (!await EnsureConnectedAsync()) return;
-        SetBusy(true, AppMessages.FileManager.CopyingItems(items.Count));
-        int done    = 0;
-        var tempDir = Path.Combine(Path.GetTempPath(), "KronosCopy_" + Guid.NewGuid().ToString("N")[..8]);
-        Directory.CreateDirectory(tempDir);
-        var resolve = MakeConflictResolver();
-        try
+        await RunBusyAsync(AppMessages.FileManager.CopyingItems(items.Count), async () =>
         {
-            foreach (var item in items)
+            int done    = 0;
+            var tempDir = Path.Combine(Path.GetTempPath(), "KronosCopy_" + Guid.NewGuid().ToString("N")[..8]);
+            Directory.CreateDirectory(tempDir);
+            var resolve = MakeConflictResolver();
+            try
             {
-                var fileName = item.Name;
-                var dest     = $"{destFolder.TrimEnd('/')}/{fileName}";
-                bool exists  = item.IsDirectory
-                    ? await _ftp!.DirectoryExists(dest)
-                    : await _ftp!.FileExists(dest);
-                if (exists)
+                foreach (var item in items)
                 {
-                    var r = resolve(fileName);
-                    if (r.Action == ConflictAction.Cancel) break;
-                    if (r.Action == ConflictAction.Skip)   continue;
-                    if (r.Action == ConflictAction.Rename) { fileName = r.Name; dest = $"{destFolder.TrimEnd('/')}/{fileName}"; }
-                }
-                try
-                {
-                    if (item.IsDirectory)
+                    var fileName = item.Name;
+                    var dest     = $"{destFolder.TrimEnd('/')}/{fileName}";
+                    bool exists  = item.IsDirectory
+                        ? await _ftp!.DirectoryExists(dest)
+                        : await _ftp!.FileExists(dest);
+                    if (exists)
                     {
-                        var localDir = Path.Combine(tempDir, item.Name);
-                        SetStatus(AppMessages.FileManager.CopyingFolder(item.Name));
-                        await _ftp!.DownloadDirectory(localDir, item.FullPath, FtpFolderSyncMode.Update);
-                        await _ftp!.UploadDirectory(localDir, dest, FtpFolderSyncMode.Update);
+                        var r = resolve(fileName);
+                        if (r.Action == ConflictAction.Cancel) break;
+                        if (r.Action == ConflictAction.Skip)   continue;
+                        if (r.Action == ConflictAction.Rename) { fileName = r.Name; dest = $"{destFolder.TrimEnd('/')}/{fileName}"; }
                     }
-                    else
+                    try
                     {
-                        var tempPath = Path.Combine(tempDir, item.Name);
-                        await _ftp!.DownloadFile(tempPath, item.FullPath, FtpLocalExists.Overwrite);
-                        await _ftp!.UploadFile(tempPath, dest, FtpRemoteExists.Overwrite);
+                        if (item.IsDirectory)
+                        {
+                            var localDir = Path.Combine(tempDir, item.Name);
+                            SetStatus(AppMessages.FileManager.CopyingFolder(item.Name));
+                            await _ftp!.DownloadDirectory(localDir, item.FullPath, FtpFolderSyncMode.Update);
+                            await _ftp!.UploadDirectory(localDir, dest, FtpFolderSyncMode.Update);
+                        }
+                        else
+                        {
+                            // Download side already lands in tempDir, well short of the final remote
+                            // dest. Only the upload side targets it directly, so only it needs the
+                            // stage-verify-promote treatment (same reasoning as UploadItemsAsync).
+                            var tempPath = Path.Combine(tempDir, item.Name);
+                            await _ftp!.DownloadFile(tempPath, item.FullPath, FtpLocalExists.Overwrite);
+                            var part = $"{dest}.{Guid.NewGuid().ToString("N")[..8]}.part";
+                            var st = await _ftp!.UploadFile(tempPath, part, FtpRemoteExists.Overwrite, createRemoteDir: true);
+                            if (st != FtpStatus.Success)
+                            {
+                                try { await _ftp!.DeleteFile(part); } catch { }
+                                throw new IOException($"upload did not complete ({st})");
+                            }
+                            if (await _ftp!.FileExists(dest)) await _ftp!.DeleteFile(dest);
+                            await _ftp!.Rename(part, dest);
+                        }
+                        done++;
                     }
-                    done++;
+                    catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(item.Name, ex.Message)); }
                 }
-                catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(item.Name, ex.Message)); }
             }
-        }
-        finally { try { Directory.Delete(tempDir, recursive: true); } catch { } }
-        await RefreshRemoteAsync();
-        SetStatus(AppMessages.FileManager.Copied(done, items.Count, destFolder));
-        SetBusy(false);
+            finally { try { Directory.Delete(tempDir, recursive: true); } catch { } }
+            await RefreshRemoteAsync();
+            SetStatus(AppMessages.FileManager.Copied(done, items.Count, destFolder));
+        });
     }
 
     // ── Local drive selector ──────────────────────────────────────────────────

@@ -119,9 +119,25 @@ internal partial class RemoteFilePickerDialog : ThemedWindow
         TXT_Status.Text = AppMessages.RemoteFilePicker.Downloading(entry.Name);
         try
         {
-            string tempPath = Path.Combine(Path.GetTempPath(), "kronos_pcg_cache", entry.Name);
-            Directory.CreateDirectory(Path.GetDirectoryName(tempPath)!);
-            await _client.DownloadFile(tempPath, entry.FullPath);
+            // Keyed off the FULL remote path, not just the basename - two identically-named
+            // files in different remote directories must not share a cache slot. Download to a
+            // .part sibling first and require FtpStatus.Success before promoting, so a stale or
+            // failed prior attempt (DownloadFile's default is Resume, not Overwrite) can never
+            // read back as if it were this pick's file.
+            var pathHash = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(
+                System.Text.Encoding.UTF8.GetBytes(entry.FullPath)))[..12];
+            var destDir  = Path.Combine(Path.GetTempPath(), "kronos_pcg_cache", pathHash);
+            Directory.CreateDirectory(destDir);
+            string tempPath = Path.Combine(destDir, entry.Name);
+            string part     = tempPath + ".part";
+
+            var status = await _client.DownloadFile(part, entry.FullPath, FtpLocalExists.Overwrite);
+            if (status != FtpStatus.Success)
+            {
+                try { if (File.Exists(part)) File.Delete(part); } catch { }
+                throw new IOException($"download did not complete ({status})");
+            }
+            File.Move(part, tempPath, overwrite: true);
             DownloadedTempPath = tempPath;
             DialogResult = true;
         }

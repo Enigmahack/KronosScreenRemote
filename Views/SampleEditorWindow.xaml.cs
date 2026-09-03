@@ -295,17 +295,15 @@ public partial class SampleEditorWindow : ThemedWindow
             "Delete Multisample", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
         if (result != MessageBoxResult.Yes) return;
 
-        _vm.DeleteSelectedMultisample();
-        RefreshDetailPanels();
-        UpdateStatus();
+        AfterMutation(_vm.DeleteSelectedMultisample);
     }
 
     // RefreshDetailPanels (not just UpdateStatus) because saving changes HasUnsavedChanges,
     // which drives the title bar's dirty marker and the Save Changes button's enabled
     // state - without it both stayed stale after a successful save until some unrelated
     // action happened to refresh them.
-    void OnSaveMultisample(object sender, RoutedEventArgs e) { _vm.SaveSelectedMultisample(); RefreshDetailPanels(); UpdateStatus(); }
-    void OnSaveSample(object sender, RoutedEventArgs e) { _vm.SaveSelectedSample(); RefreshDetailPanels(); UpdateStatus(); }
+    void OnSaveMultisample(object sender, RoutedEventArgs e) => AfterMutation(() => _vm.SaveSelectedMultisample());
+    void OnSaveSample(object sender, RoutedEventArgs e) => AfterMutation(() => _vm.SaveSelectedSample());
 
     // The tree only shows root (loaded-library) nodes now - see SampleTree's own XAML
     // comment - so a genuine user click here can only ever select one of those; the old
@@ -1189,6 +1187,20 @@ public partial class SampleEditorWindow : ThemedWindow
 
     void UpdateStatus() => StatusBar.Text = _vm.StatusText;
 
+    // Most edit/transport handlers below are exactly "mutate, then RefreshDetailPanels(),
+    // then UpdateStatus()" - this preserves that ordering in one place instead of repeating
+    // it, so a future handler can't land with one of the three steps missing (RefreshDetailPanels
+    // in particular: without it a mutation can go through with the panels/title-bar dirty
+    // marker/Save button state left stale - see OnSaveMultisample's own comment). Handlers
+    // that react to the ViewModel's OWN state changing (no local mutation call to wrap) or
+    // that don't fit this exact shape stay as their own methods, unconverted.
+    void AfterMutation(Action mutate)
+    {
+        mutate();
+        RefreshDetailPanels();
+        UpdateStatus();
+    }
+
     // File > Close. Alt+F4, the title-bar X and the tree's own "Close Editor" entry all
     // reach the same place - this is the discoverable one.
     void OnCloseWindowMenuItem(object sender, RoutedEventArgs e) => Close();
@@ -1470,7 +1482,7 @@ public partial class SampleEditorWindow : ThemedWindow
     {
         VuMeterLeft.Level = _vm.GetPlaybackLevelLeft();
         VuMeterRight.Level = _vm.GetPlaybackLevelRight();
-        int frame = _vm.IsPlaying ? _vm.GetPlaybackFrame() : -1;
+        int frame = _vm.IsPlaying && _vm.PlaybackMatchesSelection ? _vm.GetPlaybackFrame() : -1;
         WaveformLeft.PlayheadFrame = frame;
         WaveformRight.PlayheadFrame = frame;
         if (frame >= 0) FollowPlayhead(frame);
@@ -1530,15 +1542,18 @@ public partial class SampleEditorWindow : ThemedWindow
     void OnSelectAll(object sender, RoutedEventArgs e)
     {
         if (!_vm.HasSampleLoaded) return;
-        _vm.SelectionStartFrame = 0;
-        _vm.SelectionEndFrame = _vm.SampleFrameCount;
-        RefreshDetailPanels(); // mirrors onto both stereo panes, same as any other selection change
-        UpdateStatus();
+        // RefreshDetailPanels (via AfterMutation) mirrors onto both stereo panes, same as any
+        // other selection change.
+        AfterMutation(() =>
+        {
+            _vm.SelectionStartFrame = 0;
+            _vm.SelectionEndFrame = _vm.SampleFrameCount;
+        });
     }
 
-    void OnReverse(object sender, RoutedEventArgs e) { _vm.ApplyReverse(); RefreshDetailPanels(); UpdateStatus(); }
-    void OnSilenceSelection(object sender, RoutedEventArgs e) { _vm.ApplySilenceSelection(); RefreshDetailPanels(); UpdateStatus(); }
-    void OnRemoveDcOffset(object sender, RoutedEventArgs e) { _vm.ApplyDcOffsetRemoval(); RefreshDetailPanels(); UpdateStatus(); }
+    void OnReverse(object sender, RoutedEventArgs e) => AfterMutation(_vm.ApplyReverse);
+    void OnSilenceSelection(object sender, RoutedEventArgs e) => AfterMutation(_vm.ApplySilenceSelection);
+    void OnRemoveDcOffset(object sender, RoutedEventArgs e) => AfterMutation(_vm.ApplyDcOffsetRemoval);
 
     // Frames is what actually gets applied (InsertSilenceEffect, matching every other
     // position field in this window); the dialog's Seconds box is a linked, live-updating
@@ -1971,19 +1986,17 @@ public partial class SampleEditorWindow : ThemedWindow
         if (ByHeader("_Redo") is { } redoItem) redoItem.IsEnabled = _vm.CanRedo;
     }
 
-    void OnWaveformCut(object sender, RoutedEventArgs e) { _vm.CutSelection(); RefreshDetailPanels(); UpdateStatus(); }
+    void OnWaveformCut(object sender, RoutedEventArgs e) => AfterMutation(_vm.CutSelection);
     void OnWaveformCopy(object sender, RoutedEventArgs e) { _vm.CopySelection(); UpdateStatus(); }
-    void OnWaveformPaste(object sender, RoutedEventArgs e) { _vm.PasteAtSelection(); RefreshDetailPanels(); UpdateStatus(); }
-    void OnWaveformFadeIn(object sender, RoutedEventArgs e) { _vm.ApplyFadeInSelection(); RefreshDetailPanels(); UpdateStatus(); }
-    void OnWaveformFadeOut(object sender, RoutedEventArgs e) { _vm.ApplyFadeOutSelection(); RefreshDetailPanels(); UpdateStatus(); }
-    void OnLoopSelectedArea(object sender, RoutedEventArgs e) { _vm.SetLoopFromSelection(); RefreshDetailPanels(); UpdateStatus(); }
+    void OnWaveformPaste(object sender, RoutedEventArgs e) => AfterMutation(_vm.PasteAtSelection);
+    void OnWaveformFadeIn(object sender, RoutedEventArgs e) => AfterMutation(_vm.ApplyFadeInSelection);
+    void OnWaveformFadeOut(object sender, RoutedEventArgs e) => AfterMutation(_vm.ApplyFadeOutSelection);
+    void OnLoopSelectedArea(object sender, RoutedEventArgs e) => AfterMutation(_vm.SetLoopFromSelection);
 
     void OnWaveformAmplify(object sender, RoutedEventArgs e)
     {
         if (sender is not MenuItem { Tag: string tagStr } || !double.TryParse(tagStr, out var db)) return;
-        _vm.ApplyGainAdjust(db);
-        RefreshDetailPanels();
-        UpdateStatus();
+        AfterMutation(() => _vm.ApplyGainAdjust(db));
     }
 
     // BtnAmplify/BtnSoften are plain Buttons carrying their preset list as their own
@@ -2005,8 +2018,8 @@ public partial class SampleEditorWindow : ThemedWindow
     // "2.0"/"12" - even after undoing that exact change back out, reading as "undo
     // didn't work" even though the sample data genuinely had. Reset to neutral here so
     // the fields never claim a pending multiplier/transpose that isn't real.
-    void OnUndo(object sender, RoutedEventArgs e) { _vm.Undo(); ResetTempoPitchBoxes(); RefreshDetailPanels(); UpdateStatus(); }
-    void OnRedo(object sender, RoutedEventArgs e) { _vm.Redo(); ResetTempoPitchBoxes(); RefreshDetailPanels(); UpdateStatus(); }
+    void OnUndo(object sender, RoutedEventArgs e) => AfterMutation(() => { _vm.Undo(); ResetTempoPitchBoxes(); });
+    void OnRedo(object sender, RoutedEventArgs e) => AfterMutation(() => { _vm.Redo(); ResetTempoPitchBoxes(); });
 
     void ResetTempoPitchBoxes()
     {
@@ -2024,8 +2037,13 @@ public partial class SampleEditorWindow : ThemedWindow
         {
             switch (e.Key)
             {
-                case Key.Z: _vm.Undo(); RefreshDetailPanels(); UpdateStatus(); e.Handled = true; return;
-                case Key.Y: _vm.Redo(); RefreshDetailPanels(); UpdateStatus(); e.Handled = true; return;
+                // Delegates to the button handlers rather than duplicating their body - this
+                // used to skip OnUndo/OnRedo's ResetTempoPitchBoxes() call (see their own
+                // comment), so Ctrl+Z/Ctrl+Y left a stale Tempo/Pitch box reading exactly the
+                // "undo didn't work" symptom that call exists to prevent, while the Undo/Redo
+                // BUTTONS already avoided it.
+                case Key.Z: OnUndo(sender, e); e.Handled = true; return;
+                case Key.Y: OnRedo(sender, e); e.Handled = true; return;
                 case Key.S: OnSaveChanges(sender, e); e.Handled = true; return;
                 case Key.O: OnOpenCollection(sender, e); e.Handled = true; return;
                 case Key.OemPlus or Key.Add: OnZoomIn(sender, e); e.Handled = true; return;
@@ -2051,8 +2069,8 @@ public partial class SampleEditorWindow : ThemedWindow
             }
         }
 
-        if (e.Key == Key.Home) { _vm.TransportLocateStart(); RefreshDetailPanels(); UpdateStatus(); e.Handled = true; }
-        else if (e.Key == Key.End) { _vm.TransportLocateEnd(); RefreshDetailPanels(); UpdateStatus(); e.Handled = true; }
+        if (e.Key == Key.Home) { OnTransportLocateStart(sender, e); e.Handled = true; }
+        else if (e.Key == Key.End) { OnTransportLocateEnd(sender, e); e.Handled = true; }
         else if (e.Key == Key.Space) { TogglePlayback(); e.Handled = true; }
         else if (e.Key == Key.Delete)
         {
@@ -2064,34 +2082,32 @@ public partial class SampleEditorWindow : ThemedWindow
             // Delete Zone fired instead). Only falls back to Delete Zone when there's
             // nothing selected to cut.
             if (_vm.HasSampleLoaded && _vm.SelectionEndFrame > _vm.SelectionStartFrame)
-            { _vm.CutSelection(); RefreshDetailPanels(); UpdateStatus(); }
+                OnWaveformCut(sender, e);
             else
                 OnDeleteZone(sender, e);
             e.Handled = true;
         }
     }
 
-    void TogglePlayback()
+    void TogglePlayback() => AfterMutation(() =>
     {
         if (_vm.IsPlaying) _vm.StopPlayback();
         else _vm.PlaySelectedSample();
-        RefreshDetailPanels();
-        UpdateStatus();
-    }
+    });
 
     void OnPlayStop(object sender, RoutedEventArgs e) => TogglePlayback();
 
-    void OnTransportLocateStart(object sender, RoutedEventArgs e) { _vm.TransportLocateStart(); RefreshDetailPanels(); UpdateStatus(); }
-    void OnTransportLocateEnd(object sender, RoutedEventArgs e) { _vm.TransportLocateEnd(); RefreshDetailPanels(); UpdateStatus(); }
-    void OnTransportRewind(object sender, RoutedEventArgs e) { _vm.TransportSeekRelative(-1); RefreshDetailPanels(); UpdateStatus(); }
-    void OnTransportFastForward(object sender, RoutedEventArgs e) { _vm.TransportSeekRelative(1); RefreshDetailPanels(); UpdateStatus(); }
-    void OnTransportPause(object sender, RoutedEventArgs e) { _vm.TransportTogglePause(); RefreshDetailPanels(); UpdateStatus(); }
+    void OnTransportLocateStart(object sender, RoutedEventArgs e) => AfterMutation(_vm.TransportLocateStart);
+    void OnTransportLocateEnd(object sender, RoutedEventArgs e) => AfterMutation(_vm.TransportLocateEnd);
+    void OnTransportRewind(object sender, RoutedEventArgs e) => AfterMutation(() => _vm.TransportSeekRelative(-1));
+    void OnTransportFastForward(object sender, RoutedEventArgs e) => AfterMutation(() => _vm.TransportSeekRelative(1));
+    void OnTransportPause(object sender, RoutedEventArgs e) => AfterMutation(_vm.TransportTogglePause);
 
-    void OnDeleteZone(object sender, RoutedEventArgs e) { _vm.DeleteSelectedZone(); RefreshDetailPanels(); UpdateStatus(); }
+    void OnDeleteZone(object sender, RoutedEventArgs e) => AfterMutation(_vm.DeleteSelectedZone);
 
-    void OnCrop(object sender, RoutedEventArgs e) { _vm.ApplyCrop(); RefreshDetailPanels(); UpdateStatus(); }
-    void OnNormalize(object sender, RoutedEventArgs e) { _vm.ApplyNormalize(); RefreshDetailPanels(); UpdateStatus(); }
-    void OnTrimSilence(object sender, RoutedEventArgs e) { _vm.ApplySilenceTrim(); RefreshDetailPanels(); UpdateStatus(); }
+    void OnCrop(object sender, RoutedEventArgs e) => AfterMutation(_vm.ApplyCrop);
+    void OnNormalize(object sender, RoutedEventArgs e) => AfterMutation(() => _vm.ApplyNormalize());
+    void OnTrimSilence(object sender, RoutedEventArgs e) => AfterMutation(() => _vm.ApplySilenceTrim());
 
     // InvariantCulture, explicitly: these boxes are seeded with "1.0" and "0" from XAML,
     // so a culture-sensitive parse on a comma-decimal locale reads that literal "1.0" as

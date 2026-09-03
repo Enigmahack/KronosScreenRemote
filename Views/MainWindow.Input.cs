@@ -162,9 +162,9 @@ public partial class MainWindow
         // Close() raises Closed synchronously, and each window's Closed handler (see
         // OpenSampleEditorWindow / OpenLibrarianShellWindow) nulls its own field - so a
         // successful close leaves the field null, while a cancelled one never fires Closed and
-        // leaves it pointing at the live window. Only the Sample Editor can actually cancel
-        // (its unsaved-changes prompt); the Librarian's check below is defensive symmetry.
-        // Re-reading `_sampleEditorWin.IsLoaded` after Close() instead threw a
+        // leaves it pointing at the live window. The Sample Editor (its unsaved-changes prompt)
+        // and the Librarian (its own IsBusy guard, blocking a mid-Push close) can both actually
+        // cancel this way. Re-reading `_sampleEditorWin.IsLoaded` after Close() instead threw a
         // NullReferenceException on the ordinary path and skipped every teardown step below,
         // leaking the tray icon, the screen session and the low-level keyboard hook.
         if (_sampleEditorWin is { IsLoaded: true } sampleEditor)
@@ -828,9 +828,30 @@ public partial class MainWindow
 
     async Task RunUserMacroAsync(MacroDefinition macro)
     {
+        // Pin the whole macro to the endpoint active when it started - re-resolving `_ctrl`
+        // per step (the old Ctrl(cmd) behavior) let a host/settings change mid-macro send a
+        // key-down to the old Kronos and its matching key-up to the new one.
+        var ctrl = _ctrl;
+        var held = new HashSet<int>();
         foreach (var step in macro.Steps)
         {
-            Ctrl(DaemonCommand.Key(step.Code, step.Down));
+            if (!ReferenceEquals(_ctrl, ctrl))
+            {
+                // Endpoint changed under us. SetCtrlClient disposes the OLD client (closes its
+                // send channel) before this can ever be observed - both it and this loop's
+                // Task.Delay continuation run on the UI thread with nothing able to interleave
+                // mid-swap - so `ctrl` is already dead here and CANNOT be sent to any more
+                // (Send would just TryWrite onto a completed channel and be silently dropped).
+                // Stop, and say what may still be stuck rather than claim a release that can't
+                // actually reach the old Kronos from this point.
+                AppLog.Warn($"[macro] '{macro.Description}' aborted - endpoint changed mid-sequence" +
+                            (held.Count > 0
+                                ? $"; {held.Count} key(s) may still be held on the previous connection: {string.Join(", ", held)}"
+                                : ""));
+                return;
+            }
+            if (step.Down) held.Add(step.Code); else held.Remove(step.Code);
+            Ctrl(DaemonCommand.Key(step.Code, step.Down), ctrl);
             await Task.Delay(macro.StepDelayMs);
         }
         AppLog.Info($"[macro] '{macro.Description}' done ({macro.Steps.Count} steps, {macro.StepDelayMs}ms/step)");
@@ -867,12 +888,23 @@ public partial class MainWindow
 
         _ = Task.Run(async () =>
         {
+            // Pin the whole paste to the endpoint active when it started - same reasoning as
+            // RunUserMacroAsync. Checked once per CHARACTER rather than per command: each
+            // character's own command list (CharMap.GetCommands) is already a complete,
+            // self-contained down/up (± Shift) group, so stopping between characters never
+            // interrupts one mid-way and never needs an explicit release.
+            var ctrl = _ctrl;
             foreach (char c in chars)
             {
+                if (!ReferenceEquals(_ctrl, ctrl))
+                {
+                    AppLog.Warn("[paste] aborted - endpoint changed mid-sequence");
+                    return;
+                }
                 var cmds = CharMap.GetCommands(c);
                 if (cmds == null) continue;
                 foreach (var cmd in cmds)
-                    Ctrl(cmd);
+                    Ctrl(cmd, ctrl);
                 await Task.Delay(50);
             }
             AppLog.Info($"[paste] {charCount} chars typed");

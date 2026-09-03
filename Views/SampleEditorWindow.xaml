@@ -437,7 +437,7 @@
 
             <!-- ── Right: zone + sample detail, keymap, waveform ────────────── -->
             <Border Grid.Column="2" Style="{StaticResource PaneBorder}" Margin="0 4 4 4">
-            <ScrollViewer x:Name="DetailScrollViewer" VerticalScrollBarVisibility="Auto">
+            <ScrollViewer x:Name="DetailScrollViewer" VerticalScrollBarVisibility="Visible">
                 <StackPanel Margin="16">
                     <!-- Nothing loaded at all - the ONLY thing this pane shows in that
                          state, per its own explicit request; every section below (header,
@@ -800,22 +800,26 @@
                                         </Button>
 
                                         <Border Width="1" Margin="0 2 8 8" Background="{StaticResource DividerBrush}"/>
-                                        <Button x:Name="BtnZoomIn" Style="{StaticResource SampleTransportBtn}" Click="OnZoomIn"
+                                        <Button x:Name="BtnZoomIn" Style="{StaticResource SampleTransportBtnLarge}" Click="OnZoomIn"
                                     Margin="0 0 1 6" ToolTip="Zoom in around the middle of the current view (Ctrl+Plus, or scroll the wheel over the waveform)">
-                                            <Canvas Width="14" Height="14">
-                                                <Ellipse Canvas.Left="1.5" Canvas.Top="1.5" Width="8" Height="8" Stroke="#FFB4B4B4" StrokeThickness="1.3"/>
-                                                <Line X1="8.4" Y1="8.4" X2="13" Y2="13" Stroke="#FFB4B4B4" StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                                                <Line X1="3.5" Y1="5.5" X2="7.5" Y2="5.5" Stroke="#FFB4B4B4" StrokeThickness="1.2"/>
-                                                <Line X1="5.5" Y1="3.5" X2="5.5" Y2="7.5" Stroke="#FFB4B4B4" StrokeThickness="1.2"/>
-                                            </Canvas>
+                                            <Viewbox Width="18" Height="18">
+                                                <Canvas Width="14" Height="14">
+                                                    <Ellipse Canvas.Left="1.5" Canvas.Top="1.5" Width="8" Height="8" Stroke="#FFB4B4B4" StrokeThickness="1.3"/>
+                                                    <Line X1="8.4" Y1="8.4" X2="13" Y2="13" Stroke="#FFB4B4B4" StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                                    <Line X1="3.5" Y1="5.5" X2="7.5" Y2="5.5" Stroke="#FFB4B4B4" StrokeThickness="1.2"/>
+                                                    <Line X1="5.5" Y1="3.5" X2="5.5" Y2="7.5" Stroke="#FFB4B4B4" StrokeThickness="1.2"/>
+                                                </Canvas>
+                                            </Viewbox>
                                         </Button>
-                                        <Button x:Name="BtnZoomOut" Style="{StaticResource SampleTransportBtn}" Click="OnZoomOut"
+                                        <Button x:Name="BtnZoomOut" Style="{StaticResource SampleTransportBtnLarge}" Click="OnZoomOut"
                                     Margin="0 0 4 6" ToolTip="Zoom out around the middle of the current view (Ctrl+Minus)">
-                                            <Canvas Width="14" Height="14">
-                                                <Ellipse Canvas.Left="1.5" Canvas.Top="1.5" Width="8" Height="8" Stroke="#FFB4B4B4" StrokeThickness="1.3"/>
-                                                <Line X1="8.4" Y1="8.4" X2="13" Y2="13" Stroke="#FFB4B4B4" StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
-                                                <Line X1="3.5" Y1="5.5" X2="7.5" Y2="5.5" Stroke="#FFB4B4B4" StrokeThickness="1.2"/>
-                                            </Canvas>
+                                            <Viewbox Width="18" Height="18">
+                                                <Canvas Width="14" Height="14">
+                                                    <Ellipse Canvas.Left="1.5" Canvas.Top="1.5" Width="8" Height="8" Stroke="#FFB4B4B4" StrokeThickness="1.3"/>
+                                                    <Line X1="8.4" Y1="8.4" X2="13" Y2="13" Stroke="#FFB4B4B4" StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round"/>
+                                                    <Line X1="3.5" Y1="5.5" X2="7.5" Y2="5.5" Stroke="#FFB4B4B4" StrokeThickness="1.2"/>
+                                                </Canvas>
+                                            </Viewbox>
                                         </Button>
                                         <Button x:Name="BtnZoomSelection" Content="Zoom to Selection" Click="OnZoomToSelection" Height="26" Padding="8 0" Margin="0 0 4 6" VerticalAlignment="Bottom"
                                     ToolTip="Fit the highlighted range to the full width - highlight a range first"/>

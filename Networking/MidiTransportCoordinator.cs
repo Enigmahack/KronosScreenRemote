@@ -32,6 +32,10 @@ sealed class MidiTransportCoordinator : IDisposable
     int     _usbRetryTick;                  // backoff counter for retrying a failed-open device
     (string Kind, string Id)? _current;     // what SysExService currently runs on
 
+    // A settings/host/screen-connection swap that ReevaluateOrDefer deferred because a
+    // Librarian write was in flight - see TryApplyDeferredSwap, driven off the hot-plug tick.
+    bool _pendingReevaluate;
+
     // Hot-plug ticks between retries of a present-but-failed-open USB device (3 s
     // timer × 5 ≈ 15 s). Slow enough not to churn on a device a DAW is holding.
     const int UsbRetryEveryTicks = 5;
@@ -72,7 +76,7 @@ sealed class MidiTransportCoordinator : IDisposable
         {
             _mode     = mode;
             _usbMatch = string.IsNullOrWhiteSpace(usbMatch) ? KronosMidiDevices.DefaultMatch : usbMatch.Trim();
-            changed   = Reevaluate(out desc);
+            changed   = ReevaluateOrDefer(out desc);
         }
         if (changed) ActiveTransportChanged?.Invoke(ActiveDescription);
     }
@@ -86,7 +90,7 @@ sealed class MidiTransportCoordinator : IDisposable
         {
             _screenConnected = connected;
             if (connected) { _host = host; _ctrlPort = ctrlPort; }
-            changed = Reevaluate(out _);
+            changed = ReevaluateOrDefer(out _);
         }
         if (changed) ActiveTransportChanged?.Invoke(ActiveDescription);
     }
@@ -163,6 +167,11 @@ sealed class MidiTransportCoordinator : IDisposable
             }
             else QueueReevaluate(retryOpenCheck: true);
         }
+
+        // Independently of USB hot-plug: apply any swap ReevaluateOrDefer deferred while a
+        // Librarian write was in flight, now that this tick can confirm the gate has closed.
+        // Safe to call every tick - a no-op whenever nothing is pending.
+        TryApplyDeferredSwap();
     }
 
     // The backoff retry's open test + latch clear. True when the previously-failed device
@@ -204,6 +213,46 @@ sealed class MidiTransportCoordinator : IDisposable
         _ /* Auto */          => UsbUsable ? ("usb", _usbMatch)
                                            : (_screenConnected ? ("tcp", $"{_host}:{_ctrlPort}") : null),
     };
+
+    // Runs Reevaluate now, UNLESS a Librarian write (bank reformat/write/Store burst) is
+    // currently in flight for the active transport - in that case the swap is deferred
+    // instead of tearing the transport down mid-commit (finding 1: a transport disposed under
+    // an open DumpGate aborts the in-flight write cleanly, per SysExService.Start's own
+    // comment, but can still leave a bank erased-then-abandoned). TryApplyDeferredSwap applies
+    // it later, once the gate closes.
+    //
+    // Deliberately NOT used by PollUsb's own USB-presence-driven calls (see Decide/PollUsb) -
+    // an unplugged device is already gone, so waiting only delays a failure that's coming
+    // regardless; a settings/host/screen-connection change is user-initiated and can safely
+    // wait for an in-progress write to finish. Must be called under _gate.
+    bool ReevaluateOrDefer(out string description)
+    {
+        description = "";
+        if (_sysEx.DumpGateActive && !Nullable.Equals(Decide(), _current))
+        {
+            _pendingReevaluate = true;
+            AppLog.Info("[midi-coord] transport swap deferred - a Librarian write is in flight");
+            return false;
+        }
+        return Reevaluate(out description);
+    }
+
+    // Applies a swap ReevaluateOrDefer deferred, once the gate looks closed. `internal` rather
+    // than `private` so a self-test can drive it directly without a real hot-plug tick or USB
+    // hardware. Re-checks DumpGateActive itself (via ReevaluateOrDefer) rather than trusting
+    // the caller's own check - a new write could have started in the gap, in which case this
+    // correctly stays deferred instead of tearing down mid a DIFFERENT commit.
+    internal void TryApplyDeferredSwap()
+    {
+        bool changed;
+        lock (_gate)
+        {
+            if (!_pendingReevaluate || _sysEx.DumpGateActive) return;
+            _pendingReevaluate = false;
+            changed = ReevaluateOrDefer(out _);
+        }
+        if (changed) ActiveTransportChanged?.Invoke(ActiveDescription);
+    }
 
     // Returns true (and sets ActiveDescription) if the active transport changed.
     // Must be called under _gate.

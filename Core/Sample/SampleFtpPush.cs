@@ -80,15 +80,28 @@ static class SampleFtpPush
     static async Task UploadOneAsync(AsyncFtpClient client, string localPath, string remotePath, Action<string>? onProgress, List<string> failures)
     {
         onProgress?.Invoke($"Uploading {Path.GetFileName(localPath)}...");
+        // Stage to a unique sibling and promote only once the upload verifiably succeeds - a
+        // disconnect mid-transfer must not truncate a previously-valid remote file (same
+        // pattern as FileManagerWindow.UploadItemsAsync). The one choke point every push in
+        // this file goes through, so fixing it here covers the whole .KSC/.KMP/.KSF closure.
+        var part = $"{remotePath}.{Guid.NewGuid().ToString("N")[..8]}.part";
         try
         {
-            var status = await client.UploadFile(localPath, remotePath, FtpRemoteExists.Overwrite, createRemoteDir: true);
-            if (status != FtpStatus.Success) failures.Add($"{Path.GetFileName(localPath)}: upload did not complete ({status})");
+            var status = await client.UploadFile(localPath, part, FtpRemoteExists.Overwrite, createRemoteDir: true);
+            if (status != FtpStatus.Success)
+            {
+                failures.Add($"{Path.GetFileName(localPath)}: upload did not complete ({status})");
+                try { await client.DeleteFile(part); } catch { }
+                return;
+            }
+            if (await client.FileExists(remotePath)) await client.DeleteFile(remotePath);
+            await client.Rename(part, remotePath);
         }
         catch (Exception ex)
         {
             AppLog.Warn($"Sample push: '{localPath}' -> '{remotePath}' failed: {ex.Message}");
             failures.Add($"{Path.GetFileName(localPath)}: {ex.Message}");
+            try { await client.DeleteFile(part); } catch { }
         }
     }
 }

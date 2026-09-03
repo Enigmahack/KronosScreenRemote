@@ -97,6 +97,18 @@ partial class PcgPaneViewModel : ObservableObject
     // memory before anything gets a chance to reject it.
     public const long MaxPcgBytes = 256L * 1024 * 1024;
 
+    // Bumped once each load has something real to commit (a picked file, about to be read/
+    // parsed) - NOT on dialog open, so a cancelled second pick can't invalidate a still-in-
+    // flight first one. Load()/ClearLoaded() below only apply if no OTHER attempt has bumped
+    // this since, so whichever attempt reaches ITS OWN commit point last is what's shown - see
+    // Load's own "most recently ATTEMPTED load always wins" comment. That's exactly true for
+    // two picks through the SAME method (LoadFromComputerAsync's modal dialog serializes pick
+    // order = commit order); across DIFFERENT methods (Computer vs. Kronos) it's commit order,
+    // not true selection order - a Kronos pick selected first but stuck behind a slow FTP
+    // download can still supersede a Computer pick made and read after it. Narrower than the
+    // stated invariant, but closes the concrete, easily-hit race (same method, back-to-back).
+    int _loadEpoch;
+
     public void LoadFromComputer(Window owner) => _ = LoadFromComputerAsync(owner);
 
     public async Task LoadFromComputerAsync(Window owner)
@@ -104,14 +116,16 @@ partial class PcgPaneViewModel : ObservableObject
         var dlg = new OpenFileDialog { Title = "Load PCG... From Computer", Filter = "Korg PCG Files|*.pcg|All Files|*.*" };
         if (dlg.ShowDialog(owner) != true) return;
 
+        int epoch = ++_loadEpoch;
         var path = dlg.FileName;
         try
         {
             var size = new FileInfo(path).Length;
             if (size > MaxPcgBytes)
             {
-                ClearLoaded(AppMessages.Librarian.Pcg.LoadFailed(
-                    $"file is {size / (1024 * 1024)} MB, larger than the {MaxPcgBytes / (1024 * 1024)} MB limit"));
+                if (epoch == _loadEpoch)
+                    ClearLoaded(AppMessages.Librarian.Pcg.LoadFailed(
+                        $"file is {size / (1024 * 1024)} MB, larger than the {MaxPcgBytes / (1024 * 1024)} MB limit"));
                 return;
             }
 
@@ -121,12 +135,17 @@ partial class PcgPaneViewModel : ObservableObject
             // tree build below needs the UI thread, and it gets it by virtue of the await
             // resuming here.
             var bytes = await Task.Run(() => File.ReadAllBytes(path)).ConfigureAwait(true);
+            // A second load (Computer or Kronos) may have started AND finished while this one
+            // was off doing file I/O - fire-and-forget from LoadFromComputer has no other way
+            // to know. Discard rather than clobber the newer, already-displayed result.
+            if (epoch != _loadEpoch) return;
             Load(bytes, Path.GetFileName(path));
         }
         catch (Exception ex)
         {
             AppLog.Error($"PCG load from computer failed: {ex}");
-            ClearLoaded(AppMessages.Librarian.Pcg.LoadFailed(ex.Message));
+            if (epoch == _loadEpoch)
+                ClearLoaded(AppMessages.Librarian.Pcg.LoadFailed(ex.Message));
         }
     }
 
@@ -144,6 +163,7 @@ partial class PcgPaneViewModel : ObservableObject
             return;
         }
 
+        int epoch = ++_loadEpoch;
         try
         {
             Load(file.Bytes, file.FileName);
@@ -151,7 +171,8 @@ partial class PcgPaneViewModel : ObservableObject
         catch (Exception ex)
         {
             AppLog.Error($"PCG load from Kronos failed: {ex}");
-            ClearLoaded(AppMessages.Librarian.Pcg.LoadFailed(ex.Message));
+            if (epoch == _loadEpoch)
+                ClearLoaded(AppMessages.Librarian.Pcg.LoadFailed(ex.Message));
         }
     }
 
