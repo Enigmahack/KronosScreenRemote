@@ -519,20 +519,67 @@ sealed class SampleKeymapControl : FrameworkElement
             var barBorder = new Pen((Brush)FindResource("DividerBrush"), 1);
             double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
 
+            // A black key is drawn WIDER than its own white-grid slot (centered on the
+            // white/white boundary it falls between - see BuildLayout), so painting one
+            // rect per zone straight from leftX[low] to rightX[high] makes adjacent
+            // zones' rects overlap by that same margin whenever a boundary key is black.
+            // Painter's order then decides the overlap: correct when the LATER zone owns
+            // the black key (it starts on it), wrong when the EARLIER zone owns it (it
+            // ends on it) - the next zone paints over that key's rightful pixels. Fixed
+            // in two passes: pass 1 fills every zone using edges snapped to the shared
+            // white-grid boundary (GridEdge) so segments tile with zero gap/overlap;
+            // pass 2 then repaints just a boundary black key's own true (wider) rect
+            // with whichever zone actually owns that MIDI key, matching the piano's own
+            // black-key overlay immediately below. No per-rect border - a border drawn
+            // at the grid-snapped pass-1 edge and a fill drawn out to a black key's wider
+            // true edge would disagree by the same margin this is fixing, so the border
+            // is drawn once per real boundary afterward, at the exact x the draggable
+            // boundary line already uses.
+            void DrawZoneFill(int i, KmpZone zone, Rect rect)
+            {
+                Brush fill = zone.IsSkipped ? skippedBrush : i % 2 == 0 ? zoneEvenBrush : (Brush)FindResource("PanelBackgroundBrush");
+                dc.DrawRectangle(fill, null, rect);
+                if (ReferenceEquals(zone, SelectedZone))
+                    dc.DrawRectangle(selectedBrush, null, rect);
+            }
+
+            double GridEdge(int key, bool right) =>
+                IsBlackKey(key) ? (leftX[key] + rightX[key]) / 2 : (right ? rightX[key] : leftX[key]);
+
             for (int i = 0; i < ranges.Length; i++)
             {
                 var (zone, low, high) = ranges[i];
-                // x1 = rightX[high], matching BoundaryX exactly - the zone-bar segment's
-                // own right edge must line up with the yellow boundary line drawn below
-                // it (over the piano), or the two would visibly disagree about where a
-                // zone actually ends.
+                double gx0 = GridEdge(low, false), gx1 = GridEdge(high, true);
+                DrawZoneFill(i, zone, new Rect(gx0, RaisedLabelHeight, Math.Max(1, gx1 - gx0), ZoneBarHeight));
+            }
+
+            // Interior black keys (strictly inside one zone's own range) need no
+            // repaint - their full true span already sits inside that zone's pass-1
+            // rect. Only a zone's own low/high can straddle into a neighbor's territory.
+            for (int i = 0; i < ranges.Length; i++)
+            {
+                var (zone, low, high) = ranges[i];
+                if (IsBlackKey(low))
+                    DrawZoneFill(i, zone, new Rect(leftX[low], RaisedLabelHeight, Math.Max(1, rightX[low] - leftX[low]), ZoneBarHeight));
+                if (high != low && IsBlackKey(high))
+                    DrawZoneFill(i, zone, new Rect(leftX[high], RaisedLabelHeight, Math.Max(1, rightX[high] - leftX[high]), ZoneBarHeight));
+            }
+
+            // Outer frame plus one separator per real boundary, at the exact x
+            // BoundaryX/the draggable yellow line below already use, instead of a
+            // border on every per-zone fill rect above (see that comment).
+            dc.DrawRectangle(null, barBorder, new Rect(0, RaisedLabelHeight, w, ZoneBarHeight));
+            for (int i = 0; i < ranges.Length - 1; i++)
+            {
+                double bx = BoundaryX(rightX, ranges, i);
+                dc.DrawLine(barBorder, new Point(bx, RaisedLabelHeight), new Point(bx, RaisedLabelHeight + ZoneBarHeight));
+            }
+
+            for (int i = 0; i < ranges.Length; i++)
+            {
+                var (zone, low, high) = ranges[i];
                 double x0 = leftX[low], x1 = rightX[high];
                 var rect = new Rect(x0, RaisedLabelHeight, Math.Max(1, x1 - x0), ZoneBarHeight);
-
-                Brush fill = zone.IsSkipped ? skippedBrush : i % 2 == 0 ? zoneEvenBrush : (Brush)FindResource("PanelBackgroundBrush");
-                dc.DrawRectangle(fill, barBorder, rect);
-                if (ReferenceEquals(zone, SelectedZone))
-                    dc.DrawRectangle(selectedBrush, barBorder, rect);
 
                 // Zone-bar reorder-drag feedback: the origin stays outlined for the
                 // whole drag (so it's clear what's being moved), and whichever zone the
@@ -541,6 +588,9 @@ sealed class SampleKeymapControl : FrameworkElement
                 // read as "both zones are just... yellow" with nothing telling you which
                 // one was the source and which was the destination) - a darker/muted
                 // gold for "being moved FROM", full-brightness yellow for "drop HERE".
+                // Uses the zone's full leftX[low]..rightX[high] rect (not the
+                // grid-snapped pass-1 rect) since that full rect is the zone's actual
+                // visible extent once pass 1 + pass 2 above are combined.
                 if (_dragZoneOrigin != null && ReferenceEquals(zone, _dragZoneOrigin))
                     dc.DrawRectangle(null, new Pen(_dragOriginBrush, 2), rect);
                 if (_dragZoneHover != null && ReferenceEquals(zone, _dragZoneHover) && !ReferenceEquals(zone, _dragZoneOrigin))
