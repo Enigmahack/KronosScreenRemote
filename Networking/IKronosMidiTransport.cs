@@ -53,7 +53,13 @@ interface IKronosMidiTransport : IDisposable
     // Probe MIDI/SysEx availability. On success, LastModeData carries the initial
     // mode if the Kronos answered a Mode Request. Returns false when SysEx is
     // unavailable (disabled on the Kronos, no device, or timeout).
-    Task<bool> ProbeAsync(int timeoutMs = 8000);
+    //
+    // forceRefresh bypasses TcpMidiTransport/KronosSysEx's "at most once per host"
+    // cache (see KronosSysEx.ProbeAsync) - needed when the caller knows the cached
+    // answer may be stale (the user just enabled SysEx on the Kronos after an
+    // earlier probe found it off). UsbMidiTransport has no such cache and always
+    // re-probes fresh, so this is a no-op there.
+    Task<bool> ProbeAsync(int timeoutMs = 8000, bool forceRefresh = false);
     SysExModeData? LastModeData { get; }
 
     // Round-trip: send a SysEx request and await the correlated reply (null on

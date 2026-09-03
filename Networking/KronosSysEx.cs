@@ -134,7 +134,11 @@ sealed class KronosSysEx
 
     // ── Probe ────────────────────────────────────────────────────────────────
 
-    // Determine whether SysEx is functional.  Runs at most once per host.
+    // Determine whether SysEx is functional.  Runs at most once per host, unless
+    // forceRefresh bypasses that cache - needed because the cache has no expiry:
+    // SysEx being off is a Kronos-side setting the user can flip mid-session, and
+    // without a forced re-probe a single early "off" reading would stick for the
+    // rest of the session even after the user turns it on (see OpenSysExToolWindow).
     // Safe to call from any thread; concurrent calls coalesce.
     //
     // Steps:
@@ -142,9 +146,9 @@ sealed class KronosSysEx
     //   2. SYSEX Mode Request - if SysEx is disabled, daemon blocks ~5 s
     //      then returns ERR TIMEOUT.  8 s client timeout covers this.
     //   3. Parse Mode Data response and cache it.
-    public async Task<bool> ProbeAsync(int timeoutMs = 8000)
+    public async Task<bool> ProbeAsync(int timeoutMs = 8000, bool forceRefresh = false)
     {
-        if (_capable.HasValue && _probedHost == _host)
+        if (!forceRefresh && _capable.HasValue && _probedHost == _host)
             return _capable.Value;
 
         if (Interlocked.CompareExchange(ref _probing, 1, 0) != 0)

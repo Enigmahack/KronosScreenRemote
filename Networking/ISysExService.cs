@@ -66,6 +66,14 @@ interface IMidiBackendControl
 
     void Reset();
 
+    // Re-probes if IsAvailable is currently false, bypassing the transport's own
+    // probe cache; no-ops (returns true immediately) once already available. SysEx
+    // being off is a Kronos-side setting the user can change mid-session, and the
+    // initial connect-time probe (Start) only ever runs once - without this, a
+    // single early "off" reading sticks for the rest of the session even after the
+    // user turns SysEx on. See OpenSysExToolWindow, the one caller.
+    Task<bool> RecheckAvailabilityAsync();
+
     // Apply MIDI/SysEx settings. Safe to call before or after Start().
     // midiMonitorEnabled - when false, the MIDI stream monitor is stopped.
     // proactivePoll      - when true, polls on a fixed interval; otherwise only on-change triggers.

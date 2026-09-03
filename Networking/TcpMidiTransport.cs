@@ -95,7 +95,7 @@ sealed class TcpMidiTransport : IKronosMidiTransport
     void OnMonitorSysEx(byte[] m)            => SysExMessageReceived?.Invoke(m);
     void OnMonitorActivity()                 => SysExActivity?.Invoke();
 
-    public Task<bool> ProbeAsync(int timeoutMs = 8000) => _sysEx.ProbeAsync(timeoutMs);
+    public Task<bool> ProbeAsync(int timeoutMs = 8000, bool forceRefresh = false) => _sysEx.ProbeAsync(timeoutMs, forceRefresh);
 
     // The daemon's SYSEX command captures the single reply itself, so the func
     // hint is unused here (correlation is implicit in the request/response ctrl

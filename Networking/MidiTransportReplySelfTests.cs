@@ -75,7 +75,7 @@ static class MidiTransportReplySelfTests
         public void Start() { }
         public void Stop() { }
         public void SetStreamEnabled(bool enabled) { }
-        public Task<bool> ProbeAsync(int timeoutMs = 8000) => Task.FromResult(true);
+        public Task<bool> ProbeAsync(int timeoutMs = 8000, bool forceRefresh = false) => Task.FromResult(true);
         public Task<byte[]?> QueryAsync(byte[] request, byte? expectReplyFunc = null, int timeoutMs = 3000) =>
             Task.FromResult<byte[]?>(null);
 

@@ -17,6 +17,7 @@ static class MidiTransportCoordinatorSelfTests
         public int ResetCount;
         public void Start(IKronosMidiTransport transport) => StartCount++;
         public void Reset() => ResetCount++;
+        public Task<bool> RecheckAvailabilityAsync() => Task.FromResult(IsAvailable);
         public void ApplyMidiSettings(bool midiMonitorEnabled, bool proactivePoll, int pollIntervalSec, bool pollOnChanges) { }
     }
 

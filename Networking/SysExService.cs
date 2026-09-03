@@ -809,14 +809,14 @@ sealed class SysExService : ISysExService
         _lastUserActivity = DateTime.Now;
     }
 
-    async Task ProbeAsync(CancellationToken ct)
+    async Task ProbeAsync(CancellationToken ct, bool forceRefresh = false)
     {
         var transport = _transport;
         if (transport == null) return;
 
         try
         {
-            bool capable = await transport.ProbeAsync().ConfigureAwait(false);
+            bool capable = await transport.ProbeAsync(forceRefresh: forceRefresh).ConfigureAwait(false);
             if (ct.IsCancellationRequested) return;
 
             if (capable)
@@ -837,6 +837,16 @@ sealed class SysExService : ISysExService
             AppLog.Warn($"[sysex-service] probe exception: {ex.Message}");
             IsAvailable = false;
         }
+    }
+
+    // See ISysExService.RecheckAvailabilityAsync. Shares ProbeAsync's logic with the
+    // one-shot Start()-time probe; the only difference is forceRefresh, which
+    // bypasses KronosSysEx's "at most once per host" cache.
+    public async Task<bool> RecheckAvailabilityAsync()
+    {
+        if (_isAvailable) return true;
+        await ProbeAsync(_cts?.Token ?? CancellationToken.None, forceRefresh: true).ConfigureAwait(false);
+        return _isAvailable;
     }
 
     async Task PerfMetadataLoop(CancellationToken ct)

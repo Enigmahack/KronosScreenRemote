@@ -267,7 +267,9 @@ sealed class UsbMidiTransport : IKronosMidiTransport
     // Availability = the device is open AND it answers a Mode Request (func 0x12)
     // with Mode Data (func 0x42). No reply → SysEx transmit/receive is off on the
     // Kronos, exactly the not-capable case the TCP probe reports.
-    public async Task<bool> ProbeAsync(int timeoutMs = 8000)
+    // forceRefresh is unused: this probe has no cache to bypass - it re-queries
+    // the device fresh every call already.
+    public async Task<bool> ProbeAsync(int timeoutMs = 8000, bool forceRefresh = false)
     {
         if (!_open) return false;
         var req  = KronosSysEx.KorgMessage(0x12);

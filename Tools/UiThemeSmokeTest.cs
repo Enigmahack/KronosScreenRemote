@@ -366,6 +366,7 @@ internal sealed class FakeSysExService : ISysExService
 
     public void Start(IKronosMidiTransport transport) { }
     public void Reset() { }
+    public Task<bool> RecheckAvailabilityAsync() => Task.FromResult(false);
     public void RefreshNow() { }
     public void NotifyUserActivity() { }
     public Task<SetListData?> DumpSetListAsync(int number) => Task.FromResult<SetListData?>(null);

@@ -1628,9 +1628,13 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         // per host on connect) - false here means the instrument's own SysEx/MIDI setting is
         // off, not this app's "Monitor MIDI" toggle (that already gates whether this window can
         // be reached at all, see ApplyMidiMonitorMenuState). Non-blocking: the window still
-        // opens, since traffic can start flowing the moment the user fixes it on the Kronos.
+        // opens immediately, since traffic can start flowing the moment the user fixes it on
+        // the Kronos - and RecheckSysExAvailabilityAsync re-probes rather than trusting that
+        // one-time connect-time reading, so a user who enables SysEx AFTER connecting and then
+        // opens this window doesn't see a permanently-stale red bubble (the probe cache has no
+        // expiry otherwise - see KronosSysEx.ProbeAsync).
         if (!_sysExService.IsAvailable)
-            SetNotification(AppMessages.Notify.SysExUnavailable, isError: true);
+            _ = RecheckSysExAvailabilityAsync();
         _sysExToolWin = new SysExToolWindow(_sysExService, _settings.MidiOutputChannel).OwnedBy(this);
         _sysExToolWin.Closed += (_, _) =>
         {
@@ -1639,6 +1643,16 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         };
         _sysExToolWin.SetActiveStream(_midiCoord.ActiveLinkLabel);   // seed with the current link
         _sysExToolWin.Show();
+    }
+
+    // Re-probes SysEx availability (up to ~8 s - see KronosSysEx.ProbeAsync) and only shows
+    // the red bubble if that confirms it's still unavailable, instead of trusting a possibly-
+    // stale reading from the one-time connect probe. Fire-and-forget from OpenSysExToolWindow.
+    async Task RecheckSysExAvailabilityAsync()
+    {
+        bool capable = await _sysExService.RecheckAvailabilityAsync().ConfigureAwait(false);
+        if (!capable)
+            SetNotification(AppMessages.Notify.SysExUnavailable, isError: true);
     }
 
     // Fire-and-forget from the constructor, mirroring LibrarianShellViewModel.WarmCatalogAsync's
