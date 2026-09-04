@@ -1404,6 +1404,10 @@ public partial class FileManagerWindow : ThemedWindow
         var realSelected  = RealItems(lv.SelectedItems.Cast<FileEntry>());
         bool hasSelection = realSelected.Count > 0;
         bool isSingle     = realSelected.Count == 1;
+        // A remote top-level entry (SSD1/SSD2/SSD3/...) can never be cut, copied, deleted,
+        // or renamed - see FtpPathSafety's own comment. Local entries have no such
+        // restriction, and Open (navigating INTO the volume) is unaffected.
+        bool remoteTopLevelSelected = isRemote && realSelected.Any(f => FtpPathSafety.IsTopLevelPath(f.FullPath));
 
         var cm = new ContextMenu();
 
@@ -1426,17 +1430,15 @@ public partial class FileManagerWindow : ThemedWindow
                 isRemote ? (RoutedEventHandler)OnDownload : OnUpload));
         }
 
-        cm.Items.Add(MakeItem("Cut",   hasSelection, (_, _) => DoCut(lv, isRemote)));
-        cm.Items.Add(MakeItem("Copy",  hasSelection, (_, _) => DoCopy(lv, isRemote)));
+        cm.Items.Add(MakeItem("Cut",   hasSelection && !remoteTopLevelSelected, (_, _) => DoCut(lv, isRemote)));
+        cm.Items.Add(MakeItem("Copy",  hasSelection && !remoteTopLevelSelected, (_, _) => DoCopy(lv, isRemote)));
         cm.Items.Add(MakeItem("Paste", _clipboard != null && !_busy,
                               async (_, _) => await RunExclusive(() => DoPasteAsync(isRemote))));
         cm.Items.Add(new Separator());
-        // A remote top-level entry (SSD1/SSD2/SSD3/...) can never be renamed - see
-        // FtpPathSafety's own comment. Local entries have no such restriction.
-        bool canRename = isSingle && entry != null && !(isRemote && FtpPathSafety.IsTopLevelPath(entry.FullPath));
+        bool canRename = isSingle && entry != null && !remoteTopLevelSelected;
         cm.Items.Add(MakeItem("Rename", canRename,
                      isRemote ? (RoutedEventHandler)OnRemoteRename : OnLocalRename));
-        cm.Items.Add(MakeItem("Delete", hasSelection,
+        cm.Items.Add(MakeItem("Delete", hasSelection && !remoteTopLevelSelected,
                      isRemote ? (RoutedEventHandler)OnRemoteDelete : OnLocalDelete));
         cm.Items.Add(new Separator());
         cm.Items.Add(MakeItem("New Folder", !_busy,
