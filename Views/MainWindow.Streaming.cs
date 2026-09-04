@@ -250,6 +250,12 @@ public partial class MainWindow
             _lastRenderTime = re.RenderingTime;
         }
 
+        // Temporary probe (WaveformPerfProbe) - this handler is subscribed to
+        // CompositionTarget.Rendering for the life of the window, so it runs on EVERY
+        // composed frame and shares the UI thread with the Sample Editor. It is the
+        // leading suspect for input latency there, so measure it rather than assume.
+        using var probe = WaveformPerfProbe.Time("mainwindow: RenderTick");
+
         // Pull the latest frame into a UI-owned buffer.  The buffer is allocated (and re-sized on a
         // resolution change) here on the UI thread, so its reference is never mutated off-thread;
         // TryCopyLatestFrame copies under the receiver's lock, so the receive thread can never
@@ -283,7 +289,8 @@ public partial class MainWindow
             if (fps.HasValue) FpsText.Text = $"{fps.Value:F1} fps";
 
             _rawFrame = raw;
-            ApplyLut();
+            using (WaveformPerfProbe.Time("mainwindow: ApplyLut (per-pixel blit)"))
+                ApplyLut();
 
             // Top-left 140×55 changed - re-check help-overlay state (rows 27–55 of the ROI).
             // Mode/edit-context no longer come from pixels at all - ScreenSession polls the

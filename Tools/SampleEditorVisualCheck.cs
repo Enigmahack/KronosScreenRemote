@@ -187,6 +187,24 @@ static class SampleEditorVisualCheck
                             await Task.Delay(150);
                             Screenshot(win, "05b_real_zone_selected_scrolled", outDir);
 
+                            // The playhead is no longer drawn by OnRender - it lives in
+                            // its own DrawingVisual child moved by a TranslateTransform
+                            // (SampleWaveformControl.UpdatePlayheadVisual), so that
+                            // sliding it during playback doesn't re-record the whole
+                            // trace. Nothing else in this check ever plays audio, which
+                            // would leave that visual completely unexercised and a
+                            // regression (a playhead that silently stops rendering at
+                            // all) invisible to every other screenshot here. Pushed
+                            // straight onto the DP, exactly as the window's own playhead
+                            // pump does, then retired so it can't perturb the shots below.
+                            win.WaveformLeft.PlayheadFrame = 86400;
+                            win.WaveformRight.PlayheadFrame = 86400;
+                            await Task.Delay(150);
+                            Screenshot(win, "05b2_playhead_visible", outDir);
+                            win.WaveformLeft.PlayheadFrame = -1;
+                            win.WaveformRight.PlayheadFrame = -1;
+                            await Task.Delay(150);
+
                             // SplitChannelCombo only renders once this is checked, so it's
                             // otherwise invisible to every screenshot above. Toggled back off
                             // afterward so it doesn't perturb the Add Zone flow below (that

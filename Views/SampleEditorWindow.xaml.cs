@@ -107,7 +107,7 @@ public partial class SampleEditorWindow : ThemedWindow
         _vm.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(SampleEditorViewModel.IsPlaying) or nameof(SampleEditorViewModel.IsPaused))
-            { RefreshDetailPanels(); UpdateStatus(); }
+            { RefreshDetailPanels(); UpdateStatus(); SyncPlayheadPump(); }
         };
 
         // Transport Locate/Rewind/FF pressed while fully stopped - relocates the grey
@@ -123,7 +123,18 @@ public partial class SampleEditorWindow : ThemedWindow
 
         // VU meter: polls SamplePlayback.PeakLevel (see its own comment on why this is
         // a plain poll, not an event) rather than pushing UI updates from the audio
-        // thread. ~25 updates/sec reads as smooth without redrawing every frame.
+        // thread. ~25 updates/sec reads as smooth for a level meter - the playhead, which
+        // needs a genuinely per-frame update, is driven separately (SyncPlayheadPump).
+        // Diagnostic (remove with WaveformPerfProbe). PreviewMouseWheel tunnels from the
+        // window DOWN, so it sees every wheel event that reaches this window at all, before
+        // any control can handle or swallow it. Comparing this COUNT against the waveform's
+        // own handler count answers the question the timings cannot: whether the events are
+        // arriving and being lost somewhere in the app, or never arriving in the first
+        // place. Never sets e.Handled - purely an observer.
+        PreviewMouseWheel += (_, e) =>
+            WaveformPerfProbe.Record("window: wheel events SEEN (before routing)",
+                                     Math.Max(0, Environment.TickCount - e.Timestamp));
+
         _vuTimer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(40) };
         _vuTimer.Tick += (_, _) => UpdateVuMeter();
         _vuTimer.Start();
@@ -1408,12 +1419,17 @@ public partial class SampleEditorWindow : ThemedWindow
     void OnWaveformLeftMarkersChanging() => MirrorMarkersPreview(WaveformLeft, WaveformRight);
     void OnWaveformRightMarkersChanging() => MirrorMarkersPreview(WaveformRight, WaveformLeft);
 
+    // Pushes the dragged pane's PREVIEW onto the sibling rather than its committed DPs -
+    // the drag no longer writes those until mouse-up (see SampleWaveformControl's
+    // _previewSampleStart), and mirroring through three DP writes per mouse-move was
+    // itself a large part of what made dragging a loop point lag in stereo Combine mode.
+    // The sibling's preview is dropped by its own commit/abandon path, same as the
+    // dragged pane's.
     void MirrorMarkersPreview(SampleWaveformControl source, SampleWaveformControl other)
     {
         if (!_vm.HasStereoPair || _vm.SplitLR) return;
-        other.SampleStartFrame = source.SampleStartFrame;
-        other.LoopStartFrame = source.LoopStartFrame;
-        other.LoopEndFrame = source.LoopEndFrame;
+        if (!source.HasMarkerPreview) { other.ClearPreviewMarkers(); return; }
+        other.SetPreviewMarkers(source.EffectiveSampleStart, source.EffectiveLoopStart, source.EffectiveLoopEnd);
     }
 
     bool _syncingWaveformViews;
@@ -1434,19 +1450,24 @@ public partial class SampleEditorWindow : ThemedWindow
         {
             if (_vm.HasStereoPair)
             {
+                using var _ = WaveformPerfProbe.Time("sync: sibling SetView");
                 var other = ReferenceEquals(source, WaveformLeft) ? WaveformRight : WaveformLeft;
                 other.SetView(source.ViewStartFrame, source.ViewEndFrame);
             }
 
-            WaveformRuler.SampleRate = _vm.SampleRate;
-            WaveformRuler.ViewStartFrame = source.ViewStartFrame;
-            WaveformRuler.ViewEndFrame = source.ViewEndFrame;
+            using (WaveformPerfProbe.Time("sync: ruler"))
+            {
+                WaveformRuler.SampleRate = _vm.SampleRate;
+                WaveformRuler.ViewStartFrame = source.ViewStartFrame;
+                WaveformRuler.ViewEndFrame = source.ViewEndFrame;
+            }
 
             // ViewSpanFrameCount, not Samples.Length - once Split's Move tool leaves the
             // two channels different lengths, the scrollbar's range must reach the end of
             // the LONGER one on both panes, not just whichever pane raised this event.
             int frameCount = source.ViewSpanFrameCount;
             int viewLen = Math.Max(1, source.ViewEndFrame - source.ViewStartFrame);
+            using var scrollScope = WaveformPerfProbe.Time("sync: scrollbar");
             WaveformHScroll.Minimum = 0;
             WaveformHScroll.Maximum = Math.Max(0, frameCount - viewLen);
             WaveformHScroll.ViewportSize = viewLen;
@@ -1499,6 +1520,41 @@ public partial class SampleEditorWindow : ThemedWindow
     {
         VuMeterLeft.Level = _vm.GetPlaybackLevelLeft();
         VuMeterRight.Level = _vm.GetPlaybackLevelRight();
+    }
+
+    bool _playheadPumpRunning;
+    int _zoomDiagCount; // diagnostic only - remove with WaveformPerfProbe
+
+    // The playhead rides the compositor's own render tick rather than the VU meter's 40ms
+    // poll: at 25 updates/sec the scan line visibly stepped across the trace instead of
+    // gliding. CompositionTarget.Rendering fires exactly once per composed frame, so the
+    // line lands on a new pixel column exactly as often as the screen can show one - no
+    // beating between a timer period and the refresh rate.
+    //
+    // Hooked ONLY while actually playing. A permanently-subscribed Rendering handler keeps
+    // WPF's render loop awake at full rate for the life of the window even with nothing
+    // moving, which is exactly the idle cost this is meant to avoid - and is what the
+    // always-running 40ms timer used to do in a smaller way.
+    void SyncPlayheadPump()
+    {
+        bool shouldRun = _vm.IsPlaying;
+        if (shouldRun == _playheadPumpRunning) return;
+        _playheadPumpRunning = shouldRun;
+        if (shouldRun)
+        {
+            CompositionTarget.Rendering += OnPlayheadTick;
+        }
+        else
+        {
+            CompositionTarget.Rendering -= OnPlayheadTick;
+            UpdatePlayhead(); // one final tick to retire the line (frame -1 = hidden)
+        }
+    }
+
+    void OnPlayheadTick(object? sender, EventArgs e) => UpdatePlayhead();
+
+    void UpdatePlayhead()
+    {
         int frame = _vm.IsPlaying && _vm.PlaybackMatchesSelection ? _vm.GetPlaybackFrame() : -1;
         WaveformLeft.PlayheadFrame = frame;
         WaveformRight.PlayheadFrame = frame;
@@ -1511,8 +1567,11 @@ public partial class SampleEditorWindow : ThemedWindow
     // the whole point of watching playback against the trace.
     //
     // Pages by a whole view-width rather than re-centring every tick: continuous
-    // recentring makes the trace scroll under a fixed line, which is far harder to read
-    // (and repaints the whole waveform 25x/sec). Only acts when actually zoomed in.
+    // recentring makes the trace scroll under a fixed line, which is far harder to read -
+    // and, unlike moving the playhead itself, changing the view DOES invalidate the cached
+    // trace geometry, so it would rebuild the whole waveform on every frame. Only acts
+    // when actually zoomed in, and the two comparisons below make the common "still in
+    // view" case free enough to run at the playhead pump's full rate.
     void FollowPlayhead(int frame)
     {
         int viewStart = WaveformLeft.ViewStartFrame, viewEnd = WaveformLeft.ViewEndFrame;
@@ -1535,13 +1594,30 @@ public partial class SampleEditorWindow : ThemedWindow
 
     void ZoomBy(double factor)
     {
+        // The buttons lag identically to the wheel, which makes them the cleaner test case:
+        // no question of how fast input arrived, just click -> visible change.
+        using var handlerScope = WaveformPerfProbe.Time("zoom button: handler");
+        WaveformPerfProbe.MeasureToNextPresent("zoom button -> next composed frame");
+
         int total = WaveformLeft.Samples?.Length ?? 0;
         if (total == 0) return;
         int viewLen = Math.Max(1, WaveformLeft.ViewEndFrame - WaveformLeft.ViewStartFrame);
         int centre = WaveformLeft.ViewStartFrame + viewLen / 2;
         int newLen = Math.Clamp((int)(viewLen * factor), 1, total);
+        // Diagnostic, paired with WaveformPerfProbe - remove with it. This text and the
+        // waveform are updated in the SAME frame, so watching which one lands first
+        // separates "the waveform visual specifically is late" from "the whole window is
+        // late": if this counter updates instantly while the trace still shows the old
+        // zoom, the problem is that one visual; if both stall together, nothing in this
+        // window is at fault and the delay is below WPF entirely.
+        StatusBar.Text = $"[zoom {++_zoomDiagCount}] view = {WaveformLeft.ViewEndFrame - WaveformLeft.ViewStartFrame} frames";
+
+        // No RefreshDetailPanels here: changing the viewport changes nothing the detail
+        // panels show. That call rebuilt the multisample tree, the sample combo, the
+        // keymap and both panes' Samples on every click of Zoom In/Out - which is also
+        // why wheel zoom (which never called it) always felt faster than the buttons.
+        // SetView's own ViewChanged already mirrors to the ruler, scrollbar and sibling.
         WaveformLeft.SetView(centre - newLen / 2, centre - newLen / 2 + newLen);
-        RefreshDetailPanels();
     }
 
     void OnZoomToSelection(object sender, RoutedEventArgs e)
@@ -2201,7 +2277,15 @@ public partial class SampleEditorWindow : ThemedWindow
     protected override void OnClosed(EventArgs e)
     {
         _vuTimer.Stop();
+        // CompositionTarget.Rendering is a static event - an un-removed handler keeps this
+        // whole window alive AND keeps the render loop spinning after it's gone.
+        if (_playheadPumpRunning)
+        {
+            CompositionTarget.Rendering -= OnPlayheadTick;
+            _playheadPumpRunning = false;
+        }
         _vm.StopPlayback();
+        WaveformPerfProbe.Flush("sample editor session");
         base.OnClosed(e);
     }
 

@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace KronosScreenRemote;
 
@@ -18,6 +19,10 @@ namespace KronosScreenRemote;
 public sealed class SampleWaveformControl : FrameworkElement
 {
     const double HitTestPixels = 5;
+
+    // Ceiling on how many min/max columns the trace is built from, regardless of how wide
+    // the pane physically is - see GetOrBuildTraceGeometry for why.
+    const int MaxTraceColumns = 1920;
 
     public static readonly DependencyProperty SamplesProperty =
         DependencyProperty.Register(nameof(Samples), typeof(short[]), typeof(SampleWaveformControl),
@@ -52,9 +57,15 @@ public sealed class SampleWaveformControl : FrameworkElement
         set => SetValue(SelectionEndFrameProperty, value);
     }
 
+    // All three marker DPs clear any live drag preview on ANY write, exactly as the two
+    // selection DPs do and for the same reason: a preview must never be able to go stale
+    // and shadow a later real commit arriving through some other path (RefreshDetailPanels
+    // pushing a committed value onto the mirrored sibling pane being the one that actually
+    // matters here - without this the sibling would stay stuck on the drag preview).
     public static readonly DependencyProperty SampleStartFrameProperty =
         DependencyProperty.Register(nameof(SampleStartFrame), typeof(int), typeof(SampleWaveformControl),
-            new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender));
+            new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender,
+                (d, _) => ((SampleWaveformControl)d).ClearPreviewMarkers()));
 
     // Red marker line (Kronos's own coloring) - the KsfSample.SampleStart field (where
     // real playback begins, skipping any leading silence/pre-roll left in the raw PCM).
@@ -67,7 +78,8 @@ public sealed class SampleWaveformControl : FrameworkElement
 
     public static readonly DependencyProperty LoopStartFrameProperty =
         DependencyProperty.Register(nameof(LoopStartFrame), typeof(int), typeof(SampleWaveformControl),
-            new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender));
+            new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender,
+                (d, _) => ((SampleWaveformControl)d).ClearPreviewMarkers()));
 
     // Green marker line (Kronos's own coloring), draggable independently of LoopEndFrame.
     public int LoopStartFrame
@@ -78,7 +90,8 @@ public sealed class SampleWaveformControl : FrameworkElement
 
     public static readonly DependencyProperty LoopEndFrameProperty =
         DependencyProperty.Register(nameof(LoopEndFrame), typeof(int), typeof(SampleWaveformControl),
-            new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender));
+            new FrameworkPropertyMetadata(0, FrameworkPropertyMetadataOptions.AffectsRender,
+                (d, _) => ((SampleWaveformControl)d).ClearPreviewMarkers()));
 
     // Blue marker line (Kronos's own coloring), draggable independently of LoopStartFrame.
     // The region [LoopStartFrame, LoopEndFrame) itself is still shown as a faint fill
@@ -92,11 +105,16 @@ public sealed class SampleWaveformControl : FrameworkElement
 
     public static readonly DependencyProperty PlayheadFrameProperty =
         DependencyProperty.Register(nameof(PlayheadFrame), typeof(int), typeof(SampleWaveformControl),
-            new FrameworkPropertyMetadata(-1, FrameworkPropertyMetadataOptions.AffectsRender));
+            new FrameworkPropertyMetadata(-1, FrameworkPropertyMetadataOptions.None,
+                (d, _) => ((SampleWaveformControl)d).UpdatePlayheadVisual()));
 
-    // -1 = hidden (not currently playing). Polled/pushed by the window's VU-meter timer
-    // from SamplePlayback.PositionFrame - same "poll, don't marshal an event" discipline
-    // used for the VU meter itself.
+    // -1 = hidden (not currently playing). Pushed by the window's playhead pump from
+    // SamplePlayback.PositionFrame - same "poll, don't marshal an event" discipline used
+    // for the VU meter itself. Deliberately NOT AffectsRender: this is the one value that
+    // changes every displayed frame during playback, and re-recording the entire drawing
+    // (grid + loop fill + selection + trace + every marker) just to slide one vertical
+    // line is what made the scan line stutter. It lives in its own DrawingVisual moved by
+    // a TranslateTransform instead - see UpdatePlayheadVisual.
     public int PlayheadFrame
     {
         get => (int)GetValue(PlayheadFrameProperty);
@@ -329,6 +347,52 @@ public sealed class SampleWaveformControl : FrameworkElement
     // Single-marker (Sample Start line, or one loop edge independently) drag state.
     SampleMarkerKind? _draggingMarker;
 
+    // Live marker-drag preview, exactly parallel to _previewSelStart/_previewSelEnd above
+    // and for the same reason: dragging a marker (or the whole loop region) used to write
+    // SampleStartFrame/LoopStartFrame/LoopEndFrame on EVERY MouseMove, and each write
+    // re-rendered this pane AND - via MarkersChanging -> MirrorMarkersPreview - the
+    // sibling stereo pane too, which is what made dragging a loop point feel laggy.
+    // Nothing is committed until mouse-up, so the dragged line follows the cursor without
+    // any of that; the region fill, the ViewModel push and RefreshDetailPanels all happen
+    // once, at the end.
+    //
+    // Abandoning a drag then costs nothing to undo: because the real DPs were never
+    // touched, simply dropping these previews IS the revert (see OnLostMouseCapture,
+    // which is where alt-tab / a focus-stealing dialog / the mouse leaving the window
+    // mid-drag all land). A live-DP design would have to snapshot and restore instead.
+    int? _previewSampleStart, _previewLoopStart, _previewLoopEnd;
+
+    // What OnRender and the mirrored sibling pane should actually draw right now - the
+    // live drag preview while one is in progress, the committed DP otherwise. Same shape
+    // as EffectiveSelectionStart/End.
+    public int EffectiveSampleStart => _previewSampleStart ?? SampleStartFrame;
+    public int EffectiveLoopStart => _previewLoopStart ?? LoopStartFrame;
+    public int EffectiveLoopEnd => _previewLoopEnd ?? LoopEndFrame;
+
+    // Lets the window tell "mirror this live drag" apart from "the drag ended - drop the
+    // mirrored copy too", so an abandoned drag can't leave the sibling pane stuck showing
+    // a preview the dragged pane has already discarded.
+    public bool HasMarkerPreview =>
+        _previewSampleStart != null || _previewLoopStart != null || _previewLoopEnd != null;
+
+    // Puppets this pane's marker preview from the sibling one mid-drag (MirrorMarkersPreview),
+    // the same way SetPreviewSelection puppets its rubber band - cheaper than round-tripping
+    // through this pane's own DPs, and just as revertible.
+    public void SetPreviewMarkers(int sampleStart, int loopStart, int loopEnd)
+    {
+        _previewSampleStart = sampleStart;
+        _previewLoopStart = loopStart;
+        _previewLoopEnd = loopEnd;
+        InvalidateVisual();
+    }
+
+    public void ClearPreviewMarkers()
+    {
+        if (_previewSampleStart == null && _previewLoopStart == null && _previewLoopEnd == null) return;
+        _previewSampleStart = _previewLoopStart = _previewLoopEnd = null;
+        InvalidateVisual();
+    }
+
     // Move tool's "drag an existing selection" state - same anchor/at-anchor shape as
     // the loop whole-region drag above, kept separate so the two can't be confused with
     // each other (a selection and a loop region can overlap on screen). Live feedback
@@ -377,10 +441,157 @@ public sealed class SampleWaveformControl : FrameworkElement
     public int ViewStartFrame => _viewStart;
     public int ViewEndFrame => _viewEnd == 0 ? ViewSpan : _viewEnd;
 
+    // Frozen once, reused for the life of the process. Every one of these used to be a
+    // fresh `new Pen(...)` built inside OnRender, i.e. re-allocated on every playhead
+    // tick, every mouse-move of a drag and every zoom step - and an UNfrozen Freezable
+    // handed to a DrawingContext also costs WPF a change-notification hookup each time.
+    // The colours are fixed (Kronos's own marker coloring), so there is nothing here to
+    // rebuild per frame.
+    static readonly Pen PlayheadPen = MakeFrozenPen(Brushes.White, 1);
+    static readonly Pen ScrubPen = MakeFrozenPen(Brushes.Gray, 1);
+
+    // Freezing a Pen freezes its Brush along with it, so the theme brush is CLONED first:
+    // these come from shared application resources, and freezing one in place would make
+    // it immutable for every other control that resolves the same key.
+    static Pen MakeFrozenPen(Brush brush, double thickness)
+    {
+        var own = brush.CloneCurrentValue();
+        own.Freeze();
+        var pen = new Pen(own, thickness);
+        pen.Freeze();
+        return pen;
+    }
+
+    // Theme-resource pens/brushes, resolved through FindResource ONCE on first render
+    // rather than ~10 times per render: FindResource walks the logical tree up to the
+    // app-level dictionaries, which is pure repeated work on a path that runs on every
+    // playhead tick and every mouse-move of a drag. Safe to hold for the control's
+    // lifetime - these keys are set once at startup and the app has no live theme switch.
+    Pen? _gridPen, _loopStartPen, _loopEndPen, _sampleStartPen, _accentPen;
+    Brush? _panelBrush, _loopSelectedBrush, _loopRegionBrush, _selectionBrush, _traceBrush;
+
+    void EnsureRenderResources()
+    {
+        if (_gridPen != null) return;
+        _gridPen = MakeFrozenPen((Brush)FindResource("WaveformGridLineBrush"), 1);
+        _loopStartPen = MakeFrozenPen((Brush)FindResource("WaveformLoopStartBrush"), 1.5);
+        _loopEndPen = MakeFrozenPen((Brush)FindResource("WaveformLoopEndBrush"), 1.5);
+        _sampleStartPen = MakeFrozenPen((Brush)FindResource("WaveformSampleStartBrush"), 1.5);
+        _accentPen = MakeFrozenPen((Brush)FindResource("AccentBrush"), 2);
+        _traceBrush = (Brush)FindResource("WaveformTraceBrush");
+        _panelBrush = (Brush)FindResource("PanelBackgroundBrush");
+        _loopSelectedBrush = (Brush)FindResource("WaveformLoopSelectedBrush");
+        _loopRegionBrush = (Brush)FindResource("WaveformLoopRegionBrush");
+        _selectionBrush = (Brush)FindResource("WaveformSelectionBrush");
+    }
+
+    // The playhead is the only thing that moves every displayed frame, so it gets its own
+    // child visual: the line is recorded once (it never changes shape - a full-height
+    // vertical stroke) and each update is a single TranslateTransform write, with no
+    // re-record of the trace, grid, loop fill or markers. Same "slide it with a transform
+    // rather than redrawing it" reasoning _waveMoveTransform already uses for the Move
+    // tool's whole-waveform drag. Visual children draw AFTER the element's own OnRender
+    // content, which keeps the playhead on top exactly where it was drawn before.
+    readonly DrawingVisual _playheadVisual = new();
+    readonly TranslateTransform _playheadOffset = new();
+    double _playheadLineHeight = -1;
+
+    // Layering, bottom to top:
+    //
+    //   this element's own OnRender content  background, zoom grid, loop tint, selection
+    //   _traceVisual                         the waveform envelope   <- the expensive one
+    //   _overlayVisual                       marker lines, scrub line, active-channel border
+    //   _playheadVisual                      playhead (moved by transform only)
+    //
+    // The split exists because filling the envelope is a FILL-RATE cost, not a geometry
+    // one: it covers most of the pane, so on a 4K fullscreen pair it is millions of pixels
+    // per repaint, which is why dragging a marker degraded with window size while the
+    // sample length barely mattered. InvalidateVisual re-records only the ELEMENT's own
+    // content and leaves child visuals alone, so keeping the trace in a child means a
+    // drag repaints the cheap layers and the waveform is composited from what it already
+    // rasterised. It is re-recorded solely when the geometry itself actually changes
+    // (EnsureTraceRecorded) - i.e. on a new sample, a zoom/pan, or a resize.
+    //
+    // The markers have to sit in a child of their own rather than in the element content:
+    // child visuals always draw ABOVE that content, so drawing them there would put them
+    // under the trace instead of over it.
+    readonly DrawingVisual _traceVisual = new();
+    readonly DrawingVisual _overlayVisual = new();
+    WriteableBitmap? _recordedTraceBitmap;
+    Rect _recordedTraceRect;
+
+    // No BitmapCache on _traceVisual. One was tried here and removed: it never measurably
+    // helped, and a cached visual can composite a STALE bitmap while the fresh drawing
+    // waits on the cache to regenerate - which shows up as exactly the symptom being
+    // chased (the frame measures as composed in ~4ms, but what reaches the screen is the
+    // previous picture). The layer split is worth keeping on its own; the caching was not.
+
+    protected override int VisualChildrenCount => 3;
+
+    protected override Visual GetVisualChild(int index) => index switch
+    {
+        0 => _traceVisual,
+        1 => _overlayVisual,
+        2 => _playheadVisual,
+        _ => throw new ArgumentOutOfRangeException(nameof(index)),
+    };
+
+    // The bitmap instance is reused across rebuilds (only its pixels change), so an
+    // unchanged view has to be detected by the cache key rather than by reference - hence
+    // the explicit flag. WritePixels updates the live bitmap in place, so a rebuild does
+    // not by itself require re-recording this visual.
+    void EnsureTraceRecorded(short[]? samples, int viewStart, int viewEnd, int viewLen, double w, double h)
+    {
+        var bitmap = samples is { Length: > 0 }
+            ? GetOrBuildTraceBitmap(samples, viewStart, viewEnd, viewLen, w, h)
+            : null;
+        if (ReferenceEquals(bitmap, _recordedTraceBitmap) && _recordedTraceRect == new Rect(0, 0, w, h)) return;
+        _recordedTraceBitmap = bitmap;
+        _recordedTraceRect = new Rect(0, 0, w, h);
+
+        using var ctx = _traceVisual.RenderOpen();
+        if (bitmap != null) ctx.DrawImage(bitmap, _recordedTraceRect);
+    }
+
+    void UpdatePlayheadVisual()
+    {
+        double w = ActualWidth, h = ActualHeight;
+        int frame = PlayheadFrame;
+        // Same visibility rule OnRender used when it still drew this line itself.
+        int viewStart = Math.Clamp(_viewStart, 0, ViewSpan);
+        int viewEnd = Math.Clamp(ViewEndFrame, viewStart + 1, ViewSpan);
+        if (w <= 0 || h <= 0 || frame < viewStart || frame > viewEnd)
+        {
+            _playheadVisual.Opacity = 0;
+            return;
+        }
+
+        if (_playheadLineHeight != h)
+        {
+            using (var ctx = _playheadVisual.RenderOpen())
+                ctx.DrawLine(PlayheadPen, new Point(0, 0), new Point(0, h));
+            _playheadLineHeight = h;
+        }
+        _playheadVisual.Opacity = 1;
+        _playheadOffset.X = MarkerX(frame, w);
+    }
+
     public SampleWaveformControl()
     {
         Focusable = true;
         ClipToBounds = true;
+        _playheadVisual.Transform = _playheadOffset;
+        AddVisualChild(_traceVisual);
+        AddVisualChild(_overlayVisual);
+        AddVisualChild(_playheadVisual);
+    }
+
+    // The playhead's pixel position depends on the view window and the control's size,
+    // neither of which goes through PlayheadFrame's own callback.
+    protected override void OnRenderSizeChanged(SizeChangedInfo info)
+    {
+        base.OnRenderSizeChanged(info);
+        UpdatePlayheadVisual();
     }
 
     // KsfSample.Samples() decodes a brand-new array from the underlying big-endian
@@ -414,13 +625,26 @@ public sealed class SampleWaveformControl : FrameworkElement
 
     // External callers (the horizontal scrollbar) drive the view window through here,
     // rather than reaching into private zoom state directly.
+    // The deepest permitted zoom, one wheel step (factor 0.8) SHALLOWER than the old
+    // one-frame-per-pixel floor - explicit request: at that floor every pixel column
+    // bucketed exactly one sample, so there was no min/max spread left to draw and the
+    // trace read as blank. Enforced here rather than only in OnMouseWheel so the toolbar
+    // Zoom In button, Zoom to Selection and the scrollbar all share the same limit.
+    int MinViewLen => Math.Max(1, (int)(ActualWidth * 1.25));
+
     public void SetView(int start, int end)
     {
-        int len = Math.Clamp(end - start, 1, Math.Max(1, ViewSpan));
+        int len = Math.Clamp(end - start, Math.Min(MinViewLen, Math.Max(1, ViewSpan)), Math.Max(1, ViewSpan));
         start = Math.Clamp(start, 0, Math.Max(0, ViewSpan - len));
+        // Nothing to redraw or re-mirror if this resolves to the window already shown -
+        // SyncWaveformViews pushes the same view onto the sibling pane, the ruler and the
+        // scrollbar on every change, so a no-op set used to cost a full re-render of both
+        // panes for nothing.
+        if (start == _viewStart && start + len == _viewEnd) return;
         _viewStart = start;
         _viewEnd = start + len;
         InvalidateVisual();
+        UpdatePlayheadVisual();
         ViewChanged?.Invoke();
     }
 
@@ -591,14 +815,17 @@ public sealed class SampleWaveformControl : FrameworkElement
     {
         base.OnMouseMove(e);
 
+        // Both marker drags below move only the PREVIEW - see _previewSampleStart's own
+        // comment. The committed DPs (and everything downstream of them) are written once,
+        // at mouse-up.
         if (_draggingMarker is { } marker)
         {
             int frame = PixelToFrame(e.GetPosition(this).X);
             switch (marker)
             {
-                case SampleMarkerKind.SampleStart: SampleStartFrame = frame; break;
-                case SampleMarkerKind.LoopStart: LoopStartFrame = Math.Min(frame, LoopEndFrame); break;
-                case SampleMarkerKind.LoopEnd: LoopEndFrame = Math.Max(frame, LoopStartFrame); break;
+                case SampleMarkerKind.SampleStart: _previewSampleStart = frame; break;
+                case SampleMarkerKind.LoopStart: _previewLoopStart = Math.Min(frame, LoopEndFrame); break;
+                case SampleMarkerKind.LoopEnd: _previewLoopEnd = Math.Max(frame, LoopStartFrame); break;
             }
             InvalidateVisual();
             MarkersChanging?.Invoke();
@@ -612,8 +839,8 @@ public sealed class SampleWaveformControl : FrameworkElement
             if (delta != 0) _loopDragMoved = true;
             int len = _loopDragEndAtAnchor - _loopDragStartAtAnchor;
             int newStart = Math.Clamp(_loopDragStartAtAnchor + delta, 0, Math.Max(0, FrameCount - len));
-            LoopStartFrame = newStart;
-            LoopEndFrame = newStart + len;
+            _previewLoopStart = newStart;
+            _previewLoopEnd = newStart + len;
             InvalidateVisual();
             MarkersChanging?.Invoke();
             return;
@@ -706,17 +933,41 @@ public sealed class SampleWaveformControl : FrameworkElement
     {
         base.OnMouseLeftButtonUp(e);
 
+        // Mouse-up is the ONLY point a marker drag commits - this is where the line
+        // "drops" onto wherever the preview had reached. Clearing the drag flag BEFORE
+        // releasing the capture matters: the release re-enters OnLostMouseCapture
+        // synchronously, and that would otherwise discard the very preview being read here.
         if (_draggingMarker is { } marker)
         {
             _draggingMarker = null;
             ReleaseMouseCapture();
-            int value = marker switch
+            int? dragged = marker switch
+            {
+                SampleMarkerKind.SampleStart => _previewSampleStart,
+                SampleMarkerKind.LoopStart => _previewLoopStart,
+                _ => _previewLoopEnd,
+            };
+            _previewSampleStart = _previewLoopStart = _previewLoopEnd = null;
+            if (dragged is { } value)
+            {
+                switch (marker)
+                {
+                    case SampleMarkerKind.SampleStart: SampleStartFrame = value; break;
+                    case SampleMarkerKind.LoopStart: LoopStartFrame = value; break;
+                    case SampleMarkerKind.LoopEnd: LoopEndFrame = value; break;
+                }
+            }
+            // Still reported even when the press never moved (dragged == null, nothing
+            // committed): in Split L/R that is what makes clicking a marker activate its
+            // channel, and SetMarker's own no-op guard means re-reporting an unchanged
+            // value pushes no undo step and dirties nothing.
+            InvalidateVisual();
+            MarkerDragged?.Invoke(marker, marker switch
             {
                 SampleMarkerKind.SampleStart => SampleStartFrame,
                 SampleMarkerKind.LoopStart => LoopStartFrame,
                 _ => LoopEndFrame,
-            };
-            MarkerDragged?.Invoke(marker, value);
+            });
             return;
         }
 
@@ -724,9 +975,14 @@ public sealed class SampleWaveformControl : FrameworkElement
         {
             _draggingLoop = false;
             ReleaseMouseCapture();
+            int movedStart = _previewLoopStart ?? LoopStartFrame;
+            int movedEnd = _previewLoopEnd ?? LoopEndFrame;
+            _previewLoopStart = _previewLoopEnd = null;
             if (_loopDragMoved)
             {
-                LoopRegionChanged?.Invoke(LoopStartFrame, LoopEndFrame);
+                LoopStartFrame = movedStart;
+                LoopEndFrame = movedEnd;
+                LoopRegionChanged?.Invoke(movedStart, movedEnd);
             }
             else
             {
@@ -820,6 +1076,47 @@ public sealed class SampleWaveformControl : FrameworkElement
         SelectionChanged?.Invoke();
     }
 
+    // Alt-tab, a focus-stealing dialog, the mouse leaving the window, or anything else
+    // that takes the capture away mid-drag all arrive here. Every drag this control owns
+    // is ABANDONED rather than committed: only a real mouse-up commits (explicit request
+    // - "on window leave, alt tab, etc. the loop point should just revert to where it
+    // was"). Because the marker/selection drags now only ever move a preview, dropping
+    // the previews IS the revert - nothing has to be snapshotted and restored.
+    //
+    // Covers all five drag states, not just the markers: previously NONE of them were
+    // reset here, so a capture lost mid-drag left the gesture permanently stuck armed.
+    // _movingWaveform was the worst of them - it also left RenderTransform applied, which
+    // stranded the whole trace visibly offset with a stale transform still on it.
+    protected override void OnLostMouseCapture(MouseEventArgs e)
+    {
+        base.OnLostMouseCapture(e);
+        // Mouse-up releases the capture itself, and clears its own state before doing so -
+        // so a normal end-of-drag lands here with nothing left to abandon.
+        if (_draggingMarker == null && !_draggingLoop && !_movingSelection && !_movingWaveform
+            && _dragAnchorFrame < 0)
+            return;
+
+        _draggingMarker = null;
+        _draggingLoop = false;
+        _movingSelection = false;
+        _dragAnchorFrame = -1;
+        _previewSampleStart = _previewLoopStart = _previewLoopEnd = null;
+        _previewSelStart = _previewSelEnd = null;
+
+        if (_movingWaveform)
+        {
+            _movingWaveform = false;
+            _waveMoveTransform.X = 0;
+            RenderTransform = Transform.Identity;
+        }
+
+        // Tells the window to drop the sibling pane's mirrored copy of the preview too -
+        // by now HasMarkerPreview is false, so MirrorMarkersPreview clears rather than
+        // mirrors.
+        MarkersChanging?.Invoke();
+        InvalidateVisual();
+    }
+
     // Left/Right nudge the loop region by one frame - gated on LoopLockEnabled, same
     // condition the mouse whole-region drag itself uses (nudging and dragging are the
     // same underlying action - repositioning the loop - so they share one gate).
@@ -873,14 +1170,61 @@ public sealed class SampleWaveformControl : FrameworkElement
     protected override void OnMouseWheel(MouseWheelEventArgs e)
     {
         base.OnMouseWheel(e);
-        if (!ScrollToZoom || FrameCount == 0) return;
+        // Counted so a wheel event that reaches this control but is turned away here can be
+        // told apart from one that never arrived at all.
+        if (!ScrollToZoom || FrameCount == 0)
+        {
+            WaveformPerfProbe.Record("wheel: REJECTED here (ScrollToZoom off / no samples)", 0);
+            return;
+        }
         e.Handled = true;
+        using var scope = WaveformPerfProbe.Time("wheel: handler (sync work only)");
+
+        // The pair of numbers that separates "the app is throttled" from "that is simply
+        // how fast the wheel was turned". If the gap BETWEEN wheel events is ~80ms then the
+        // input arrived that slowly and there is nothing to fix; if it is ~10ms while the
+        // repaint gap stays ~80ms, repaints are genuinely lagging behind the input.
+        // THE missing measurement. e.Timestamp is when the OS recorded the wheel movement;
+        // comparing it to now gives how long the event sat in the dispatcher queue before
+        // this handler got to run. Everything measured previously started HERE, so a delay
+        // spent queueing was invisible to all of it - which is how the probe could report
+        // 2.5ms while the interaction felt like half a second.
+        WaveformPerfProbe.Record("wheel: OS -> handler queue delay", Math.Max(0, Environment.TickCount - e.Timestamp));
+        WaveformPerfProbe.MeasureToNextPresent("wheel -> next composed frame");
+
+        // How backed up the UI thread is right now: a Background-priority item runs only
+        // once everything ahead of it has drained, so the delay before this fires IS the
+        // congestion. Input is dispatched at a higher priority than Background but lower
+        // than Render, so a large number here means something is saturating the thread.
+        long queuedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+        Dispatcher.BeginInvoke(System.Windows.Threading.DispatcherPriority.Background, () =>
+            WaveformPerfProbe.Record("dispatcher: background drain delay",
+                (System.Diagnostics.Stopwatch.GetTimestamp() - queuedAt) * 1000.0 / System.Diagnostics.Stopwatch.Frequency));
+
+        long wheelNow = System.Diagnostics.Stopwatch.GetTimestamp();
+        double sinceLastWheel = _lastWheelTicks == 0
+            ? double.MaxValue
+            : (wheelNow - _lastWheelTicks) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        if (sinceLastWheel < 2000) WaveformPerfProbe.Record("wheel: gap between wheel events", sinceLastWheel);
+        _lastWheelTicks = wheelNow;
+        // Wheel -> pixels-on-screen latency: how long the user actually waits after a notch.
+        if (_pendingWheelTicks == 0) _pendingWheelTicks = wheelNow;
 
         int viewLen = ViewEndFrame - _viewStart;
         int cursorFrame = PixelToFrame(e.GetPosition(this).X);
-        double factor = e.Delta > 0 ? 0.8 : 1.25;
-        int minLen = Math.Max(1, (int)ActualWidth);
-        int newLen = Math.Clamp((int)(viewLen * factor), Math.Min(minLen, ViewSpan), ViewSpan);
+
+        // A flat 0.8x per notch means ~36 notches to cross the zoom range of a long sample.
+        // Measurement showed each notch already repaints in ~2.5ms, so what read as "zoom
+        // is slow" was never frame rate - it was having to keep wheeling, with each notch
+        // moving the picture only 20%. So a fast spin compounds: keep scrolling and the
+        // step grows, up to 4x the exponent (0.8^4, i.e. ~0.41x per notch), which crosses
+        // the same range in under a dozen notches. A single deliberate notch, or any notch
+        // after a pause, still gets the original fine 0.8x step for precise framing.
+        if (sinceLastWheel < WheelAccelWindowMs) _wheelAccel = Math.Min(_wheelAccel + 0.4, 4.0);
+        else _wheelAccel = 1.0;
+
+        double factor = Math.Pow(e.Delta > 0 ? 0.8 : 1.25, _wheelAccel);
+        int newLen = Math.Clamp((int)(viewLen * factor), Math.Min(MinViewLen, ViewSpan), ViewSpan);
 
         double t = viewLen == 0 ? 0.5 : (double)(cursorFrame - _viewStart) / viewLen;
         int newStart = Math.Clamp(cursorFrame - (int)(newLen * t), 0, ViewSpan - newLen);
@@ -917,16 +1261,46 @@ public sealed class SampleWaveformControl : FrameworkElement
     short[]? _cachedTraceSamples;
     int _cachedTraceViewStart = -1, _cachedTraceViewEnd = -1;
     double _cachedTraceWidth = -1, _cachedTraceHeight = -1;
-    StreamGeometry? _cachedTraceGeometry;
+    WriteableBitmap? _traceBitmap;
+    byte[]? _traceBits;
 
-    StreamGeometry GetOrBuildTraceGeometry(short[] samples, int viewStart, int viewEnd, int viewLen, double w, double h)
+    // Built once per loaded sample and reused for every zoom/pan of it. Keyed by array
+    // reference, the same test the geometry cache uses - an edit that produces a new
+    // buffer correctly rebuilds, a re-render of the same buffer does not.
+    WaveformPyramid? _pyramid;
+
+    WaveformPyramid GetPyramid(short[] samples)
     {
-        if (_cachedTraceGeometry != null && ReferenceEquals(_cachedTraceSamples, samples)
+        if (_pyramid == null || !ReferenceEquals(_pyramid.Samples, samples))
+            _pyramid = new WaveformPyramid(samples);
+        return _pyramid;
+    }
+
+    // Renders the trace by writing PIXELS, not by handing WPF a polygon.
+    //
+    // The envelope is one filled vertical span per column, which as a closed polygon means
+    // ~2 vertices per column and a direction change at nearly every one. Rasterising that
+    // costs roughly (edges crossing each scanline) x (scanlines), so it scales with how
+    // JAGGED the waveform is - which is exactly the reported behaviour: a dense passage
+    // crawls, and zooming in until the trace smooths out speeds it back up, at the same
+    // pixel count. Anti-aliasing multiplies the same cost again.
+    //
+    // Filling spans into a pixel buffer instead is O(covered pixels) of flat memory writes:
+    // a dense waveform costs precisely the same as a smooth one, there are no edges to
+    // anti-alias, and WPF is left with a single image blit. This is the "quantise it, it
+    // needs performance not precision" trade taken to its conclusion - the output is
+    // per-pixel identical to what the polygon produced, because at one column per pixel the
+    // polygon had no sub-pixel detail to convey in the first place.
+    WriteableBitmap? GetOrBuildTraceBitmap(short[] samples, int viewStart, int viewEnd, int viewLen, double w, double h)
+    {
+        if (_traceBitmap != null && ReferenceEquals(_cachedTraceSamples, samples)
             && _cachedTraceViewStart == viewStart && _cachedTraceViewEnd == viewEnd
             && _cachedTraceWidth == w && _cachedTraceHeight == h)
         {
-            return _cachedTraceGeometry;
+            return _traceBitmap;
         }
+
+        using var buildScope = WaveformPerfProbe.Time("trace: bitmap rebuild");
 
         double midY = h / 2;
         double yScale = h / 2 / 32768.0;
@@ -937,57 +1311,166 @@ public sealed class SampleWaveformControl : FrameworkElement
         // the view) is what caused the trace to render squeezed into a sliver at the
         // left edge once zoomed in past ~one frame per pixel; per-pixel-column mapping
         // can't drift out of sync with FrameToPixel because it's the same formula.
-        int pixelCount = Math.Max(1, (int)w);
+        // One envelope column per physical pixel is more resolution than the data (or the
+        // eye) needs: on a 4K-wide pane that is a polygon of ~7,700 vertices, and the cost
+        // of anti-aliasing a boundary that jagged scales with the edge count. Capped at a
+        // 2K-class column count and stretched across whatever the pane actually is -
+        // explicit request: accept slightly blockier steps at very high resolutions rather
+        // than paying for detail that zooming in exists to provide anyway. Below the cap
+        // (a smaller window) nothing changes - it stays one column per pixel.
+        int pixelCount = Math.Max(1, Math.Min((int)w, MaxTraceColumns));
+        double columnWidth = w / pixelCount;
 
-        var geometry = new StreamGeometry();
-        using (var ctx = geometry.Open())
+        // ONE closed filled figure tracing the min/max envelope - down the top edge, back
+        // along the bottom - rather than a separate stroked BeginFigure/LineTo pair per
+        // pixel column. Visually identical (at one bucket per column the stroked version
+        // already read as a solid filled blob), but a geometry of ~1000 individual figures
+        // is expensive for WPF to RASTERISE, and that cost was being paid again on every
+        // single frame: the cache below spares the PCM rescan during a marker drag, but a
+        // cached geometry still gets re-rasterised each time the visual is re-rendered,
+        // doubled across a stereo pair. That, not the bucketing scan, is what held marker
+        // drags and zooming to single-digit FPS.
+        // Which summary level (if any) can answer this zoom level - see WaveformPyramid.
+        // Zoomed out, a column covers thousands of frames and reads a handful of prebuilt
+        // buckets instead; zoomed in past the finest bucket, `level` is null and the raw
+        // samples are read directly, which is cheap because there are few of them in view.
+        var level = GetPyramid(samples).Pick((double)viewLen / pixelCount);
+
+        // The bitmap is one pixel per envelope column and one per device row; DrawImage
+        // stretches it across the pane, which at the MaxTraceColumns cap is at most a
+        // marginal horizontal scale.
+        int bmpH = Math.Max(1, (int)Math.Round(h));
+        if (_traceBitmap == null || _traceBitmap.PixelWidth != pixelCount || _traceBitmap.PixelHeight != bmpH)
         {
-            for (int px = 0; px < pixelCount; px++)
+            _traceBitmap = new WriteableBitmap(pixelCount, bmpH, 96, 96, PixelFormats.Bgra32, null);
+            _traceBits = new byte[pixelCount * bmpH * 4];
+        }
+        var bits = _traceBits!;
+        Array.Clear(bits);
+
+        var traceColor = (_traceBrush as SolidColorBrush)?.Color ?? Colors.White;
+        byte cb = traceColor.B, cg = traceColor.G, cr = traceColor.R, ca = traceColor.A;
+        int stride = pixelCount * 4;
+
+        for (int px = 0; px < pixelCount; px++)
+        {
+            int start = viewStart + (int)((long)px * viewLen / pixelCount);
+            if (start >= viewEnd) break;
+            int end = viewStart + (int)((long)(px + 1) * viewLen / pixelCount);
+            end = Math.Clamp(end, start + 1, viewEnd);
+
+            // viewStart/viewEnd can now extend past THIS pane's own samples.Length
+            // (they're clamped to the pair-wide ViewSpan, not this buffer) - a column
+            // entirely beyond real data has nothing to bucket, so it ends the envelope
+            // (correctly leaving the rest blank) rather than indexing past the array.
+            // start only ever increases, so the drawable columns are a contiguous run.
+            if (start >= samples.Length) break;
+            int readEnd = Math.Min(end, samples.Length);
+            if (readEnd <= start) break;
+
+            short min = short.MaxValue, max = short.MinValue;
+            if (level is { } lv)
             {
-                int start = viewStart + (int)((long)px * viewLen / pixelCount);
-                if (start >= viewEnd) break;
-                int end = viewStart + (int)((long)(px + 1) * viewLen / pixelCount);
-                end = Math.Clamp(end, start + 1, viewEnd);
-
-                // viewStart/viewEnd can now extend past THIS pane's own samples.Length
-                // (they're clamped to the pair-wide ViewSpan, not this buffer) - a
-                // column entirely beyond real data has nothing to bucket, so it's left
-                // undrawn (correctly blank) rather than indexing past the array.
-                if (start >= samples.Length) continue;
-                int readEnd = Math.Min(end, samples.Length);
-                if (readEnd <= start) continue;
-
-                short min = short.MaxValue, max = short.MinValue;
+                // Every bucket the column touches, including the two it only partly
+                // overlaps at each edge. Over-including those is what keeps this exact in
+                // the direction that matters - a peak is never missed, at worst it shows
+                // up one column early or late, which is invisible at one bucket per pixel.
+                int b0 = start / lv.Bucket;
+                int b1 = Math.Min((readEnd + lv.Bucket - 1) / lv.Bucket, lv.Min.Length);
+                for (int b = b0; b < b1; b++)
+                {
+                    if (lv.Min[b] < min) min = lv.Min[b];
+                    if (lv.Max[b] > max) max = lv.Max[b];
+                }
+            }
+            else
+            {
                 for (int i = start; i < readEnd; i++)
                 {
                     if (samples[i] < min) min = samples[i];
                     if (samples[i] > max) max = samples[i];
                 }
+            }
+            if (min > max) break; // past the end of the summary - ends the envelope cleanly
 
-                double yTop = midY - max * yScale;
-                double yBot = midY - min * yScale;
-                ctx.BeginFigure(new Point(px, yTop), false, false);
-                ctx.LineTo(new Point(px, yBot), true, false);
+            double yTop = midY - max * yScale;
+            double yBot = midY - min * yScale;
+            // Quantise to whole rows. A silence bucket collapses to zero height, which would
+            // leave the column blank - clamped to a single row so silence still reads as the
+            // centre line it always did.
+            int rowTop = Math.Clamp((int)(midY - max * yScale), 0, bmpH - 1);
+            int rowBot = Math.Clamp((int)(midY - min * yScale), 0, bmpH - 1);
+            if (rowBot < rowTop) (rowTop, rowBot) = (rowBot, rowTop);
+
+            // The whole inner loop: a straight run down one column. No edge list, no
+            // coverage computation, no anti-aliasing - just stores.
+            int offset = rowTop * stride + px * 4;
+            for (int row = rowTop; row <= rowBot; row++, offset += stride)
+            {
+                bits[offset] = cb;
+                bits[offset + 1] = cg;
+                bits[offset + 2] = cr;
+                bits[offset + 3] = ca;
             }
         }
-        geometry.Freeze();
+
+        _traceBitmap.WritePixels(new Int32Rect(0, 0, pixelCount, bmpH), bits, stride, 0);
 
         _cachedTraceSamples = samples;
         _cachedTraceViewStart = viewStart;
         _cachedTraceViewEnd = viewEnd;
         _cachedTraceWidth = w;
         _cachedTraceHeight = h;
-        _cachedTraceGeometry = geometry;
-        return geometry;
+        return _traceBitmap;
     }
 
+    long _lastRenderTicks, _lastWheelTicks, _pendingWheelTicks;
+
+    // Notches closer together than this are read as one continuous spin and compound the
+    // zoom step; anything slower is a deliberate single adjustment and resets to the fine
+    // step. Comfortably above the ~60-90ms between notches measured during a real spin.
+    const double WheelAccelWindowMs = 150;
+    double _wheelAccel = 1.0;
+
+    // Temporary probe wrapper - see WaveformPerfProbe. "gap since previous" is the number
+    // that actually decides this: it is the achieved repaint interval. If a zoom spin
+    // shows a large gap while OnRender itself measures small, then the time is NOT in this
+    // control's drawing at all and is being spent in WPF layout/composition around it.
     protected override void OnRender(DrawingContext dc)
+    {
+        long now = System.Diagnostics.Stopwatch.GetTimestamp();
+        if (_lastRenderTicks != 0)
+        {
+            double gap = (now - _lastRenderTicks) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            if (gap < 2000) WaveformPerfProbe.Record("render: gap since previous", gap);
+        }
+        _lastRenderTicks = now;
+
+        // Recorded as measurements purely so the "max" column reports the real pane size
+        // the slow case was actually running at.
+        WaveformPerfProbe.Record("pane: width px", ActualWidth);
+        WaveformPerfProbe.Record("pane: height px", ActualHeight);
+
+        using (WaveformPerfProbe.Time("render: OnRender"))
+            RenderCore(dc);
+
+        if (_pendingWheelTicks != 0)
+        {
+            double latency = (System.Diagnostics.Stopwatch.GetTimestamp() - _pendingWheelTicks)
+                             * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            if (latency < 2000) WaveformPerfProbe.Record("wheel -> render latency", latency);
+            _pendingWheelTicks = 0;
+        }
+    }
+
+    void RenderCore(DrawingContext dc)
     {
         var w = ActualWidth;
         var h = ActualHeight;
         if (w <= 0 || h <= 0) return;
 
-        dc.DrawRectangle((Brush)FindResource("PanelBackgroundBrush"), null, new Rect(0, 0, w, h));
+        EnsureRenderResources();
+        dc.DrawRectangle(_panelBrush, null, new Rect(0, 0, w, h));
 
         var samples = Samples;
         if (samples == null || samples.Length == 0)
@@ -997,6 +1480,12 @@ public sealed class SampleWaveformControl : FrameworkElement
                 new Typeface("Segoe UI"), 12, (Brush)FindResource("MutedTextBrush"),
                 VisualTreeHelper.GetDpi(this).PixelsPerDip);
             dc.DrawText(text, new Point((w - text.Width) / 2, (h - text.Height) / 2));
+            // Drop the retained layers too - they are no longer re-recorded from here, so
+            // without this a cleared pane would keep showing the previous sample's trace
+            // and markers underneath this message.
+            EnsureTraceRecorded(null, 0, 0, 0, w, h);
+            using (_overlayVisual.RenderOpen()) { }
+            UpdatePlayheadVisual();
             return;
         }
 
@@ -1015,7 +1504,7 @@ public sealed class SampleWaveformControl : FrameworkElement
         int viewLen = viewEnd - viewStart;
 
         // Vertical zoom grid, under everything else.
-        var gridPen = new Pen((Brush)FindResource("WaveformGridLineBrush"), 1);
+        var gridPen = _gridPen;
         int interval = NiceInterval((double)viewLen / w, 90);
         int firstGridFrame = ((viewStart + interval - 1) / interval) * interval;
         for (int f = firstGridFrame; f < viewEnd; f += interval)
@@ -1027,12 +1516,16 @@ public sealed class SampleWaveformControl : FrameworkElement
         // Loop region fill, under the trace and the selection - green while Loop Lock is
         // on (meaning the region is draggable as a whole right now), faint blue
         // otherwise informational-only.
-        if (HasLoop)
+        // Effective (preview-aware) marker positions throughout - mid-drag these follow the
+        // cursor while the committed DPs stay exactly where they were.
+        int effLoopStart = EffectiveLoopStart, effLoopEnd = EffectiveLoopEnd;
+        bool effHasLoop = LoopEnabled && effLoopEnd > effLoopStart;
+        if (effHasLoop)
         {
-            double loopX0 = FrameToPixel(Math.Max(LoopStartFrame, viewStart));
-            double loopX1 = FrameToPixel(Math.Min(LoopEndFrame, viewEnd));
+            double loopX0 = FrameToPixel(Math.Max(effLoopStart, viewStart));
+            double loopX1 = FrameToPixel(Math.Min(effLoopEnd, viewEnd));
             if (loopX1 > loopX0)
-                dc.DrawRectangle((Brush)FindResource(LoopLockEnabled ? "WaveformLoopSelectedBrush" : "WaveformLoopRegionBrush"), null,
+                dc.DrawRectangle(LoopLockEnabled ? _loopSelectedBrush : _loopRegionBrush, null,
                     new Rect(loopX0, 0, loopX1 - loopX0, h));
         }
 
@@ -1044,40 +1537,50 @@ public sealed class SampleWaveformControl : FrameworkElement
             double selX0 = FrameToPixel(Math.Max(effSelStart, viewStart));
             double selX1 = FrameToPixel(Math.Min(effSelEnd, viewEnd));
             if (selX1 > selX0)
-                dc.DrawRectangle((Brush)FindResource("WaveformSelectionBrush"), null,
+                dc.DrawRectangle(_selectionBrush, null,
                     new Rect(selX0, 0, selX1 - selX0, h));
         }
 
-        var pen = new Pen((Brush)FindResource("WaveformTraceBrush"), 1);
-        dc.DrawGeometry(null, pen, GetOrBuildTraceGeometry(samples, viewStart, viewEnd, viewLen, w, h));
+        EnsureTraceRecorded(samples, viewStart, viewEnd, viewLen, w, h);
+        RecordOverlay(viewStart, viewEnd, w, h, effHasLoop, effLoopStart, effLoopEnd);
+
+        // The view window/size this render just resolved is what positions the playhead,
+        // so keep it in step with them.
+        UpdatePlayheadVisual();
+
+    }
+
+    // Everything that sits ABOVE the waveform and moves while dragging. Cheap by
+    // construction - at most four hairlines and a border - which is the entire point of
+    // keeping it out of the layer that carries the fill.
+    void RecordOverlay(int viewStart, int viewEnd, double w, double h,
+                       bool effHasLoop, int effLoopStart, int effLoopEnd)
+    {
+        using var dc = _overlayVisual.RenderOpen();
 
         // Loop Start/End edge lines - Kronos's own coloring (green/blue), drawn over
         // the trace so they're always legible against it.
-        if (HasLoop)
+        if (effHasLoop)
         {
-            if (LoopStartFrame >= viewStart && LoopStartFrame <= viewEnd)
-                dc.DrawLine(new Pen((Brush)FindResource("WaveformLoopStartBrush"), 1.5), new Point(MarkerX(LoopStartFrame, w), 0), new Point(MarkerX(LoopStartFrame, w), h));
-            if (LoopEndFrame >= viewStart && LoopEndFrame <= viewEnd)
-                dc.DrawLine(new Pen((Brush)FindResource("WaveformLoopEndBrush"), 1.5), new Point(MarkerX(LoopEndFrame, w), 0), new Point(MarkerX(LoopEndFrame, w), h));
+            if (effLoopStart >= viewStart && effLoopStart <= viewEnd)
+                dc.DrawLine(_loopStartPen, new Point(MarkerX(effLoopStart, w), 0), new Point(MarkerX(effLoopStart, w), h));
+            if (effLoopEnd >= viewStart && effLoopEnd <= viewEnd)
+                dc.DrawLine(_loopEndPen, new Point(MarkerX(effLoopEnd, w), 0), new Point(MarkerX(effLoopEnd, w), h));
         }
 
         // Sample Start marker - Kronos's own coloring (red), on top of the loop edges
         // so it's never obscured when the two happen to coincide. >= viewStart (not >)
         // so a marker sitting exactly at frame 0/the left edge of the view still renders
         // - it was previously invisible whenever it coincided with the view's own start.
-        if (SampleStartFrame >= viewStart && SampleStartFrame <= viewEnd)
-            dc.DrawLine(new Pen((Brush)FindResource("WaveformSampleStartBrush"), 1.5), new Point(MarkerX(SampleStartFrame, w), 0), new Point(MarkerX(SampleStartFrame, w), h));
+        int effSampleStart = EffectiveSampleStart;
+        if (effSampleStart >= viewStart && effSampleStart <= viewEnd)
+            dc.DrawLine(_sampleStartPen, new Point(MarkerX(effSampleStart, w), 0), new Point(MarkerX(effSampleStart, w), h));
 
-        // Scrub line - grey, under the playhead (drawn just before it) so once playback
-        // actually starts and the white line begins moving, the grey "started here"
+        // Scrub line - grey, under the playhead (its own layer above this one) so once
+        // playback starts and the white line begins moving, the grey "started here"
         // marker stays visible underneath rather than being erased.
         if (ScrubFrame >= viewStart && ScrubFrame <= viewEnd)
-            dc.DrawLine(new Pen(Brushes.Gray, 1), new Point(MarkerX(ScrubFrame, w), 0), new Point(MarkerX(ScrubFrame, w), h));
-
-        // Playhead, always on top - a thin white line so it reads clearly against any
-        // of the above.
-        if (PlayheadFrame >= viewStart && PlayheadFrame <= viewEnd)
-            dc.DrawLine(new Pen(Brushes.White, 1), new Point(MarkerX(PlayheadFrame, w), 0), new Point(MarkerX(PlayheadFrame, w), h));
+            dc.DrawLine(ScrubPen, new Point(MarkerX(ScrubFrame, w), 0), new Point(MarkerX(ScrubFrame, w), h));
 
         // Active-channel cue for Split L/R (explicit request: single click should
         // "highlight either the L or R depending on the track selected") - a plain
@@ -1085,10 +1588,7 @@ public sealed class SampleWaveformControl : FrameworkElement
         // control's own bounds rather than getting clipped/anti-aliased against the
         // edge. Absent entirely in Combine/mono (IsActiveChannel is never set there).
         if (IsActiveChannel)
-        {
-            var accentPen = new Pen((Brush)FindResource("AccentBrush"), 2);
-            dc.DrawRectangle(null, accentPen, new Rect(1, 1, Math.Max(0, w - 2), Math.Max(0, h - 2)));
-        }
+            dc.DrawRectangle(null, _accentPen, new Rect(1, 1, Math.Max(0, w - 2), Math.Max(0, h - 2)));
     }
 
     // FrameToPixel, clamped half a pen-width in from each edge so a marker sitting

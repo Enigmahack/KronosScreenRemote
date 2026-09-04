@@ -59,18 +59,43 @@ sealed class SampleVuMeterControl : FrameworkElement
             dc.DrawRectangle(fillBrush, null, new Rect(0, h - fillHeight, trackWidth, fillHeight));
 
         if (!ShowLabels) return;
+        DrawTicks(dc, trackWidth, h);
+    }
 
-        var textBrush = (Brush)FindResource("MutedTextBrush");
-        var tickPen = new Pen(textBrush, 1);
-        var typeface = new Typeface("Segoe UI");
+    // The scale is fixed - the same seven dB labels at the same proportional positions,
+    // whatever the level is doing. Building seven FormattedText objects (each one a full
+    // text-shaping/glyph-resolution pass) inside OnRender meant redoing all of that on
+    // every level change, i.e. continuously throughout playback, purely to redraw a bar
+    // whose height was the only thing that had actually moved. Built once here and reused
+    // until the control's height or DPI genuinely changes.
+    readonly List<(FormattedText Text, double TickDb)> _cachedLabels = [];
+    Pen? _tickPen;
+    double _cachedLabelHeight = -1, _cachedLabelDpi = -1;
+
+    void DrawTicks(DrawingContext dc, double trackWidth, double h)
+    {
         double dpi = VisualTreeHelper.GetDpi(this).PixelsPerDip;
-        foreach (var tickDb in TickDb)
+        if (_cachedLabelHeight != h || _cachedLabelDpi != dpi)
         {
-            double y = h - (tickDb - MinDb) / -MinDb * h;
-            y = Math.Clamp(y, 0, h);
-            dc.DrawLine(tickPen, new Point(trackWidth, y), new Point(trackWidth + 3, y));
-            var text = new FormattedText(tickDb.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture,
-                FlowDirection.LeftToRight, typeface, 8, textBrush, dpi);
+            // Cloned before freezing - freezing the Pen freezes its Brush too, and this
+            // one is a shared application resource other controls also resolve.
+            var textBrush = ((Brush)FindResource("MutedTextBrush")).CloneCurrentValue();
+            textBrush.Freeze();
+            _tickPen = new Pen(textBrush, 1);
+            _tickPen.Freeze();
+            var typeface = new Typeface("Segoe UI");
+            _cachedLabels.Clear();
+            foreach (var tickDb in TickDb)
+                _cachedLabels.Add((new FormattedText(tickDb.ToString(CultureInfo.InvariantCulture),
+                    CultureInfo.InvariantCulture, FlowDirection.LeftToRight, typeface, 8, textBrush, dpi), tickDb));
+            _cachedLabelHeight = h;
+            _cachedLabelDpi = dpi;
+        }
+
+        foreach (var (text, tickDb) in _cachedLabels)
+        {
+            double y = Math.Clamp(h - (tickDb - MinDb) / -MinDb * h, 0, h);
+            dc.DrawLine(_tickPen, new Point(trackWidth, y), new Point(trackWidth + 3, y));
             dc.DrawText(text, new Point(trackWidth + 5, Math.Clamp(y - text.Height / 2, 0, h - text.Height)));
         }
     }
