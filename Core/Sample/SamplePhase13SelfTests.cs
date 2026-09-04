@@ -13,7 +13,7 @@ using KronosScreenRemote.ViewModels;
 //     never saved, so the pair silently diverged on disk.
 //  3. Cut/Paste were the only length-changing edits that skipped the stereo mirror, so
 //     L and R ended up different lengths and played back time-offset.
-//  4. ApplyZoneEdits/MoveZoneBoundary/ReorderZone/DeleteSelectedZone all mutated ONE
+//  4. ApplyZoneEdits/MoveZoneBoundary/ReorderZone/RemoveSelectedSample all mutated ONE
 //     half's key ranges, breaking the exact (OriginalKey, TopKey) match that stereo
 //     partner resolution depends on - the same bug class entry 19 fixed only for
 //     AddPlaceholderZone.
@@ -403,18 +403,8 @@ static class SamplePhase13SelfTests
             Check("mismatch-stereo-still-resolves-by-position", vm.HasStereoPair);
         }
 
-        // ── 13. Delete Zone on an already-skipped zone REMOVES it, not just re-skips ──
-        //
-        // The button used to disable outright once a zone was skipped - an empty
-        // placeholder could never be cleared back out of the keymap. Second delete now
-        // physically removes it and mirrors onto the stereo sibling at the same index.
-        //
-        // Deliberately NOT Ctrl+Z-able (same precedent as AddPlaceholderZone, which
-        // documents the same reason): removing an entry changes the multisample's child
-        // count, so it goes through RefreshTreeAfterMutation to rebuild the tree, and
-        // that rebuild's SelectNode(null) resets _zoneUndo on the scope change - an undo
-        // step recorded here would be discarded before it could ever be used. Revert KSC
-        // Changes is the available undo path, same as it is for every zone-ADDING method.
+        // ── 13. Remove Sample soft-skips; Delete Zone on an already-skipped zone REMOVES
+        //    it outright, mirrored onto the stereo sibling at the same index ──
         {
             var (vm, leftPath, rightPath, _) = MakeStereoFixture("DeleteSkipped");
             vm.SelectNode(ZoneNode(vm, leftPath, 0));
@@ -422,29 +412,59 @@ static class SamplePhase13SelfTests
             var rightMs = vm.Roots.Single().Children.Single(c => c.MultisampleRef?.Path == rightPath).MultisampleRef!.Value.Multisample;
             int countBefore = leftMs.Zones.Count;
 
-            // First delete: soft-skip, unchanged behavior.
-            vm.DeleteSelectedZone();
-            Check("deleteskipped-first-delete-skips-not-removes",
+            // Remove Sample: soft-skip only, zone count unchanged.
+            vm.RemoveSelectedSample();
+            Check("deleteskipped-remove-sample-skips-not-removes",
                 leftMs.Zones.Count == countBefore && vm.ZoneIsSkipped);
+            vm.RemoveSelectedSample();
+            Check("deleteskipped-remove-sample-refuses-when-already-skipped", vm.StatusText.Contains("nothing to remove"));
 
-            // Saved and cleared from the pending registry BEFORE the second delete -
-            // without this, the first delete's own registration would still be sitting
+            // Saved and cleared from the pending registry BEFORE the actual removal -
+            // without this, the soft-skip's own registration would still be sitting
             // in _dirtyMultisamples and could mask a removal that fails to register
             // itself (that's the exact gap the explicit RegisterDirtyMultisample call in
-            // DeleteSkippedZone closes - see its own comment).
+            // DeleteZoneCompletely closes - see its own comment).
             vm.SaveSelectedMultisample();
             Check("deleteskipped-skip-saved-before-removal", !vm.HasUnsavedChanges);
 
-            // Second delete: the zone is already skipped, so this must REMOVE it - from
-            // BOTH the primary and the stereo sibling, which is why leftMs/rightMs
-            // (captured once, up front) must still be the SAME live objects the rebuilt
-            // tree ends up referencing: registering both explicitly with
-            // RegisterDirtyMultisample is what keeps RebuildTreeFromCollection from
-            // silently re-reading a stale disk copy over top of this edit.
-            vm.DeleteSelectedZone();
-            Check("deleteskipped-second-delete-removes-from-primary", leftMs.Zones.Count == countBefore - 1);
-            Check("deleteskipped-second-delete-removes-from-sibling-too", rightMs.Zones.Count == countBefore - 1);
+            // Delete Zone: the zone is already skipped, but DeleteZoneCompletely removes
+            // ANY zone regardless of skip state - from BOTH the primary and the stereo
+            // sibling, which is why leftMs/rightMs (captured once, up front) must still
+            // be the SAME live objects DeleteZoneCompletely's own in-place tree resync
+            // ends up operating on: registering both explicitly with
+            // RegisterDirtyMultisample is what keeps a later RebuildTreeFromCollection
+            // from silently re-reading a stale disk copy over top of this edit.
+            var deletedKmpPath = vm.DeleteZoneCompletely();
+            Check("deleteskipped-delete-zone-removes-from-primary", leftMs.Zones.Count == countBefore - 1);
+            Check("deleteskipped-delete-zone-removes-from-sibling-too", rightMs.Zones.Count == countBefore - 1);
             Check("deleteskipped-marks-unsaved", vm.HasUnsavedChanges);
+            Check("deleteskipped-delete-zone-tree-resynced-primary",
+                vm.Roots.Single().Children.Single(c => c.MultisampleRef?.Path == leftPath).Children.Count == countBefore - 1);
+            Check("deleteskipped-delete-zone-tree-resynced-sibling",
+                vm.Roots.Single().Children.Single(c => c.MultisampleRef?.Path == rightPath).Children.Count == countBefore - 1);
+            Check("deleteskipped-delete-zone-reselect-index-is-n-minus-1", vm.LastDeletedZoneIndex == 0);
+
+            // Undoable (Ctrl+Z) - the whole point of the surgical tree resync over a full
+            // RefreshTreeAfterMutation rebuild (which would have reset _zoneUndo the
+            // instant CurrentMultisampleZones changed reference - see SelectNode's own
+            // comment). Re-selecting a node under the SAME (never-replaced) leftMs.Zones
+            // list first, exactly like the code-behind's own post-delete reselect, is
+            // what lets SelectNode's ReferenceEquals check see the scope as unchanged.
+            Check("deleteskipped-delete-zone-kmp-path-returned", deletedKmpPath != null);
+            var msNodeAfterDelete = vm.Roots.Single().Children.Single(c => c.MultisampleRef?.Path == leftPath);
+            vm.SelectNode(msNodeAfterDelete.Children[vm.LastDeletedZoneIndex]);
+            Check("deleteskipped-delete-zone-undo-available", vm.CanUndo);
+            vm.Undo();
+            Check("deleteskipped-undo-restores-primary-count", leftMs.Zones.Count == countBefore);
+            Check("deleteskipped-undo-restores-sibling-count", rightMs.Zones.Count == countBefore);
+            Check("deleteskipped-undo-resyncs-tree-primary",
+                vm.Roots.Single().Children.Single(c => c.MultisampleRef?.Path == leftPath).Children.Count == countBefore);
+            Check("deleteskipped-undo-resyncs-tree-sibling",
+                vm.Roots.Single().Children.Single(c => c.MultisampleRef?.Path == rightPath).Children.Count == countBefore);
+
+            // Redo puts the removal back.
+            vm.Redo();
+            Check("deleteskipped-redo-removes-again", leftMs.Zones.Count == countBefore - 1);
 
             // Persisting it is the actual proof the removal is real, not merely an
             // in-memory illusion the stale tree/selection happens to still show.
@@ -453,6 +473,48 @@ static class SamplePhase13SelfTests
             var reopenedRight = KmpMultisample.Open(File.ReadAllBytes(rightPath))!;
             Check("deleteskipped-removal-persisted-primary", reopenedLeft.Zones.Count == countBefore - 1);
             Check("deleteskipped-removal-persisted-sibling", reopenedRight.Zones.Count == countBefore - 1);
+        }
+
+        // ── 13b. Delete Zone refuses to drop a multisample to zero zones - the Kronos
+        //    itself never allows an empty keymap ──
+        {
+            var (vm, leftPath, _, _) = MakeStereoFixture("DeleteLastZone");
+            var leftMs = vm.Roots.Single().Children.Single(c => c.MultisampleRef?.Path == leftPath).MultisampleRef!.Value.Multisample;
+            // Trim to exactly one zone first (fixture starts with two).
+            vm.SelectNode(ZoneNode(vm, leftPath, 1));
+            vm.DeleteZoneCompletely();
+            Check("deletelast-trimmed-to-one-zone", leftMs.Zones.Count == 1);
+
+            vm.SelectNode(ZoneNode(vm, leftPath, 0));
+            var refused = vm.DeleteZoneCompletely();
+            Check("deletelast-refuses-last-zone", refused == null && leftMs.Zones.Count == 1);
+            Check("deletelast-refusal-message", vm.StatusText.Contains("Can't delete the last zone"));
+        }
+
+        // ── 13c. Undoing a zone deletion must not leave _selectedNode stale.
+        //
+        //    SyncMultisampleNodeChildren (DeleteZoneCompletely's/Undo's own tree resync)
+        //    used to discard and rebuild every zone node wholesale on every call. In
+        //    DeleteZoneCompletely itself that's masked - the caller immediately
+        //    reselects a fresh node - but Undo()/Redo() call the same resync with
+        //    nothing afterward to repoint _selectedNode, so a plain Ctrl+Z (even of a
+        //    boundary drag, which never touched the tree before this existed) would
+        //    silently orphan it: reference-unequal to anything in the tree, yet
+        //    RebuildTreeFromCollection/UnloadCollection's own IsDescendant(root,
+        //    _selectedNode) staleness guard would see that as "not in this tree" and
+        //    skip clearing it. UnloadCollection is the sharpest way to see it: it
+        //    should always clear the selection it's about to remove. ──
+        {
+            var (vm, leftPath, _, kscPath) = MakeStereoFixture("DeleteUndoStale");
+            vm.SelectNode(ZoneNode(vm, leftPath, 0));
+            vm.DeleteZoneCompletely();
+            var msNode = vm.Roots.Single().Children.Single(c => c.MultisampleRef?.Path == leftPath);
+            vm.SelectNode(msNode.Children[vm.LastDeletedZoneIndex]);
+            vm.Undo();
+            Check("deleteundostale-selection-active-before-unload", vm.HasZoneSelected);
+
+            vm.UnloadCollection(kscPath);
+            Check("deleteundostale-unload-clears-selection", !vm.HasZoneSelected);
         }
 
         return fails;

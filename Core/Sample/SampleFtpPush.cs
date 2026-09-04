@@ -85,6 +85,16 @@ static class SampleFtpPush
         // pattern as FileManagerWindow.UploadItemsAsync). The one choke point every push in
         // this file goes through, so fixing it here covers the whole .KSC/.KMP/.KSF closure.
         var part = $"{remotePath}.{Guid.NewGuid().ToString("N")[..8]}.part";
+        // Checked against `part`, not `remotePath` - it's the longer of the two (the
+        // ".<8-hex>.part" staging suffix) and it's what's ACTUALLY sent to the server
+        // first, so a remotePath that would just barely fit can still legitimately fail
+        // here. See FtpPathSafety's own comment for where the 245 came from.
+        if (!FtpPathSafety.FitsMaxRemotePathLength(part))
+        {
+            failures.Add($"{Path.GetFileName(localPath)}: destination path too long ({remotePath.Length} characters, "
+                + $"limit {FtpPathSafety.MaxRemotePathLength}) - choose a shallower destination folder");
+            return;
+        }
         try
         {
             var status = await client.UploadFile(localPath, part, FtpRemoteExists.Overwrite, createRemoteDir: true);
@@ -95,7 +105,7 @@ static class SampleFtpPush
                 return;
             }
             if (await client.FileExists(remotePath)) await client.DeleteFile(remotePath);
-            await client.Rename(part, remotePath);
+            await client.RenameGuardedAsync(part, remotePath);
         }
         catch (Exception ex)
         {

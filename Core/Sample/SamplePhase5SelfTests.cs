@@ -2,6 +2,7 @@ namespace KronosScreenRemote;
 
 using System.IO;
 using KronosScreenRemote.ViewModels;
+using NAudio.Wave;
 
 // Off-hardware checks for Phase 5's polish items: zone deletion (marks SKIPPEDSAMPLE,
 // never touches the underlying .KSF), Recent Files tracking, multisample-scoped export,
@@ -38,11 +39,11 @@ static class SamplePhase5SelfTests
             s.Save(Path.Combine(ksfDir, name));
         }
 
-        // ── DeleteSelectedZone: marks SKIPPEDSAMPLE, leaves the .KSF file on disk,
-        //    clears the sample-detail panel, and REMOVES the zone entirely on a second
-        //    delete (an already-skipped zone used to disable the button outright, so an
-        //    empty placeholder could never be cleared back out - see
-        //    SamplePhase13SelfTests block 13 for the fuller stereo-mirroring coverage) ──
+        // ── RemoveSelectedSample: marks SKIPPEDSAMPLE, PERMANENTLY DELETES the zone's own
+        //    .KSF file (and any matching repository copy) so the sample stops showing up
+        //    as a selectable option, clears the sample-detail panel. DeleteZoneCompletely
+        //    then REMOVES the zone entirely (see SamplePhase13SelfTests block 13 for the
+        //    fuller stereo-mirroring coverage) ──
         {
             var vm = new SampleEditorViewModel();
             vm.OpenCollection(kscPath);
@@ -52,24 +53,74 @@ static class SamplePhase5SelfTests
             Check("delete-zone-selected-before", vm.HasZoneSelected && !vm.ZoneIsSkipped);
 
             var ksfPath = zoneNode!.ZoneRef!.Value.Zone.KsfPath(zoneNode.ZoneRef.Value.KmpPath);
-            vm.DeleteSelectedZone();
+            vm.RemoveSelectedSample();
             Check("delete-zone-marks-skipped", vm.ZoneIsSkipped);
             Check("delete-zone-clears-sample-panel", !vm.HasSampleLoaded);
-            Check("delete-zone-ksf-file-untouched", File.Exists(ksfPath));
+            Check("delete-zone-ksf-file-actually-deleted", !File.Exists(ksfPath));
 
             vm.SaveSelectedMultisample();
             var reopened = KmpMultisample.Open(File.ReadAllBytes(kmpPath));
             Check("delete-zone-persisted-as-skipped",
                 reopened != null && reopened.Zones.Any(z => z.IsSkipped));
 
-            int zoneCountBeforeSecondDelete = reopened!.Zones.Count;
-            vm.DeleteSelectedZone();
-            Check("delete-zone-second-delete-removes-not-refuses",
-                vm.StatusText.Contains("Removed the empty zone"));
+            int zoneCountBeforeDelete = reopened!.Zones.Count;
+            var deleteKmpPath = vm.DeleteZoneCompletely();
+            Check("delete-zone-completely-succeeds", deleteKmpPath != null);
+            Check("delete-zone-completely-status-mentions-deleted", vm.StatusText.Contains("Deleted zone"));
             vm.SaveSelectedMultisample();
             var reopenedAfterRemove = KmpMultisample.Open(File.ReadAllBytes(kmpPath));
-            Check("delete-zone-second-delete-persisted-removal",
-                reopenedAfterRemove != null && reopenedAfterRemove.Zones.Count == zoneCountBeforeSecondDelete - 1);
+            Check("delete-zone-completely-persisted-removal",
+                reopenedAfterRemove != null && reopenedAfterRemove.Zones.Count == zoneCountBeforeDelete - 1);
+        }
+
+        // ── RemoveSelectedSample also deletes the matching repository copy - the actual
+        //    bug reported: Import Sample writes a BARE repository copy ("Un-referenced
+        //    Samples") in ADDITION to the zone's own copy (ImportSampleIntoZone's own
+        //    comment), and the original RemoveSelectedSample only ever cleared the
+        //    zone's Filename reference - leaving the repository copy fully intact and
+        //    still selectable in the Sample combo, i.e. "removed" in name only ──
+        {
+            var scratchRoot2 = Path.Combine(Path.GetTempPath(), "kronos_sample_phase5_removesample_selftest");
+            if (Directory.Exists(scratchRoot2)) Directory.Delete(scratchRoot2, recursive: true);
+            Directory.CreateDirectory(scratchRoot2);
+
+            var kscPath2 = Path.Combine(scratchRoot2, "RemoveTest.KSC");
+            var ksc2 = new KscCollection { Entries = ["RemoveTest.KMP"] };
+            Directory.CreateDirectory(Path.Combine(scratchRoot2, "RemoveTest"));
+            ksc2.Save(kscPath2);
+
+            var kmpPath2 = Path.Combine(scratchRoot2, "RemoveTest", "RemoveTest.KMP");
+            var kmp2 = new KmpMultisample { Name = "RemoveTest", Mno1 = 1 };
+            kmp2.Zones.Add(new KmpZone { Filename = "SKIPPEDSAMPLE", OriginalKey = 60, TopKey = 60 });
+            kmp2.Save(kmpPath2);
+
+            var wavPath = Path.Combine(scratchRoot2, "source.wav");
+            using (var writer = new WaveFileWriter(wavPath, new WaveFormat(44100, 16, 1)))
+                writer.WriteSamples(Enumerable.Range(0, 100).Select(i => (short)(i * 10)).ToArray(), 0, 100);
+
+            var vm2 = new SampleEditorViewModel();
+            vm2.OpenCollection(kscPath2);
+            var zoneNode2 = vm2.Roots.Single().Children.Single().Children[0];
+            vm2.SelectNode(zoneNode2);
+
+            var kmpPathAfterImport = vm2.ImportSampleIntoZone(zoneNode2.ZoneRef!.Value.Zone, [wavPath]);
+            Check("removesample-import-succeeded", kmpPathAfterImport != null);
+            var repoBeforeRemove = vm2.BareSampleEntries().ToList();
+            Check("removesample-repo-has-entry-after-import", repoBeforeRemove.Count == 1);
+
+            // ImportSampleIntoZone's own tree rebuild clears selection - reselect the
+            // zone it just filled, same pattern the code-behind's own post-import
+            // reselect uses (LastImportedZoneIndex).
+            var msNodeAfterImport = vm2.Roots.Single().Children.Single(c => c.MultisampleRef?.Path == kmpPathAfterImport);
+            vm2.SelectNode(msNodeAfterImport.Children[vm2.LastImportedZoneIndex]);
+            Check("removesample-zone-reselected-with-sample", vm2.HasSampleLoaded);
+            var ownKsfPath = zoneNode2.ZoneRef!.Value.Zone.KsfPath(kmpPathAfterImport!);
+
+            vm2.RemoveSelectedSample();
+            Check("removesample-zone-own-file-deleted", !File.Exists(ownKsfPath));
+            Check("removesample-repo-entry-deleted", !vm2.BareSampleEntries().Any());
+            Check("removesample-status-mentions-repository", vm2.StatusText.Contains("repository"));
+            Check("removesample-zone-marked-skipped", vm2.ZoneIsSkipped);
         }
 
         // ── Recent Files: newest first, capped, dedup-on-reopen, clearable ──

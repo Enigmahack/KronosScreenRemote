@@ -492,6 +492,7 @@
                          from its own box - same treatment the LOOP fields use. -->
                     <Border x:Name="ZonePanel" Style="{StaticResource FieldSection}">
                         <StackPanel>
+                            <TextBlock Text="SAMPLE" Style="{StaticResource SectionHeader}"/>
                             <WrapPanel>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="Index:" Style="{StaticResource FieldLabel}"/>
@@ -503,9 +504,11 @@
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="Sample:" Style="{StaticResource FieldLabel}"/>
-                                    <ComboBox x:Name="ZoneSampleCombo" Width="220" Margin="0 0 20 6" VerticalAlignment="Bottom"
+                                    <ComboBox x:Name="ZoneSampleCombo" Width="220" Margin="0 0 8 6" VerticalAlignment="Bottom"
                                               DisplayMemberPath="DisplayName" SelectionChanged="OnZoneSampleComboChanged"
                                               ToolTip="Assigns a sample to this zone - lists everything already imported into the collection's repository (Un-referenced Samples), first entry is whatever's currently assigned"/>
+                                    <CheckBox x:Name="LinkSampleBox" Content="Link" VerticalAlignment="Bottom" Margin="0 0 20 8"
+                                              ToolTip="When checked, picking a sample from the Sample list shares its audio instead of copying it (a real Kronos mechanism, keyed by matching Sample Number - see Help) - this zone gets its own loop points/flags but no separate audio data on disk. Unchecked (default): copies the audio into this zone's own file, as before."/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="Orig.Key:" Style="{StaticResource FieldLabel}"/>
@@ -530,9 +533,14 @@
                             <WrapPanel>
                                 <Button x:Name="BtnAddZone" Content="Create" Click="OnAddPlaceholderZone" Height="24" Padding="10 0" Margin="0 6 6 0" VerticalAlignment="Bottom"
                                         ToolTip="Adds an empty zone at the end of the keymap - right-click it afterward and choose Import Sample... to attach audio"/>
-                                <Button x:Name="BtnDeleteZone" Content="Delete" Click="OnDeleteZone" Height="24" Padding="10 0" Margin="0 6 6 0" VerticalAlignment="Bottom"/>
-                                <Button x:Name="BtnImportSampleIntoZone" Content="Import Sample..." Click="OnImportSampleIntoZone" Height="24" Padding="10 0" Margin="0 6 0 0" VerticalAlignment="Bottom"
+                                <Button x:Name="BtnRenameSample" Content="Rename" Click="OnRenameSample" Height="24" Padding="10 0" Margin="0 6 6 0" VerticalAlignment="Bottom"
+                                        ToolTip="Renames the currently assigned sample (mirrored to its stereo partner, if any) - not written to disk until Save Changes/Save Sample."/>
+                                <Button x:Name="BtnDeleteZone" Content="Delete Zone" Click="OnDeleteZone" Height="24" Padding="10 0" Margin="0 6 6 0" VerticalAlignment="Bottom"
+                                        ToolTip="This deletes the zone, but does not delete the sample from the current session"/>
+                                <Button x:Name="BtnImportSampleIntoZone" Content="Import Sample..." Click="OnImportSampleIntoZone" Height="24" Padding="10 0" Margin="0 6 6 0" VerticalAlignment="Bottom"
                                         ToolTip="Decodes one or more audio files, adds them all to the collection's repository (Un-referenced Samples), and assigns the first to the selected zone - pick a different one anytime via the Sample dropdown above"/>
+                                <Button x:Name="BtnRemoveSample" Content="Remove Sample" Click="OnRemoveSample" Height="24" Padding="10 0" Margin="0 6 0 0" VerticalAlignment="Bottom"
+                                        ToolTip="This will remove the currently selected sample from the loaded session. If this is a stereo sample, both channels will be removed."/>
                             </WrapPanel>
                         </StackPanel>
                     </Border>
@@ -554,6 +562,7 @@
                          regardless of anything above it changing. -->
                     <Border x:Name="EditingFrame" Style="{StaticResource FieldSection}">
                                 <StackPanel x:Name="WaveformPanel">
+                                    <TextBlock Text="SAMPLE/LOOP EDITOR" Style="{StaticResource SectionHeader}"/>
                                     <WrapPanel>
                             <StackPanel Orientation="Horizontal" Margin="2">
                                 <TextBlock Text="Tempo Multiplier:" Style="{StaticResource FieldLabel}"/>

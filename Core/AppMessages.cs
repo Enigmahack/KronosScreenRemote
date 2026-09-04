@@ -201,6 +201,8 @@ public static class AppMessages
         public const string SelectOneToRename = "Select exactly one item to rename.";
         public static string Renamed(string newName)       => $"Renamed → {newName}";
         public static string RenameFailed(string detail)   => $"Rename failed: {detail}";
+        public static string CannotRenameTopLevel(string name) =>
+            $"'{name}' is a top-level storage volume (SSD1/SSD2/SSD3/...) - it can never be renamed.";
 
         // ── Move / copy ──
         public static string MovingItems(int count) => $"Moving {count} item(s)...";

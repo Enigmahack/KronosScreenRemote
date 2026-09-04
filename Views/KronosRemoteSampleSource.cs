@@ -73,6 +73,8 @@ sealed class KronosRemoteSampleSource : IRemoteSampleSource
             // pattern as FileManagerWindow.UploadItemsAsync - so a disconnect/timeout mid-upload
             // can never truncate a previously-valid remote file.
             var part = $"{remotePath}.{Guid.NewGuid().ToString("N")[..8]}.part";
+            if (!FtpPathSafety.FitsMaxRemotePathLength(part))
+                return RemoteSamplePushResult.Failed(FtpPathSafety.TooLongMessage(remotePath));
             FtpStatus status;
             using (var uploadCts = new CancellationTokenSource(PushUploadTimeout))
                 status = await client.UploadFile(localPath, part, FtpRemoteExists.Overwrite,
@@ -86,7 +88,7 @@ sealed class KronosRemoteSampleSource : IRemoteSampleSource
 
             if (await client.FileExists(remotePath).ConfigureAwait(false))
                 await client.DeleteFile(remotePath).ConfigureAwait(false);
-            await client.Rename(part, remotePath).ConfigureAwait(false);
+            await client.RenameGuardedAsync(part, remotePath).ConfigureAwait(false);
 
             return RemoteSamplePushResult.Success($"Pushed '{Path.GetFileName(localPath)}' to the Kronos.");
         }

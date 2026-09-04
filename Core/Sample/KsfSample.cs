@@ -101,12 +101,25 @@ sealed class KsfSample
     // push guard, export) checks before trusting Pcm.
     public bool IsHeaderOnly => FrameCount == 0;
 
-    // The SMF1 chunk (doc §3.2): observed real chunk order is SMP1 -> SNO1 -> NAME ->
-    // SMF1 -> SMD1. Payload meaning is still unconfirmed (a same-multisample zone
-    // cross-reference, in every real instance seen so far) - preserved opaquely,
-    // verbatim, when present, so round-tripping an existing file that carries one
-    // (every real header-only-corrupted .KSF observed does) stays byte-identical.
-    // Never written for a brand-new sample (doc's own recommendation: leave unset).
+    // The SMF1 chunk (doc §3.2/§7): observed real chunk order is SMP1 -> SNO1 -> NAME ->
+    // SMF1 -> SMD1. Kronosology's own decompile (2026-09-03/04, 10 RE sessions across
+    // OA.ko and Eva) settled what this project's earlier drafts left open: SMF1 is
+    // NEVER read by either binary on any reachable code path - it's pure Eva-side
+    // bookkeeping. The Kronos's real "shared audio" mechanism is SNO1 collision
+    // (CKorgFileKSF::ImportToBank) - two zones sharing one SNO1 resolve to the same
+    // resident sample. SMF1 still matters for THIS APP's own SampleLinkResolver
+    // (a convenient, filename-keyed way to find the same file the real SNO1 mechanism
+    // would also land on) and for round-tripping an existing file that carries one
+    // (every real header-only file examined has one) byte-identical.
+    //
+    // Never written for a sample with its OWN real audio (leave unset - matches every
+    // real fixture, and there's no known reason a resident sample would need one).
+    // DOES need writing for a newly-authored LINK (a deliberately header-only stub
+    // whose SNO1 is set to match an existing sample's) - hardware-confirmed
+    // 2026-09-04: a header-only .KSF with NO SMF1 chunk hung Eva's Disk-page Load
+    // solid (needed a power-cycle) on a real Kronos - no real header-only file has
+    // EVER been observed without one, so this is a hard safety rule for any writer,
+    // not just a nicety. See SetStubTarget below.
     byte[]? _smf1;
 
     // Public read of _smf1, decoded as the filename it holds when present - lets a
@@ -117,6 +130,28 @@ sealed class KsfSample
     // place would silently redirect every OTHER zone whose own stub still names it.
     public string? StubTargetFilename => _smf1 == null ? null
         : Encoding.ASCII.GetString(_smf1).TrimEnd('\0', ' ');
+
+    // Writer for a deliberately-authored link (SampleEditorViewModel.LinkExistingKsfToZone)
+    // - encodes `filename` into the same 12-byte, space-padded, no-swap ASCII shape
+    // every real SMF1 payload uses (doc §3.2's own confirmed example).
+    //
+    // THROWS if `filename` doesn't fit in 12 bytes - found the hard way (2026-09):
+    // every real zone filename fits the fixed MS<3digit><3digit>.KSF convention (12
+    // chars exactly), but a REPOSITORY sample (ImportSamplesToCollection) gets a
+    // human-readable name derived from its source file - e.g. "DirtyBit-L.KSF" (14
+    // chars) - which silently truncating produced "DirtyBit-L.K", a filename that
+    // doesn't exist anywhere, so the link resolved to nothing ("not found in this
+    // collection") with no indication why. A caller (LinkExistingKsfToZone) should
+    // check IsValidStubTarget first and give the user an actionable message rather
+    // than let this throw reach them as a raw exception.
+    public static bool IsValidStubTarget(string filename) => Encoding.ASCII.GetByteCount(filename) <= 12;
+
+    public void SetStubTarget(string filename)
+    {
+        if (!IsValidStubTarget(filename))
+            throw new ArgumentException($"'{filename}' is {Encoding.ASCII.GetByteCount(filename)} characters - a Kronos SMF1 link can only name a 12-character-or-shorter filename.", nameof(filename));
+        _smf1 = Encoding.ASCII.GetBytes(filename.PadRight(12, ' '));
+    }
 
     // Returns null if `data` isn't a recognizable .KSF (first chunk isn't SMP1, or no
     // SMD1 chunk at all) rather than throwing - mirrors PcgFile.Open's contract for

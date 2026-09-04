@@ -520,7 +520,7 @@ public partial class FileManagerWindow : ThemedWindow
                     if (st == FtpStatus.Success)
                     {
                         if (await _ftp!.FileExists(dest)) await _ftp!.DeleteFile(dest);
-                        await _ftp!.Rename(part, dest);
+                        await _ftp!.RenameGuardedAsync(part, dest);
                         done++; moved.Add(local);
                     }
                     else
@@ -672,6 +672,7 @@ public partial class FileManagerWindow : ThemedWindow
         {
             if (!await EnsureConnectedAsync()) return;
             var path = $"{_remote.Dir.TrimEnd('/')}/{name}";
+            if (!FtpPathSafety.FitsMaxRemotePathLength(path)) { SetStatus(FtpPathSafety.TooLongMessage(path)); return; }
             try { await _ftp!.CreateDirectory(path); await RefreshRemoteAsync(); SetStatus(AppMessages.FileManager.Created(path)); }
             catch (Exception ex) { SetStatus(AppMessages.FileManager.Failed(ex.Message)); }
         });
@@ -738,14 +739,22 @@ public partial class FileManagerWindow : ThemedWindow
     {
         if (RemoteList.SelectedItems.Count != 1 || RemoteList.SelectedItem is FileEntry { Name: ParentEntryName })
             { SetStatus(AppMessages.FileManager.SelectOneToRename); return; }
-        var item    = (FileEntry)RemoteList.SelectedItem!;
+        var item = (FileEntry)RemoteList.SelectedItem!;
+        // Top-level entries are the Kronos's own SSD1/SSD2/SSD3/... storage volumes - see
+        // FtpPathSafety's own comment for why renaming one is never allowed. Checked here,
+        // ahead of even prompting for a new name, so the context menu's own disabled state
+        // (BuildContextMenu) isn't the only thing standing between the user and this -
+        // RenameGuardedAsync below is the last line of defense, not the first.
+        if (FtpPathSafety.IsTopLevelPath(item.FullPath))
+            { SetStatus(AppMessages.FileManager.CannotRenameTopLevel(item.Name)); return; }
         var newName = PromptInput(AppMessages.Prompts.NewName, item.Name);
         if (string.IsNullOrWhiteSpace(newName) || newName == item.Name) return;
         await RunExclusive(async () =>
         {
             if (!await EnsureConnectedAsync()) return;
             var newPath = $"{GetFtpParent(item.FullPath).TrimEnd('/')}/{newName}";
-            try { await _ftp!.Rename(item.FullPath, newPath); await RefreshRemoteAsync(); SetStatus(AppMessages.FileManager.Renamed(newName)); }
+            if (!FtpPathSafety.FitsMaxRemotePathLength(newPath)) { SetStatus(FtpPathSafety.TooLongMessage(newPath)); return; }
+            try { await _ftp!.RenameGuardedAsync(item.FullPath, newPath); await RefreshRemoteAsync(); SetStatus(AppMessages.FileManager.Renamed(newName)); }
             catch (Exception ex) { SetStatus(AppMessages.FileManager.RenameFailed(ex.Message)); }
         });
     }
@@ -1308,7 +1317,7 @@ public partial class FileManagerWindow : ThemedWindow
             foreach (var item in items)
             {
                 var dest = $"{destFolder.TrimEnd('/')}/{item.Name}";
-                try { await _ftp!.Rename(item.FullPath, dest); done++; }
+                try { await _ftp!.RenameGuardedAsync(item.FullPath, dest); done++; }
                 catch (Exception ex) { SetStatus(AppMessages.FileManager.FailedItem(item.Name, ex.Message)); }
             }
             await RefreshRemoteAsync();
@@ -1422,7 +1431,10 @@ public partial class FileManagerWindow : ThemedWindow
         cm.Items.Add(MakeItem("Paste", _clipboard != null && !_busy,
                               async (_, _) => await RunExclusive(() => DoPasteAsync(isRemote))));
         cm.Items.Add(new Separator());
-        cm.Items.Add(MakeItem("Rename", isSingle && entry != null,
+        // A remote top-level entry (SSD1/SSD2/SSD3/...) can never be renamed - see
+        // FtpPathSafety's own comment. Local entries have no such restriction.
+        bool canRename = isSingle && entry != null && !(isRemote && FtpPathSafety.IsTopLevelPath(entry.FullPath));
+        cm.Items.Add(MakeItem("Rename", canRename,
                      isRemote ? (RoutedEventHandler)OnRemoteRename : OnLocalRename));
         cm.Items.Add(MakeItem("Delete", hasSelection,
                      isRemote ? (RoutedEventHandler)OnRemoteDelete : OnLocalDelete));
@@ -1619,7 +1631,7 @@ public partial class FileManagerWindow : ThemedWindow
                                 throw new IOException($"upload did not complete ({st})");
                             }
                             if (await _ftp!.FileExists(dest)) await _ftp!.DeleteFile(dest);
-                            await _ftp!.Rename(part, dest);
+                            await _ftp!.RenameGuardedAsync(part, dest);
                         }
                         done++;
                     }

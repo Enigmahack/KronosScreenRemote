@@ -231,6 +231,7 @@ static class UiThemeSmokeTest
         Try("SampleRemoteBrowserDialog", () => new SampleRemoteBrowserDialog("dummy-host", 21, "user", "pass", ".KSC", Path.GetTempPath()));
         Try("SampleRemoteBrowserDialog (folder-push mode)", () => new SampleRemoteBrowserDialog("dummy-host", 21, "user", "pass", "dummy.KSC", new KscCollection()));
         Try("RemoteFilePickerDialog",    () => new RemoteFilePickerDialog("dummy-host", 21, "user", "pass", ".PCG"));
+        Try("FtpPropertiesDialog",       () => new FtpPropertiesDialog(new FluentFTP.AsyncFtpClient(), "/SSD1/Dummy", true, new FluentFTP.FtpListItem { Name = "Dummy" }));
 
         // Behavioral: folder-push mode is a distinct constructor overload (see its own
         // comment) that repurposes the SAME dialog for "pick a destination folder and

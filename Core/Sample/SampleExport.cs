@@ -15,12 +15,19 @@ static class SampleExport
     // doc §3.3's real failure mode, IsHeaderOnly's third consumer after the Phase 1
     // waveform view and Phase 2 FTP push guard. Returns false (no file written) rather
     // than throwing, since "skip and keep going" is what a bulk export needs from this.
-    public static bool ExportSampleToWav(KsfSample sample, string wavPath)
+    //
+    // kmpPath: the sample's own owning .KMP path, passed through to
+    // SampleLinkResolver so a doc §3.2 linked stub (SMF1 pointing at another .KSF's real
+    // PCM) exports its actual audio instead of being skipped as if it were corrupted.
+    // Omit (null) to keep the old header-only-always-skips behavior, e.g. for a caller
+    // that doesn't have a multisample context at all.
+    public static bool ExportSampleToWav(KsfSample sample, string wavPath, string? kmpPath = null)
     {
-        if (sample.IsHeaderOnly) return false;
+        var playable = kmpPath != null ? SampleLinkResolver.ResolvePlayable(sample, kmpPath) : sample;
+        if (playable.IsHeaderOnly) return false;
         Directory.CreateDirectory(Path.GetDirectoryName(wavPath) is { Length: > 0 } d ? d : ".");
-        var pcm = sample.Samples();
-        using var writer = new WaveFileWriter(wavPath, new WaveFormat((int)sample.SampleRate, 16, 1));
+        var pcm = playable.Samples();
+        using var writer = new WaveFileWriter(wavPath, new WaveFormat((int)playable.SampleRate, 16, 1));
         writer.WriteSamples(pcm, 0, pcm.Length);
         return true;
     }
@@ -79,7 +86,7 @@ static class SampleExport
 
             var baseName = MakeUniqueFileName(usedNames, $"{s.Name}{s.Suffix}");
             var wavPath = Path.Combine(outputDir, baseName + ".wav");
-            if (ExportSampleToWav(s, wavPath)) exported++; else skipped++;
+            if (ExportSampleToWav(s, wavPath, kmpPath)) exported++; else skipped++;
         }
         return (exported, skipped);
     }

@@ -16,6 +16,14 @@ public partial class SampleEditorWindow : ThemedWindow
     readonly SampleEditorViewModel _vm = new();
     readonly DispatcherTimer _vuTimer;
 
+    // Hardware-verified 2026-09-04: the Kronos truncates a longer Name safely (no
+    // corruption/crash - KorgRiffChunk.EncodeNameField already does this on write too),
+    // but a UI-side cap means what the user types is what actually ends up on the
+    // Kronos, rather than a silent truncation surprise discovered later. Applies to
+    // both Sample and Multisample names, mono or stereo (Suffix, "-L"/"-R", isn't
+    // counted against it - see EncodeNameField's own comment).
+    const int KronosNameMaxLength = 22;
+
     // Guards MultisampleCombo/ZoneSampleCombo against re-entering their own
     // SelectionChanged handlers while RefreshDetailPanels is programmatically
     // repopulating ItemsSource/SelectedItem to mirror the tree's real selection.
@@ -210,7 +218,7 @@ public partial class SampleEditorWindow : ThemedWindow
 
     void OnNewMultisample(object sender, RoutedEventArgs e)
     {
-        var nameDlg = new PromptDialog("Multisample name:", "NewMS") { Owner = this };
+        var nameDlg = new PromptDialog("Multisample name (22 char max):", "NewMS", KronosNameMaxLength) { Owner = this };
         if (nameDlg.ShowDialog() != true || string.IsNullOrWhiteSpace(nameDlg.Result)) return;
 
         var idDlg = new PromptDialog("Multisample ID # (0-3999):", "0") { Owner = this };
@@ -226,7 +234,7 @@ public partial class SampleEditorWindow : ThemedWindow
 
     void OnNewStereoMultisamplePair(object sender, RoutedEventArgs e)
     {
-        var nameDlg = new PromptDialog("Stereo pair base name (no -L/-R suffix):", "NewStereoMS") { Owner = this };
+        var nameDlg = new PromptDialog("Stereo pair base name (no -L/-R suffix, 22 char max):", "NewStereoMS", KronosNameMaxLength) { Owner = this };
         if (nameDlg.ShowDialog() != true || string.IsNullOrWhiteSpace(nameDlg.Result)) return;
 
         var idDlg = new PromptDialog("Left multisample ID # (0-3998; Right uses ID+1):", "0") { Owner = this };
@@ -471,7 +479,9 @@ public partial class SampleEditorWindow : ThemedWindow
         if (_vm.SelectedZoneObject is not { } zone) return;
         if (ZoneSampleCombo.SelectedItem is not ZoneSampleOption option) return;
 
-        var kmpPath = _vm.AssignExistingKsfToZone(zone, option.Path);
+        var kmpPath = LinkSampleBox.IsChecked == true
+            ? _vm.LinkExistingKsfToZone(zone, option.Path)
+            : _vm.AssignExistingKsfToZone(zone, option.Path);
         var zoneIndex = _vm.LastImportedZoneIndex;
         _repositorySampleCache.Clear(); // this zone's own path may now hold different content
         RefreshDetailPanels();
@@ -965,8 +975,17 @@ public partial class SampleEditorWindow : ThemedWindow
         {
             SampleNameText.Text = _vm.SampleName;
             SampleFramesText.Text = _vm.SampleFrameCount.ToString();
-            SampleWarningText.Text = _vm.SampleIsHeaderOnly
-                ? "No audio data (header-only save - see doc §3.3)" : "";
+            // Three distinct states doc §3.2/§3.3 draw apart: real own audio (no
+            // warning), a resolved link (real audio, borrowed from another .KSF, shown
+            // so it reads as "linked," not "broken"), and either an unresolved link or
+            // no SMF1 at all (Eva's own data-loss bug, §3.3 - genuinely no audio to
+            // recover here).
+            SampleWarningText.Text = _vm.SampleIsLinkedStub
+                ? $"Linked sample - plays '{_vm.SampleLinkTargetFile}', this zone's own loop points"
+                : !_vm.SampleIsHeaderOnly ? ""
+                : _vm.SampleLinkTargetFile.Length > 0
+                    ? $"Linked sample - target '{_vm.SampleLinkTargetFile}' not found in this collection"
+                    : "No audio data (header-only save)";
             SampleRateBox.Text = _vm.SampleRate.ToString();
             LoopEnabledBox.IsChecked = _vm.SampleLoopEnabled;
             // Sample Start/Loop Start/Loop End/Use Zero/Loop Lock/Reverse Loop/Loop
@@ -1132,7 +1151,7 @@ public partial class SampleEditorWindow : ThemedWindow
         PlayIcon.Visibility = _vm.IsPlaying ? Visibility.Collapsed : Visibility.Visible;
         StopIcon.Visibility = _vm.IsPlaying ? Visibility.Visible : Visibility.Collapsed;
         BtnPlayStop.ToolTip = _vm.IsPlaying ? "Stop" : "Play";
-        bool transportUsable = _vm.HasSampleLoaded && (!_vm.SampleIsHeaderOnly || _vm.IsPlaying);
+        bool transportUsable = _vm.HasSampleLoaded && (!_vm.SampleIsHeaderOnly || _vm.SampleIsLinkedStub || _vm.IsPlaying);
         BtnPlayStop.IsEnabled = transportUsable;
         BtnLocateStart.IsEnabled = transportUsable;
         BtnRewind.IsEnabled = transportUsable;
@@ -1142,20 +1161,18 @@ public partial class SampleEditorWindow : ThemedWindow
         // A held/lit look while actually paused (waiting to be resumed), same "active
         // background" language IsPressed/IsMouseOver already use in the button's style.
         PauseIcon.Fill = _vm.IsPaused ? (Brush)FindResource("SuccessBrush") : new SolidColorBrush(Color.FromRgb(0xB4, 0xB4, 0xB4));
-        // Delete Zone is a two-stage action now (SampleEditorViewModel.DeleteSelectedZone):
-        // enabled for ANY selected zone, not just an un-skipped one - the first delete
-        // soft-skips, the second (on an already-skipped zone) actually removes it from
-        // the keymap. It used to disable outright once a zone was skipped, which meant an
-        // empty placeholder could never be cleared back out. Label/tooltip switch to make
-        // the state-dependent action visible rather than silently different.
-        BtnDeleteZone.IsEnabled = _vm.HasZoneSelected;
-        BtnDeleteZone.Content = _vm.ZoneIsSkipped ? "Remove" : "Delete";
-        BtnDeleteZone.ToolTip = _vm.ZoneIsSkipped
-            ? "Removes this empty zone from the keymap entirely - the neighboring zone's key range expands to fill the gap. Undo with Ctrl+Z if that's not what you want."
-            : "Marks this zone as empty (no sample) - the underlying .KSF is left on disk. Delete again on an empty zone to remove it from the keymap entirely.";
+        // Delete Zone always fully removes the zone in one step now (confirmed first -
+        // see OnDeleteZone) - disabled outright on a multisample's last remaining zone,
+        // matching DeleteZoneCompletely's own guard (the Kronos itself never allows an
+        // empty keymap). Remove Sample is the separate, non-destructive soft-skip action -
+        // enabled only when the selected zone actually has a sample assigned, since
+        // RemoveSelectedSample refuses an already-skipped zone as "nothing to remove".
+        bool canDeleteZone = _vm.HasZoneSelected && (_vm.CurrentMultisampleZones?.Count ?? 0) > 1;
+        BtnDeleteZone.IsEnabled = canDeleteZone;
+        MNU_DeleteZone.IsEnabled = canDeleteZone;
+        BtnRenameSample.IsEnabled = _vm.HasSampleLoaded;
+        BtnRemoveSample.IsEnabled = _vm.HasZoneSelected && !_vm.ZoneIsSkipped;
         BtnImportSampleIntoZone.IsEnabled = _vm.HasZoneSelected;
-        MNU_DeleteZone.IsEnabled = _vm.HasZoneSelected;
-        MNU_DeleteZone.Header = _vm.ZoneIsSkipped ? "_Remove Zone" : "_Delete Zone";
         BtnZoomSelection.IsEnabled = _vm.SelectionEndFrame > _vm.SelectionStartFrame;
         // Duration alongside the raw frame count - frames alone say nothing about how
         // long the selection actually is, and the sample rate is right there to convert
@@ -1233,7 +1250,7 @@ public partial class SampleEditorWindow : ThemedWindow
         MNU_ImportAudio.IsEnabled       = multisample;
         MNU_ImportStereoAudio.IsEnabled = multisample;
         MNU_NewZone.IsEnabled           = multisample;
-        MNU_ExportSample.IsEnabled      = sample && !_vm.SampleIsHeaderOnly;
+        MNU_ExportSample.IsEnabled      = sample && (!_vm.SampleIsHeaderOnly || _vm.SampleIsLinkedStub);
         MNU_ExportMultisample.IsEnabled = multisample;
         MNU_ExportCollection.IsEnabled  = collection;
         MNU_NormalizationReport.IsEnabled = _vm.Roots.Count > 0;
@@ -1261,7 +1278,7 @@ public partial class SampleEditorWindow : ThemedWindow
         MNU_Gain.IsEnabled             = audio;
         MNU_Zoom.IsEnabled             = audio;
 
-        MNU_DeleteZone.IsEnabled        = _vm.HasZoneSelected;
+        MNU_DeleteZone.IsEnabled        = _vm.HasZoneSelected && (_vm.CurrentMultisampleZones?.Count ?? 0) > 1;
         MNU_RenameMultisample.IsEnabled = _vm.CurrentMultisampleName != null;
         MNU_RenameSample.IsEnabled      = _vm.HasSampleLoaded;
         MNU_RevertKsc.IsEnabled         = _vm.HasActiveCollection;
@@ -2103,7 +2120,48 @@ public partial class SampleEditorWindow : ThemedWindow
     void OnTransportFastForward(object sender, RoutedEventArgs e) => AfterMutation(() => _vm.TransportSeekRelative(1));
     void OnTransportPause(object sender, RoutedEventArgs e) => AfterMutation(_vm.TransportTogglePause);
 
-    void OnDeleteZone(object sender, RoutedEventArgs e) => AfterMutation(_vm.DeleteSelectedZone);
+    // One-step, confirmed zone removal - same confirm-first precedent as
+    // OnDeleteMultisample. Reselects the N-1 zone afterward (same pattern
+    // OnAddPlaceholderZone/OnImportSampleIntoZone use for their own post-mutation
+    // reselect) instead of leaving the editor looking reset, which is what the old
+    // two-stage delete/skip-then-remove did (its second stage went through
+    // RefreshTreeAfterMutation, which never reselected anything).
+    void OnDeleteZone(object sender, RoutedEventArgs e)
+    {
+        if (_vm.SelectedZoneObject is not { } zone) { UpdateStatus(); return; }
+        var label = zone.IsSkipped ? "(skipped)" : zone.Filename;
+
+        var result = MessageBox.Show(this,
+            $"Delete zone '{label}' from the keymap?\nThe underlying sample is not deleted - only the zone entry itself.",
+            "Delete Zone", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+        if (result != MessageBoxResult.Yes) return;
+
+        var kmpPath = _vm.DeleteZoneCompletely();
+        var zoneIndex = _vm.LastDeletedZoneIndex;
+        RefreshDetailPanels();
+        UpdateStatus();
+        if (kmpPath == null) return;
+
+        var msNode = FindMultisampleNode(_vm.Roots, kmpPath);
+        if (msNode != null && zoneIndex >= 0 && zoneIndex < msNode.Children.Count) SelectTreeNode(msNode.Children[zoneIndex]);
+    }
+
+    // Confirmed first, same precedent as OnDeleteMultisample - RemoveSelectedSample now
+    // deletes real files from disk (both the zone's own copy and any matching repository
+    // entry) and isn't on the zone-undo stack, so there's no Ctrl+Z fallback if the user
+    // didn't mean to.
+    void OnRemoveSample(object sender, RoutedEventArgs e)
+    {
+        if (!_vm.HasSampleLoaded) { UpdateStatus(); return; }
+        var label = _vm.SampleName ?? "this sample";
+
+        var result = MessageBox.Show(this,
+            $"Permanently remove '{label}' from the session?\nThe underlying .KSF file(s) - including any matching repository copy - will be deleted from disk. This cannot be undone.",
+            "Remove Sample", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+        if (result != MessageBoxResult.Yes) return;
+
+        AfterMutation(_vm.RemoveSelectedSample);
+    }
 
     void OnCrop(object sender, RoutedEventArgs e) => AfterMutation(_vm.ApplyCrop);
     void OnNormalize(object sender, RoutedEventArgs e) => AfterMutation(() => _vm.ApplyNormalize());
@@ -2320,7 +2378,7 @@ public partial class SampleEditorWindow : ThemedWindow
         // "-L"/"-R" get baked into Name and then doubled on display ("Foo-L-L").
         var current = _vm.CurrentMultisampleBareName;
         if (current == null) return;
-        var dlg = new PromptDialog("New multisample name:", current) { Owner = this };
+        var dlg = new PromptDialog("New multisample name (22 char max):", current, KronosNameMaxLength) { Owner = this };
         if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.Result)) return;
         _vm.RenameSelectedMultisample(dlg.Result);
         UpdateStatus();
@@ -2345,7 +2403,7 @@ public partial class SampleEditorWindow : ThemedWindow
         if (!_vm.HasSampleLoaded) return;
         // Same bare-name reasoning as OnRenameMultisample above - _vm.SampleName carries
         // Suffix, RenameSelectedSample doesn't expect it back.
-        var dlg = new PromptDialog("New sample name:", _vm.CurrentSampleBareName ?? "") { Owner = this };
+        var dlg = new PromptDialog("New sample name (22 char max):", _vm.CurrentSampleBareName ?? "", KronosNameMaxLength) { Owner = this };
         if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.Result)) return;
         _vm.RenameSelectedSample(dlg.Result);
         _repositorySampleCache.Clear(); // the Sample dropdown's cached name for this .KSF is now stale

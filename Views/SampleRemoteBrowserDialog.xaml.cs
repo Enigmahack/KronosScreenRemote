@@ -1,5 +1,7 @@
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using FluentFTP;
 
 namespace KronosScreenRemote;
@@ -13,7 +15,11 @@ namespace KronosScreenRemote;
 // closes risked hanging on the Kronos's FTP server.
 internal partial class SampleRemoteBrowserDialog : ThemedWindow
 {
-    sealed record Entry(string Name, string FullPath, bool IsDirectory)
+    // Raw: the FtpListItem this entry was built from - kept around (rather than copying
+    // out just Size/Modified) so Properties can read whatever it needs (permissions,
+    // owner/group, chmod) without a second GetListing round trip for fields the browser
+    // itself never otherwise uses.
+    sealed record Entry(string Name, string FullPath, bool IsDirectory, FtpListItem Raw)
     {
         public string DisplayName => IsDirectory ? "📁 " + Name : Name;
     }
@@ -48,6 +54,7 @@ internal partial class SampleRemoteBrowserDialog : ThemedWindow
         _extensionFilter = extensionFilter;
         _localRoot = localRoot;
         LST_Items.SelectionChanged += (_, _) => BTN_Select.IsEnabled = LST_Items.SelectedItem is Entry { IsDirectory: false };
+        LST_Items.PreviewMouseRightButtonDown += (s, e) => PrepareContextMenu(e);
         Loaded += async (_, _) => await ConnectAndRefreshAsync();
         BlockCloseWhileBusy();
         Closed += (_, _) => DisposeInBackground();
@@ -70,6 +77,7 @@ internal partial class SampleRemoteBrowserDialog : ThemedWindow
         _pushCollection = collection;
         Title = "Select Folder on Kronos";
         BTN_Select.Content = "Select This Folder";
+        LST_Items.PreviewMouseRightButtonDown += (s, e) => PrepareContextMenu(e);
         // Enabled once RefreshAsync's first listing succeeds (see there) - "push into
         // whatever directory I'm currently browsing," not "act on the highlighted row"
         // like the pull mode's per-file gate above, but still gated on actually being
@@ -119,7 +127,7 @@ internal partial class SampleRemoteBrowserDialog : ThemedWindow
         {
             var listing = await _client.GetListing(_dir);
             var entries = listing
-                .Select(i => new Entry(i.Name, i.FullName, i.Type == FtpObjectType.Directory))
+                .Select(i => new Entry(i.Name, i.FullName, i.Type == FtpObjectType.Directory, i))
                 // Folder-pick mode: directories only, nothing to filter by file type -
                 // there's no file to select, just a destination to navigate into/confirm.
                 .Where(e => _folderPickMode
@@ -168,6 +176,22 @@ internal partial class SampleRemoteBrowserDialog : ThemedWindow
     // before closing), uploading via SampleFtpPush instead of downloading.
     async Task SelectFolderAndPushAsync()
     {
+        // The FTP root itself ("/", where SSD1/SSD2/SSD3/... live) is never a valid push
+        // destination - every resulting file would land as a direct child of root, which
+        // FtpPathSafety.IsTopLevelPath (correctly) treats as a top-level volume name and
+        // refuses to promote from its .part staging name. Left unguarded, this dialog's
+        // own default starting directory ("/") plus BTN_Select going live as soon as the
+        // first listing succeeds makes "open this dialog, click Select This Folder
+        // immediately" a two-click way to upload every file's .part sibling and then
+        // fail every single promote - reachable by accident, not just by misuse.
+        if (_dir is "/" or "")
+        {
+            MessageBox.Show(this,
+                "Choose a folder inside one of the storage volumes (SSD1, SSD2, ...) first - "
+                + "the root itself isn't a valid destination.",
+                "Select Folder on Kronos", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
         _busy = true;
         BTN_Select.IsEnabled = false;
         BTN_Cancel.IsEnabled = false;
@@ -237,4 +261,127 @@ internal partial class SampleRemoteBrowserDialog : ThemedWindow
     }
 
     void OnCancel(object sender, RoutedEventArgs e) => DialogResult = false;
+
+    // ── Right-click folder management ───────────────────────────────────────────
+    // Create/rename/delete/refresh/properties for whatever the Push-to-Kronos folder
+    // picker (and the plain .KSC/.KMP browser, which shares this same class) is
+    // currently showing - there was previously no way to organize the Kronos's SD card
+    // from inside this app at all short of the separate File Manager window.
+
+    static Entry? GetEntryAt(ListBox lb, Point pt)
+    {
+        var hit = lb.InputHitTest(pt) as DependencyObject;
+        while (hit != null)
+        {
+            if (hit is ListBoxItem lbi) return lbi.Content as Entry;
+            hit = VisualTreeHelper.GetParent(hit);
+        }
+        return null;
+    }
+
+    void PrepareContextMenu(MouseButtonEventArgs e)
+    {
+        var entry = GetEntryAt(LST_Items, e.GetPosition(LST_Items));
+        if (entry != null) LST_Items.SelectedItem = entry;
+        LST_Items.ContextMenu = BuildContextMenu(entry);
+    }
+
+    ContextMenu BuildContextMenu(Entry? entry)
+    {
+        var cm = new ContextMenu();
+        cm.Items.Add(MakeItem("New Folder...", !_busy, async (_, _) => await OnNewFolderAsync()));
+        cm.Items.Add(new Separator());
+        // A top-level entry (SSD1/SSD2/SSD3/...) can never be renamed - see
+        // FtpPathSafety's own comment. Delete has no such restriction (matches
+        // FileManagerWindow's own existing Delete, which was never flagged as unsafe).
+        bool canRename = entry != null && !_busy && !FtpPathSafety.IsTopLevelPath(entry.FullPath);
+        cm.Items.Add(MakeItem("Rename...", canRename, async (_, _) => await OnRenameEntryAsync(entry!)));
+        cm.Items.Add(MakeItem("Delete", entry != null && !_busy, async (_, _) => await OnDeleteEntryAsync(entry!)));
+        cm.Items.Add(new Separator());
+        cm.Items.Add(MakeItem("Refresh", !_busy, async (_, _) => await RefreshAsync()));
+        // Gated on !_busy too - FtpPropertiesDialog.OnCalculate issues its own
+        // GetListing(Recursive) over this SAME _client, and interleaving that with an
+        // in-flight push/pull's own command sequence on one FTP control connection is
+        // exactly the kind of thing FTP control connections don't tolerate.
+        cm.Items.Add(MakeItem("Properties", entry != null && !_busy, (_, _) => OnProperties(entry!)));
+        return cm;
+    }
+
+    static MenuItem MakeItem(string header, bool enabled, RoutedEventHandler onClick)
+    {
+        var item = new MenuItem { Header = header, IsEnabled = enabled };
+        item.Click += onClick;
+        return item;
+    }
+
+    static string GetFtpParent(string path)
+    {
+        var clean = path.TrimEnd('/');
+        var slash = clean.LastIndexOf('/');
+        return slash <= 0 ? "/" : clean[..slash];
+    }
+
+    async Task OnNewFolderAsync()
+    {
+        var dlg = new PromptDialog("New folder name:", "New Folder") { Owner = this };
+        if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.Result)) return;
+        var newPath = $"{_dir.TrimEnd('/')}/{dlg.Result}";
+        if (!FtpPathSafety.FitsMaxRemotePathLength(newPath))
+        { TXT_Status.Text = FtpPathSafety.TooLongMessage(newPath); return; }
+        _busy = true;
+        try
+        {
+            await _client.CreateDirectory(newPath);
+            await RefreshAsync();
+            TXT_Status.Text = $"Created '{dlg.Result}'.";
+        }
+        catch (Exception ex) { TXT_Status.Text = $"Couldn't create folder: {ex.Message}"; }
+        finally { _busy = false; }
+    }
+
+    async Task OnRenameEntryAsync(Entry entry)
+    {
+        // Belt-and-suspenders - BuildContextMenu already disables this item for a
+        // top-level entry, but a direct call (or a future caller) shouldn't rely on
+        // that alone. RenameGuardedAsync below is the last line of defense either way.
+        if (FtpPathSafety.IsTopLevelPath(entry.FullPath))
+        { TXT_Status.Text = AppMessages.FileManager.CannotRenameTopLevel(entry.Name); return; }
+
+        var dlg = new PromptDialog("New name:", entry.Name) { Owner = this };
+        if (dlg.ShowDialog() != true || string.IsNullOrWhiteSpace(dlg.Result) || dlg.Result == entry.Name) return;
+        var newPath = $"{GetFtpParent(entry.FullPath).TrimEnd('/')}/{dlg.Result}";
+        if (!FtpPathSafety.FitsMaxRemotePathLength(newPath))
+        { TXT_Status.Text = FtpPathSafety.TooLongMessage(newPath); return; }
+        _busy = true;
+        try
+        {
+            await _client.RenameGuardedAsync(entry.FullPath, newPath);
+            await RefreshAsync();
+            TXT_Status.Text = $"Renamed to '{dlg.Result}'.";
+        }
+        catch (Exception ex) { TXT_Status.Text = $"Rename failed: {ex.Message}"; }
+        finally { _busy = false; }
+    }
+
+    async Task OnDeleteEntryAsync(Entry entry)
+    {
+        var kind = entry.IsDirectory ? "folder (and everything in it)" : "file";
+        var result = MessageBox.Show(this,
+            $"Permanently delete the {kind} '{entry.Name}'?\nThis cannot be undone.",
+            "Delete", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+        if (result != MessageBoxResult.Yes) return;
+
+        _busy = true;
+        try
+        {
+            if (entry.IsDirectory) await _client.DeleteDirectory(entry.FullPath);
+            else await _client.DeleteFile(entry.FullPath);
+            await RefreshAsync();
+            TXT_Status.Text = $"Deleted '{entry.Name}'.";
+        }
+        catch (Exception ex) { TXT_Status.Text = $"Delete failed: {ex.Message}"; }
+        finally { _busy = false; }
+    }
+
+    void OnProperties(Entry entry) => new FtpPropertiesDialog(_client, entry.FullPath, entry.IsDirectory, entry.Raw) { Owner = this }.ShowDialog();
 }
