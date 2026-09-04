@@ -598,11 +598,8 @@
                         <Button Grid.Column="0" Padding="10 2" MinWidth="128" HorizontalAlignment="Left"
                                 Command="{Binding AutoFillToLibraryCommand}"
                                 ToolTip="Place everything staged into the next free slots of its own type - Programs, then Combis, then Set Lists. Anything that doesn't fit stays staged.">
-                            <Grid>
-                                <ProgressBar IsIndeterminate="True" Height="14" Opacity="0.35"
-                                             Background="Transparent" BorderThickness="0"
-                                             Visibility="{Binding IsAutoFilling, Converter={StaticResource BoolToVis}}"/>
-                                <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Grid>
+                                    <TextBlock HorizontalAlignment="Center" VerticalAlignment="Center">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock">
                                             <Setter Property="Text" Value="Auto-Fill to Library"/>
