@@ -410,7 +410,7 @@ public partial class MainWindow
         {
             _cal.Mode = !_cal.Mode;
             if (_cal.Mode) EnterCalMode(); else ExitCalMode();
-            Console.WriteLine($"[cal] calibrate mode {(_cal.Mode ? "ON" : "OFF")}");
+            AppLog.Info($"[cal] calibrate mode {(_cal.Mode ? "ON" : "OFF")}");
             OverlayLayer.InvalidateVisual(); return;
         }
 

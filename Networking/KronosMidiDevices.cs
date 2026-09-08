@@ -76,7 +76,32 @@ static class KronosMidiDevices
         MidiOut? mo = null;
         try { mi = new MidiIn(inIdx); mo = new MidiOut(outIdx); return true; }
         catch { return false; }
-        finally { try { mi?.Dispose(); } catch { } try { mo?.Dispose(); } catch { } }
+        finally { SafeClose(mi); SafeClose(mo); }
+    }
+
+    // The ONLY safe way to let go of a NAudio MidiIn/MidiOut, and it is not optional.
+    //
+    // Both types close their winmm handle through MmException.Try(midiInReset /
+    // midiOutClose), which THROWS on a non-MMSYSERR_NOERROR result, and both set their
+    // internal `disposed` flag only AFTER that call. Unplug the Kronos and the handle is
+    // dead: midiInReset returns NoDriver, Dispose() throws, `disposed` stays false - and
+    // the object's finalizer is still armed. The next GC then runs ~MidiIn() -> the same
+    // throwing Dispose(false), this time on the finalizer thread, where an escaping
+    // exception terminates the process outright: no dialog, no DispatcherUnhandledException,
+    // nothing in the app log. That is the "client vanishes when the Kronos is unplugged"
+    // crash (confirmed from a Windows Event Log 1026 record:
+    // "NAudio.MmException: NoDriver calling midiInReset ... at MidiIn.Finalize()").
+    //
+    // Suppressing finalization FIRST makes a throwing Dispose harmless - the object is
+    // simply abandoned, and the winmm handle is reclaimed by the OS on process exit like
+    // any other handle belonging to a device that no longer exists. Disarming the
+    // finalizer before the risky call is the whole point; doing it after would be too
+    // late, because Dispose() is exactly what throws.
+    public static void SafeClose(IDisposable? midiPort)
+    {
+        if (midiPort == null) return;
+        GC.SuppressFinalize(midiPort);
+        try { midiPort.Dispose(); } catch { }
     }
 
     public static IReadOnlyList<string> InputNames()

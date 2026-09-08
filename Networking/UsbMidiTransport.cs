@@ -137,6 +137,11 @@ sealed class UsbMidiTransport : IKronosMidiTransport
         MidiOut? mo;
         lock (_sendLock) { mi = _in; _in = null; mo = _out; _out = null; }
 
+        // Every close goes through KronosMidiDevices.SafeClose - see its comment: a
+        // plain try/catch around Dispose() is NOT enough, because the swallowed
+        // exception leaves the finalizer armed and the process dies at the next GC.
+        // Reaching here with a device that has just been unplugged is the normal
+        // case, not the exceptional one - Start()'s own catch calls Stop().
         if (mi != null)
         {
             mi.MessageReceived      -= OnShortMessage;
@@ -144,12 +149,12 @@ sealed class UsbMidiTransport : IKronosMidiTransport
             mi.ErrorReceived        -= OnError;
             try { mi.Stop();  } catch { }
             try { mi.Reset(); } catch { }
-            try { mi.Dispose(); } catch { }
+            KronosMidiDevices.SafeClose(mi);
         }
         if (mo != null)
         {
             try { mo.Reset();   } catch { }
-            try { mo.Dispose(); } catch { }
+            KronosMidiDevices.SafeClose(mo);
         }
 
         // Fail any in-flight query so its awaiter unblocks.

@@ -52,6 +52,30 @@ static class SamplePhase16SelfTests
             Check("reverse-mono-position-decrements-one-past-bound", provider.PositionFrame == 0);
         }
 
+        // Mono reverse into an EXACTLY-sized buffer - what NAudio's own
+        // Pcm16BitToSampleProvider hands us (it allocates the buffer at precisely the
+        // byte count it asks for). The check above uses a deliberately roomy buffer, so
+        // it could not catch WriteFrame writing a right-channel sample past the end of a
+        // 2-byte mono frame: on the last frame that landed outside the buffer entirely
+        // and threw IndexOutOfRangeException on the WASAPI render thread, killing mono
+        // reverse playback instantly while the looped path (whose WriteFrame has always
+        // been channel-gated) kept working.
+        {
+            short[] pcm = [10, 11, 12, 13, 14];
+            var provider = new OneShotSampleWaveProvider(pcm, null, 44100, startFrame: 0, reverse: true);
+            var buf = new byte[10]; // exactly 5 mono frames - no slack past the last one
+            int read;
+            try { read = provider.Read(buf, 0, buf.Length); }
+            catch (IndexOutOfRangeException) { read = -1; }
+            Check("reverse-mono-exact-buffer-does-not-overrun", read == 10);
+            if (read == 10)
+            {
+                short[] got = new short[5];
+                for (int i = 0; i < got.Length; i++) got[i] = BitConverter.ToInt16(buf, i * 2);
+                Check("reverse-mono-exact-buffer-reads-backward", got.SequenceEqual<short>([14, 13, 12, 11, 10]));
+            }
+        }
+
         // ── OneShotSampleWaveProvider, reverse=true, stereo ────────────────────────
         {
             short[] left = [1, 2, 3];

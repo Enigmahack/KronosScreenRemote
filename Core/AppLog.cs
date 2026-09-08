@@ -11,16 +11,35 @@ static class AppLog
     public static string? LogPath    { get; private set; }
     public static bool   DebugEnabled { get; set; } = false;
 
+    // Log of the run BEFORE this one, kept alongside the live log. Init truncates
+    // (append: false), so without this the evidence for any crash that takes the
+    // process down is destroyed by the very next launch - which is always the first
+    // thing anyone does after a crash. Rotating it here costs one file move per
+    // start and makes "it crashed, here's the stack" answerable after the fact.
+    public static string? PreviousLogPath { get; private set; }
+
     public static void Init(string path)
     {
         LogPath = path;
+        var prev = Path.Combine(Path.GetDirectoryName(path) ?? ".",
+            Path.GetFileNameWithoutExtension(path) + ".prev" + Path.GetExtension(path));
         lock (_lock)
         {
+            try
+            {
+                // Move, never copy: DataDir is on the SMB share, the log routinely runs
+                // to megabytes, and copying it whole would stall every launch. A rename
+                // on the same volume is instant, and Init reopens `path` from scratch
+                // (append: false) on the very next line anyway.
+                if (File.Exists(path)) { File.Move(path, prev, overwrite: true); PreviousLogPath = prev; }
+            }
+            catch { /* rotation is best-effort - never block startup over it */ }
             try { _writer = new StreamWriter(path, append: false, Encoding.UTF8) { AutoFlush = true }; }
             catch (Exception ex) { Console.Error.WriteLine($"[AppLog] cannot open {path}: {ex.Message}"); }
         }
         Info($"=== KronosScreenRemote v{System.Reflection.Assembly.GetExecutingAssembly().GetName().Version} started {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
         Info($"[init] log → {path}");
+        if (PreviousLogPath != null) Info($"[init] previous run's log kept at {PreviousLogPath}");
     }
 
     public static void Info (string msg) => Write("INFO ", msg, toConsole: true);

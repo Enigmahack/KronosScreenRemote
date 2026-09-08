@@ -427,14 +427,25 @@ sealed class OneShotSampleWaveProvider : IWaveProvider
         return frames * frameBytes;
     }
 
+    // The right-channel write is gated on _channels, exactly as LoopingSampleProvider's
+    // own WriteFrame already is: a MONO frame is 2 bytes, so writing 4 runs 2 bytes past
+    // the frame - and past the whole buffer on the last frame of a full read. The forward
+    // mono path never reaches here (it takes Read's BlockCopy fast path), so this only
+    // ever bit mono REVERSE playback, where NAudio hands us an exactly-sized buffer and
+    // the overrun threw IndexOutOfRangeException on the WASAPI render thread - playback
+    // died the instant it started. That is why Reverse appeared to work only with Loop
+    // enabled (LoopingSampleProvider, which has the guard).
     void WriteFrame(byte[] buffer, int bi, int frame)
     {
         short l = frame < _left.Length ? _left[frame] : (short)0;
         buffer[bi] = (byte)l;
         buffer[bi + 1] = (byte)(l >> 8);
-        short r = _right != null && frame < _right.Length ? _right[frame] : (short)0;
-        buffer[bi + 2] = (byte)r;
-        buffer[bi + 3] = (byte)(r >> 8);
+        if (_channels == 2)
+        {
+            short r = _right != null && frame < _right.Length ? _right[frame] : (short)0;
+            buffer[bi + 2] = (byte)r;
+            buffer[bi + 3] = (byte)(r >> 8);
+        }
     }
 }
 
