@@ -1,0 +1,74 @@
+<UserControl x:Class="KronosScreenRemote.KronosLeftPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:KronosScreenRemote">
+    <!-- Kronos left value-slider panel - moved out of MainWindow.xaml's Grid.Column="0" into its
+         own UserControl (grill-me follow-up, 2026-09-21: MainWindow hosts this and
+         KronosRightPanel/NautilusRightPanel behind ContentControls, swapped by DeviceFamily in
+         ApplyDeviceFamilyUi, instead of every family's XAML permanently sharing one visual tree
+         via Visibility toggles). No Nautilus equivalent exists - Nautilus has no left-hand
+         Value/Inc+Dec column at all (LeftPanelHost.Content is null there); see
+         MainWindow.xaml.cs's ApplyDeviceFamilyUi. -->
+    <Grid>
+        <Viewbox x:Name="LeftPanelViewbox" Stretch="Uniform">
+            <Grid Width="282" Height="600" ClipToBounds="True">
+                <Image Source="/Resources/Images/KronosLeftSide2EMPTY.png"
+                       Stretch="Fill"
+                       RenderOptions.BitmapScalingMode="HighQuality"
+                       SnapsToDevicePixels="False"
+                       IsHitTestVisible="False" Margin="-33,-113,-34,0"/>
+
+                <local:KronosButton x:Name="BTN_Inc"
+                    Margin="114,72,118,504"
+                    ToolTip="Increment value"
+                    TabIndex="10" AutomationProperties.Name="Increment value"
+                    UnlitSource="/Resources/Images/UnlitThinButton.png"
+                    ButtonMode="None"/>
+                <local:KronosButton x:Name="BTN_Dec"
+                    Margin="114,146,118,430"
+                    ToolTip="Decrement value"
+                    TabIndex="20" AutomationProperties.Name="Decrement value"
+                    UnlitSource="/Resources/Images/UnlitThinButton.png"
+                    ButtonMode="None"/>
+
+                <Canvas x:Name="ValueSliderCanvas"
+                        Margin="87,300,87,30"
+                        Background="Transparent"
+                        Cursor="Hand"
+                        KeyboardNavigation.TabIndex="30"
+                        AutomationProperties.Name="Value slider"
+                        AutomationProperties.HelpText="Up/Down arrow keys adjust the value, 0 to 127.">
+                    <Image x:Name="ValueSliderThumb"
+                           Width="72" Height="42"
+                           Source="/Resources/Images/Slider.png"
+                           RenderOptions.BitmapScalingMode="HighQuality"
+                           Canvas.Left="17" Canvas.Top="228"
+                           IsHitTestVisible="False"/>
+                </Canvas>
+            </Grid>
+        </Viewbox>
+
+        <!-- Focused-mode rail: click to expand/collapse value panel -->
+        <Border x:Name="ValueRail"
+                Width="28"
+                HorizontalAlignment="Left"
+                Background="#FF1A1A1A"
+                BorderThickness="0 0 1 0"
+                BorderBrush="#FF333333"
+                Visibility="Collapsed">
+            <Button x:Name="BtnValueRailExpand"
+                    Background="Transparent"
+                    Foreground="#FF88DD88"
+                    BorderThickness="0"
+                    Padding="0"
+                    FontSize="16"
+                    Focusable="False"
+                    VerticalContentAlignment="Center"
+                    HorizontalContentAlignment="Center"
+                    FocusVisualStyle="{x:Null}"
+                    ToolTip="Expand value input">
+                <TextBlock Text="‹" FontSize="16"/>
+            </Button>
+        </Border>
+    </Grid>
+</UserControl>

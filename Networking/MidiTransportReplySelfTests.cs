@@ -47,7 +47,7 @@ static class MidiTransportReplySelfTests
         // Through the real caller: a timed-out Store Bank must surface as null so its own callers'
         // `code ?? -1` reports FAILURE, never a phantom success. This is the exact data-safety
         // regression the notnull bug reintroduced one layer below where DataSafetySelfTests reach.
-        var collector = new SysExDumpCollector(new FakeTransport());
+        var collector = new SysExDumpCollector(new FakeTransport(), KronosSysExCodec.Instance);
         int? storeTimeout = await collector.SendAndAwaitReplyAsync(KronosSysEx.BuildStoreBankRequest(0, 0), 1).ConfigureAwait(false);
         Check("collector-store-timeout-is-null", storeTimeout == null);
 

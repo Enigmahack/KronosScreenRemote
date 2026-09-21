@@ -160,7 +160,7 @@
 
                         <TextBlock Grid.Row="2" Grid.Column="0" Text="FTP Password" VerticalAlignment="Center"
                                    ToolTip="Password for FTP authentication to the Kronos."/>
-                        <PasswordBox Grid.Row="2" Grid.Column="1" x:Name="TxtFtpPass"
+                        <local:RevealablePasswordBox Grid.Row="2" Grid.Column="1" x:Name="TxtFtpPass"
                                      ToolTip="Password for FTP authentication to the Kronos."/>
 
                         <TextBlock Grid.Row="4" Grid.Column="0" Text="FTP Port" VerticalAlignment="Center"

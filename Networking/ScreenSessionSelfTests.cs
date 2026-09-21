@@ -15,6 +15,13 @@ static class ScreenSessionSelfTests
         var safe = ScreenSession.ParseDaemonState("MODE=3 EDITCTX=x");
         Check("state-safe-defaults", safe is { EditContext: EditContext.None, Booting: true });
 
+        var kronos = ScreenSession.ParseModelInfo("FAMILY=KRONOS MODEL=KRONOS2 FB_BPP=8");
+        Check("model-kronos", kronos is { Family: "KRONOS", Model: "KRONOS2", FbBpp: 8 });
+        var nautilus = ScreenSession.ParseModelInfo("FAMILY=NAUTILUS MODEL=NAUTILUS FB_BPP=16");
+        Check("model-nautilus", nautilus is { Family: "NAUTILUS", Model: "NAUTILUS", FbBpp: 16 });
+        Check("model-null-response", ScreenSession.ParseModelInfo(null) == null);
+        Check("model-missing-family", ScreenSession.ParseModelInfo("MODEL=KRONOS2 FB_BPP=8") == null);
+
         var first = new FakeReceiver();
         var second = new FakeReceiver();
         var receivers = new Queue<FakeReceiver>(new[] { first, second });
@@ -84,6 +91,8 @@ static class ScreenSessionSelfTests
         public event Action? Disconnected;
         public int Width => 2;
         public int Height => 2;
+        public StreamPixelFormat Fmt => StreamPixelFormat.Index8;
+        public int Bpp => 8;
         public PaletteEntry[] Palette { get; } = new PaletteEntry[256];
 
         public Task ConnectAsync(CancellationToken ct = default) => Task.CompletedTask;

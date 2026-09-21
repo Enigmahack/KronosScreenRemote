@@ -30,8 +30,8 @@ public partial class MainWindow
         WireMenu();
         InitAudio();
         InitTrayIcon();
-        BtnRailExpand.Click      += (_, _) => ToggleFocusedDataExpand();
-        BtnValueRailExpand.Click += (_, _) => ToggleFocusedValueExpand();
+        _kronosRightPanel.BtnRailExpand.Click      += (_, _) => ToggleFocusedDataExpand();
+        _kronosLeftPanel.BtnValueRailExpand.Click += (_, _) => ToggleFocusedValueExpand();
         _layoutPreset = _settings.LayoutPreset;
         ApplyLayoutPreset(_layoutPreset, saveSettings: false);
 
@@ -203,16 +203,43 @@ public partial class MainWindow
         if (ctrl && e.Key == Key.Z)
         {
             if (_cal.Mode) { if (_shiftHeld) CalHistRedo(); else CalHistUndo(); }
+            else          { if (_shiftHeld) HistRedo();    else HistUndo();    }
             OverlayLayer.InvalidateVisual(); return;
         }
         if (ctrl && e.Key == Key.Y)
         {
-            if (_cal.Mode) CalHistRedo();
+            if (_cal.Mode) CalHistRedo(); else HistRedo();
             OverlayLayer.InvalidateVisual(); return;
         }
         if (ctrl && e.Key == Key.K) { OpenCommandPalette(); e.Handled = true; return; }
+        if (ctrl && e.Key == Key.C && _edOpen)
+        {
+            _clipboard = EffRgb(_edSel);
+            Console.WriteLine($"[clipboard] copied entry {_edSel}: {_clipboard}");
+            return;
+        }
+        // Checked before the plain-Ctrl+V per-entry color paste below, since both share the
+        // V key - Shift is what picks "paste the system clipboard's IMAGE as an alignable
+        // overlay" over "paste the in-app single-entry color clipboard".
+        if (ctrl && _shiftHeld && e.Key == Key.V && _edOpen)
+        {
+            PasteOverlayFromClipboard();
+            OverlayLayer.InvalidateVisual(); return;
+        }
+        if (ctrl && e.Key == Key.V && _edOpen && _clipboard.HasValue)
+        {
+            if (!_locked.Contains(_edSel))
+            {
+                var old = _overrides.TryGetValue(_edSel, out var ov) ? ov : (PaletteEntry?)null;
+                _overrides[_edSel] = _clipboard.Value;
+                HistPush(_edSel, old, _clipboard.Value);
+                RebuildLut(); ApplyLut();
+            }
+            _edTyped = null;
+            OverlayLayer.InvalidateVisual(); return;
+        }
 
-        if (ctrl && e.Key == Key.V && _kbdCapture && _kbdSendEnabled)
+        if (ctrl && e.Key == Key.V && !_edOpen && _kbdCapture && _kbdSendEnabled)
         {
             PasteClipboardToKronos();
             e.Handled = true; return;
@@ -223,7 +250,7 @@ public partial class MainWindow
         if (ctrl && e.Key == Key.D3) { SetWindowSize(1.25); return; }
         if (ctrl && e.Key == Key.D4) { SetWindowSize(1.50); return; }
         if (ctrl && e.Key == Key.D5) { SetWindowSize(2.00); return; }
-        if (ctrl && e.Key == Key.S && !_cal.Mode) { SaveScreenshot(); e.Handled = true; return; }
+        if (ctrl && e.Key == Key.S && !_edOpen && !_cal.Mode) { SaveScreenshot(); e.Handled = true; return; }
 
         // ── Fullscreen shortcuts (intercept before capture so they work even when forwarding) ──
         if (_fs.Active && !ctrl && !e.IsRepeat)
@@ -237,17 +264,21 @@ public partial class MainWindow
             }
         }
 
-        // ── Numpad Enter → Kronos when capture is active ─────────────────────
-        if (_kbdCapture && _kbdSendEnabled && !ctrl && !e.IsRepeat && !_cal.Mode && e.Key == Key.Return && _extendedKey)
+        // ── Numpad Enter → Kronos front-panel ENTER when capture is active. Kronos only -
+        //    on Nautilus this falls through to the generic keyboard-forward block below
+        //    instead (KeyMap.ToLinux(Key.Return) = 28), sending a real keystroke rather than
+        //    a front-panel button injection (your 2026-09-22 direction). ────────────────────
+        if (_deviceFamily != DeviceFamily.Nautilus
+            && _kbdCapture && _kbdSendEnabled && !ctrl && !e.IsRepeat && !_edOpen && !_cal.Mode && e.Key == Key.Return && _extendedKey)
         {
             _instantKeys.Add(Key.Return);   // suppress KEY-up so KEY 28 0 is never sent to vkbd
-            BTN_Enter.FlashDepress();
+            _kronosRightPanel.BTN_Enter.FlashDepress();
             Ctrl(DaemonCommand.Button(PanelButton.Enter));
             e.Handled = true; return;
         }
 
         // ── Macros (user-defined first, then built-ins) - requires modifier key ─
-        if (!e.IsRepeat && _kbdCapture && _kbdSendEnabled && !_cal.Mode
+        if (!e.IsRepeat && _kbdCapture && _kbdSendEnabled && !_edOpen && !_cal.Mode
             && Keyboard.Modifiers != ModifierKeys.None)
         {
             var baseKey = e.Key == Key.System ? e.SystemKey : e.Key;
@@ -256,8 +287,13 @@ public partial class MainWindow
             if (ctrl && e.Key == Key.A)    { MacroSelectAll();  e.Handled = true; return; }
         }
 
-        // ── Numpad 0–9 / − / · : always forward when capture active ──────────
-        if (_kbdCapture && _kbdSendEnabled && !ctrl && !e.IsRepeat && !_cal.Mode)
+        // ── Numpad 0-9 / - / . : Kronos front-panel numeric keypad, when capture is active.
+        //    Kronos only - on Nautilus this falls through to the generic keyboard-forward
+        //    block below instead (KeyMap.ToLinux now maps these), sending real keystrokes as
+        //    though a USB keyboard were plugged in, rather than front-panel button injections
+        //    (your 2026-09-22 direction). ─────────────────────────────────────────────────
+        if (_deviceFamily != DeviceFamily.Nautilus
+            && _kbdCapture && _kbdSendEnabled && !ctrl && !e.IsRepeat && !_edOpen && !_cal.Mode)
         {
             int? numBtn = e.Key switch
             {
@@ -266,13 +302,13 @@ public partial class MainWindow
                 Key.NumPad8 => 8, Key.NumPad9 => 9, _ => (int?)null
             };
             if (numBtn.HasValue) { NumButton(numBtn.Value)?.FlashDepress(); Ctrl(DaemonCommand.NumberButton(numBtn.Value)); e.Handled = true; return; }
-            if (e.Key == Key.Subtract) { BTN_data_dash.FlashDepress();   Ctrl(DaemonCommand.Button(PanelButton.NumDash)); e.Handled = true; return; }
-            if (e.Key == Key.Decimal)  { BTN_data_period.FlashDepress(); Ctrl(DaemonCommand.Button(PanelButton.NumDot));  e.Handled = true; return; }
+            if (e.Key == Key.Subtract) { _kronosRightPanel.BTN_data_dash.FlashDepress();   Ctrl(DaemonCommand.Button(PanelButton.NumDash)); e.Handled = true; return; }
+            if (e.Key == Key.Decimal)  { _kronosRightPanel.BTN_data_period.FlashDepress(); Ctrl(DaemonCommand.Button(PanelButton.NumDot));  e.Handled = true; return; }
         }
 
         // ── Keyboard capture: forward before any local shortcut ──────────────
         // F1–F12 fall through to the IsAction checks below (mode select, help, etc.).
-        if (_kbdCapture && _kbdSendEnabled && !ctrl && !e.IsRepeat && !_cal.Mode
+        if (_kbdCapture && _kbdSendEnabled && !ctrl && !e.IsRepeat && !_edOpen && !_cal.Mode
             && (e.Key < Key.F1 || e.Key > Key.F12))
         {
             // Shifted override: Kronos needs a different keycode or Shift handling
@@ -326,6 +362,9 @@ public partial class MainWindow
         if (e.Key == Key.Escape)
         {
             if (_fs.Active)               { ToggleFullscreen(); return; }
+            if (_edOpen && _edTyped != null) { _edTyped  = null;  OverlayLayer.InvalidateVisual(); return; }
+            if (_edOpen && _ovlBitmapSrc != null) { ClearPaletteOverlay(); return; }
+            if (_edOpen)                     { _edOpen   = false; OverlayLayer.InvalidateVisual(); return; }
             if (_drag.Pending || _drag.Active)
             {
                 var cancelPos = _drag.Active ? _drag.Last : _drag.PendingPos;
@@ -367,7 +406,7 @@ public partial class MainWindow
         if (IsAction("Sample Editor", e)) { RunCommand("Sample Editor"); return; }
         if (IsAction("Librarian",     e)) { RunCommand("Librarian");     return; }
 
-        if (e.Key == Key.Return)
+        if (e.Key == Key.Return && !_edOpen)
         {
             Ctrl(DaemonCommand.Button(PanelButton.Enter)); return;
         }
@@ -414,6 +453,8 @@ public partial class MainWindow
             OverlayLayer.InvalidateVisual(); return;
         }
 
+        // Palette editor retired (3.0.2) - see MainWindow.xaml.cs's EffectiveOverrides comment.
+
         if (_cal.Mode && e.Key == Key.R)
         {
             _cal.Mesh.Reset();
@@ -440,12 +481,99 @@ public partial class MainWindow
             OverlayLayer.InvalidateVisual(); return;
         }
 
+        if (!_edOpen) return;
+
+        if (e.Key == Key.R) { _edCh = 0; _edTyped = null; OverlayLayer.InvalidateVisual(); return; }
+        if (e.Key == Key.G) { _edCh = 1; _edTyped = null; OverlayLayer.InvalidateVisual(); return; }
+        if (e.Key == Key.B) { _edCh = 2; _edTyped = null; OverlayLayer.InvalidateVisual(); return; }
+
+        if (e.Key == Key.A && _ovlBitmapSrc != null) { ApplyPaletteOverlay(); return; }
+
+        if (e.Key == Key.L)
+        {
+            bool wasLocked = _locked.Contains(_edSel);
+            HistPushLock(_edSel, wasLocked, !wasLocked);
+            if (wasLocked) _locked.Remove(_edSel);
+            else _locked.Add(_edSel);
+            Storage.SaveLocks(_locked);
+            OverlayLayer.InvalidateVisual(); return;
+        }
+
+        if (e.Key == Key.S)
+        {
+            // Console.WriteLine alone (Storage.SaveOverrides's own log line) is invisible in a
+            // windowed app with no attached console - pressing S previously gave no feedback
+            // either way, success or failure. SetNotification + the panel's [SAVED]/[UNSAVED]
+            // tag (OverlayRenderer.DrawEditor) now make both outcomes visible.
+            try
+            {
+                Storage.SaveOverrides(_overrides);
+                Storage.SaveLocks(_locked);
+                _paletteDirty = false;
+                SetNotification($"Palette: {_overrides.Count} override(s) saved", isError: false);
+            }
+            catch (Exception ex)
+            {
+                AppLog.Warn($"[palette] save failed: {ex.Message}");
+                SetNotification($"Palette save failed: {ex.Message}", isError: true);
+            }
+            RebuildLut(); ApplyLut();
+            OverlayLayer.InvalidateVisual();
+            return;
+        }
+
+        if (e.Key == Key.Delete)
+        {
+            if (!_locked.Contains(_edSel) && _overrides.TryGetValue(_edSel, out var old))
+            {
+                _overrides.Remove(_edSel);
+                HistPush(_edSel, old, null);
+                RebuildLut(); ApplyLut();
+            }
+            _edTyped = null; OverlayLayer.InvalidateVisual(); return;
+        }
+
+        if (e.Key == Key.Back)
+        {
+            if (_edTyped?.Length > 0)
+                _edTyped = _edTyped.Length == 1 ? null : _edTyped[..^1];
+            OverlayLayer.InvalidateVisual(); return;
+        }
+
+        if (e.Key == Key.Return)
+        {
+            if (_edTyped != null && !_locked.Contains(_edSel) &&
+                int.TryParse(_edTyped, out int v))
+                SetChannel(_edCh, v);
+            _edTyped = null; OverlayLayer.InvalidateVisual(); return;
+        }
+
+        if (e.Key is Key.Up or Key.Down)
+        {
+            int delta = e.Key == Key.Up ? 1 : -1;
+            if (_shiftHeld) delta *= 10;
+            DeltaChannel(delta);
+            _edTyped = null; OverlayLayer.InvalidateVisual(); return;
+        }
+
+        char c2 = e.Key switch
+        {
+            >= Key.D0 and <= Key.D9   => (char)('0' + (e.Key - Key.D0)),
+            >= Key.NumPad0 and <= Key.NumPad9 => (char)('0' + (e.Key - Key.NumPad0)),
+            _ => '\0'
+        };
+        if (c2 != '\0')
+        {
+            var typed = (_edTyped ?? "") + c2;
+            _edTyped  = typed.Length > 3 ? typed[^3..] : typed;
+            OverlayLayer.InvalidateVisual();
+        }
     }
 
     void OnKeyUp(object s, KeyEventArgs e)
     {
         _shiftHeld = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
-        if (_kbdCapture && _kbdSendEnabled)
+        if (!_edOpen && _kbdCapture && _kbdSendEnabled)
         {
             // Releasing Shift while a key-repeat is active would leave the repeat running
             // without Shift on the Kronos - e.g. '>' (Shift+OemPeriod) degrades to '.'
@@ -453,10 +581,14 @@ public partial class MainWindow
             if (e.Key is Key.LeftShift or Key.RightShift && _repeatCode != 0)
                 StopRepeat();
 
-            // Numpad keys that route to physical BUTTON commands on key-down never send a
-            // KEY command, so there is no KEY-up to emit.  Suppress here to prevent an
-            // orphaned KEY-up if someone has added a raw mapping for these keys.
-            if (e.Key is Key.NumPad0 or Key.NumPad1 or Key.NumPad2 or Key.NumPad3 or Key.NumPad4 or
+            // Kronos only: numpad keys route to physical BUTTON commands on key-down there and
+            // never send a KEY command, so there is no KEY-up to emit - suppress here to
+            // prevent an orphaned KEY-up if someone has added a raw mapping for these keys. On
+            // Nautilus these DO send a real KEY-down below (OnKeyDown's generic forward path,
+            // now that KeyMap.ToLinux maps them), so they need the matching KEY-up too - falling
+            // through to the normal KeyMap.ToLinux release path further down.
+            if (_deviceFamily != DeviceFamily.Nautilus &&
+                e.Key is Key.NumPad0 or Key.NumPad1 or Key.NumPad2 or Key.NumPad3 or Key.NumPad4 or
                          Key.NumPad5 or Key.NumPad6 or Key.NumPad7 or Key.NumPad8 or Key.NumPad9 or
                          Key.Subtract or Key.Decimal)
                 return;
@@ -502,12 +634,23 @@ public partial class MainWindow
 
     void OnMouseWheel(object s, MouseWheelEventArgs e)
     {
+        var pos  = Mouse.GetPosition(RootGrid);
         bool ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
 
         // Ctrl+scroll adjusts zoom level instead of sending wheel to Kronos
-        if (ctrl)
+        if (ctrl && !_edOpen)
         {
             if (e.Delta > 0) DoZoomIn(); else DoZoomOut();
+            return;
+        }
+
+        if (_edOpen && _panelRect.Contains(pos))
+        {
+            if (_locked.Contains(_edSel)) return;
+            int delta = (e.Delta > 0 ? 1 : -1) * (_shiftHeld ? 10 : 1);
+            DeltaChannel(delta);
+            _edTyped = null;
+            OverlayLayer.InvalidateVisual();
             return;
         }
 
@@ -521,6 +664,34 @@ public partial class MainWindow
     void OnMouseMove(object s, MouseEventArgs e)
     {
         var pos = e.GetPosition(RootGrid);
+
+        if (_ovlActiveDrag.HasValue)
+        {
+            double dx = pos.X - _ovlDragStart.X, dy = pos.Y - _ovlDragStart.Y;
+            var r = _ovlDragStartRect;
+            _ovlRect = _ovlActiveDrag.Value switch
+            {
+                OverlayDragKind.Move => new Rect(r.X + dx, r.Y + dy, r.Width, r.Height),
+                // Corners - both axes follow the mouse from the fixed opposite corner.
+                OverlayDragKind.TL => OverlayRectFromCorners(r.Right, r.Bottom, r.Left + dx,  r.Top + dy),
+                OverlayDragKind.TR => OverlayRectFromCorners(r.Left,  r.Bottom, r.Right + dx, r.Top + dy),
+                OverlayDragKind.BR => OverlayRectFromCorners(r.Left,  r.Top,    r.Right + dx, r.Bottom + dy),
+                OverlayDragKind.BL => OverlayRectFromCorners(r.Right, r.Top,    r.Left + dx,  r.Bottom + dy),
+                // Edges - one axis only, anchored on the fixed opposite edge.
+                OverlayDragKind.N => OverlayRectFromCorners(r.Left,  r.Bottom, r.Right,      r.Top + dy),
+                OverlayDragKind.S => OverlayRectFromCorners(r.Left,  r.Top,    r.Right,      r.Bottom + dy),
+                OverlayDragKind.W => OverlayRectFromCorners(r.Right, r.Top,    r.Left + dx,  r.Bottom),
+                _                 => OverlayRectFromCorners(r.Left,  r.Top,    r.Right + dx, r.Bottom),   // E
+            };
+            OverlayLayer.InvalidateVisual();
+            return;
+        }
+
+        // Hover feedback for the overlay's handles - only when idle (not already mid-drag,
+        // handled above) so the cursor reflects what a click would do right now.
+        Cursor = _edOpen && _ovlBitmapSrc != null
+            ? OverlayCursorFor(OverlayHitTest(pos))
+            : Cursors.Arrow;
 
         if (_cal.Mode)
         {
@@ -639,6 +810,59 @@ public partial class MainWindow
 
         if (e.ChangedButton == MouseButton.Left)
         {
+            if (_edOpen && _panelRect.Contains(pos))
+            {
+                var sw = OverlayRenderer.SwatchAt(pos, _gridOrigin);
+                if (sw.HasValue)
+                {
+                    _edSel = sw.Value; _edTyped = null;
+                }
+                else
+                {
+                    var hit = OverlayRenderer.SliderHit(pos, _panelRect.X, _sliderTop);
+                    if (hit.HasValue)
+                    {
+                        _edCh = hit.Value.ch;
+                        SetChannel(hit.Value.ch, hit.Value.val);
+                        _edTyped = null;
+                    }
+                }
+                OverlayLayer.InvalidateVisual(); return;
+            }
+
+            if (_edOpen && _ovlBitmapSrc != null)
+            {
+                var hit = OverlayHitTest(pos);
+
+                // Ctrl+Click force-assigns this one pixel's overlay color to whatever index is
+                // underneath it, bypassing the vote/quorum entirely - checked before the
+                // drag hit-test so Ctrl+Click never starts a drag even over a handle.
+                if (hit.HasValue && Keyboard.Modifiers.HasFlag(ModifierKeys.Control))
+                {
+                    ForceOverlayPixelAt(pos);
+                    return;
+                }
+
+                if (hit.HasValue)
+                {
+                    _ovlActiveDrag    = hit.Value;
+                    _ovlDragStart     = pos;
+                    _ovlDragStartRect = _ovlRect;
+                    // A Move grab might turn out to be a plain click with no real drag (see
+                    // OnMouseUp) - don't return yet in that case so it can fall through to
+                    // the eyedropper-select below without needing a second click outside the
+                    // overlay first. Any other handle (corner/edge) always starts a real drag.
+                    if (hit.Value != OverlayDragKind.Move) return;
+                }
+            }
+
+            if (_edOpen)
+            {
+                var idx = RawIdxAt(pos);
+                if (idx.HasValue) { _edSel = idx.Value; _edTyped = null; }
+                OverlayLayer.InvalidateVisual(); return;
+            }
+
             if (_frameRect.Contains(pos))
             {
                 var (nx, ny) = ScreenToKronos(pos);
@@ -678,6 +902,8 @@ public partial class MainWindow
     {
         if (e.ChangedButton != MouseButton.Left) return;
         var pos = e.GetPosition(RootGrid);
+
+        if (_ovlActiveDrag.HasValue) { _ovlActiveDrag = null; return; }
 
         if (_cal.DraggingNode.HasValue)
         {
@@ -735,6 +961,12 @@ public partial class MainWindow
         Key.K, Key.L, Key.M, Key.N, Key.O, Key.P, Key.Q, Key.R, Key.S, Key.T,
         Key.U, Key.V, Key.W, Key.X, Key.Y, Key.Z,
         Key.D0, Key.D1, Key.D2, Key.D3, Key.D4, Key.D5, Key.D6, Key.D7, Key.D8, Key.D9,
+        // NumPad0-9/Subtract/Decimal only reach here at all on Nautilus (Kronos intercepts them
+        // earlier - see OnKeyDown/OnKeyUp's own comments), where they're real keystrokes and
+        // should repeat like any other digit.
+        Key.NumPad0, Key.NumPad1, Key.NumPad2, Key.NumPad3, Key.NumPad4,
+        Key.NumPad5, Key.NumPad6, Key.NumPad7, Key.NumPad8, Key.NumPad9,
+        Key.Subtract, Key.Decimal,
         Key.Back, Key.Delete, Key.Space, Key.Tab, Key.Return,
         Key.Up, Key.Down, Key.Left, Key.Right, Key.Home, Key.End, Key.Prior, Key.Next,
         Key.OemMinus, Key.OemPlus, Key.OemComma, Key.OemPeriod, Key.OemQuestion,

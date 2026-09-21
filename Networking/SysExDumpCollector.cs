@@ -15,11 +15,13 @@ namespace KronosScreenRemote;
 sealed class SysExDumpCollector
 {
     readonly IKronosMidiTransport _transport;
+    readonly IKorgSysExCodec _codec;
     readonly SemaphoreSlim _gate = new(1, 1);
 
-    public SysExDumpCollector(IKronosMidiTransport transport)
+    public SysExDumpCollector(IKronosMidiTransport transport, IKorgSysExCodec codec)
     {
         _transport = transport;
+        _codec = codec;
     }
 
     // Send a dump request (func 0x72 single object, or 0x77 whole bank) and
@@ -67,7 +69,7 @@ sealed class SysExDumpCollector
 
         void OnMsg(byte[] m)
         {
-            if (KronosSysEx.HasKorgHeaderAt(m, 0, 0x73) && m.Length >= 6 && m[5] == expectObj)
+            if (_codec.ParseObjectDump(m) is { } dump0 && dump0.Obj == expectObj)
             {
                 lock (results) results.Add(m);
                 Volatile.Write(ref lastMatchTicks, DateTime.Now.Ticks);
@@ -76,9 +78,9 @@ sealed class SysExDumpCollector
             // Reply (func 0x24): the Kronos rejects a dump request with a code -
             // 4 = "target object not found" (empty/absent bank). Capturing it makes
             // "rejected" distinct from "silent" in the sweep log.
-            else if (KronosSysEx.HasKorgHeaderAt(m, 0, 0x24) && m.Length >= 6)
+            else if (_codec.ParseReply(m) is { } rc)
             {
-                Volatile.Write(ref rejectCode, m[5] & 0x7F);
+                Volatile.Write(ref rejectCode, rc);
                 Volatile.Write(ref rejectTicks, DateTime.Now.Ticks);
             }
         }
@@ -182,10 +184,11 @@ sealed class SysExDumpCollector
 
         void OnMsg(byte[] m)
         {
-            // Object Dump reply: F0 42 3g 68 73 <obj> <bank> <idH> <idL> ...
-            if (KronosSysEx.HasKorgHeaderAt(m, 0, 0x73) && m.Length >= 9 && m[5] == obj && m[6] == bank)
+            // Object Dump reply - header shape (and so the exact byte offsets) comes from
+            // _codec: Kronos 4-byte header, Nautilus 6-byte (see IKorgSysExCodec.cs).
+            if (_codec.ParseObjectDump(m) is { } d && d.Obj == obj && d.Bank == bank)
             {
-                int idx = (m[7] << 7) | (m[8] & 0x7F);
+                int idx = d.Index;
                 bool added;
                 lock (replied) added = replied.Add(idx);
                 Volatile.Write(ref lastReplyTicks, DateTime.Now.Ticks);
@@ -224,7 +227,7 @@ sealed class SysExDumpCollector
                     for (int j = start; j < end; j++)
                     {
                         if (sb.Length > 0) sb.Append(' ');
-                        sb.Append(ObjectDumpRequest(obj, bank, missing[j]));
+                        sb.Append(MidiHex.ToHex(_codec.BuildObjectDumpRequest(obj, bank, missing[j])));
                     }
                     var batchBytes = MidiHex.ToBytes(sb.ToString());
                     if (batchBytes != null)
@@ -292,7 +295,7 @@ sealed class SysExDumpCollector
         {
             return await _transport.AwaitReplyAsync<int>(
                 () => _transport.SendAsync(message),
-                KronosSysEx.ParseReply,
+                _codec.ParseReply,
                 timeoutMs).ConfigureAwait(false);
         }
         finally { _gate.Release(); }
@@ -300,7 +303,7 @@ sealed class SysExDumpCollector
 
     // Object Dump write (func 0x73) for a small, directly-addressed sub-object.
     public Task<int?> SendObjectDumpAsync(int obj, int bank, int index, byte version, byte[] binaryData, int timeoutMs = 4000) =>
-        SendAndAwaitReplyAsync(KronosSysEx.BuildObjectDumpMessage(obj, bank, index, version, binaryData), timeoutMs);
+        SendAndAwaitReplyAsync(_codec.BuildObjectDumpMessage(obj, bank, index, version, binaryData), timeoutMs);
 
     // Send a LARGE Object Dump (func 0x73) - a full Combi (~8.9 KB) or Set List
     // (~79 KB) that exceeds the daemon's per-MIDI_SEND cap - and await the func 0x24
@@ -315,7 +318,7 @@ sealed class SysExDumpCollector
         {
             return await _transport.AwaitReplyAsync<int>(
                 () => _transport.SendLargeSysExAsync(message),
-                KronosSysEx.ParseReply,
+                _codec.ParseReply,
                 timeoutMs).ConfigureAwait(false);
         }
         finally { _gate.Release(); }
@@ -323,21 +326,42 @@ sealed class SysExDumpCollector
 
     // Store Bank Request (func 0x76) - commits previously-sent Object Dump data.
     public Task<int?> SendStoreBankRequestAsync(int obj, int bank, int timeoutMs = 4000) =>
-        SendAndAwaitReplyAsync(KronosSysEx.BuildStoreBankRequest(obj, bank), timeoutMs);
+        SendAndAwaitReplyAsync(_codec.BuildStoreBankRequest(obj, bank), timeoutMs);
 
-    // Change Program Bank Type (func 0x7C) - reformats+ERASES the bank to HD-1/EXi. Longer
-    // default timeout: reformatting a bank on the instrument takes noticeably longer than a
-    // plain Store before the func 0x24 Reply comes back.
-    public Task<int?> SendChangeProgramBankTypeAsync(int bank, bool isExi, int timeoutMs = 20000) =>
-        SendAndAwaitReplyAsync(KronosSysEx.BuildChangeProgramBankType(bank, isExi), timeoutMs);
+    // Change Program Bank Type (func 0x7C) - reformats+ERASES the bank to HD-1/EXi. Kronos-only:
+    // no Nautilus func-0x7C equivalent is confirmed anywhere in the Nautilus MIDI implementation
+    // docs, and this is destructive (reformats+erases on the instrument) - guessing at it on an
+    // unconfirmed family risks real data loss, so it refuses rather than guess. Longer default
+    // timeout: reformatting a bank on the instrument takes noticeably longer than a plain Store
+    // before the func 0x24 Reply comes back.
+    public Task<int?> SendChangeProgramBankTypeAsync(int bank, bool isExi, int timeoutMs = 20000)
+    {
+        if (_codec is not KronosSysExCodec)
+        {
+            AppLog.Warn("[sysex] ChangeProgramBankType refused - no confirmed Nautilus func-0x7C equivalent");
+            return Task.FromResult<int?>(null);
+        }
+        return SendAndAwaitReplyAsync(KronosSysEx.BuildChangeProgramBankType(bank, isExi), timeoutMs);
+    }
 
-    // ── Request builders (Korg header F0 42 30 68, matching existing convention) ──
+    // ── Request builders, codec-aware (header shape - and so byte offsets/length - comes
+    //    from _codec; see IKorgSysExCodec.cs) ────────────────────────────────────────────
 
     // Object Dump Request (func 0x72): one specific object.
-    public static string ObjectDumpRequest(int obj, int bank, int index) =>
-        $"F0 42 30 68 72 {obj:X2} {bank:X2} {(index >> 7) & 0x7F:X2} {index & 0x7F:X2} F7";
+    public string ObjectDumpRequest(int obj, int bank, int index) =>
+        MidiHex.ToHex(_codec.BuildObjectDumpRequest(obj, bank, index));
 
     // Dump Bank Request (func 0x77): every object of a type in a bank.
-    public static string DumpBankRequest(int obj, int bank) =>
+    public string DumpBankRequest(int obj, int bank) =>
+        MidiHex.ToHex(_codec.BuildDumpBankRequest(obj, bank));
+
+    // ── Kronos-framing request builders (F0 42 30 68 ...) - used only by KronosSysExCodec's
+    //    own BuildObjectDumpRequest/BuildDumpBankRequest wrappers (IKorgSysExCodec.cs), kept as
+    //    the original hex-string form rather than duplicating NautilusSysEx's byte[]-returning
+    //    style, to avoid touching this class's one other already-working caller path. ──────
+    internal static string KronosObjectDumpRequestHex(int obj, int bank, int index) =>
+        $"F0 42 30 68 72 {obj:X2} {bank:X2} {(index >> 7) & 0x7F:X2} {index & 0x7F:X2} F7";
+
+    internal static string KronosDumpBankRequestHex(int obj, int bank) =>
         $"F0 42 30 68 77 {obj:X2} {bank:X2} F7";
 }

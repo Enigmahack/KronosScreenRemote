@@ -64,6 +64,31 @@ static class SampleReferenceWalker
         return Convert.ToHexString(masked);
     }
 
+    // Exposed for callers outside this walker's own display purpose (e.g. the Nautilus
+    // ROM-waveform remapper in Core/Pcg/NautilusConversion), which need the FULL
+    // classification - including 0/ROM (this walker's own ClassifyLegacyUuid below discards
+    // ROM, since it never cares about ROM) AND a raw/non-legacy UUID's own masked hex key (so
+    // a caller can look it up against a known-EXs-product catalog, e.g. ExsOptionIndex,
+    // instead of silently treating every raw UUID as generic pass-through-safe content - a
+    // raw UUID is used for BOTH genuine user/3rd-party .KSC content AND every EXs bank number
+    // >=127, and those two need different handling for cross-platform conversion even though
+    // they're byte-indistinguishable without a catalog lookup).
+    public enum RefClass { NothingAssigned, LegacyRom, LegacySamplingModeRam, LegacyExs, RawUuid }
+    public readonly record struct ClassifiedRef(RefClass Class, int LegacyExsNumber, string RawUuidHex);
+
+    public static ClassifiedRef Classify(byte[] uuid)
+    {
+        if (IsAllZero(uuid)) return new ClassifiedRef(RefClass.NothingAssigned, 0, "");
+        if (IsLegacyForm(uuid))
+        {
+            int legacyBankNumber = uuid[15] >> 1;   // §7: 0=ROM, 1=Sampling Mode (RAM), N+1=EXs<N>
+            if (legacyBankNumber == 0) return new ClassifiedRef(RefClass.LegacyRom, 0, "");
+            if (legacyBankNumber == 1) return new ClassifiedRef(RefClass.LegacySamplingModeRam, 0, "");
+            return new ClassifiedRef(RefClass.LegacyExs, legacyBankNumber - 1, "");
+        }
+        return new ClassifiedRef(RefClass.RawUuid, 0, DedupKey(uuid));
+    }
+
     // Classifies a legacy-scheme UUID (HD-1 zone / Drum Kit zone / Wave Sequence step).
     // Returns null for ROM (0) - callers skip it, matching the user's own "don't care about
     // ROM" framing for this feature.

@@ -103,6 +103,7 @@ static class UiThemeSmokeTest
         Try("FileManagerWindow",      () => new FileManagerWindow("", 21, "", ""));
         Try("HelpWindow",             () => new HelpWindow(settings));
         Try("InputTesterWindow",      () => new InputTesterWindow(fakeCtrl));
+        Try("ButtonInjectorWindow",   () => new ButtonInjectorWindow(fakeCtrl));
         Try("KeyboardInfoWindow",     () => new KeyboardInfoWindow("", 0, null));
         Try("SampleEditorWindow",    () => new SampleEditorWindow());
         Try("SampleNormalizationReportWindow", () => new SampleNormalizationReportWindow(new List<SampleNormalizationEntry>()));
@@ -376,6 +377,7 @@ internal sealed class FakeSysExService : ISysExService
     public Task<int> SyncNamesAsync(IProgress<(int Done, int Total, int Names)>? progress, CancellationToken ct) => Task.FromResult(0);
     public IReadOnlyDictionary<int, string> CachedBankNames(int type, int objBank) => new Dictionary<int, string>();
     public void ApplyMidiSettings(bool midiMonitorEnabled, bool proactivePoll, int pollIntervalSec, bool pollOnChanges) { }
+    public void SetDeviceFamily(DeviceFamily family) { }
     public Task<bool> SendMidiAsync(string hexBytes) => Task.FromResult(false);
     public Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index, CancellationToken ct = default) => Task.FromResult<ObjectDump?>(null);
     public Task<Dictionary<int, ObjectDump>> DumpBankBulkAsync(int obj, int bank, int count, CancellationToken ct = default) => Task.FromResult(new Dictionary<int, ObjectDump>());

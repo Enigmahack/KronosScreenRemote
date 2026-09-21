@@ -27,6 +27,14 @@ sealed class SysExService : ISysExService
 
     IKronosMidiTransport? _transport;
     SysExDumpCollector? _dump;
+    // Device family this instance believes it's talking to - Unknown until the daemon's MODEL
+    // reply (MainWindow.OnSessionConnected, via SetDeviceFamily) or, for a USB-only session
+    // with no daemon at all, this service's own MIDI Identity probe (kicked off from Start()
+    // below) resolves it. _codec is the ONE thing in this class that's actually keyed off it -
+    // see IKorgSysExCodec.cs for why the rest of the family-specific work (button tokens, UI
+    // layout) deliberately stays out of this interface.
+    DeviceFamily _deviceFamily = DeviceFamily.Unknown;
+    IKorgSysExCodec _codec = KronosSysExCodec.Instance;
     // Pauses the func-33 perf-poll loop while a bulk dump/write streams (so the poll can't steal
     // one of its replies). Epoch-guarded refcount - see DumpGate for why a plain bool was racy
     // both across overlapping dumps and across a transport switch. Begin/End pair in each dump's
@@ -112,6 +120,23 @@ sealed class SysExService : ISysExService
         _dispatcher = dispatcher;
     }
 
+    // Called by MainWindow once the daemon's MODEL reply resolves DeviceFamily (the
+    // authoritative source when a screen/TCP connection exists), and internally by this class's
+    // own MIDI Identity probe when it doesn't (USB-only session - see Start() below). Rebuilds
+    // _dump on the CURRENT transport with the newly-selected codec so an in-progress USB-only
+    // session picks up the right wire framing as soon as the family is known, without needing a
+    // reconnect. A no-op if the family hasn't actually changed (the common case: MainWindow
+    // calls this on every OnSessionConnected, most of which just reconfirm what's already set).
+    public void SetDeviceFamily(DeviceFamily family)
+    {
+        if (family == _deviceFamily) return;
+        _deviceFamily = family;
+        _codec = KorgSysExCodecs.For(family);
+        AppLog.Info($"[sysex] device family -> {family} ({(_codec is NautilusSysExCodec ? "Nautilus" : "Kronos")} SysEx framing)");
+        if (_transport != null)
+            _dump = new SysExDumpCollector(_transport, _codec);
+    }
+
     public void Start(IKronosMidiTransport transport)
     {
         _cts?.Cancel();
@@ -176,9 +201,16 @@ sealed class SysExService : ISysExService
             foreach (var k in Storage.LoadDumpedBanks(_cacheKey)) _dumpedBanks.Add(k);
         }
 
+        // A reconnect may be to a genuinely different instrument (USB device swap, or a new
+        // TCP host) - don't carry over a stale family guess. MainWindow re-asserts the real
+        // one via SetDeviceFamily once the daemon's MODEL reply is back (TCP), and the probe
+        // below re-runs for a USB-only session either way.
+        _deviceFamily = DeviceFamily.Unknown;
+        _codec = KronosSysExCodec.Instance;
+
         _transport.Traffic += OnTransportTraffic;
         _transport.SetStreamEnabled(_midiMonitorEnabled);
-        _dump = new SysExDumpCollector(_transport);   // dumps gate on CanDump (stream active)
+        _dump = new SysExDumpCollector(_transport, _codec);   // dumps gate on CanDump (stream active)
         _transport.Start();
 
         AppLog.Info($"[sysex] transport started - {_transport.Description}");
@@ -188,6 +220,23 @@ sealed class SysExService : ISysExService
 
         Task.Run(() => ProbeAsync(ct));
         _ = PerfMetadataLoop(ct);
+        // USB-only sessions never see a daemon MODEL reply (no TCP connection at all - see
+        // Nautilus Research/CLAUDE.md's "SysEx-over-USB access only" note), so DeviceFamily
+        // would otherwise stay Unknown (-> Kronos framing) for the entire session. Probe via
+        // the standard MIDI Identity Request instead; a no-op if SetDeviceFamily already ran
+        // (TCP case - see the equality check there) or if the reply never arrives (older
+        // firmware, SysEx receive disabled, etc. - stays on the Unknown/Kronos default).
+        _ = ProbeDeviceFamilyAsync(transport, ct);
+    }
+
+    async Task ProbeDeviceFamilyAsync(IKronosMidiTransport transport, CancellationToken ct)
+    {
+        var family = await MidiDeviceIdentity.ProbeAsync(transport, ct).ConfigureAwait(false);
+        if (family == DeviceFamily.Unknown || ct.IsCancellationRequested) return;
+        // Marshal to the UI thread - SetDeviceFamily can replace _dump, and MainWindow's own
+        // _deviceFamily/ApplyDeviceFamilyUi (kept in sync via the ActiveTransportChanged/
+        // family-change path) are UI-thread fields.
+        _dispatcher.Invoke(() => SetDeviceFamily(family));
     }
 
     public void Reset()
@@ -207,6 +256,8 @@ sealed class SysExService : ISysExService
         }
         _transport = null;
         _dump = null;
+        _deviceFamily = DeviceFamily.Unknown;
+        _codec = KronosSysExCodec.Instance;
         IsAvailable = false;
         PerformanceDisplay = "";
     }
@@ -285,6 +336,15 @@ sealed class SysExService : ISysExService
     // Decode signals the Kronos pushes unsolicited on the MIDI-out stream.
     // Every recognised message is logged so an absent signal (transmit disabled
     // in the Kronos Global/MIDI settings) is distinguishable from a parse bug.
+    //
+    // Kronos-only, deliberately NOT codec-aware (see IKorgSysExCodec.cs) - every match below is
+    // KronosSysEx.HasKorgHeaderAt against the fixed 4-byte Kronos header, so a Nautilus message
+    // (6-byte header - different bytes at every one of these offsets) simply never matches and
+    // falls through unrecognized rather than misparsing. Live-stream name capture/mode-change
+    // push notifications for Nautilus are a real gap this leaves open, but extending it needs its
+    // own hardware verification pass (no NautilusSysEx equivalent of ParseNameObjectDump exists
+    // yet) - out of this pass's scope per the grill-me decision to stick to the hardware-verified
+    // primitive slice.
     void ParseIncoming(byte[] raw)
     {
         byte status = raw[0];
@@ -475,7 +535,7 @@ sealed class SysExService : ISysExService
             if (_streamNames.ContainsKey((id.Type, id.ObjBank, id.Number))) return;
 
         byte nameObj = (byte)KronosBanks.NameObject(id.Type);
-        var req = MidiHex.ToBytes(SysExDumpCollector.ObjectDumpRequest(nameObj, id.ObjBank, id.Number));
+        var req = _dump != null ? MidiHex.ToBytes(_dump.ObjectDumpRequest(nameObj, id.ObjBank, id.Number)) : null;
         if (req == null) return;
         AppLog.Debug($"[sysex] name-pull func72 obj={nameObj:X2} bank={id.ObjBank:X2} idx={id.Number}");
         await transport.SendAsync(req).ConfigureAwait(false);
@@ -577,7 +637,7 @@ sealed class SysExService : ISysExService
                     // ENUM works and streams all 128 names in ~20 ms - one request.
                     // Blocks until its replies go idle, the Kronos rejects (func 0x24 →
                     // fast exit), or it stays silent.
-                    var req  = SysExDumpCollector.DumpBankRequest(nameObj, objBank);
+                    var req  = dump.DumpBankRequest(nameObj, objBank);
                     var (msgs, _) = await dump.CollectAsync(req, nameObj, expectedCount: null,
                                             idleMs: 600, noResponseMs: 1200,
                                             stallMs: 3000, overallMs: 30000)
@@ -754,7 +814,7 @@ sealed class SysExService : ISysExService
     // starts). Once bytes flow, the per-chunk activity keepalive carries the transfer.
     async Task<SetListData?> DumpOneSetListAsync(SysExDumpCollector dump, int number)
     {
-        var req  = SysExDumpCollector.ObjectDumpRequest(0x0D, 0, number);
+        var req  = dump.ObjectDumpRequest(0x0D, 0, number);
         var msgs = await CollectRetryingSendAsync(dump, req, 0x0D, expectedCount: 1, noResponseMs: 10000)
             .ConfigureAwait(false);
         var msg  = msgs.Count > 0 ? msgs[0] : null;
@@ -958,7 +1018,7 @@ sealed class SysExService : ISysExService
         int gateEpoch = _dumpGate.Begin();
         try
         {
-            var req  = SysExDumpCollector.ObjectDumpRequest(obj, bank, index);
+            var req  = dump.ObjectDumpRequest(obj, bank, index);
             // Set Lists (~79 KB) and Global (~24 KB) are the big, slow-to-serialize objects -
             // give their "no activity" window headroom rather than timing out on a reply that
             // was on its way.
@@ -971,7 +1031,7 @@ sealed class SysExService : ISysExService
             // otherwise it can be stored under the caller's bank/slot.
             foreach (var m in msgs)
             {
-                var candidate = KronosSysEx.ParseObjectDump(m);
+                var candidate = _codec.ParseObjectDump(m);
                 if (candidate != null && candidate.Bank == bank && candidate.Index == index)
                     return candidate;
             }
@@ -988,7 +1048,7 @@ sealed class SysExService : ISysExService
         int gateEpoch = _dumpGate.Begin();
         try
         {
-            var req = SysExDumpCollector.DumpBankRequest(obj, bank);
+            var req = dump.DumpBankRequest(obj, bank);
             // Generously sized for the largest case this can be asked to cover - a
             // Set List bulk-bank request is up to 128 x ~79 KB (~10 MB total); a full
             // Combi bank is ~1.1 MB. Far larger than the Name-enum's tuning (SysExService's
@@ -1003,7 +1063,7 @@ sealed class SysExService : ISysExService
                 // bulk reply's own index values are what select the dictionary slot, so a wrong-
                 // bank stray reply would otherwise silently overwrite a real slot in THIS bank's
                 // result under a matching index from a different bank.
-                var parsed = KronosSysEx.ParseObjectDump(m);
+                var parsed = _codec.ParseObjectDump(m);
                 if (parsed != null && parsed.Bank == bank) result[parsed.Index] = parsed;
             }
         }
@@ -1025,7 +1085,7 @@ sealed class SysExService : ISysExService
             // version (e.g. every PCG-imported Program used to carry 0 instead of 5) without
             // needing to re-place or re-pull anything. See LibObj.CurrentObjectVersion.
             byte version = LibObj.CurrentObjectVersion(op.Obj) ?? op.Version;
-            var msg  = KronosSysEx.BuildObjectDumpMessage(op.Obj, op.Bank, op.Index, version, op.Body);
+            var msg  = _codec.BuildObjectDumpMessage(op.Obj, op.Bank, op.Index, version, op.Body);
             AppLog.Debug($"[sysex] WriteObjectAsync obj=0x{op.Obj:X2} bank=0x{op.Bank:X2} idx={op.Index} version={version} bodyLen={op.Body.Length}");
             var code = await dump.SendLargeObjectDumpAndAwaitReplyAsync(msg).ConfigureAwait(false);
             return code ?? -1;
@@ -1071,8 +1131,8 @@ sealed class SysExService : ISysExService
         try
         {
             var digest = await transport.AwaitReplyAsync<byte[]>(
-                () => transport.SendAsync(KronosSysEx.BuildBankDigestRequest(obj, bank)),
-                m => KronosSysEx.ParseBankDigest(m) is { } bd && bd.Obj == obj && bd.Bank == bank ? bd.Sha1 : null,
+                () => transport.SendAsync(_codec.BuildBankDigestRequest(obj, bank)),
+                m => _codec.ParseBankDigest(m) is { } bd && bd.Obj == obj && bd.Bank == bank ? bd.Sha1 : null,
                 5000).ConfigureAwait(false);
             // No reply: nothing is coming that ParseIncoming could match the token against.
             if (digest == null) TakeExpectedDigestReply(obj, bank);
@@ -1092,6 +1152,10 @@ sealed class SysExService : ISysExService
         return result;
     }
 
+    // Kronos-only (func 0x61) - not part of IKorgSysExCodec, no NautilusSysEx equivalent exists
+    // yet (out of the grill-me-scoped, hardware-verified slice - see IKorgSysExCodec.cs). Harmless
+    // to call on Nautilus: it just gets a Kronos-framed request the instrument won't recognize
+    // and returns null, same as any other unanswered query.
     public async Task<ProgramBankTypes?> RequestProgramBankTypesAsync()
     {
         var transport = _transport;
@@ -1116,7 +1180,7 @@ sealed class SysExService : ISysExService
             // should be restorable byte-for-byte, which means carrying the CURRENT
             // object version, not a stale placeholder stored on the op.
             byte version = LibObj.CurrentObjectVersion(op.Obj) ?? op.Version;
-            var m = KronosSysEx.BuildObjectDumpMessage(op.Obj, op.Bank, op.Index, version, op.Body);
+            var m = _codec.BuildObjectDumpMessage(op.Obj, op.Bank, op.Index, version, op.Body);
             await fs.WriteAsync(m).ConfigureAwait(false);
         }
     }

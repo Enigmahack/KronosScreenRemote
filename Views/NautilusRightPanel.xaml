@@ -1,0 +1,146 @@
+<UserControl x:Class="KronosScreenRemote.NautilusRightPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:KronosScreenRemote">
+    <!-- Nautilus data panel - stage 2 of the Nautilus front-panel skin (your button-code table,
+         2026-09-21): the 12 front-panel buttons + data wheel are now real KronosButton/Image
+         elements, wired in MainWindow.xaml.cs's WireButtons. Design space is NautilusFront1.jpg's
+         native 1024×771 (not Kronos's 800×600). KronosRightPanel is this column's Kronos
+         counterpart.
+
+         Button groups (see MainWindow.xaml.cs's WireButtons for the exact wire tokens each sends):
+           - Mode/Page (BTN_Mode/BTN_Page): the only two states the daemon can confirm on
+             Nautilus (Combi/Program) - ButtonMode="None" + RadioGroup, IsActive driven
+             externally by ButtonForMode/SetModeButton, exactly like Kronos's own mode buttons.
+           - A-F (BTN_A..BTN_F): quick-access shortcuts - momentary, lit only while held
+             (ButtonMode="HoldLit"), no persistent state.
+           - Exit/Enter, Data Inc/Dec (BTN_Exit/Enter, BTN_DataInc/Dec): ButtonMode="None",
+             Unlit-only (no LitSource) - depress-Y feedback only, matching Kronos's own
+             Enter/Exit/Inc/Dec buttons exactly. -->
+    <Grid>
+        <Viewbox Stretch="Uniform">
+            <Grid Width="1024" Height="771">
+                <Image Source="/Resources/Images/NautilusFront1.jpg"
+                       Stretch="Fill"
+                       RenderOptions.BitmapScalingMode="HighQuality"
+                       SnapsToDevicePixels="False"
+                       IsHitTestVisible="False"/>
+
+                <!-- ── Mode/Page - daemon-confirmed, exactly like Kronos's mode buttons. No
+                     tooltip - the lit state itself is the indicator (2026-09-22 direction). ── -->
+                <local:KronosButton x:Name="BTN_Mode"
+                    Margin="462,279,456,448"
+                    AutomationProperties.Name="Mode"
+                    UnlitSource="/Resources/Images/ButtonModeUnlit.png"
+                    LitSource="/Resources/Images/ButtonModeLit.png"
+                    ButtonMode="None" RadioGroup="NautilusModeGroup"/>
+                <local:KronosButton x:Name="BTN_Page"
+                    Margin="782,278,137,449"
+                    AutomationProperties.Name="Page"
+                    UnlitSource="/Resources/Images/ButtonPageUnlit.png"
+                    LitSource="/Resources/Images/ButtonPageLit.png"
+                    ButtonMode="None" RadioGroup="NautilusModeGroup"/>
+
+                <!-- ── A-F quick access - momentary, lit only while held. Tooltips describe what
+                     these QA slots are actually programmed to do on your unit (2026-09-22) -
+                     the wire tokens sent (Sequence/Sampling/Global/Disk/Setlist/Exit, see
+                     MainWindow.xaml.cs's WireButtons) are the fixed NKS4 scan codes for these QA
+                     positions and are unchanged; QA slots are user-reassignable on real
+                     hardware, so the label shown here can drift from the token name. ────────── -->
+                <local:KronosButton x:Name="BTN_A"
+                    Margin="463,412,454,313"
+                    ToolTip="Setlist"
+                    AutomationProperties.Name="A"
+                    UnlitSource="/Resources/Images/ButtonAUnlit.png"
+                    LitSource="/Resources/Images/ButtonALit.png"
+                    ButtonMode="HoldLit"/>
+                <local:KronosButton x:Name="BTN_B"
+                    Margin="625,412,292,313"
+                    ToolTip="Program"
+                    AutomationProperties.Name="B"
+                    UnlitSource="/Resources/Images/ButtonBUnlit.png"
+                    LitSource="/Resources/Images/ButtonBLit.png"
+                    ButtonMode="HoldLit"/>
+                <local:KronosButton x:Name="BTN_C"
+                    Margin="787,410,130,315"
+                    ToolTip="Sequencer"
+                    AutomationProperties.Name="C"
+                    UnlitSource="/Resources/Images/ButtonCUnlit.png"
+                    LitSource="/Resources/Images/ButtonCLit.png"
+                    ButtonMode="HoldLit"/>
+                <local:KronosButton x:Name="BTN_D"
+                    Margin="464,550,453,175"
+                    ToolTip="Quick Access"
+                    AutomationProperties.Name="D"
+                    UnlitSource="/Resources/Images/ButtonDUnlit.png"
+                    LitSource="/Resources/Images/ButtonDLit.png"
+                    ButtonMode="HoldLit"/>
+                <local:KronosButton x:Name="BTN_E"
+                    Margin="628,549,289,176"
+                    ToolTip="Compare"
+                    AutomationProperties.Name="E"
+                    UnlitSource="/Resources/Images/ButtonEUnlit.png"
+                    LitSource="/Resources/Images/ButtonELit.png"
+                    ButtonMode="HoldLit"/>
+                <local:KronosButton x:Name="BTN_F"
+                    Margin="793,548,124,177"
+                    ToolTip="Write / Save"
+                    AutomationProperties.Name="F"
+                    UnlitSource="/Resources/Images/ButtonFUnlit.png"
+                    LitSource="/Resources/Images/ButtonFLit.png"
+                    ButtonMode="HoldLit"/>
+
+                <!-- ── Exit/Enter - no lit version, depress-Y only. Exit sends NUM1, Enter sends
+                     KARMA_ONOFF (your 2026-09-22 correction - these are NOT Octave -/+). ────── -->
+                <local:KronosButton x:Name="BTN_Exit"
+                    Margin="34,551,875,167"
+                    ToolTip="Exit"
+                    AutomationProperties.Name="Exit"
+                    UnlitSource="/Resources/Images/ButtonExit.png"
+                    ButtonMode="None"/>
+                <local:KronosButton x:Name="BTN_Enter"
+                    Margin="143,551,766,167"
+                    ToolTip="Enter"
+                    AutomationProperties.Name="Enter"
+                    UnlitSource="/Resources/Images/ButtonEnter.png"
+                    ButtonMode="None"/>
+
+                <!-- ── Data Inc/Dec - no lit version, depress-Y only ──────────────────── -->
+                <local:KronosButton x:Name="BTN_DataInc"
+                    Margin="146,465,763,253"
+                    ToolTip="Data increment"
+                    AutomationProperties.Name="Data increment"
+                    UnlitSource="/Resources/Images/ButtonInc.png"
+                    ButtonMode="None"/>
+                <local:KronosButton x:Name="BTN_DataDec"
+                    Margin="37,465,878,253"
+                    ToolTip="Data decrement"
+                    AutomationProperties.Name="Data decrement"
+                    UnlitSource="/Resources/Images/ButtonDec.png"
+                    ButtonMode="None"/>
+
+                <!-- ── Data wheel - drag up/down to scroll, same behavior/animation as Kronos's
+                     (MainWindow.xaml.cs's OnWheelMouseDown/Move/Up + AdvanceWheelAnim resolve
+                     whichever family's Data_Wheel/WheelRotate is currently attached). ────── -->
+                <Image x:Name="Data_Wheel"
+                   Margin="52,190,771,383"
+                   Source="/Resources/Images/DataWheel.png"
+                   RenderTransformOrigin="0.5,0.5"
+                   Cursor="SizeNS"
+                   AutomationProperties.Name="Data wheel"
+                   AutomationProperties.HelpText="Up/Down arrow keys rotate the wheel one step at a time."
+                   ToolTip="Data wheel - drag up/down or scroll to rotate; Ctrl+scroll to zoom frame">
+                    <Image.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem x:Name="CTX_WheelSensitivity" Header="_Settings..."/>
+                            <MenuItem x:Name="CTX_WheelReset"       Header="Reset _Animation"/>
+                        </ContextMenu>
+                    </Image.ContextMenu>
+                    <Image.RenderTransform>
+                        <RotateTransform x:Name="WheelRotate" Angle="0"/>
+                    </Image.RenderTransform>
+                </Image>
+            </Grid>
+        </Viewbox>
+    </Grid>
+</UserControl>

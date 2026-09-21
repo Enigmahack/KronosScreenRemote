@@ -78,6 +78,13 @@ interface IMidiBackendControl
     // midiMonitorEnabled - when false, the MIDI stream monitor is stopped.
     // proactivePoll      - when true, polls on a fixed interval; otherwise only on-change triggers.
     void ApplyMidiSettings(bool midiMonitorEnabled, bool proactivePoll, int pollIntervalSec, bool pollOnChanges);
+
+    // Tells this service which family it's talking to, so it can pick the matching SysEx wire
+    // codec (KronosSysEx vs NautilusSysEx framing - see IKorgSysExCodec.cs). Call once the
+    // daemon's MODEL reply resolves DeviceFamily (MainWindow.OnSessionConnected); a no-op if
+    // unchanged. A USB-only session with no daemon resolves this itself via a MIDI Identity
+    // probe, so callers with no TCP connection don't need to call this at all.
+    void SetDeviceFamily(DeviceFamily family);
 }
 
 // Fire raw MIDI and observe the traffic stream - the exact slice SysExToolWindow needs.

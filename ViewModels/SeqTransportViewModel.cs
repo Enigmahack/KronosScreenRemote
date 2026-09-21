@@ -17,6 +17,15 @@ partial class SeqTransportViewModel : ObservableObject
 
     public SeqTransportViewModel(ICtrlSender ctrl) => _ctrl = ctrl;
 
+    // Kept in sync by MainWindow.ApplyDeviceFamilyUi. Record (Sequence-mode transport row) and
+    // Save (Setlist/Combi/Program/Global) share ONE physical key on Kronos (SEQ_REC) - hence
+    // sharing a single command there historically - but are genuinely DIFFERENT physical buttons
+    // on Nautilus: Record is MS2 ("SEQ REC"), Save is front-panel "F" (wire EXIT - your QA slot
+    // F is programmed as Write/Save), and Start/Stop is MP6 (swapped with Pause's MS3 per your
+    // 2026-09-22 correction - see StartStop's own comment). Hence Save is its own RelayCommand
+    // below rather than reusing Record's.
+    public DeviceFamily DeviceFamily { get; set; } = DeviceFamily.Unknown;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsTransportEnabled))]
     [NotifyPropertyChangedFor(nameof(IsSaveEnabled))]
@@ -44,8 +53,22 @@ partial class SeqTransportViewModel : ObservableObject
         if (!value) IsRecording = false;
     }
 
-    [RelayCommand] void Record()    => _ctrl.Send(DaemonCommand.Button(PanelButton.SeqRecord));
-    [RelayCommand] void StartStop() => _ctrl.Send(DaemonCommand.Button(PanelButton.SeqStart));
+    [RelayCommand]
+    void Record() => _ctrl.Send(DaemonCommand.Button(
+        DeviceFamily == DeviceFamily.Nautilus ? "MS2" : PanelButton.SeqRecord.Token()));
+
+    // Nautilus token swapped with Pause's (MainWindow.xaml.cs's "Seq Pause" registry entry) per
+    // your 2026-09-22 correction - the Start/Stop BUTTON is unchanged, only which scan code it
+    // sends changed (was MS3 "SEQ PLAY/PAUSE", now MP6 "SEQ PAUSE").
+    [RelayCommand]
+    void StartStop() => _ctrl.Send(DaemonCommand.Button(
+        DeviceFamily == DeviceFamily.Nautilus ? "MP6" : PanelButton.SeqStart.Token()));
+
+    // Front-panel "F" on Nautilus (wire EXIT - see this class's own header comment); Kronos
+    // keeps sending Record's own token, since Write/Record really is the same physical key there.
+    [RelayCommand]
+    void Save() => _ctrl.Send(DaemonCommand.Button(
+        DeviceFamily == DeviceFamily.Nautilus ? PanelButton.Exit.Token() : PanelButton.SeqRecord.Token()));
 
     // The Kronos refuses a mode change while SEQ RECORD/START is armed, so any confirmed
     // mode change - or a disconnect - means hardware already has them off. Call this as a

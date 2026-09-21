@@ -38,4 +38,14 @@ static class WaveSequenceBody
             yield return (step, uuid, select);
         }
     }
+
+    // In-place write of just the Multisample Select (LE u16) at a given step - same offset
+    // IterSampleStepRefs reads, mirroring LibRefs.SetProgramZoneNumber/DrumKitBody.
+    // SetSampleZoneId's convention for a caller that already owns a mutable clone of `body`.
+    public static void SetSampleStepSelect(byte[] body, int step, int newSelect)
+    {
+        int selOff = StepBase + step * StepStride + StepSelectOffset;
+        body[selOff]     = (byte)(newSelect & 0xFF);
+        body[selOff + 1] = (byte)((newSelect >> 8) & 0xFF);
+    }
 }

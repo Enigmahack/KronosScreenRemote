@@ -13,7 +13,10 @@ public enum KButtonMode
     None,       // No visual change on click (Exit, Enter, number pad)
     Momentary,  // Briefly shows Lit state then reverts
     Toggle,     // Flips IsActive on each click
-    Radio       // Stays Lit; deactivates all others in the same RadioGroup
+    Radio,      // Stays Lit; deactivates all others in the same RadioGroup
+    HoldLit     // Lit only while the mouse is held down; releases ~200ms after mouse-up/leave
+                // (Nautilus quick-access A-F buttons - momentary, no persistent state to reflect;
+                // see NautilusRightPanel.xaml's own comment)
 }
 
 /// <summary>
@@ -92,6 +95,13 @@ public class KronosButton : Button
     readonly DispatcherTimer _depressTimer;
     const int DepressMs = 150;
 
+    // ── Hold-lit release delay (HoldLit mode only) ────────────────────────────
+    // Deliberately separate from _depressTimer (different duration, different target property -
+    // IsActive here vs. _depress.Y there) even though both are "delayed revert on release"
+    // timers, to keep None-mode's existing behavior untouched.
+    readonly DispatcherTimer _holdLitRelease;
+    const int HoldLitReleaseMs = 200;
+
     // ── Constructor ───────────────────────────────────────────────────────────
 
     public KronosButton()
@@ -110,6 +120,9 @@ public class KronosButton : Button
 
         _depressTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(DepressMs) };
         _depressTimer.Tick += (_, _) => { _depressTimer.Stop(); _depress.Y = 0; };
+
+        _holdLitRelease = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(HoldLitReleaseMs) };
+        _holdLitRelease.Tick += (_, _) => { _holdLitRelease.Stop(); IsActive = false; };
 
         // Template: a single Image, source driven by DisplaySource DP
         var imgFactory = new FrameworkElementFactory(typeof(System.Windows.Controls.Image));
@@ -216,19 +229,34 @@ public class KronosButton : Button
     protected override void OnMouseLeftButtonDown(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonDown(e);
-        if (ButtonMode == KButtonMode.None) _depress.Y = 2;
+        if (ButtonMode is KButtonMode.None or KButtonMode.HoldLit) _depress.Y = 2;
+        if (ButtonMode == KButtonMode.HoldLit)
+        {
+            _holdLitRelease.Stop();   // cancel any pending release from a just-completed press
+            IsActive = true;
+        }
     }
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
     {
         base.OnMouseLeftButtonUp(e);
         _depress.Y = 0;
+        if (ButtonMode == KButtonMode.HoldLit) StartHoldLitRelease();
     }
 
     protected override void OnMouseLeave(MouseEventArgs e)
     {
         base.OnMouseLeave(e);
         _depress.Y = 0;
+        if (ButtonMode == KButtonMode.HoldLit) StartHoldLitRelease();
+    }
+
+    // (Re)starts the ~200ms delayed release to Unlit - called from both mouse-up and mouse-leave
+    // (dragging off the button while held), each restarting the same window rather than stacking.
+    void StartHoldLitRelease()
+    {
+        _holdLitRelease.Stop();
+        _holdLitRelease.Start();
     }
 
     // Guarantee the full layout rect is always hit-testable, even when the

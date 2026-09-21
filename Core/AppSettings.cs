@@ -175,6 +175,7 @@ public class AppSettings
         ("Mirror",        "Toggle VGA Mirror",       Key.M),
         ("Help",          "Toggle Help",             Key.F1),
         ("Calibrate",     "Toggle Calibration Mode", Key.C),
+        ("PaletteEditor", "Toggle Palette Editor",   Key.P),
         ("HideDataInput",  "Hide/Show Data Input",    Key.None),
         ("HideValueInput", "Hide/Show Value Input",   Key.None),
         ("Sample Editor",  "Sample Editor",           Key.None),

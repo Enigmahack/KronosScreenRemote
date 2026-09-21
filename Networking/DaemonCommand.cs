@@ -18,6 +18,10 @@ static class DaemonCommand
     // Mode keys reuse the existing Mode → daemon-token map (Mode.ButtonName()).
     public static string Button(Mode mode) => $"BUTTON {mode.ButtonName()}";
 
+    // Raw token, for callers working from ButtonReference's full catalog (ButtonInjectorWindow)
+    // instead of the typed PanelButton/Mode subsets modeled above.
+    public static string Button(string token) => $"BUTTON {token}";
+
     // Numeric keypad digit (0–9): "BUTTON NUM0" ... "BUTTON NUM9".
     public static string NumberButton(int digit) => $"BUTTON NUM{digit}";
 
@@ -71,6 +75,11 @@ static class DaemonCommand
     public const string QueryState      = "STATE";       // reply: "MODE=<n> EDITCTX=<e> BOOT=<0|1>"
     public const string QueryMidiStatus = "MIDI_STATUS";
     public const string QuerySysInfo    = "SYSINFO";
+    // reply (3.0.2+): "FAMILY=<KRONOS|NAUTILUS> MODEL=<code> FB_BPP=<8|16> CPUS=<n> CORES=<n>
+    // THREADS=<n> STREAM_FMT=<INDEX8|RGB565LE> STREAM_GEOM=<w>x<h>" - ScreenSession.ParseModelInfo
+    // only reads FAMILY/MODEL/FB_BPP; the stream handshake itself (StreamReceiver.Fmt/Bpp) is the
+    // authoritative source for pixel format, not this query.
+    public const string QueryModel      = "MODEL";
 
     // ── MIDI bridge ─────────────────────────────────────────────────────────────
 

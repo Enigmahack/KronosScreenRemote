@@ -1,0 +1,8798 @@
+[
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 26,
+    "nautilus_index": 289,
+    "name": "BD-WS 1"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 30,
+    "nautilus_index": 294,
+    "name": "BD-Mondo Kill"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 31,
+    "nautilus_index": 295,
+    "name": "BD-Tubby"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 32,
+    "nautilus_index": 296,
+    "name": "BD-Gated"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 33,
+    "nautilus_index": 297,
+    "name": "BD-WS 3 (Ambi)"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 34,
+    "nautilus_index": 298,
+    "name": "BD-Orchestral"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 35,
+    "nautilus_index": 389,
+    "name": "BD-Hip 1"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 37,
+    "nautilus_index": 309,
+    "name": "BD-Dance 01"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 38,
+    "nautilus_index": 393,
+    "name": "BD-Cannon"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 42,
+    "nautilus_index": 310,
+    "name": "BD-Dance 02"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 43,
+    "nautilus_index": 311,
+    "name": "BD-Dance 03"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 44,
+    "nautilus_index": 392,
+    "name": "BD-Ambi"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 45,
+    "nautilus_index": 312,
+    "name": "BD-Dance 04"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 48,
+    "nautilus_index": 313,
+    "name": "BD-Dance 05"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 49,
+    "nautilus_index": 314,
+    "name": "BD-Dance 06"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 50,
+    "nautilus_index": 315,
+    "name": "BD-Dance 07"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 51,
+    "nautilus_index": 316,
+    "name": "BD-Dance 08"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 52,
+    "nautilus_index": 317,
+    "name": "BD-Dance 09"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 53,
+    "nautilus_index": 318,
+    "name": "BD-Dance 10"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 54,
+    "nautilus_index": 388,
+    "name": "BD-Pop"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 55,
+    "nautilus_index": 390,
+    "name": "BD-Hip 2"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 56,
+    "nautilus_index": 391,
+    "name": "BD-Hip 3"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 57,
+    "nautilus_index": 319,
+    "name": "BD-Dance 11"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 58,
+    "nautilus_index": 320,
+    "name": "BD-Dance 12"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 61,
+    "nautilus_index": 397,
+    "name": "BD-Dark"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 62,
+    "nautilus_index": 321,
+    "name": "BD-Dance 13"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 63,
+    "nautilus_index": 322,
+    "name": "BD-Dance 14"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 64,
+    "nautilus_index": 323,
+    "name": "BD-Dance 15"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 65,
+    "nautilus_index": 324,
+    "name": "BD-Dance 16"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 66,
+    "nautilus_index": 325,
+    "name": "BD-Dance 17"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 67,
+    "nautilus_index": 326,
+    "name": "BD-Dance 18"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 68,
+    "nautilus_index": 327,
+    "name": "BD-Dance 19"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 69,
+    "nautilus_index": 328,
+    "name": "BD-Dance 20"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 70,
+    "nautilus_index": 329,
+    "name": "BD-Dance 21"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 71,
+    "nautilus_index": 330,
+    "name": "BD-Dance 22"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 72,
+    "nautilus_index": 331,
+    "name": "BD-Dance 23"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 73,
+    "nautilus_index": 332,
+    "name": "BD-Dance 24"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 74,
+    "nautilus_index": 333,
+    "name": "BD-Dance 25"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 75,
+    "nautilus_index": 334,
+    "name": "BD-Dance 26"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 76,
+    "nautilus_index": 335,
+    "name": "BD-Dance 27"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 77,
+    "nautilus_index": 336,
+    "name": "BD-Dance 28"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 78,
+    "nautilus_index": 337,
+    "name": "BD-Dance 29"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 79,
+    "nautilus_index": 338,
+    "name": "BD-Dance 30"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 80,
+    "nautilus_index": 339,
+    "name": "BD-Dance 31"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 81,
+    "nautilus_index": 340,
+    "name": "BD-Dance 32"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 82,
+    "nautilus_index": 341,
+    "name": "BD-Dance 33"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 83,
+    "nautilus_index": 342,
+    "name": "BD-Dance 34"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 84,
+    "nautilus_index": 343,
+    "name": "BD-Dance 35"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 85,
+    "nautilus_index": 344,
+    "name": "BD-Dance 36"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 86,
+    "nautilus_index": 345,
+    "name": "BD-Dance 37"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 87,
+    "nautilus_index": 346,
+    "name": "BD-Dance 38"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 88,
+    "nautilus_index": 347,
+    "name": "BD-Dance 39"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 89,
+    "nautilus_index": 348,
+    "name": "BD-Dance 40"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 90,
+    "nautilus_index": 349,
+    "name": "BD-Dance 41"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 91,
+    "nautilus_index": 350,
+    "name": "BD-Dance 42"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 92,
+    "nautilus_index": 351,
+    "name": "BD-Dance 43"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 93,
+    "nautilus_index": 352,
+    "name": "BD-Dance 44"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 94,
+    "nautilus_index": 353,
+    "name": "BD-Dance 45"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 95,
+    "nautilus_index": 354,
+    "name": "BD-Dance 46"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 96,
+    "nautilus_index": 355,
+    "name": "BD-Dance 47"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 97,
+    "nautilus_index": 356,
+    "name": "BD-Dance 48"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 98,
+    "nautilus_index": 357,
+    "name": "BD-Dance 49"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 99,
+    "nautilus_index": 358,
+    "name": "BD-Dance 50"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 100,
+    "nautilus_index": 359,
+    "name": "BD-Dance 51"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 106,
+    "nautilus_index": 367,
+    "name": "BD-99 Dance 01"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 107,
+    "nautilus_index": 368,
+    "name": "BD-99 Dance 02"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 108,
+    "nautilus_index": 369,
+    "name": "BD-99 Dance 03"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 109,
+    "nautilus_index": 370,
+    "name": "BD-99 Dance 04"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 110,
+    "nautilus_index": 371,
+    "name": "BD-99 Dance 05"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 111,
+    "nautilus_index": 372,
+    "name": "BD-99 Dance 06"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 112,
+    "nautilus_index": 373,
+    "name": "BD-99 Dance 07"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 210,
+    "nautilus_index": 1020,
+    "name": "SD-WS 01"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 212,
+    "nautilus_index": 1022,
+    "name": "SD-Off Center"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 213,
+    "nautilus_index": 1023,
+    "name": "SD-Jazz Ring"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 215,
+    "nautilus_index": 1025,
+    "name": "SD-Classic Room"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 216,
+    "nautilus_index": 1026,
+    "name": "SD-Atomic"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 240,
+    "nautilus_index": 1027,
+    "name": "SD-Orchestral"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 248,
+    "nautilus_index": 1140,
+    "name": "SD-Dance 01"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 249,
+    "nautilus_index": 1141,
+    "name": "SD-Dance 02"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 250,
+    "nautilus_index": 1142,
+    "name": "SD-Dance 03"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 251,
+    "nautilus_index": 1143,
+    "name": "SD-Dance 04"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 252,
+    "nautilus_index": 1144,
+    "name": "SD-Dance 05"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 253,
+    "nautilus_index": 1145,
+    "name": "SD-Dance 06"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 254,
+    "nautilus_index": 1146,
+    "name": "SD-Dance 07"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 255,
+    "nautilus_index": 1147,
+    "name": "SD-Dance 08"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 256,
+    "nautilus_index": 1148,
+    "name": "SD-Dance 09"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 257,
+    "nautilus_index": 1149,
+    "name": "SD-Dance 10"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 258,
+    "nautilus_index": 1150,
+    "name": "SD-Dance 11"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 259,
+    "nautilus_index": 1151,
+    "name": "SD-Dance 12"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 260,
+    "nautilus_index": 1152,
+    "name": "SD-Dance 13"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 261,
+    "nautilus_index": 1153,
+    "name": "SD-Dance 14"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 262,
+    "nautilus_index": 1154,
+    "name": "SD-Dance 15"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 263,
+    "nautilus_index": 1155,
+    "name": "SD-Dance 16"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 264,
+    "nautilus_index": 1156,
+    "name": "SD-Dance 17"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 265,
+    "nautilus_index": 1157,
+    "name": "SD-Dance 18"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 266,
+    "nautilus_index": 1158,
+    "name": "SD-Dance 19"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 267,
+    "nautilus_index": 1159,
+    "name": "SD-Dance 20"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 268,
+    "nautilus_index": 1160,
+    "name": "SD-Dance 21"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 269,
+    "nautilus_index": 1161,
+    "name": "SD-Dance 22"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 270,
+    "nautilus_index": 1162,
+    "name": "SD-Dance 23"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 271,
+    "nautilus_index": 1163,
+    "name": "SD-Dance 24"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 272,
+    "nautilus_index": 1164,
+    "name": "SD-Dance 25"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 273,
+    "nautilus_index": 1165,
+    "name": "SD-Dance 26"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 274,
+    "nautilus_index": 1166,
+    "name": "SD-Dance 27"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 275,
+    "nautilus_index": 1167,
+    "name": "SD-Dance 28"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 276,
+    "nautilus_index": 1168,
+    "name": "SD-Dance 29"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 277,
+    "nautilus_index": 1169,
+    "name": "SD-Dance 30"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 278,
+    "nautilus_index": 1170,
+    "name": "SD-Dance 31"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 279,
+    "nautilus_index": 1171,
+    "name": "SD-Dance 32"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 280,
+    "nautilus_index": 1172,
+    "name": "SD-Dance 33"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 281,
+    "nautilus_index": 1173,
+    "name": "SD-Dance 34"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 282,
+    "nautilus_index": 1174,
+    "name": "SD-Dance 35"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 283,
+    "nautilus_index": 1175,
+    "name": "SD-Dance 36"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 284,
+    "nautilus_index": 1176,
+    "name": "SD-Dance 37"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 285,
+    "nautilus_index": 1177,
+    "name": "SD-Dance 38"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 286,
+    "nautilus_index": 1178,
+    "name": "SD-Dance 39"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 287,
+    "nautilus_index": 1179,
+    "name": "SD-Dance 40"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 288,
+    "nautilus_index": 1180,
+    "name": "SD-Dance 41"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 289,
+    "nautilus_index": 1181,
+    "name": "SD-Dance 42"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 290,
+    "nautilus_index": 1182,
+    "name": "SD-Dance 43"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 291,
+    "nautilus_index": 1183,
+    "name": "SD-Dance 44"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 294,
+    "nautilus_index": 1186,
+    "name": "SD-Dance 47"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 297,
+    "nautilus_index": 1189,
+    "name": "SD-Dance 50"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 298,
+    "nautilus_index": 1190,
+    "name": "SD-Dance 51"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 299,
+    "nautilus_index": 1191,
+    "name": "SD-Dance 52"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 300,
+    "nautilus_index": 1192,
+    "name": "SD-Dance 53"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 301,
+    "nautilus_index": 1193,
+    "name": "SD-Dance 54"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 302,
+    "nautilus_index": 1194,
+    "name": "SD-Dance 55"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 303,
+    "nautilus_index": 1195,
+    "name": "SD-Dance 56"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 304,
+    "nautilus_index": 1196,
+    "name": "SD-Dance 57"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 305,
+    "nautilus_index": 1197,
+    "name": "SD-Dance 58"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 306,
+    "nautilus_index": 1198,
+    "name": "SD-Dance 59"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 307,
+    "nautilus_index": 1199,
+    "name": "SD-Dance 60"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 308,
+    "nautilus_index": 1200,
+    "name": "SD-Dance 61"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 309,
+    "nautilus_index": 1201,
+    "name": "SD-Dance 62"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 310,
+    "nautilus_index": 1202,
+    "name": "SD-Dance 63"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 311,
+    "nautilus_index": 1203,
+    "name": "SD-Dance 64"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 312,
+    "nautilus_index": 1204,
+    "name": "SD-Dance 65"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 313,
+    "nautilus_index": 1205,
+    "name": "SD-Dance 66"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 314,
+    "nautilus_index": 1206,
+    "name": "SD-Dance 67"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 315,
+    "nautilus_index": 1207,
+    "name": "SD-Dance 68"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 316,
+    "nautilus_index": 1208,
+    "name": "SD-Dance 69"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 317,
+    "nautilus_index": 1209,
+    "name": "SD-Dance 70"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 318,
+    "nautilus_index": 1210,
+    "name": "SD-Dance 71"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 319,
+    "nautilus_index": 1211,
+    "name": "SD-Dance 72"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 320,
+    "nautilus_index": 1212,
+    "name": "SD-Dance 73"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 321,
+    "nautilus_index": 1213,
+    "name": "SD-Dance 74"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 322,
+    "nautilus_index": 1214,
+    "name": "SD-Dance 75"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 323,
+    "nautilus_index": 1215,
+    "name": "SD-Dance 76"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 324,
+    "nautilus_index": 1216,
+    "name": "SD-Dance 77"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 326,
+    "nautilus_index": 1238,
+    "name": "SD-Noise"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 327,
+    "nautilus_index": 1239,
+    "name": "SD-Sizzle"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 329,
+    "nautilus_index": 1241,
+    "name": "SD-Vintage"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 330,
+    "nautilus_index": 1242,
+    "name": "SD-AmbiCrackle 1"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 331,
+    "nautilus_index": 1243,
+    "name": "SD-AmbiCrackle 2"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 332,
+    "nautilus_index": 1244,
+    "name": "SD-Whopper"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 399,
+    "nautilus_index": 1728,
+    "name": "Tom-Old R&B"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 533,
+    "nautilus_index": 2204,
+    "name": "Orchestral Cymbal-Open"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 573,
+    "nautilus_index": 1139,
+    "name": "Finger Snap"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 574,
+    "nautilus_index": 1124,
+    "name": "Hand Claps 1"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 642,
+    "nautilus_index": 2655,
+    "name": "Bongo 2 Lo-Open a"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 643,
+    "nautilus_index": 2656,
+    "name": "Bongo 2 Lo-Open b"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 644,
+    "nautilus_index": 2657,
+    "name": "Bongo 2 Lo-Mute"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 645,
+    "nautilus_index": 2658,
+    "name": "Bongo 2 Hi-Open a"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 646,
+    "nautilus_index": 2659,
+    "name": "Bongo 2 Hi-Open b"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 647,
+    "nautilus_index": 2660,
+    "name": "Bongo 2 Hi-Muffled"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 727,
+    "nautilus_index": 2945,
+    "name": "Toy Drum"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 728,
+    "nautilus_index": 2946,
+    "name": "Toy Drum-Rim"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 729,
+    "nautilus_index": 2947,
+    "name": "Surdo-Open"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 730,
+    "nautilus_index": 2948,
+    "name": "Surdo-Mute"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 748,
+    "nautilus_index": 2955,
+    "name": "Tambourine 2-Pull a"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 749,
+    "nautilus_index": 2958,
+    "name": "Tambourine 2-Pull b"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 808,
+    "nautilus_index": 3089,
+    "name": "Triangle 1 L-Open a"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 809,
+    "nautilus_index": 3090,
+    "name": "Triangle 1 L-Open b"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 810,
+    "nautilus_index": 3091,
+    "name": "Triangle 1 L-Mute a"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 811,
+    "nautilus_index": 3092,
+    "name": "Triangle 1 L-Mute b"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 812,
+    "nautilus_index": 3093,
+    "name": "Triangle 1 L-Mute c"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 813,
+    "nautilus_index": 3094,
+    "name": "Triangle 1 S Lp a"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 814,
+    "nautilus_index": 3095,
+    "name": "Triangle 1 S Lp b"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 815,
+    "nautilus_index": 3097,
+    "name": "Triangle 1 S-Roll a"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 816,
+    "nautilus_index": 3098,
+    "name": "Triangle 1 S-Roll b"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 817,
+    "nautilus_index": 3099,
+    "name": "Triangle 1 S-Roll c"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 818,
+    "nautilus_index": 3104,
+    "name": "Triangle 1 S-Mute a"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 819,
+    "nautilus_index": 3105,
+    "name": "Triangle 1 S-Mute b"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 820,
+    "nautilus_index": 3109,
+    "name": "Triangle 2-Open Lp"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 821,
+    "nautilus_index": 3110,
+    "name": "Triangle 2-Closed a"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 822,
+    "nautilus_index": 3111,
+    "name": "Triangle 2-Closed b"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 823,
+    "nautilus_index": 3112,
+    "name": "Triangle 2-Closed c"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 824,
+    "nautilus_index": 3113,
+    "name": "Triangle 2-Mute a"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 825,
+    "nautilus_index": 3114,
+    "name": "Triangle 2-Mute b"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 893,
+    "nautilus_index": 3350,
+    "name": "Taiko-Open"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 894,
+    "nautilus_index": 3351,
+    "name": "Taiko-Rim"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 895,
+    "nautilus_index": 3352,
+    "name": "Tsuzumi"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 910,
+    "nautilus_index": 3395,
+    "name": "Castanet 2"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 911,
+    "nautilus_index": 3396,
+    "name": "Timpani mf"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 912,
+    "nautilus_index": 3397,
+    "name": "Timpani ff"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 917,
+    "nautilus_index": 3398,
+    "name": "Chinese Gong"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 918,
+    "nautilus_index": 3399,
+    "name": "Finger Cymbal"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 919,
+    "nautilus_index": 3400,
+    "name": "Rap Sleigh Bell"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 920,
+    "nautilus_index": 3401,
+    "name": "Sleigh Bell"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 921,
+    "nautilus_index": 3402,
+    "name": "Bell Tree-Slow"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 922,
+    "nautilus_index": 3403,
+    "name": "Bell Tree-Fast"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 929,
+    "nautilus_index": 3422,
+    "name": "Bull Roar"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 930,
+    "nautilus_index": 3425,
+    "name": "Jew's Harp 01"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 931,
+    "nautilus_index": 3426,
+    "name": "Jew's Harp 02"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 932,
+    "nautilus_index": 3427,
+    "name": "Jew's Harp 03"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 933,
+    "nautilus_index": 3428,
+    "name": "Jew's Harp 04"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 934,
+    "nautilus_index": 3429,
+    "name": "Jew's Harp 05"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 935,
+    "nautilus_index": 3430,
+    "name": "Jew's Harp 06"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 936,
+    "nautilus_index": 3431,
+    "name": "Jew's Harp 07"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 937,
+    "nautilus_index": 3432,
+    "name": "Jew's Harp 08"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 938,
+    "nautilus_index": 3433,
+    "name": "Jew's Harp 09"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 939,
+    "nautilus_index": 3434,
+    "name": "Jew's Harp 10"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 940,
+    "nautilus_index": 3435,
+    "name": "Jew's Harp 11"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 941,
+    "nautilus_index": 3436,
+    "name": "Jew's Harp 12"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 942,
+    "nautilus_index": 3437,
+    "name": "Jew's Harp 13"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 943,
+    "nautilus_index": 3495,
+    "name": "WD-Native Drum 1"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 944,
+    "nautilus_index": 3496,
+    "name": "WD-Native Drum 2"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 945,
+    "nautilus_index": 3497,
+    "name": "WD-Native Drum 3"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 946,
+    "nautilus_index": 3498,
+    "name": "WD-Native Drum 4"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 947,
+    "nautilus_index": 3499,
+    "name": "WD-Big Hand 1"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 948,
+    "nautilus_index": 3500,
+    "name": "WD-Big Hand 2"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 949,
+    "nautilus_index": 3501,
+    "name": "WD-Big Hand 3"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 950,
+    "nautilus_index": 3506,
+    "name": "WD-Bongo"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 951,
+    "nautilus_index": 3511,
+    "name": "WD-Brazillia 1"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 952,
+    "nautilus_index": 3512,
+    "name": "WD-Brazillia 2"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 959,
+    "nautilus_index": 3519,
+    "name": "WD-Gothic 1"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 960,
+    "nautilus_index": 3520,
+    "name": "WD-Gothic 2"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 961,
+    "nautilus_index": 3521,
+    "name": "WD-Gothic 3"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 962,
+    "nautilus_index": 3522,
+    "name": "WD-Gothic 4"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 963,
+    "nautilus_index": 3525,
+    "name": "WD-Kangaroo 1"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 964,
+    "nautilus_index": 3526,
+    "name": "WD-Kangaroo 2"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 965,
+    "nautilus_index": 3527,
+    "name": "WD-Kangaroo 3"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 966,
+    "nautilus_index": 3528,
+    "name": "WD-Kangaroo 4"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 967,
+    "nautilus_index": 3529,
+    "name": "WD-Kangaroo 5"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 968,
+    "nautilus_index": 3530,
+    "name": "WD-Kangaroo 6"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 969,
+    "nautilus_index": 3531,
+    "name": "WD-Kangaroo 7"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 970,
+    "nautilus_index": 3532,
+    "name": "WD-Kangaroo 8"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 971,
+    "nautilus_index": 3533,
+    "name": "WD-Snake Drum 1"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 972,
+    "nautilus_index": 3534,
+    "name": "WD-Snake Drum 2"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 974,
+    "nautilus_index": 3458,
+    "name": "Perc-Dance 01"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 975,
+    "nautilus_index": 3459,
+    "name": "Perc-Dance 02"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 996,
+    "nautilus_index": 3462,
+    "name": "Perc-Dance 04-Closed"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 997,
+    "nautilus_index": 3463,
+    "name": "Perc-Dance 04-Open"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 998,
+    "nautilus_index": 3464,
+    "name": "Perc-Dance 05"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1003,
+    "nautilus_index": 3469,
+    "name": "Perc-Dance 08"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1009,
+    "nautilus_index": 3473,
+    "name": "Perc-Dance 10"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1010,
+    "nautilus_index": 3474,
+    "name": "Perc-Dance 11"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1019,
+    "nautilus_index": 3665,
+    "name": "Zap 1"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1020,
+    "nautilus_index": 3666,
+    "name": "Zap 2"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1023,
+    "nautilus_index": 3668,
+    "name": "Orch Hit 1"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1024,
+    "nautilus_index": 3669,
+    "name": "Orch Hit 2"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1025,
+    "nautilus_index": 3670,
+    "name": "Orch Hit 3"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1026,
+    "nautilus_index": 3671,
+    "name": "Orch Hit 4"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1030,
+    "nautilus_index": 3672,
+    "name": "Impact Hit"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1037,
+    "nautilus_index": 3673,
+    "name": "Brass Fall 1"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1054,
+    "nautilus_index": 3675,
+    "name": "Vinyl Hit 1"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1055,
+    "nautilus_index": 3676,
+    "name": "Vinyl Hit 2"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1056,
+    "nautilus_index": 3678,
+    "name": "DJ Vinyl Sliced 01"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1057,
+    "nautilus_index": 3679,
+    "name": "DJ Vinyl Sliced 02"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1058,
+    "nautilus_index": 3680,
+    "name": "DJ Vinyl Sliced 03"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1059,
+    "nautilus_index": 3681,
+    "name": "DJ Vinyl Sliced 04"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1060,
+    "nautilus_index": 3682,
+    "name": "DJ Vinyl Sliced 05"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1061,
+    "nautilus_index": 3683,
+    "name": "DJ Vinyl Sliced 06"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1065,
+    "nautilus_index": 3687,
+    "name": "DJ Vinyl Sliced 10"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1066,
+    "nautilus_index": 3688,
+    "name": "DJ Vinyl Sliced 11"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1067,
+    "nautilus_index": 3689,
+    "name": "DJ Vinyl Sliced 12"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1068,
+    "nautilus_index": 3690,
+    "name": "DJ Vinyl Sliced 13"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1069,
+    "nautilus_index": 3691,
+    "name": "DJ Vinyl Sliced 14"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1070,
+    "nautilus_index": 3692,
+    "name": "DJ Vinyl Sliced 15"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1071,
+    "nautilus_index": 3693,
+    "name": "DJ Vinyl Sliced 16"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1072,
+    "nautilus_index": 3694,
+    "name": "DJ Vinyl Sliced 17"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1073,
+    "nautilus_index": 3695,
+    "name": "DJ Vinyl Sliced 18"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1080,
+    "nautilus_index": 3729,
+    "name": "Industry Hit 01"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1081,
+    "nautilus_index": 3730,
+    "name": "Industry Hit 02"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1082,
+    "nautilus_index": 3731,
+    "name": "Industry Hit 03"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1083,
+    "nautilus_index": 3732,
+    "name": "Industry Hit 04"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1085,
+    "nautilus_index": 3733,
+    "name": "Industry Hit 05"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1086,
+    "nautilus_index": 3734,
+    "name": "Industry Hit 06"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1087,
+    "nautilus_index": 3735,
+    "name": "Industry Hit 07"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1088,
+    "nautilus_index": 3736,
+    "name": "Industry Hit 08"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1090,
+    "nautilus_index": 3737,
+    "name": "Industry Hit 09"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1092,
+    "nautilus_index": 3738,
+    "name": "Industry Hit 10"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1094,
+    "nautilus_index": 3739,
+    "name": "Industry Hit 11"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1095,
+    "nautilus_index": 3740,
+    "name": "Industry Hit 12"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1096,
+    "nautilus_index": 3741,
+    "name": "Industry Hit 13"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1097,
+    "nautilus_index": 3742,
+    "name": "Industry Hit 14"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1100,
+    "nautilus_index": 3743,
+    "name": "Industry Hit 15"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1101,
+    "nautilus_index": 3744,
+    "name": "Industry Hit 16"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1102,
+    "nautilus_index": 3745,
+    "name": "Industry Hit 17"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1103,
+    "nautilus_index": 3746,
+    "name": "Industry Hit 18"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1104,
+    "nautilus_index": 3747,
+    "name": "Industry Hit 19"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1105,
+    "nautilus_index": 3748,
+    "name": "Industry Hit 20"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1106,
+    "nautilus_index": 3749,
+    "name": "Industry Hit 21"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1107,
+    "nautilus_index": 3750,
+    "name": "Industry Hit 22"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1108,
+    "nautilus_index": 3751,
+    "name": "Industry Hit 23"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1109,
+    "nautilus_index": 3752,
+    "name": "Industry Hit 24"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1110,
+    "nautilus_index": 3753,
+    "name": "Industry Hit 25"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1111,
+    "nautilus_index": 3754,
+    "name": "Industry Hit 26"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1112,
+    "nautilus_index": 3760,
+    "name": "Industry Loop 1"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1113,
+    "nautilus_index": 3761,
+    "name": "Industry Loop 2"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1114,
+    "nautilus_index": 3762,
+    "name": "Industry Loop 3"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1180,
+    "nautilus_index": 3847,
+    "name": "Vocoder Voice 01"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1181,
+    "nautilus_index": 3848,
+    "name": "Vocoder Voice 02"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1182,
+    "nautilus_index": 3849,
+    "name": "Vocoder Voice 03"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1183,
+    "nautilus_index": 3850,
+    "name": "Vocoder Voice 04"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1184,
+    "nautilus_index": 3851,
+    "name": "Vocoder Voice 05"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1185,
+    "nautilus_index": 3852,
+    "name": "Vocoder Voice 06"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1186,
+    "nautilus_index": 3853,
+    "name": "Vocoder Voice 07"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1187,
+    "nautilus_index": 3854,
+    "name": "Vocoder Voice 08"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1188,
+    "nautilus_index": 3855,
+    "name": "Vocoder Voice 09"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1189,
+    "nautilus_index": 3856,
+    "name": "Vocoder Voice 10"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1190,
+    "nautilus_index": 3857,
+    "name": "Vocoder Voice 11"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1191,
+    "nautilus_index": 3858,
+    "name": "Vocoder Voice 12"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1192,
+    "nautilus_index": 3859,
+    "name": "Vocoder Voice 13"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1193,
+    "nautilus_index": 3860,
+    "name": "Vocoder Voice 14"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1194,
+    "nautilus_index": 3861,
+    "name": "Vocoder Voice 15"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1195,
+    "nautilus_index": 3862,
+    "name": "Vocoder Voice 16"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1196,
+    "nautilus_index": 3863,
+    "name": "Vocoder Voice 17"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1197,
+    "nautilus_index": 3864,
+    "name": "Vocoder Voice 18"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1198,
+    "nautilus_index": 3865,
+    "name": "Vocoder Voice 19"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1199,
+    "nautilus_index": 3866,
+    "name": "Vocoder Voice 20"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1200,
+    "nautilus_index": 3870,
+    "name": "CompuVoice-BEEP"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1210,
+    "nautilus_index": 3879,
+    "name": "Stadium"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1211,
+    "nautilus_index": 3882,
+    "name": "Applause"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1212,
+    "nautilus_index": 3886,
+    "name": "Scream"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1213,
+    "nautilus_index": 3887,
+    "name": "Laughing"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1214,
+    "nautilus_index": 3888,
+    "name": "Footstep 1"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1215,
+    "nautilus_index": 3889,
+    "name": "Footstep 2"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1216,
+    "nautilus_index": 3890,
+    "name": "Click 1"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1217,
+    "nautilus_index": 3891,
+    "name": "Click 2"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1218,
+    "nautilus_index": 3892,
+    "name": "Bird 1"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1219,
+    "nautilus_index": 3893,
+    "name": "Bird 2"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1220,
+    "nautilus_index": 3894,
+    "name": "Dog"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1221,
+    "nautilus_index": 3895,
+    "name": "Gallop"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1222,
+    "nautilus_index": 3896,
+    "name": "Crickets 1"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1223,
+    "nautilus_index": 3897,
+    "name": "Crickets 2"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1224,
+    "nautilus_index": 3898,
+    "name": "Heart Beat"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1225,
+    "nautilus_index": 3899,
+    "name": "Punch"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1226,
+    "nautilus_index": 3900,
+    "name": "Tribe"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1227,
+    "nautilus_index": 3901,
+    "name": "Sword 1"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1228,
+    "nautilus_index": 3902,
+    "name": "Sword 2"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1229,
+    "nautilus_index": 3903,
+    "name": "Glass Crash"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1230,
+    "nautilus_index": 3905,
+    "name": "Ice Drop"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1231,
+    "nautilus_index": 3906,
+    "name": "Door Creak"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1232,
+    "nautilus_index": 3907,
+    "name": "Door Slam 1"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1233,
+    "nautilus_index": 3909,
+    "name": "Car Engine"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1234,
+    "nautilus_index": 3910,
+    "name": "Car Stop"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1235,
+    "nautilus_index": 3911,
+    "name": "Car Pass"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1236,
+    "nautilus_index": 3912,
+    "name": "Car Crash"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1237,
+    "nautilus_index": 3914,
+    "name": "Train"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1238,
+    "nautilus_index": 3916,
+    "name": "Railroad Crossing"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1240,
+    "nautilus_index": 3917,
+    "name": "Helicopter"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1241,
+    "nautilus_index": 3918,
+    "name": "Fireworks"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1243,
+    "nautilus_index": 3920,
+    "name": "Rifle Shot"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1244,
+    "nautilus_index": 3921,
+    "name": "Machine Gun"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1245,
+    "nautilus_index": 3922,
+    "name": "Laser Gun"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1246,
+    "nautilus_index": 3923,
+    "name": "Cannon 1"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1247,
+    "nautilus_index": 3924,
+    "name": "Cannon 2"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1248,
+    "nautilus_index": 3925,
+    "name": "Cannon 3"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1249,
+    "nautilus_index": 3926,
+    "name": "Explosion"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1250,
+    "nautilus_index": 3927,
+    "name": "Thunder"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1251,
+    "nautilus_index": 3928,
+    "name": "Wind"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1252,
+    "nautilus_index": 3929,
+    "name": "Stream"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1253,
+    "nautilus_index": 3930,
+    "name": "Bubble"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1255,
+    "nautilus_index": 3939,
+    "name": "Old Telephone-Ring"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1256,
+    "nautilus_index": 3936,
+    "name": "Telephone-Call"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1257,
+    "nautilus_index": 3938,
+    "name": "Telephone-Ring"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1258,
+    "nautilus_index": 3937,
+    "name": "Telephone-Busy"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1259,
+    "nautilus_index": 3940,
+    "name": "Swish Terra"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1261,
+    "nautilus_index": 3942,
+    "name": "Cricket Spectrum"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1262,
+    "nautilus_index": 3943,
+    "name": "Noise-White"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1263,
+    "nautilus_index": 3944,
+    "name": "Noise-FM Mod"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1267,
+    "nautilus_index": 3945,
+    "name": "Gamelan"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1374,
+    "nautilus_index": 3444,
+    "name": "Berimbau-Wah-Lo"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1375,
+    "nautilus_index": 3445,
+    "name": "Berimbau-Wah-Hi"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1376,
+    "nautilus_index": 3446,
+    "name": "Berimbau-HO"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1377,
+    "nautilus_index": 3447,
+    "name": "Berimbau-PO"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 6,
+    "nautilus_index": 9,
+    "name": "Acoustic Piano 1 mf-mono"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 7,
+    "nautilus_index": 10,
+    "name": "Acoustic Piano 1 f-mono"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 8,
+    "nautilus_index": 11,
+    "name": "Acoustic Piano 1 ff-mono"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 9,
+    "nautilus_index": 20,
+    "name": "A.Piano-M1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 11,
+    "nautilus_index": 22,
+    "name": "E.Piano-Suit Bright mp"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 12,
+    "nautilus_index": 23,
+    "name": "E.Piano-Suit Bright mf"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 13,
+    "nautilus_index": 24,
+    "name": "E.Piano-Suit Bright f"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 14,
+    "nautilus_index": 25,
+    "name": "E.Piano-Suit Dark mp"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 15,
+    "nautilus_index": 26,
+    "name": "E.Piano-Suit Dark mf"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 16,
+    "nautilus_index": 27,
+    "name": "E.Piano-Suit Dark f"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 17,
+    "nautilus_index": 28,
+    "name": "E.Piano-Suit Soft"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 18,
+    "nautilus_index": 29,
+    "name": "E.Piano-Suit Hard"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 19,
+    "nautilus_index": 30,
+    "name": "E.Piano-Stage Soft"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 20,
+    "nautilus_index": 31,
+    "name": "E.Piano-Stage Hard"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 21,
+    "nautilus_index": 32,
+    "name": "E.Piano-Dyno Soft"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 22,
+    "nautilus_index": 33,
+    "name": "E.Piano-Dyno Medium"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 23,
+    "nautilus_index": 34,
+    "name": "E.Piano-Dyno Hard"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 24,
+    "nautilus_index": 35,
+    "name": "E.Piano-Wurly mp"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 25,
+    "nautilus_index": 36,
+    "name": "E.Piano-Wurly mf"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 26,
+    "nautilus_index": 37,
+    "name": "E.Piano-Wurly f"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 27,
+    "nautilus_index": 38,
+    "name": "E.Piano-FM 1 mf"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 28,
+    "nautilus_index": 39,
+    "name": "E.Piano-FM 1 f"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 29,
+    "nautilus_index": 40,
+    "name": "E.Piano-FM 1 ff"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 30,
+    "nautilus_index": 41,
+    "name": "E.Piano-FM 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 31,
+    "nautilus_index": 42,
+    "name": "E.Piano-FM 3 mf"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 32,
+    "nautilus_index": 43,
+    "name": "E.Piano-FM 3 f"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 33,
+    "nautilus_index": 44,
+    "name": "E.Piano-FM 3 ff"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 34,
+    "nautilus_index": 45,
+    "name": "E.Piano-FM 4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 35,
+    "nautilus_index": 46,
+    "name": "E.Piano-FM 5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 45,
+    "nautilus_index": 64,
+    "name": "Harpsichord-Single"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 46,
+    "nautilus_index": 65,
+    "name": "Harpsichord-Double"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 47,
+    "nautilus_index": 66,
+    "name": "Harpsichord-Keyoff"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 50,
+    "nautilus_index": 69,
+    "name": "E.Organ-Perc. 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 51,
+    "nautilus_index": 73,
+    "name": "E.Organ-M1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 52,
+    "nautilus_index": 74,
+    "name": "E.Organ-House"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 53,
+    "nautilus_index": 88,
+    "name": "E.Organ-N1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 55,
+    "nautilus_index": 90,
+    "name": "E.Organ-8'"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 56,
+    "nautilus_index": 76,
+    "name": "E.Organ-16'+5 1/3'"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 58,
+    "nautilus_index": 79,
+    "name": "E.Organ-Gospel 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 60,
+    "nautilus_index": 70,
+    "name": "E.Organ-Perc. 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 63,
+    "nautilus_index": 83,
+    "name": "E.Organ-Distortion"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 64,
+    "nautilus_index": 92,
+    "name": "E.Organ-F Click"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 65,
+    "nautilus_index": 93,
+    "name": "E.Organ-Vox 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 66,
+    "nautilus_index": 94,
+    "name": "E.Organ-Vox 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 67,
+    "nautilus_index": 104,
+    "name": "Positive Organ 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 68,
+    "nautilus_index": 105,
+    "name": "Positive Organ 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 69,
+    "nautilus_index": 98,
+    "name": "Pipe Organ-Tuentiana"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 71,
+    "nautilus_index": 95,
+    "name": "Pipe Organ-Mixture 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 72,
+    "nautilus_index": 96,
+    "name": "Pipe Organ-Mixture 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 73,
+    "nautilus_index": 97,
+    "name": "Pipe Organ-Full"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 76,
+    "nautilus_index": 106,
+    "name": "Kalimba"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 77,
+    "nautilus_index": 107,
+    "name": "Kalimba-Mute"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 78,
+    "nautilus_index": 108,
+    "name": "Music Box 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 79,
+    "nautilus_index": 109,
+    "name": "Music Box 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 80,
+    "nautilus_index": 110,
+    "name": "Marimba"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 81,
+    "nautilus_index": 111,
+    "name": "Xylophone 1 p"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 82,
+    "nautilus_index": 112,
+    "name": "Xylophone 1 mf"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 83,
+    "nautilus_index": 113,
+    "name": "Xylophone 1 f"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 84,
+    "nautilus_index": 114,
+    "name": "Xylophone 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 85,
+    "nautilus_index": 115,
+    "name": "Xylophone 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 86,
+    "nautilus_index": 116,
+    "name": "Balaphone"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 87,
+    "nautilus_index": 118,
+    "name": "Log Drum"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 88,
+    "nautilus_index": 119,
+    "name": "Vibraphone 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 89,
+    "nautilus_index": 120,
+    "name": "Vibraphone 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 90,
+    "nautilus_index": 121,
+    "name": "Celesta"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 91,
+    "nautilus_index": 122,
+    "name": "Glockenspiel 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 92,
+    "nautilus_index": 123,
+    "name": "Glockenspiel 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 93,
+    "nautilus_index": 124,
+    "name": "Tubular Bell"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 94,
+    "nautilus_index": 125,
+    "name": "FM Tubular"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 95,
+    "nautilus_index": 126,
+    "name": "Steel Drum 1 mf"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 96,
+    "nautilus_index": 127,
+    "name": "Steel Drum 1 f"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 97,
+    "nautilus_index": 128,
+    "name": "Steel Drum 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 98,
+    "nautilus_index": 129,
+    "name": "Gamelan"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 99,
+    "nautilus_index": 130,
+    "name": "Metal FM Bell"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 100,
+    "nautilus_index": 131,
+    "name": "Finger Cymbal"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 101,
+    "nautilus_index": 133,
+    "name": "FM Solar"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 102,
+    "nautilus_index": 132,
+    "name": "Ensemble Bell"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 103,
+    "nautilus_index": 134,
+    "name": "FM Glass Bell"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 104,
+    "nautilus_index": 135,
+    "name": "FM Pluck"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 105,
+    "nautilus_index": 136,
+    "name": "Glass Bell"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 106,
+    "nautilus_index": 165,
+    "name": "Bottle Pop"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 107,
+    "nautilus_index": 154,
+    "name": "Piccolo"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 111,
+    "nautilus_index": 149,
+    "name": "Flute-Voice"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 114,
+    "nautilus_index": 155,
+    "name": "Pan Flute"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 115,
+    "nautilus_index": 156,
+    "name": "Pan Flute-Attack"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 116,
+    "nautilus_index": 157,
+    "name": "Tin Whistle"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 117,
+    "nautilus_index": 158,
+    "name": "Tin Whistle-Voice"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 118,
+    "nautilus_index": 159,
+    "name": "Tin Whistle-Attack"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 119,
+    "nautilus_index": 160,
+    "name": "Shakuhachi"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 120,
+    "nautilus_index": 161,
+    "name": "Shakuhachi-Attack"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 121,
+    "nautilus_index": 162,
+    "name": "Nay"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 122,
+    "nautilus_index": 163,
+    "name": "Bottle"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 123,
+    "nautilus_index": 164,
+    "name": "Bottleizer"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 124,
+    "nautilus_index": 166,
+    "name": "Ocarina 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 125,
+    "nautilus_index": 167,
+    "name": "Ocarina 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 126,
+    "nautilus_index": 168,
+    "name": "Native American Flute"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 127,
+    "nautilus_index": 169,
+    "name": "Recorder"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 128,
+    "nautilus_index": 170,
+    "name": "Bass Recorder-Tap"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 129,
+    "nautilus_index": 171,
+    "name": "Clarinet"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 130,
+    "nautilus_index": 173,
+    "name": "Bass Clarinet 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 131,
+    "nautilus_index": 174,
+    "name": "Bass Clarinet 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 132,
+    "nautilus_index": 181,
+    "name": "DoubleReed"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 133,
+    "nautilus_index": 175,
+    "name": "Oboe p"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 134,
+    "nautilus_index": 176,
+    "name": "Oboe f"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 135,
+    "nautilus_index": 178,
+    "name": "Oboe-Key"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 136,
+    "nautilus_index": 179,
+    "name": "English Horn"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 137,
+    "nautilus_index": 182,
+    "name": "Bassoon"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 155,
+    "nautilus_index": 224,
+    "name": "Musette"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 156,
+    "nautilus_index": 221,
+    "name": "Accordion"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 157,
+    "nautilus_index": 225,
+    "name": "Bandoneon"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 158,
+    "nautilus_index": 222,
+    "name": "Cassotto Accordion"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 159,
+    "nautilus_index": 223,
+    "name": "Accordion 4'"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 162,
+    "nautilus_index": 228,
+    "name": "Harmonica"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 163,
+    "nautilus_index": 230,
+    "name": "Bagpipe"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 165,
+    "nautilus_index": 232,
+    "name": "Uilleann Pipe"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 171,
+    "nautilus_index": 239,
+    "name": "Trumpet-Cup Muted"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 173,
+    "nautilus_index": 254,
+    "name": "Trombone 1 mf"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 174,
+    "nautilus_index": 255,
+    "name": "Trombone 1 ff"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 175,
+    "nautilus_index": 256,
+    "name": "Trombone 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 176,
+    "nautilus_index": 257,
+    "name": "Trombone-Muted"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 177,
+    "nautilus_index": 287,
+    "name": "French Horn"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 178,
+    "nautilus_index": 285,
+    "name": "Tuba f"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 179,
+    "nautilus_index": 286,
+    "name": "Tuba ff"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 180,
+    "nautilus_index": 241,
+    "name": "Trumpet-Fall"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 182,
+    "nautilus_index": 288,
+    "name": "French Horn Ensemble"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 193,
+    "nautilus_index": 303,
+    "name": "Brass Ensemble 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 194,
+    "nautilus_index": 304,
+    "name": "Brass Ensemble 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 197,
+    "nautilus_index": 318,
+    "name": "Voice-Pop Ooh"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 199,
+    "nautilus_index": 316,
+    "name": "Voice-Gospel Umm"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 200,
+    "nautilus_index": 315,
+    "name": "Voice-Gospel Ah"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 201,
+    "nautilus_index": 317,
+    "name": "Voice-Pop Ah"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 203,
+    "nautilus_index": 319,
+    "name": "Voice-Choir"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 205,
+    "nautilus_index": 330,
+    "name": "Voice-Female Wuuh"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 206,
+    "nautilus_index": 331,
+    "name": "Voice-Female Woh"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 207,
+    "nautilus_index": 332,
+    "name": "Voice-Female Wah"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 208,
+    "nautilus_index": 333,
+    "name": "Voice-Female Dah"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 209,
+    "nautilus_index": 325,
+    "name": "Voice-Male Wuh"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 210,
+    "nautilus_index": 326,
+    "name": "Voice-Male Woh"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 211,
+    "nautilus_index": 327,
+    "name": "Voice-Male Wah"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 212,
+    "nautilus_index": 328,
+    "name": "Voice-Male Dah"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 213,
+    "nautilus_index": 355,
+    "name": "Voice-Doo"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 214,
+    "nautilus_index": 357,
+    "name": "Voice-Wave"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 217,
+    "nautilus_index": 367,
+    "name": "Violin-Vibrato"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 219,
+    "nautilus_index": 374,
+    "name": "Cello"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 234,
+    "nautilus_index": 407,
+    "name": "Pizzicato"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 235,
+    "nautilus_index": 408,
+    "name": "Pizzicato Ensemble"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 236,
+    "nautilus_index": 415,
+    "name": "Nylon Guitar 1 p"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 237,
+    "nautilus_index": 416,
+    "name": "Nylon Guitar 1 mf"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 238,
+    "nautilus_index": 417,
+    "name": "Nylon Guitar 1 f"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 268,
+    "nautilus_index": 465,
+    "name": "El.Guitar-Fret Noise 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 269,
+    "nautilus_index": 466,
+    "name": "El.Guitar-Fret Noise 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 270,
+    "nautilus_index": 467,
+    "name": "El.Guitar-Fret Noise 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 271,
+    "nautilus_index": 468,
+    "name": "El.Guitar-Fret Noise 4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 272,
+    "nautilus_index": 469,
+    "name": "El.Guitar-Fret Noise 5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 284,
+    "nautilus_index": 472,
+    "name": "Ac.Steel Gtr-Pick p VAR"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 285,
+    "nautilus_index": 473,
+    "name": "Ac.Steel Gtr-Pick mf VAR"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 286,
+    "nautilus_index": 474,
+    "name": "Ac.Steel Gtr-Pick f VAR"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 287,
+    "nautilus_index": 475,
+    "name": "Ac.Steel Gtr-Muted VAR"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 288,
+    "nautilus_index": 476,
+    "name": "Ac.Resonator Guitar VAR"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 289,
+    "nautilus_index": 477,
+    "name": "Ac.12 Strings Guitar VAR"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 302,
+    "nautilus_index": 491,
+    "name": "El.Gtr Funky 1-Stra VAR"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 303,
+    "nautilus_index": 492,
+    "name": "El.Gtr Funky 2-Prkr VAR"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 330,
+    "nautilus_index": 526,
+    "name": "El.Bass-Slap Muted"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 333,
+    "nautilus_index": 530,
+    "name": "El.Bass-Fret Noise"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 356,
+    "nautilus_index": 550,
+    "name": "Sitar 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 357,
+    "nautilus_index": 551,
+    "name": "Sitar 1 & Tambura"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 358,
+    "nautilus_index": 552,
+    "name": "Sitar 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 359,
+    "nautilus_index": 553,
+    "name": "Sitar 2 & Tambura"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 360,
+    "nautilus_index": 554,
+    "name": "Bouzouki"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 361,
+    "nautilus_index": 555,
+    "name": "Santur"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 362,
+    "nautilus_index": 556,
+    "name": "Mandolin 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 363,
+    "nautilus_index": 557,
+    "name": "Mandolin 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 365,
+    "nautilus_index": 560,
+    "name": "Banjo"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 366,
+    "nautilus_index": 561,
+    "name": "Shamisen 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 367,
+    "nautilus_index": 563,
+    "name": "Koto"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 372,
+    "nautilus_index": 566,
+    "name": "SynDark-MG"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 373,
+    "nautilus_index": 567,
+    "name": "SynReso-MG 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 374,
+    "nautilus_index": 568,
+    "name": "SynReso-MG 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 375,
+    "nautilus_index": 569,
+    "name": "SynReso-MG 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 376,
+    "nautilus_index": 570,
+    "name": "SynReso-MG 4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 377,
+    "nautilus_index": 572,
+    "name": "SynReso-A2600"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 379,
+    "nautilus_index": 574,
+    "name": "SynReso-Pro5_2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 380,
+    "nautilus_index": 575,
+    "name": "SynReso-Poly6_1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 381,
+    "nautilus_index": 576,
+    "name": "SynReso-Poly6_2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 384,
+    "nautilus_index": 586,
+    "name": "Bass/Lead-800DV 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 385,
+    "nautilus_index": 591,
+    "name": "SynLead-MG 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 386,
+    "nautilus_index": 592,
+    "name": "SynLead-MG 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 387,
+    "nautilus_index": 593,
+    "name": "SynLead-MG 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 388,
+    "nautilus_index": 594,
+    "name": "SynLead-MG 4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 389,
+    "nautilus_index": 595,
+    "name": "SynLead-Pro5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 390,
+    "nautilus_index": 588,
+    "name": "SynLead-700S 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 391,
+    "nautilus_index": 589,
+    "name": "SynLead-700S 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 392,
+    "nautilus_index": 590,
+    "name": "SynLead-Poly6"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 393,
+    "nautilus_index": 596,
+    "name": "SynComp-Poly6"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 396,
+    "nautilus_index": 587,
+    "name": "Bass/Lead-M/poly"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 397,
+    "nautilus_index": 582,
+    "name": "Bass/Lead-Dance"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 398,
+    "nautilus_index": 583,
+    "name": "Bass/Lead-DSP"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 400,
+    "nautilus_index": 597,
+    "name": "Syn-Phone Square"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 402,
+    "nautilus_index": 604,
+    "name": "Sync Wave 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 403,
+    "nautilus_index": 605,
+    "name": "Sync Wave 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 404,
+    "nautilus_index": 606,
+    "name": "Sync Wave 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 405,
+    "nautilus_index": 602,
+    "name": "Sync"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 406,
+    "nautilus_index": 603,
+    "name": "Sync-Comp"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 409,
+    "nautilus_index": 607,
+    "name": "Syn Bass-Dist"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 412,
+    "nautilus_index": 611,
+    "name": "Klub Bass"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 413,
+    "nautilus_index": 610,
+    "name": "Syn Bass-FM"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 414,
+    "nautilus_index": 612,
+    "name": "Knock Bass"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 420,
+    "nautilus_index": 613,
+    "name": "Antic Bass"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 421,
+    "nautilus_index": 621,
+    "name": "Analog Strings 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 433,
+    "nautilus_index": 627,
+    "name": "POWER SAW"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 439,
+    "nautilus_index": 630,
+    "name": "SynEns-A2600"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 443,
+    "nautilus_index": 633,
+    "name": "Flug Pad"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 445,
+    "nautilus_index": 634,
+    "name": "White Pad"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 458,
+    "nautilus_index": 642,
+    "name": "Ghost"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 460,
+    "nautilus_index": 645,
+    "name": "Cricket Spectrum"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 461,
+    "nautilus_index": 646,
+    "name": "Noise Pad"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 462,
+    "nautilus_index": 648,
+    "name": "Noise Spectrum"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 463,
+    "nautilus_index": 649,
+    "name": "Noise"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 464,
+    "nautilus_index": 650,
+    "name": "Swish Terra"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 467,
+    "nautilus_index": 653,
+    "name": "Spectraslicer"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 468,
+    "nautilus_index": 654,
+    "name": "Dissonance"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 475,
+    "nautilus_index": 658,
+    "name": "Twinkler"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 478,
+    "nautilus_index": 660,
+    "name": "WaveSweep A"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 480,
+    "nautilus_index": 661,
+    "name": "WaveSweep B"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 481,
+    "nautilus_index": 663,
+    "name": "Air Noise"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 482,
+    "nautilus_index": 664,
+    "name": "Pole"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 486,
+    "nautilus_index": 667,
+    "name": "TunRhythmix"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 488,
+    "nautilus_index": 669,
+    "name": "Soft EP"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 489,
+    "nautilus_index": 670,
+    "name": "Hard EP"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 490,
+    "nautilus_index": 671,
+    "name": "EP Tine"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 491,
+    "nautilus_index": 672,
+    "name": "EP Body1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 492,
+    "nautilus_index": 673,
+    "name": "EP Body2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 493,
+    "nautilus_index": 674,
+    "name": "EP Body3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 494,
+    "nautilus_index": 675,
+    "name": "Digi EP"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 495,
+    "nautilus_index": 676,
+    "name": "E_PIANO3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 496,
+    "nautilus_index": 677,
+    "name": "CLAV_DSM"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 497,
+    "nautilus_index": 678,
+    "name": "Organ 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 498,
+    "nautilus_index": 679,
+    "name": "Organ 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 499,
+    "nautilus_index": 680,
+    "name": "Organ 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 500,
+    "nautilus_index": 681,
+    "name": "PipeOrg1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 501,
+    "nautilus_index": 682,
+    "name": "PipeOrg2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 502,
+    "nautilus_index": 683,
+    "name": "Pluck 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 503,
+    "nautilus_index": 684,
+    "name": "Pluck 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 504,
+    "nautilus_index": 685,
+    "name": "Pluck 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 505,
+    "nautilus_index": 686,
+    "name": "A. Guitar"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 506,
+    "nautilus_index": 687,
+    "name": "E. Guitar"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 507,
+    "nautilus_index": 688,
+    "name": "Dist. Gtr"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 508,
+    "nautilus_index": 689,
+    "name": "EGuitChime"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 509,
+    "nautilus_index": 690,
+    "name": "MuteGtr1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 510,
+    "nautilus_index": 691,
+    "name": "MuteGtr2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 511,
+    "nautilus_index": 692,
+    "name": "MuteGtr3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 512,
+    "nautilus_index": 693,
+    "name": "Koto WS"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 513,
+    "nautilus_index": 694,
+    "name": "harmonic"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 514,
+    "nautilus_index": 695,
+    "name": "Stick"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 515,
+    "nautilus_index": 696,
+    "name": "E. Bass"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 516,
+    "nautilus_index": 697,
+    "name": "Synbass1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 517,
+    "nautilus_index": 698,
+    "name": "Synbass2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 518,
+    "nautilus_index": 699,
+    "name": "BassHarm"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 519,
+    "nautilus_index": 700,
+    "name": "Vibes"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 520,
+    "nautilus_index": 701,
+    "name": "Hi Bell"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 521,
+    "nautilus_index": 702,
+    "name": "Jar"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 522,
+    "nautilus_index": 703,
+    "name": "TinCup"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 523,
+    "nautilus_index": 704,
+    "name": "Agogo"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 524,
+    "nautilus_index": 705,
+    "name": "Gendar"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 525,
+    "nautilus_index": 706,
+    "name": "Tubular"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 526,
+    "nautilus_index": 707,
+    "name": "New Pole"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 527,
+    "nautilus_index": 708,
+    "name": "Soft Mrmba"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 528,
+    "nautilus_index": 709,
+    "name": "Thai Mrmba"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 529,
+    "nautilus_index": 710,
+    "name": "Glass Hit"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 530,
+    "nautilus_index": 711,
+    "name": "Crystal"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 531,
+    "nautilus_index": 712,
+    "name": "Flute WS"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 532,
+    "nautilus_index": 713,
+    "name": "FluteTrans"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 533,
+    "nautilus_index": 714,
+    "name": "Overblown"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 535,
+    "nautilus_index": 716,
+    "name": "BassnOboe"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 536,
+    "nautilus_index": 717,
+    "name": "Clarinet WS"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 537,
+    "nautilus_index": 718,
+    "name": "BariSax"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 538,
+    "nautilus_index": 719,
+    "name": "TenorSax"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 539,
+    "nautilus_index": 720,
+    "name": "AltoSax"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 540,
+    "nautilus_index": 721,
+    "name": "BrassEns"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 541,
+    "nautilus_index": 722,
+    "name": "TromTrp"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 542,
+    "nautilus_index": 723,
+    "name": "Tuba&Flu"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 543,
+    "nautilus_index": 724,
+    "name": "Bowing"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 544,
+    "nautilus_index": 725,
+    "name": "Synorch"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 545,
+    "nautilus_index": 726,
+    "name": "PWM String"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 546,
+    "nautilus_index": 727,
+    "name": "SynString"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 547,
+    "nautilus_index": 728,
+    "name": "Airvox"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 548,
+    "nautilus_index": 729,
+    "name": "Voices"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 549,
+    "nautilus_index": 730,
+    "name": "Choir"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 550,
+    "nautilus_index": 635,
+    "name": "Glass Vox"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 553,
+    "nautilus_index": 734,
+    "name": "MV Wave"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 554,
+    "nautilus_index": 735,
+    "name": "FV Wave"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 555,
+    "nautilus_index": 736,
+    "name": "DW Voice"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 556,
+    "nautilus_index": 737,
+    "name": "SynthPad"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 557,
+    "nautilus_index": 738,
+    "name": "Birdland"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 558,
+    "nautilus_index": 739,
+    "name": "ChromRes"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 559,
+    "nautilus_index": 740,
+    "name": "ProSync"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 560,
+    "nautilus_index": 741,
+    "name": "SuperSaw"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 561,
+    "nautilus_index": 742,
+    "name": "Ping Wave"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 562,
+    "nautilus_index": 743,
+    "name": "Digital1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 563,
+    "nautilus_index": 744,
+    "name": "Digital2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 564,
+    "nautilus_index": 745,
+    "name": "Digital3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 565,
+    "nautilus_index": 746,
+    "name": "BellWave"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 566,
+    "nautilus_index": 747,
+    "name": "PercWave"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 567,
+    "nautilus_index": 748,
+    "name": "ShellDrum"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 568,
+    "nautilus_index": 749,
+    "name": "BD head"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 569,
+    "nautilus_index": 750,
+    "name": "Tambourine"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 570,
+    "nautilus_index": 751,
+    "name": "Cabasa"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 571,
+    "nautilus_index": 752,
+    "name": "Woodblock"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 572,
+    "nautilus_index": 753,
+    "name": "HH Loop"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 573,
+    "nautilus_index": 754,
+    "name": "WhiteNoi"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 574,
+    "nautilus_index": 755,
+    "name": "Spectrm1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 575,
+    "nautilus_index": 756,
+    "name": "Spectrm2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 576,
+    "nautilus_index": 757,
+    "name": "Spectrm3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 577,
+    "nautilus_index": 758,
+    "name": "Spectrm4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 578,
+    "nautilus_index": 759,
+    "name": "Sonar"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 579,
+    "nautilus_index": 760,
+    "name": "Metal 1TR"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 580,
+    "nautilus_index": 761,
+    "name": "Metal 2TR"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 581,
+    "nautilus_index": 762,
+    "name": "KalimbaTR"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 582,
+    "nautilus_index": 763,
+    "name": "GamelanTR"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 583,
+    "nautilus_index": 764,
+    "name": "MarimbaTR"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 584,
+    "nautilus_index": 765,
+    "name": "Potnoise"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 585,
+    "nautilus_index": 766,
+    "name": "Ticker"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 586,
+    "nautilus_index": 767,
+    "name": "VibeHit"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 587,
+    "nautilus_index": 768,
+    "name": "Whack 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 588,
+    "nautilus_index": 769,
+    "name": "Whack 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 589,
+    "nautilus_index": 770,
+    "name": "HDulciTR"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 590,
+    "nautilus_index": 771,
+    "name": "HoseHit1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 591,
+    "nautilus_index": 772,
+    "name": "HoseHit2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 592,
+    "nautilus_index": 773,
+    "name": "SynbassTR"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 593,
+    "nautilus_index": 774,
+    "name": "A.BassTR"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 600,
+    "nautilus_index": 781,
+    "name": "Inharm1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 601,
+    "nautilus_index": 782,
+    "name": "Inharm2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 602,
+    "nautilus_index": 783,
+    "name": "Inharm3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 603,
+    "nautilus_index": 784,
+    "name": "Inharm4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 604,
+    "nautilus_index": 785,
+    "name": "Inharm5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 605,
+    "nautilus_index": 786,
+    "name": "Inharm6"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 606,
+    "nautilus_index": 787,
+    "name": "Inharm7"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 607,
+    "nautilus_index": 788,
+    "name": "Inharm8"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 608,
+    "nautilus_index": 789,
+    "name": "Inharm9"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 609,
+    "nautilus_index": 790,
+    "name": "Inharm10"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 610,
+    "nautilus_index": 791,
+    "name": "Formant1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 611,
+    "nautilus_index": 792,
+    "name": "Formant2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 612,
+    "nautilus_index": 793,
+    "name": "Formant3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 613,
+    "nautilus_index": 794,
+    "name": "Formant4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 614,
+    "nautilus_index": 795,
+    "name": "Formant5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 615,
+    "nautilus_index": 796,
+    "name": "Formant6"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 616,
+    "nautilus_index": 797,
+    "name": "Formant7"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 617,
+    "nautilus_index": 798,
+    "name": "Sine WS"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 618,
+    "nautilus_index": 799,
+    "name": "Triangle WS"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 619,
+    "nautilus_index": 800,
+    "name": "VS35"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 620,
+    "nautilus_index": 801,
+    "name": "VS36"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 621,
+    "nautilus_index": 802,
+    "name": "VS37"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 622,
+    "nautilus_index": 803,
+    "name": "VS38"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 623,
+    "nautilus_index": 804,
+    "name": "VS39"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 624,
+    "nautilus_index": 805,
+    "name": "VS40"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 625,
+    "nautilus_index": 806,
+    "name": "VS41"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 626,
+    "nautilus_index": 807,
+    "name": "VS42"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 627,
+    "nautilus_index": 808,
+    "name": "VS43"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 628,
+    "nautilus_index": 809,
+    "name": "VS44"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 629,
+    "nautilus_index": 810,
+    "name": "VS45"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 630,
+    "nautilus_index": 811,
+    "name": "VS46"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 631,
+    "nautilus_index": 812,
+    "name": "VS47"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 632,
+    "nautilus_index": 813,
+    "name": "VS48"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 633,
+    "nautilus_index": 814,
+    "name": "VS49"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 634,
+    "nautilus_index": 815,
+    "name": "VS50"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 635,
+    "nautilus_index": 816,
+    "name": "VS51"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 636,
+    "nautilus_index": 817,
+    "name": "VS52"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 637,
+    "nautilus_index": 818,
+    "name": "VS53"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 638,
+    "nautilus_index": 819,
+    "name": "VS54"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 639,
+    "nautilus_index": 820,
+    "name": "VS55"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 640,
+    "nautilus_index": 821,
+    "name": "VS56"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 641,
+    "nautilus_index": 822,
+    "name": "VS57"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 642,
+    "nautilus_index": 823,
+    "name": "VS58"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 643,
+    "nautilus_index": 824,
+    "name": "VS59"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 644,
+    "nautilus_index": 825,
+    "name": "VS60"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 645,
+    "nautilus_index": 826,
+    "name": "VS61"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 646,
+    "nautilus_index": 827,
+    "name": "VS62"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 647,
+    "nautilus_index": 828,
+    "name": "VS63"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 648,
+    "nautilus_index": 829,
+    "name": "VS64"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 649,
+    "nautilus_index": 830,
+    "name": "VS65"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 650,
+    "nautilus_index": 831,
+    "name": "VS66"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 651,
+    "nautilus_index": 832,
+    "name": "VS67"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 652,
+    "nautilus_index": 833,
+    "name": "VS68"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 653,
+    "nautilus_index": 834,
+    "name": "VS69"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 654,
+    "nautilus_index": 835,
+    "name": "VS70"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 655,
+    "nautilus_index": 836,
+    "name": "VS71"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 656,
+    "nautilus_index": 837,
+    "name": "VS72"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 657,
+    "nautilus_index": 838,
+    "name": "VS73"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 658,
+    "nautilus_index": 839,
+    "name": "VS74"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 659,
+    "nautilus_index": 840,
+    "name": "VS75"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 660,
+    "nautilus_index": 841,
+    "name": "VS76"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 661,
+    "nautilus_index": 842,
+    "name": "VS77"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 662,
+    "nautilus_index": 843,
+    "name": "VS78"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 663,
+    "nautilus_index": 844,
+    "name": "VS79"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 664,
+    "nautilus_index": 845,
+    "name": "VS80"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 665,
+    "nautilus_index": 846,
+    "name": "VS81"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 666,
+    "nautilus_index": 847,
+    "name": "VS82"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 667,
+    "nautilus_index": 848,
+    "name": "VS83"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 668,
+    "nautilus_index": 849,
+    "name": "VS84"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 669,
+    "nautilus_index": 850,
+    "name": "VS85"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 670,
+    "nautilus_index": 851,
+    "name": "VS86"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 671,
+    "nautilus_index": 852,
+    "name": "VS87"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 672,
+    "nautilus_index": 853,
+    "name": "VS88"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 673,
+    "nautilus_index": 854,
+    "name": "VS89"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 674,
+    "nautilus_index": 855,
+    "name": "VS90"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 675,
+    "nautilus_index": 856,
+    "name": "VS91"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 676,
+    "nautilus_index": 857,
+    "name": "VS92"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 677,
+    "nautilus_index": 858,
+    "name": "VS93"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 678,
+    "nautilus_index": 859,
+    "name": "VS94"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 679,
+    "nautilus_index": 860,
+    "name": "VS95"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 680,
+    "nautilus_index": 861,
+    "name": "VS96"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 681,
+    "nautilus_index": 862,
+    "name": "VS97"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 682,
+    "nautilus_index": 863,
+    "name": "VS98"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 683,
+    "nautilus_index": 864,
+    "name": "VS99"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 684,
+    "nautilus_index": 865,
+    "name": "VS100"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 685,
+    "nautilus_index": 866,
+    "name": "VS101"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 686,
+    "nautilus_index": 867,
+    "name": "VS102"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 687,
+    "nautilus_index": 868,
+    "name": "VS103"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 688,
+    "nautilus_index": 869,
+    "name": "VS104"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 689,
+    "nautilus_index": 870,
+    "name": "VS105"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 690,
+    "nautilus_index": 871,
+    "name": "VS106"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 691,
+    "nautilus_index": 872,
+    "name": "VS107"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 692,
+    "nautilus_index": 873,
+    "name": "VS108"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 693,
+    "nautilus_index": 874,
+    "name": "VS109"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 694,
+    "nautilus_index": 875,
+    "name": "VS110"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 695,
+    "nautilus_index": 876,
+    "name": "VS111"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 696,
+    "nautilus_index": 877,
+    "name": "VS112"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 697,
+    "nautilus_index": 878,
+    "name": "VS113"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 698,
+    "nautilus_index": 879,
+    "name": "VS114"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 699,
+    "nautilus_index": 880,
+    "name": "VS115"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 700,
+    "nautilus_index": 881,
+    "name": "VS116"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 701,
+    "nautilus_index": 882,
+    "name": "VS117"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 702,
+    "nautilus_index": 883,
+    "name": "VS118"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 703,
+    "nautilus_index": 884,
+    "name": "VS119"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 704,
+    "nautilus_index": 885,
+    "name": "VS120"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 705,
+    "nautilus_index": 886,
+    "name": "VS121"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 706,
+    "nautilus_index": 887,
+    "name": "VS122"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 707,
+    "nautilus_index": 888,
+    "name": "VS123"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 708,
+    "nautilus_index": 889,
+    "name": "VS124"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 709,
+    "nautilus_index": 890,
+    "name": "VS125"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 711,
+    "nautilus_index": 892,
+    "name": "OBPUL1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 712,
+    "nautilus_index": 893,
+    "name": "OBPUL3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 713,
+    "nautilus_index": 894,
+    "name": "OBPUL4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 714,
+    "nautilus_index": 895,
+    "name": "OBPUL5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 715,
+    "nautilus_index": 896,
+    "name": "OBPUL6"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 716,
+    "nautilus_index": 897,
+    "name": "OBPUL7"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 717,
+    "nautilus_index": 898,
+    "name": "OBRES1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 718,
+    "nautilus_index": 899,
+    "name": "OBRES2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 719,
+    "nautilus_index": 900,
+    "name": "OBRES3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 720,
+    "nautilus_index": 901,
+    "name": "OBSAW3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 721,
+    "nautilus_index": 902,
+    "name": "OBTRESB"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 722,
+    "nautilus_index": 903,
+    "name": "OBTRESD"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 723,
+    "nautilus_index": 904,
+    "name": "OBTRESF"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 724,
+    "nautilus_index": 905,
+    "name": "OBTRESH"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 725,
+    "nautilus_index": 906,
+    "name": "OBTRESJ"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 726,
+    "nautilus_index": 907,
+    "name": "OBTRESL"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 727,
+    "nautilus_index": 908,
+    "name": "OBTRESN"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 728,
+    "nautilus_index": 909,
+    "name": "PPUL2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 729,
+    "nautilus_index": 910,
+    "name": "PPUL3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 730,
+    "nautilus_index": 911,
+    "name": "PPUL4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 731,
+    "nautilus_index": 912,
+    "name": "PPUL5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 732,
+    "nautilus_index": 913,
+    "name": "PPUL6"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 733,
+    "nautilus_index": 914,
+    "name": "PSAW2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 734,
+    "nautilus_index": 915,
+    "name": "13-01"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 735,
+    "nautilus_index": 916,
+    "name": "13-03"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 736,
+    "nautilus_index": 917,
+    "name": "13-05"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 737,
+    "nautilus_index": 918,
+    "name": "13-07"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 738,
+    "nautilus_index": 919,
+    "name": "13-09"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 739,
+    "nautilus_index": 920,
+    "name": "13-11"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 740,
+    "nautilus_index": 921,
+    "name": "13-13"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 741,
+    "nautilus_index": 922,
+    "name": "13-15"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 742,
+    "nautilus_index": 923,
+    "name": "13-17"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 743,
+    "nautilus_index": 924,
+    "name": "13-19"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 744,
+    "nautilus_index": 925,
+    "name": "13-21"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 745,
+    "nautilus_index": 926,
+    "name": "13-23"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 746,
+    "nautilus_index": 927,
+    "name": "13-25"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 747,
+    "nautilus_index": 928,
+    "name": "13-27"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 748,
+    "nautilus_index": 929,
+    "name": "13-29"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 749,
+    "nautilus_index": 930,
+    "name": "13-31"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 750,
+    "nautilus_index": 931,
+    "name": "13-33"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 751,
+    "nautilus_index": 932,
+    "name": "13-35"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 752,
+    "nautilus_index": 933,
+    "name": "13-37"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 753,
+    "nautilus_index": 934,
+    "name": "13-39"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 754,
+    "nautilus_index": 935,
+    "name": "13-41"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 755,
+    "nautilus_index": 936,
+    "name": "13-43"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 756,
+    "nautilus_index": 937,
+    "name": "13-45"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 757,
+    "nautilus_index": 938,
+    "name": "13-47"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 758,
+    "nautilus_index": 939,
+    "name": "13-49"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 759,
+    "nautilus_index": 940,
+    "name": "13-51"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 760,
+    "nautilus_index": 941,
+    "name": "13-53"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 761,
+    "nautilus_index": 942,
+    "name": "13-55"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 762,
+    "nautilus_index": 943,
+    "name": "13-57"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 763,
+    "nautilus_index": 944,
+    "name": "13-59"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 764,
+    "nautilus_index": 945,
+    "name": "13-61"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 765,
+    "nautilus_index": 946,
+    "name": "13-63"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 766,
+    "nautilus_index": 947,
+    "name": "resx001"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 767,
+    "nautilus_index": 948,
+    "name": "resx002"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 768,
+    "nautilus_index": 949,
+    "name": "resx003"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 769,
+    "nautilus_index": 950,
+    "name": "resx004"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 770,
+    "nautilus_index": 951,
+    "name": "resx005"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 771,
+    "nautilus_index": 952,
+    "name": "resx006"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 772,
+    "nautilus_index": 953,
+    "name": "resx007"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 773,
+    "nautilus_index": 954,
+    "name": "resx008"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 774,
+    "nautilus_index": 955,
+    "name": "resx009"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 775,
+    "nautilus_index": 956,
+    "name": "resx010"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 776,
+    "nautilus_index": 957,
+    "name": "resx011"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 777,
+    "nautilus_index": 958,
+    "name": "resx012"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 778,
+    "nautilus_index": 959,
+    "name": "resx013"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 779,
+    "nautilus_index": 960,
+    "name": "resx014"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 780,
+    "nautilus_index": 961,
+    "name": "resx015"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 781,
+    "nautilus_index": 962,
+    "name": "resx016"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 782,
+    "nautilus_index": 963,
+    "name": "resx017"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 783,
+    "nautilus_index": 964,
+    "name": "resx018"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 784,
+    "nautilus_index": 965,
+    "name": "resx019"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 785,
+    "nautilus_index": 966,
+    "name": "resx020"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 786,
+    "nautilus_index": 967,
+    "name": "resx021"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 787,
+    "nautilus_index": 968,
+    "name": "resx022"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 788,
+    "nautilus_index": 969,
+    "name": "resx023"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 789,
+    "nautilus_index": 970,
+    "name": "resx024"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 790,
+    "nautilus_index": 971,
+    "name": "resx025"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 791,
+    "nautilus_index": 972,
+    "name": "resx026"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 792,
+    "nautilus_index": 973,
+    "name": "resx027"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 793,
+    "nautilus_index": 974,
+    "name": "resx028"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 794,
+    "nautilus_index": 975,
+    "name": "resx029"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 795,
+    "nautilus_index": 976,
+    "name": "resx030"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 796,
+    "nautilus_index": 977,
+    "name": "resx031"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 797,
+    "nautilus_index": 978,
+    "name": "resx032"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 798,
+    "nautilus_index": 979,
+    "name": "Min1-01a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 799,
+    "nautilus_index": 980,
+    "name": "Min1-02a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 800,
+    "nautilus_index": 981,
+    "name": "Min1-04a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 801,
+    "nautilus_index": 982,
+    "name": "Min1-05a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 802,
+    "nautilus_index": 983,
+    "name": "Min1-06a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 803,
+    "nautilus_index": 984,
+    "name": "Min1-07a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 804,
+    "nautilus_index": 985,
+    "name": "Min1-08a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 805,
+    "nautilus_index": 986,
+    "name": "Min1-09a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 806,
+    "nautilus_index": 987,
+    "name": "Min1-12a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 807,
+    "nautilus_index": 988,
+    "name": "Min1-13a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 808,
+    "nautilus_index": 989,
+    "name": "Pres321"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 809,
+    "nautilus_index": 990,
+    "name": "Pres335"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 810,
+    "nautilus_index": 991,
+    "name": "Pres349"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 811,
+    "nautilus_index": 992,
+    "name": "Pres363"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 812,
+    "nautilus_index": 993,
+    "name": "Pres377"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 813,
+    "nautilus_index": 994,
+    "name": "Pres384"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 814,
+    "nautilus_index": 995,
+    "name": "Pres391"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 815,
+    "nautilus_index": 996,
+    "name": "Pres398"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 816,
+    "nautilus_index": 997,
+    "name": "Pres110"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 817,
+    "nautilus_index": 998,
+    "name": "Pres3112"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 818,
+    "nautilus_index": 999,
+    "name": "Pres3119"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 819,
+    "nautilus_index": 1000,
+    "name": "Pres3126"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 820,
+    "nautilus_index": 1001,
+    "name": "Sax.1 sec"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 821,
+    "nautilus_index": 1002,
+    "name": "Sax1 sec"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 822,
+    "nautilus_index": 1003,
+    "name": "Sax1.3 sec"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 823,
+    "nautilus_index": 1004,
+    "name": "Sax1.5 sec"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 824,
+    "nautilus_index": 1005,
+    "name": "Sax1.7 sec"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 825,
+    "nautilus_index": 1006,
+    "name": "Sax2 sec"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 826,
+    "nautilus_index": 1007,
+    "name": "Sax2.2 sec"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 827,
+    "nautilus_index": 1008,
+    "name": "Sax2.4 sec"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 828,
+    "nautilus_index": 1009,
+    "name": "Sax2.7 sec"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 829,
+    "nautilus_index": 1010,
+    "name": "Sax2.9 sec"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 830,
+    "nautilus_index": 1011,
+    "name": "Sax3 sec"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 831,
+    "nautilus_index": 1012,
+    "name": "Sax3.4 sec"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 832,
+    "nautilus_index": 1013,
+    "name": "Sax3.6 sec"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 833,
+    "nautilus_index": 1014,
+    "name": "Sax4.3 sec"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 834,
+    "nautilus_index": 1015,
+    "name": "Sax4.7 sec"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 835,
+    "nautilus_index": 1016,
+    "name": "Sax5 sec"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 836,
+    "nautilus_index": 1017,
+    "name": "Square WS"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 837,
+    "nautilus_index": 1018,
+    "name": "Pulse02"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 838,
+    "nautilus_index": 1019,
+    "name": "Pulse04"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 839,
+    "nautilus_index": 1020,
+    "name": "Pulse06"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 840,
+    "nautilus_index": 1021,
+    "name": "Pulse08"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 841,
+    "nautilus_index": 1022,
+    "name": "Pulse10"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 842,
+    "nautilus_index": 1023,
+    "name": "Pulse12"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 843,
+    "nautilus_index": 1024,
+    "name": "Pulse14"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 844,
+    "nautilus_index": 1025,
+    "name": "Pulse16"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 845,
+    "nautilus_index": 1026,
+    "name": "Pulse18"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 846,
+    "nautilus_index": 1027,
+    "name": "Pulse20"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 847,
+    "nautilus_index": 1028,
+    "name": "Pulse22"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 848,
+    "nautilus_index": 1029,
+    "name": "Pulse24"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 849,
+    "nautilus_index": 1030,
+    "name": "Pulse26"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 850,
+    "nautilus_index": 1031,
+    "name": "Pulse28"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 851,
+    "nautilus_index": 1032,
+    "name": "Pulse30"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 852,
+    "nautilus_index": 1033,
+    "name": "Pulse31"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 853,
+    "nautilus_index": 1034,
+    "name": "MagicOrgan"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 854,
+    "nautilus_index": 1035,
+    "name": "Magic 1a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 855,
+    "nautilus_index": 1036,
+    "name": "Crickets"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 856,
+    "nautilus_index": 1037,
+    "name": "Noise 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 857,
+    "nautilus_index": 1038,
+    "name": "GrandPiano"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 858,
+    "nautilus_index": 1039,
+    "name": "DigiPiano"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 859,
+    "nautilus_index": 1040,
+    "name": "SynthPd2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 860,
+    "nautilus_index": 1041,
+    "name": "SynPad2a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 861,
+    "nautilus_index": 1042,
+    "name": "AirSynth"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 862,
+    "nautilus_index": 1043,
+    "name": "VoiceSyn"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 863,
+    "nautilus_index": 1044,
+    "name": "VoiSyn1a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 864,
+    "nautilus_index": 1045,
+    "name": "BellWind"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 865,
+    "nautilus_index": 1046,
+    "name": "PWM"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 866,
+    "nautilus_index": 1047,
+    "name": "AnaStrings"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 867,
+    "nautilus_index": 1048,
+    "name": "Square Res"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 868,
+    "nautilus_index": 1049,
+    "name": "Res Wave"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 869,
+    "nautilus_index": 1050,
+    "name": "TrashWave"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 870,
+    "nautilus_index": 1051,
+    "name": "TrshWv1a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 871,
+    "nautilus_index": 1052,
+    "name": "PsychoWave"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 872,
+    "nautilus_index": 1053,
+    "name": "SynBass3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 873,
+    "nautilus_index": 1054,
+    "name": "SynBas3a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 874,
+    "nautilus_index": 1055,
+    "name": "DynoBass"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 875,
+    "nautilus_index": 1056,
+    "name": "DynoBs1a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 876,
+    "nautilus_index": 1057,
+    "name": "DeepBass"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 877,
+    "nautilus_index": 1058,
+    "name": "DeepBs1a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 878,
+    "nautilus_index": 1059,
+    "name": "MiniBass"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 879,
+    "nautilus_index": 1060,
+    "name": "MiniBs1a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 880,
+    "nautilus_index": 1061,
+    "name": "Slap Bass"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 881,
+    "nautilus_index": 1062,
+    "name": "Fretless"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 882,
+    "nautilus_index": 1063,
+    "name": "Fretles1a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 883,
+    "nautilus_index": 1064,
+    "name": "Cello WS"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 884,
+    "nautilus_index": 1065,
+    "name": "Cello 1a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 885,
+    "nautilus_index": 1066,
+    "name": "AltoSax2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 886,
+    "nautilus_index": 1067,
+    "name": "Horn Sectn"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 887,
+    "nautilus_index": 1068,
+    "name": "FrenchHorn"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 888,
+    "nautilus_index": 1069,
+    "name": "PanFlute"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 889,
+    "nautilus_index": 1070,
+    "name": "PanFl 1a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 890,
+    "nautilus_index": 1071,
+    "name": "Hard Flute"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 891,
+    "nautilus_index": 1072,
+    "name": "Wood Flute"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 892,
+    "nautilus_index": 1073,
+    "name": "Harmonium"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 893,
+    "nautilus_index": 1074,
+    "name": "Hrmnium1a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 894,
+    "nautilus_index": 1075,
+    "name": "Guitar 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 895,
+    "nautilus_index": 1076,
+    "name": "Guitar 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 896,
+    "nautilus_index": 1077,
+    "name": "Harp WS"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 897,
+    "nautilus_index": 1078,
+    "name": "Harp 1a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 898,
+    "nautilus_index": 1079,
+    "name": "Shamisen"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 899,
+    "nautilus_index": 1080,
+    "name": "Shamsn1a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 900,
+    "nautilus_index": 1081,
+    "name": "Marimba WS"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 901,
+    "nautilus_index": 1082,
+    "name": "Marim 1a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 902,
+    "nautilus_index": 1083,
+    "name": "Marim Loop"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 903,
+    "nautilus_index": 1084,
+    "name": "HrdKalimba"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 904,
+    "nautilus_index": 1085,
+    "name": "SofKalimba"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 905,
+    "nautilus_index": 1086,
+    "name": "SftKalim1a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 906,
+    "nautilus_index": 1087,
+    "name": "Vibes 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 907,
+    "nautilus_index": 1088,
+    "name": "PercBell"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 908,
+    "nautilus_index": 1089,
+    "name": "M.Heaven"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 909,
+    "nautilus_index": 1090,
+    "name": "BrightBell"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 910,
+    "nautilus_index": 1091,
+    "name": "BrBel 1a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 911,
+    "nautilus_index": 1092,
+    "name": "Drum Kit"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 912,
+    "nautilus_index": 1093,
+    "name": "Kick"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 913,
+    "nautilus_index": 1094,
+    "name": "AmbiKick"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 914,
+    "nautilus_index": 1095,
+    "name": "Crack Snar"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 915,
+    "nautilus_index": 1096,
+    "name": "Snare"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 916,
+    "nautilus_index": 1097,
+    "name": "Sidestick"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 917,
+    "nautilus_index": 1098,
+    "name": "Tom WS"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 918,
+    "nautilus_index": 1099,
+    "name": "HiHat Clos"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 919,
+    "nautilus_index": 1100,
+    "name": "HiHat Open"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 920,
+    "nautilus_index": 1101,
+    "name": "Conga"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 922,
+    "nautilus_index": 1103,
+    "name": "Claves"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 923,
+    "nautilus_index": 1104,
+    "name": "Tenny Hit"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 924,
+    "nautilus_index": 1105,
+    "name": "Thonk"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 925,
+    "nautilus_index": 1106,
+    "name": "Tick Hit"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 926,
+    "nautilus_index": 1107,
+    "name": "Pot Hit"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 927,
+    "nautilus_index": 1108,
+    "name": "Hammer"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 928,
+    "nautilus_index": 1109,
+    "name": "PianoHit"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 929,
+    "nautilus_index": 1110,
+    "name": "NoiseVibe"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 941,
+    "nautilus_index": 1122,
+    "name": "Glottal"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 942,
+    "nautilus_index": 1123,
+    "name": "VS126"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 943,
+    "nautilus_index": 1124,
+    "name": "VS127"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 944,
+    "nautilus_index": 1125,
+    "name": "VS128"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 945,
+    "nautilus_index": 1126,
+    "name": "VS129"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 946,
+    "nautilus_index": 1127,
+    "name": "VS130"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 947,
+    "nautilus_index": 1128,
+    "name": "VS131"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 948,
+    "nautilus_index": 1129,
+    "name": "VS132"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 949,
+    "nautilus_index": 1130,
+    "name": "VS133"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 950,
+    "nautilus_index": 1131,
+    "name": "VS134"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 951,
+    "nautilus_index": 1132,
+    "name": "VS135"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 952,
+    "nautilus_index": 1133,
+    "name": "VS136"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 953,
+    "nautilus_index": 1134,
+    "name": "VS137"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 954,
+    "nautilus_index": 1135,
+    "name": "VS138"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 955,
+    "nautilus_index": 1136,
+    "name": "VS139"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 956,
+    "nautilus_index": 1137,
+    "name": "VS140"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 957,
+    "nautilus_index": 1138,
+    "name": "VS141"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 958,
+    "nautilus_index": 1139,
+    "name": "VS142"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 959,
+    "nautilus_index": 1140,
+    "name": "VS143"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 960,
+    "nautilus_index": 1141,
+    "name": "VS144"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 961,
+    "nautilus_index": 1142,
+    "name": "VS145"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 962,
+    "nautilus_index": 1143,
+    "name": "VS146"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 963,
+    "nautilus_index": 1144,
+    "name": "VS147"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 964,
+    "nautilus_index": 1145,
+    "name": "VS148"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 965,
+    "nautilus_index": 1146,
+    "name": "VS149"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 966,
+    "nautilus_index": 1147,
+    "name": "VS150"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 967,
+    "nautilus_index": 1148,
+    "name": "VS151"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 968,
+    "nautilus_index": 1149,
+    "name": "VS152"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 969,
+    "nautilus_index": 1150,
+    "name": "VS153"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 970,
+    "nautilus_index": 1151,
+    "name": "VS154"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 971,
+    "nautilus_index": 1152,
+    "name": "VS155"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 972,
+    "nautilus_index": 1153,
+    "name": "Kit 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 973,
+    "nautilus_index": 1154,
+    "name": "Psycho Kit"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 974,
+    "nautilus_index": 1155,
+    "name": "Tite BD"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 975,
+    "nautilus_index": 1156,
+    "name": "Gated Kick"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 976,
+    "nautilus_index": 1157,
+    "name": "Vox Box"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 977,
+    "nautilus_index": 1158,
+    "name": "Piccolo SD"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 978,
+    "nautilus_index": 1159,
+    "name": "Amb SD"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 979,
+    "nautilus_index": 1160,
+    "name": "Nasty SD"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 980,
+    "nautilus_index": 1161,
+    "name": "BeatBox SD"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 981,
+    "nautilus_index": 1162,
+    "name": "Noise SD"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 982,
+    "nautilus_index": 1163,
+    "name": "Gated SD"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 983,
+    "nautilus_index": 1164,
+    "name": "Amb Tom"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 984,
+    "nautilus_index": 1165,
+    "name": "SynTom"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 985,
+    "nautilus_index": 1166,
+    "name": "HiHat C"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 986,
+    "nautilus_index": 1167,
+    "name": "HiHat O"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 987,
+    "nautilus_index": 1168,
+    "name": "SynthHat C"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 988,
+    "nautilus_index": 1169,
+    "name": "SynthHat O"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 989,
+    "nautilus_index": 1170,
+    "name": "Tri Closed"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 990,
+    "nautilus_index": 1171,
+    "name": "Tri Open"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 991,
+    "nautilus_index": 1172,
+    "name": "Shaker"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 992,
+    "nautilus_index": 1173,
+    "name": "SRide"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 993,
+    "nautilus_index": 1174,
+    "name": "Agogo 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 994,
+    "nautilus_index": 1175,
+    "name": "Conga Open"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 995,
+    "nautilus_index": 1176,
+    "name": "Conga Slap"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 996,
+    "nautilus_index": 1177,
+    "name": "Conga Palm"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 997,
+    "nautilus_index": 1178,
+    "name": "Conga Mute"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 998,
+    "nautilus_index": 1179,
+    "name": "Claves 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 999,
+    "nautilus_index": 1180,
+    "name": "Snare Rim"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1000,
+    "nautilus_index": 1181,
+    "name": "Wood Hit"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1001,
+    "nautilus_index": 1182,
+    "name": "Woodblock 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1002,
+    "nautilus_index": 1183,
+    "name": "Log Drum WS"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1003,
+    "nautilus_index": 1184,
+    "name": "Punch Bag"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1004,
+    "nautilus_index": 1185,
+    "name": "SynthRim"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1005,
+    "nautilus_index": 1186,
+    "name": "SynthCow"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1006,
+    "nautilus_index": 1187,
+    "name": "Pop"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1007,
+    "nautilus_index": 1188,
+    "name": "Spike"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1008,
+    "nautilus_index": 1189,
+    "name": "Fingers"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1009,
+    "nautilus_index": 1190,
+    "name": "Gated Hit"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1010,
+    "nautilus_index": 1191,
+    "name": "BassPop1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1011,
+    "nautilus_index": 1192,
+    "name": "BassPop2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1012,
+    "nautilus_index": 1193,
+    "name": "You"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1013,
+    "nautilus_index": 1194,
+    "name": "Big Hit"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1014,
+    "nautilus_index": 1195,
+    "name": "Agogo Loop"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1015,
+    "nautilus_index": 1196,
+    "name": "LogDrmLoop"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1016,
+    "nautilus_index": 1197,
+    "name": "Wdblk Loop"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1017,
+    "nautilus_index": 1198,
+    "name": "ShakerLoop"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1019,
+    "nautilus_index": 1200,
+    "name": "Tri O loop"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1020,
+    "nautilus_index": 1201,
+    "name": "HouseBass"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1021,
+    "nautilus_index": 1202,
+    "name": "TechBass"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1022,
+    "nautilus_index": 1203,
+    "name": "MiniBas1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1023,
+    "nautilus_index": 1204,
+    "name": "MiniBas2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1024,
+    "nautilus_index": 1205,
+    "name": "MiniBas3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1025,
+    "nautilus_index": 1206,
+    "name": "X Bass"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1026,
+    "nautilus_index": 1207,
+    "name": "NewAnaPad"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1027,
+    "nautilus_index": 1208,
+    "name": "Gosties"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1028,
+    "nautilus_index": 1209,
+    "name": "EtherBell"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1029,
+    "nautilus_index": 1210,
+    "name": "SynBrass"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1030,
+    "nautilus_index": 1211,
+    "name": "FreqShf1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1031,
+    "nautilus_index": 1212,
+    "name": "FreqShf2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1032,
+    "nautilus_index": 1213,
+    "name": "FreqShf3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1033,
+    "nautilus_index": 1214,
+    "name": "StratPluck"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1034,
+    "nautilus_index": 1215,
+    "name": "Noise Hit"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1035,
+    "nautilus_index": 1216,
+    "name": "Down Zap"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1036,
+    "nautilus_index": 1217,
+    "name": "Up&DownZap"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1037,
+    "nautilus_index": 1218,
+    "name": "Cesium"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1038,
+    "nautilus_index": 1219,
+    "name": "Cobalt"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1039,
+    "nautilus_index": 1220,
+    "name": "Krypton"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1040,
+    "nautilus_index": 1221,
+    "name": "Xenon"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1041,
+    "nautilus_index": 1222,
+    "name": "WavMlt 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1042,
+    "nautilus_index": 1223,
+    "name": "WavMlt 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1043,
+    "nautilus_index": 1224,
+    "name": "WavMlt 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1044,
+    "nautilus_index": 1225,
+    "name": "WavMlt 4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1045,
+    "nautilus_index": 1226,
+    "name": "WavMlt 5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1046,
+    "nautilus_index": 1227,
+    "name": "WavMlt 6"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1047,
+    "nautilus_index": 1228,
+    "name": "WavMlt 7"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1048,
+    "nautilus_index": 1229,
+    "name": "WavMlt 8"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1049,
+    "nautilus_index": 1230,
+    "name": "WavMlt 9"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1050,
+    "nautilus_index": 1231,
+    "name": "WavMlt10"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1051,
+    "nautilus_index": 1232,
+    "name": "WavMlt11"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1052,
+    "nautilus_index": 1233,
+    "name": "StraTS-0"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1053,
+    "nautilus_index": 1234,
+    "name": "StraTS-1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1054,
+    "nautilus_index": 1235,
+    "name": "StraTS-2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1055,
+    "nautilus_index": 1236,
+    "name": "StraTS-3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1056,
+    "nautilus_index": 1237,
+    "name": "StraTS-4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1057,
+    "nautilus_index": 1238,
+    "name": "StraTS-5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1058,
+    "nautilus_index": 1239,
+    "name": "StraTS-6"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1059,
+    "nautilus_index": 1240,
+    "name": "StraTS-7"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1060,
+    "nautilus_index": 1241,
+    "name": "StraTS-8"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1061,
+    "nautilus_index": 1242,
+    "name": "StraTS-9"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1062,
+    "nautilus_index": 1243,
+    "name": "VoxFmt 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1063,
+    "nautilus_index": 1244,
+    "name": "VoxFmt 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1064,
+    "nautilus_index": 1245,
+    "name": "Res 1-1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1065,
+    "nautilus_index": 1246,
+    "name": "Res 1-2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1066,
+    "nautilus_index": 1247,
+    "name": "Res 1-3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1067,
+    "nautilus_index": 1248,
+    "name": "Res 1-4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1068,
+    "nautilus_index": 1249,
+    "name": "Res 1-5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1069,
+    "nautilus_index": 1250,
+    "name": "Res 1-6"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1070,
+    "nautilus_index": 1251,
+    "name": "Res 1-7"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1071,
+    "nautilus_index": 1252,
+    "name": "Res 1-8"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1072,
+    "nautilus_index": 1253,
+    "name": "Res 1-9"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1073,
+    "nautilus_index": 1254,
+    "name": "Res 1-10"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1074,
+    "nautilus_index": 1255,
+    "name": "Res 2-1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1075,
+    "nautilus_index": 1256,
+    "name": "Res 2-2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1076,
+    "nautilus_index": 1257,
+    "name": "Res 2-3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1077,
+    "nautilus_index": 1258,
+    "name": "Res 2-4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1078,
+    "nautilus_index": 1259,
+    "name": "Res 2-5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1079,
+    "nautilus_index": 1260,
+    "name": "Res 2-6"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1080,
+    "nautilus_index": 1261,
+    "name": "Res 2-7"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1081,
+    "nautilus_index": 1262,
+    "name": "ClavTS-1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1082,
+    "nautilus_index": 1263,
+    "name": "ClavTS-2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1083,
+    "nautilus_index": 1264,
+    "name": "ClavTS-3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1084,
+    "nautilus_index": 1265,
+    "name": "ClavTS-4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1085,
+    "nautilus_index": 1266,
+    "name": "ClavTS-5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1087,
+    "nautilus_index": 1268,
+    "name": "Saw-mg"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1088,
+    "nautilus_index": 1269,
+    "name": "Saw-MG3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1089,
+    "nautilus_index": 1270,
+    "name": "Saw-Chroma"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1090,
+    "nautilus_index": 1271,
+    "name": "SawUp-MG"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1091,
+    "nautilus_index": 1272,
+    "name": "SawDown-MG"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1092,
+    "nautilus_index": 1273,
+    "name": "SawUp-A2600"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1093,
+    "nautilus_index": 1274,
+    "name": "SawDown-A2600"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1094,
+    "nautilus_index": 1275,
+    "name": "SawUp-Pro5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1095,
+    "nautilus_index": 1276,
+    "name": "SawDown-Pro5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1096,
+    "nautilus_index": 1277,
+    "name": "SawUp-MX12"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1097,
+    "nautilus_index": 1278,
+    "name": "SawDown-MX12"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1098,
+    "nautilus_index": 1279,
+    "name": "SawUp-OB"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1099,
+    "nautilus_index": 1280,
+    "name": "SawDown-OB"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1108,
+    "nautilus_index": 1289,
+    "name": "Pulse 15%-MG"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1109,
+    "nautilus_index": 1290,
+    "name": "Pulse 25%-MG"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1110,
+    "nautilus_index": 1291,
+    "name": "Pulse 10%-A2600"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1111,
+    "nautilus_index": 1292,
+    "name": "Pulse 30%-A2600"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1112,
+    "nautilus_index": 1293,
+    "name": "Pulse 90%-A2600"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1113,
+    "nautilus_index": 1294,
+    "name": "Pulse 10%-Pro5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1114,
+    "nautilus_index": 1295,
+    "name": "Pulse 20%-Pro5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1115,
+    "nautilus_index": 1296,
+    "name": "Pulse 30%-Pro5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1116,
+    "nautilus_index": 1297,
+    "name": "Pulse 40%-Pro5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1118,
+    "nautilus_index": 1299,
+    "name": "Pulse 20%-MX12"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1119,
+    "nautilus_index": 1300,
+    "name": "Pulse 35%-MX12"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1120,
+    "nautilus_index": 1301,
+    "name": "Pulse 20%-OB"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1121,
+    "nautilus_index": 1302,
+    "name": "Pulse 35%-OB"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1122,
+    "nautilus_index": 1303,
+    "name": "Pulse 30%-Poly6"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1123,
+    "nautilus_index": 1304,
+    "name": "Pulse 40%-Poly6"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1125,
+    "nautilus_index": 1306,
+    "name": "Square"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1126,
+    "nautilus_index": 1307,
+    "name": "Square-MG3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1128,
+    "nautilus_index": 1310,
+    "name": "Sqr-mMG"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1129,
+    "nautilus_index": 1311,
+    "name": "Square-JP"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1130,
+    "nautilus_index": 1312,
+    "name": "Square-MG"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1131,
+    "nautilus_index": 1313,
+    "name": "Square-A2600"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1132,
+    "nautilus_index": 1314,
+    "name": "Square-Pro5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1133,
+    "nautilus_index": 1315,
+    "name": "Square-MX12"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1137,
+    "nautilus_index": 1318,
+    "name": "Triangle-MG3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1138,
+    "nautilus_index": 1319,
+    "name": "Triangle"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1139,
+    "nautilus_index": 1320,
+    "name": "Triangle-MG"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1140,
+    "nautilus_index": 1321,
+    "name": "Triangle-MX12"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1141,
+    "nautilus_index": 1322,
+    "name": "Triangle-OB"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1143,
+    "nautilus_index": 1324,
+    "name": "Ramp"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1144,
+    "nautilus_index": 1325,
+    "name": "Ramp-mMG"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1145,
+    "nautilus_index": 1326,
+    "name": "Parabolic"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1146,
+    "nautilus_index": 1327,
+    "name": "Sine"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1147,
+    "nautilus_index": 1328,
+    "name": "Sine-01/W"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1148,
+    "nautilus_index": 1329,
+    "name": "Sine-JP"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1149,
+    "nautilus_index": 1330,
+    "name": "Sine-MG"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1150,
+    "nautilus_index": 1331,
+    "name": "Sine-Pro5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1159,
+    "nautilus_index": 1340,
+    "name": "DWGS-Organ 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1160,
+    "nautilus_index": 1341,
+    "name": "DWGS-Organ 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1161,
+    "nautilus_index": 1342,
+    "name": "DWGS-Organ 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1162,
+    "nautilus_index": 1343,
+    "name": "DWGS-Organ 4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1163,
+    "nautilus_index": 1344,
+    "name": "DWGS-Organ 5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1164,
+    "nautilus_index": 1345,
+    "name": "DWGS-Accordion"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1165,
+    "nautilus_index": 1346,
+    "name": "DWGS Guitar 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1166,
+    "nautilus_index": 1347,
+    "name": "DWGS-Guitar 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1167,
+    "nautilus_index": 1348,
+    "name": "DWGS-Bell 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1168,
+    "nautilus_index": 1349,
+    "name": "DWGS-Bell 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1169,
+    "nautilus_index": 1350,
+    "name": "DWGS-Bell 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1170,
+    "nautilus_index": 1351,
+    "name": "DWGS-Bell 4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1171,
+    "nautilus_index": 1352,
+    "name": "DWGS-Clav 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1172,
+    "nautilus_index": 1353,
+    "name": "DWGS-Clav 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1173,
+    "nautilus_index": 1354,
+    "name": "DWGS-Clav 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1174,
+    "nautilus_index": 1355,
+    "name": "DWGS-Digi 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1175,
+    "nautilus_index": 1356,
+    "name": "DWGS-Digi 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1176,
+    "nautilus_index": 1357,
+    "name": "DWGS-Digi 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1177,
+    "nautilus_index": 1358,
+    "name": "DWGS-Wire 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1178,
+    "nautilus_index": 1359,
+    "name": "DWGS-Wire 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1179,
+    "nautilus_index": 1360,
+    "name": "DWGS-Sync 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1180,
+    "nautilus_index": 1361,
+    "name": "DWGS-Sync 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1181,
+    "nautilus_index": 1362,
+    "name": "DWGS-Sync 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1182,
+    "nautilus_index": 1363,
+    "name": "Orch Hit 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1183,
+    "nautilus_index": 1364,
+    "name": "Orch Hit 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1184,
+    "nautilus_index": 1365,
+    "name": "Orch Hit 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1185,
+    "nautilus_index": 1366,
+    "name": "Orch Hit 4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1186,
+    "nautilus_index": 1367,
+    "name": "Orch Hit 5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1187,
+    "nautilus_index": 1368,
+    "name": "Orch Hit 6"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1188,
+    "nautilus_index": 1369,
+    "name": "Orch Hit 7"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1189,
+    "nautilus_index": 1370,
+    "name": "Impact Hit"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1191,
+    "nautilus_index": 1371,
+    "name": "Band Hit 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1192,
+    "nautilus_index": 1372,
+    "name": "Band Hit 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1193,
+    "nautilus_index": 1374,
+    "name": "Jazz Hit 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1194,
+    "nautilus_index": 1375,
+    "name": "Jazz Hit 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1195,
+    "nautilus_index": 1376,
+    "name": "Jazz Hit 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1196,
+    "nautilus_index": 1377,
+    "name": "Brass Fall"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1197,
+    "nautilus_index": 1378,
+    "name": "Dance Hit"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1198,
+    "nautilus_index": 1379,
+    "name": "Organ Hit"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1209,
+    "nautilus_index": 1400,
+    "name": "Synth Hit Decay 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1210,
+    "nautilus_index": 1401,
+    "name": "Synth Hit Decay 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1211,
+    "nautilus_index": 1402,
+    "name": "Synth Hit Decay 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1212,
+    "nautilus_index": 1403,
+    "name": "Synth Hit Decay 4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1213,
+    "nautilus_index": 1380,
+    "name": "Vinyl Hit 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1214,
+    "nautilus_index": 1381,
+    "name": "Vinyl Hit 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1215,
+    "nautilus_index": 1382,
+    "name": "Scratch Hi"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1216,
+    "nautilus_index": 1407,
+    "name": "Zap 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1217,
+    "nautilus_index": 1408,
+    "name": "Zap 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1218,
+    "nautilus_index": 1409,
+    "name": "BD-Cannon"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1219,
+    "nautilus_index": 1421,
+    "name": "Industry Hit 01"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1220,
+    "nautilus_index": 1422,
+    "name": "Industry Hit 02"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1221,
+    "nautilus_index": 1423,
+    "name": "Industry Hit 03"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1222,
+    "nautilus_index": 1424,
+    "name": "Industry Hit 04"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1223,
+    "nautilus_index": 1425,
+    "name": "Industry Hit 05"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1224,
+    "nautilus_index": 1426,
+    "name": "Industry Hit 06"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1225,
+    "nautilus_index": 1427,
+    "name": "Industry Hit 07"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1226,
+    "nautilus_index": 1428,
+    "name": "Industry Hit 08"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1227,
+    "nautilus_index": 1429,
+    "name": "Industry Hit 09"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1228,
+    "nautilus_index": 1430,
+    "name": "Industry Hit 10"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1229,
+    "nautilus_index": 1431,
+    "name": "Industry Hit 11"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1230,
+    "nautilus_index": 1432,
+    "name": "Industry Hit 12"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1231,
+    "nautilus_index": 1433,
+    "name": "Industry Hit 13"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1232,
+    "nautilus_index": 1434,
+    "name": "Industry Hit 14"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1233,
+    "nautilus_index": 1435,
+    "name": "Industry Hit 15"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1234,
+    "nautilus_index": 1436,
+    "name": "Industry Hit 16"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1235,
+    "nautilus_index": 1437,
+    "name": "Industry Hit 17"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1236,
+    "nautilus_index": 1438,
+    "name": "Industry Hit 18"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1237,
+    "nautilus_index": 1439,
+    "name": "Industry Hit 19"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1238,
+    "nautilus_index": 1440,
+    "name": "Industry Hit 20"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1239,
+    "nautilus_index": 1441,
+    "name": "Industry Hit 21"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1240,
+    "nautilus_index": 1442,
+    "name": "Industry Hit 22"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1241,
+    "nautilus_index": 1443,
+    "name": "Industry Hit 23"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1242,
+    "nautilus_index": 1444,
+    "name": "Industry Hit 24"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1243,
+    "nautilus_index": 1445,
+    "name": "Industry Hit 25"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1244,
+    "nautilus_index": 1446,
+    "name": "Industry Hit 26"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1245,
+    "nautilus_index": 1459,
+    "name": "Industry Loop 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1246,
+    "nautilus_index": 1460,
+    "name": "Industry Loop 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1247,
+    "nautilus_index": 1461,
+    "name": "Industry Loop 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1296,
+    "nautilus_index": 1520,
+    "name": "Vocoder Voice 01"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1297,
+    "nautilus_index": 1521,
+    "name": "Vocoder Voice 02"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1298,
+    "nautilus_index": 1522,
+    "name": "Vocoder Voice 03"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1299,
+    "nautilus_index": 1523,
+    "name": "Vocoder Voice 04"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1300,
+    "nautilus_index": 1524,
+    "name": "Vocoder Voice 05"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1301,
+    "nautilus_index": 1525,
+    "name": "Vocoder Voice 06"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1302,
+    "nautilus_index": 1526,
+    "name": "Vocoder Voice 07"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1303,
+    "nautilus_index": 1527,
+    "name": "Vocoder Voice 08"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1304,
+    "nautilus_index": 1528,
+    "name": "Vocoder Voice 09"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1305,
+    "nautilus_index": 1529,
+    "name": "Vocoder Voice 10"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1306,
+    "nautilus_index": 1530,
+    "name": "Vocoder Voice 11"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1307,
+    "nautilus_index": 1531,
+    "name": "Vocoder Voice 12"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1308,
+    "nautilus_index": 1532,
+    "name": "Vocoder Voice 13"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1309,
+    "nautilus_index": 1533,
+    "name": "Vocoder Voice 14"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1310,
+    "nautilus_index": 1534,
+    "name": "Vocoder Voice 15"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1311,
+    "nautilus_index": 1535,
+    "name": "Vocoder Voice 16"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1312,
+    "nautilus_index": 1536,
+    "name": "Vocoder Voice 17"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1313,
+    "nautilus_index": 1537,
+    "name": "Vocoder Voice 18"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1314,
+    "nautilus_index": 1538,
+    "name": "Vocoder Voice 19"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1315,
+    "nautilus_index": 1539,
+    "name": "Vocoder Voice 20"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1316,
+    "nautilus_index": 1543,
+    "name": "CompuVoice-BEEP"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1317,
+    "nautilus_index": 1544,
+    "name": "CompuVoice-Noise"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1318,
+    "nautilus_index": 1545,
+    "name": "CompuVoice-Chi"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1319,
+    "nautilus_index": 1546,
+    "name": "CompuVoice-Do it"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1320,
+    "nautilus_index": 1547,
+    "name": "PC Voice 1-01 \"Two\""
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1321,
+    "nautilus_index": 1548,
+    "name": "PC Voice 1-02 \"Five\""
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1322,
+    "nautilus_index": 1549,
+    "name": "PC Voice 1-03"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1323,
+    "nautilus_index": 1550,
+    "name": "PC Voice 1-04"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1324,
+    "nautilus_index": 1551,
+    "name": "PC Voice 1-05"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1325,
+    "nautilus_index": 1555,
+    "name": "Coin Thwack"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1326,
+    "nautilus_index": 1556,
+    "name": "Meditation Tree"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1327,
+    "nautilus_index": 1557,
+    "name": "G-BALL"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1328,
+    "nautilus_index": 1558,
+    "name": "Ac.Gtr Chord Hit"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1330,
+    "nautilus_index": 1561,
+    "name": "El.Gtr Chord Hit 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1335,
+    "nautilus_index": 1576,
+    "name": "El.Gtr-Glissando Up 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1336,
+    "nautilus_index": 1577,
+    "name": "El.Gtr-Glissando Up 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1337,
+    "nautilus_index": 1578,
+    "name": "El.Gtr-Glissando Up 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1345,
+    "nautilus_index": 1585,
+    "name": "El.Gtr-ChordGhost Up 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1346,
+    "nautilus_index": 1586,
+    "name": "El.Gtr-ChordGhost Up 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1347,
+    "nautilus_index": 1587,
+    "name": "El.Gtr-ChordGhost Up 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1348,
+    "nautilus_index": 1588,
+    "name": "El.Gtr-ChordGhost Up 4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1349,
+    "nautilus_index": 1589,
+    "name": "El.Gtr-ChordGhost Up 5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1350,
+    "nautilus_index": 1590,
+    "name": "El.Gtr-ChordGhost Up 6"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1351,
+    "nautilus_index": 1591,
+    "name": "El.Gtr-ChordGhost Up 7"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1354,
+    "nautilus_index": 1594,
+    "name": "El.Gtr-Dead Note 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1355,
+    "nautilus_index": 1595,
+    "name": "El.Gtr-Dead Note 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1356,
+    "nautilus_index": 1596,
+    "name": "El.Gtr-DistSlideDown 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1357,
+    "nautilus_index": 1597,
+    "name": "El.Gtr-DistSlideDown 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1358,
+    "nautilus_index": 1598,
+    "name": "El.Gtr-DistScratchDown"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1359,
+    "nautilus_index": 1599,
+    "name": "El.Gtr-DistMuted a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1360,
+    "nautilus_index": 1600,
+    "name": "El.Gtr-DistMuted b"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1361,
+    "nautilus_index": 1601,
+    "name": "El.Gtr-DistMuted c"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1362,
+    "nautilus_index": 1602,
+    "name": "El.Gtr-DistGhost 1 a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1363,
+    "nautilus_index": 1603,
+    "name": "El.Gtr-DistGhost 1 b"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1364,
+    "nautilus_index": 1604,
+    "name": "El.Gtr-DistGhost 2 a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1365,
+    "nautilus_index": 1605,
+    "name": "El.Gtr-DistGhost 2 b"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1366,
+    "nautilus_index": 1606,
+    "name": "El.Gtr-DistGhost 3 a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1367,
+    "nautilus_index": 1607,
+    "name": "El.Gtr-DistGhost 3 b"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1368,
+    "nautilus_index": 1608,
+    "name": "El.Gtr-DistGhost 4 a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1369,
+    "nautilus_index": 1609,
+    "name": "El.Gtr-DistGhost 4 b"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1370,
+    "nautilus_index": 1610,
+    "name": "El.Gtr-DistGhost 5 a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1371,
+    "nautilus_index": 1611,
+    "name": "El.Gtr-DistGhost 5 b"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1372,
+    "nautilus_index": 1612,
+    "name": "El.Gtr-DistFretNoise 1 a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1373,
+    "nautilus_index": 1613,
+    "name": "El.Gtr-DistFretNoise 1 b"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1374,
+    "nautilus_index": 1614,
+    "name": "El.Gtr-DistFretNoise 2 a"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1375,
+    "nautilus_index": 1615,
+    "name": "El.Gtr-DistFretNoise 2 b"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1376,
+    "nautilus_index": 1616,
+    "name": "El.Gtr-DistFretNoise 2 c"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1377,
+    "nautilus_index": 1617,
+    "name": "El.Gtr-DistFretNoise 2 d"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1378,
+    "nautilus_index": 1618,
+    "name": "Ac.Bs-Slide Up&Down 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1379,
+    "nautilus_index": 1619,
+    "name": "Ac.Bs-Slide Up&Down 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1380,
+    "nautilus_index": 1620,
+    "name": "Ac.Bs-Slide Up&Down 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1381,
+    "nautilus_index": 1621,
+    "name": "Ac.Bs-Slide Down 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1382,
+    "nautilus_index": 1622,
+    "name": "Ac.Bs-Slide Down 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1383,
+    "nautilus_index": 1623,
+    "name": "Ac.Bs-Slide Down 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1384,
+    "nautilus_index": 1624,
+    "name": "Ac.Bs-Slide Down 4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1385,
+    "nautilus_index": 1625,
+    "name": "Ac.Bs-Slide Up"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1386,
+    "nautilus_index": 1626,
+    "name": "Ac.Bs-BumpThud 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1387,
+    "nautilus_index": 1627,
+    "name": "Ac.Bs-BumpThud 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1388,
+    "nautilus_index": 1628,
+    "name": "Ac.Bs-DeadNote 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1389,
+    "nautilus_index": 1629,
+    "name": "Ac.Bs-DeadNote 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1390,
+    "nautilus_index": 1630,
+    "name": "Ac.Bs-DeadPizz 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1391,
+    "nautilus_index": 1631,
+    "name": "Ac.Bs-DeadPizz 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1392,
+    "nautilus_index": 1632,
+    "name": "Ac.Bs-DeadPizz 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1393,
+    "nautilus_index": 1633,
+    "name": "Ac.Bs-SlapTouch 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1394,
+    "nautilus_index": 1634,
+    "name": "Ac.Bs-SlapTouch 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1395,
+    "nautilus_index": 1635,
+    "name": "Ac.Bs-SlapTouch 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1396,
+    "nautilus_index": 1636,
+    "name": "Ac.Bs-SlapTouch 4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1397,
+    "nautilus_index": 1637,
+    "name": "Ac.Bs-SlapTouch 5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1398,
+    "nautilus_index": 1638,
+    "name": "Ac.Bs-String Slap"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1399,
+    "nautilus_index": 1649,
+    "name": "El.Bs-Slide Up&Down 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1400,
+    "nautilus_index": 1650,
+    "name": "El.Bs-Slide Up&Down 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1401,
+    "nautilus_index": 1651,
+    "name": "El.Bs-Slide Up&Down 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1402,
+    "nautilus_index": 1652,
+    "name": "El.Bs-Slide Down 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1403,
+    "nautilus_index": 1653,
+    "name": "El.Bs-Slide Down 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1404,
+    "nautilus_index": 1654,
+    "name": "El.Bs-Slide Down 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1405,
+    "nautilus_index": 1655,
+    "name": "El.Bs-SlapGhostSlide 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1412,
+    "nautilus_index": 1662,
+    "name": "El.Bs-SlapGhostNote 02"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1413,
+    "nautilus_index": 1663,
+    "name": "El.Bs-SlapGhostNote 03"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1414,
+    "nautilus_index": 1664,
+    "name": "El.Bs-SlapGhostNote 04"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1415,
+    "nautilus_index": 1665,
+    "name": "El.Bs-SlapGhostNote 05"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1422,
+    "nautilus_index": 1673,
+    "name": "Stadium"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1423,
+    "nautilus_index": 1674,
+    "name": "Applause"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1424,
+    "nautilus_index": 1675,
+    "name": "Scream"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1425,
+    "nautilus_index": 1676,
+    "name": "Laughing"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1426,
+    "nautilus_index": 1677,
+    "name": "Footstep 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1427,
+    "nautilus_index": 1678,
+    "name": "Footstep 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1431,
+    "nautilus_index": 1681,
+    "name": "Dog"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1432,
+    "nautilus_index": 1682,
+    "name": "Gallop"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1434,
+    "nautilus_index": 1683,
+    "name": "Crickets 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1435,
+    "nautilus_index": 1684,
+    "name": "Heart Beat"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1436,
+    "nautilus_index": 1685,
+    "name": "Punch"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1437,
+    "nautilus_index": 1686,
+    "name": "Tribe"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1438,
+    "nautilus_index": 1687,
+    "name": "Sword 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1439,
+    "nautilus_index": 1688,
+    "name": "Sword 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1440,
+    "nautilus_index": 1689,
+    "name": "Glass Crash"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1441,
+    "nautilus_index": 1690,
+    "name": "Rainstick"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1442,
+    "nautilus_index": 1691,
+    "name": "Ice Drop"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1443,
+    "nautilus_index": 1693,
+    "name": "Door Creak"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1444,
+    "nautilus_index": 1694,
+    "name": "Door Slam 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1445,
+    "nautilus_index": 1696,
+    "name": "Car Engine"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1446,
+    "nautilus_index": 1697,
+    "name": "Car Stop"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1447,
+    "nautilus_index": 1698,
+    "name": "Car Pass"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1448,
+    "nautilus_index": 1699,
+    "name": "Car Crash"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1449,
+    "nautilus_index": 1701,
+    "name": "Train"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1451,
+    "nautilus_index": 1703,
+    "name": "Railroad Crossing"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1452,
+    "nautilus_index": 1704,
+    "name": "Helicopter"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1454,
+    "nautilus_index": 1705,
+    "name": "Fireworks"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1456,
+    "nautilus_index": 1707,
+    "name": "Rifle Shot"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1457,
+    "nautilus_index": 1708,
+    "name": "Machine Gun"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1459,
+    "nautilus_index": 1709,
+    "name": "Laser Gun"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1460,
+    "nautilus_index": 1710,
+    "name": "Cannon 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1461,
+    "nautilus_index": 1711,
+    "name": "Cannon 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1462,
+    "nautilus_index": 1712,
+    "name": "Cannon 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1463,
+    "nautilus_index": 1713,
+    "name": "Explosion"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1464,
+    "nautilus_index": 1714,
+    "name": "Thunder"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1465,
+    "nautilus_index": 1715,
+    "name": "Wind"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1466,
+    "nautilus_index": 1716,
+    "name": "Stream"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1467,
+    "nautilus_index": 1717,
+    "name": "Bubble"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1469,
+    "nautilus_index": 1720,
+    "name": "ChurchBell"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1471,
+    "nautilus_index": 1721,
+    "name": "Old Telephone-Ring"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1473,
+    "nautilus_index": 1722,
+    "name": "Telephone-Call"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1474,
+    "nautilus_index": 1723,
+    "name": "Telephone-Ring"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1475,
+    "nautilus_index": 1724,
+    "name": "Telephone-Busy"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1477,
+    "nautilus_index": 1731,
+    "name": "Timpani MAP1 mf"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1478,
+    "nautilus_index": 1732,
+    "name": "Timpani MAP1 ff"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1479,
+    "nautilus_index": 1733,
+    "name": "Timpani MAP2 mf"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1480,
+    "nautilus_index": 1734,
+    "name": "Timpani MAP2 ff"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1483,
+    "nautilus_index": 1735,
+    "name": "Timpani-Roll mf"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1484,
+    "nautilus_index": 1736,
+    "name": "Timpani-Roll ff"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1485,
+    "nautilus_index": 1737,
+    "name": "Taiko"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1486,
+    "nautilus_index": 1742,
+    "name": "Tom"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1489,
+    "nautilus_index": 1743,
+    "name": "Tom-Processed"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1492,
+    "nautilus_index": 1749,
+    "name": "Orchestral Cymbal-Open"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1493,
+    "nautilus_index": 1750,
+    "name": "Orchestral Cymbal-Closed"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1500,
+    "nautilus_index": 1766,
+    "name": "Chinese Gong"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1501,
+    "nautilus_index": 1767,
+    "name": "Castanet"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1502,
+    "nautilus_index": 1768,
+    "name": "Click 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1503,
+    "nautilus_index": 1769,
+    "name": "Click 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1504,
+    "nautilus_index": 1770,
+    "name": "Marc Tree"
+  }
+]

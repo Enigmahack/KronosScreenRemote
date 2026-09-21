@@ -47,6 +47,9 @@ public partial class MainWindow
         _screenSession.Disconnect();
         SetConnectionStatus(ConnState.Disconnected);
         UpdateTitle(title);
+        _deviceModel = null;
+        _deviceFamily = DeviceFamily.Unknown;
+        ApplyDeviceFamilyUi();
     }
 
     Task<bool> EnsureFtpLoginAsync() => KronosFtpSession.EnsureLoginAsync(this, _settings, _host);
@@ -58,17 +61,42 @@ public partial class MainWindow
             if (!_screenSession.IsCurrent(info.Id)) return;
             _frameW = info.Width;
             _frameH = info.Height;
+            _fmt = info.Fmt;
+            _bpp = info.Bpp;
             _basePal = info.Palette;
-            RebuildLut();
+            _deviceModel = info.Model;
+            _deviceFamily = info.Model?.Family switch
+            {
+                "KRONOS"   => DeviceFamily.Kronos,
+                "NAUTILUS" => DeviceFamily.Nautilus,
+                _          => DeviceFamily.Unknown,
+            };
+            RebuildLut();   // must run after _deviceFamily is set - it reads EffectiveOverrides
+            ApplyDeviceFamilyUi();
+            // Authoritative source (daemon MODEL reply) - see SysExService.SetDeviceFamily's own
+            // comment for why a USB-only session resolves this itself instead.
+            _sysExService.SetDeviceFamily(_deviceFamily);
             AppLog.Info($"[conn] connected - {_frameW}×{_frameH} {(_pullMode ? "pull" : "change-driven")} cap={_fps}fps");
+            if (info.Model is { } dm)
+                AppLog.Info($"[conn] device - FAMILY={dm.Family} MODEL={dm.Model} FB_BPP={dm.FbBpp} -> {_deviceFamily}");
+            else
+                AppLog.Info("[conn] device - MODEL query failed/unavailable, treating as non-Nautilus");
             SetConnectionStatus(ConnState.Connected);
             UpdateTitle(info.Connection.Host);
             AddRecentHost(info.Connection.Host);
             _wb = new WriteableBitmap(_frameW, _frameH, 96, 96, PixelFormats.Bgr32, null);
             FrameImage.Source = _wb;
             RefreshFrameRect();
+            // Re-fits the window to THIS stream's height (800x480 Nautilus vs 800x600 Kronos -
+            // see SetWindowSize's own comment) instead of leaving it sized for whatever family
+            // was last connected. No-op if maximized/fullscreen/user-resized, same as every other
+            // layout-affecting change in this window (ResizeAndRefresh's own guard).
+            ResizeAndRefresh();
+            // MIRROR_ON replies ERR MIRROR_UNSUPPORTED on Nautilus - no VGA output behind the
+            // panel to mirror to (docs/api.md, MIRROR_ON, 3.0.2+). Don't send it there.
             _mirrorState = _settings.VgaMirrorEnabled;
-            Ctrl(DaemonCommand.VgaMirror(_mirrorState));
+            if (_deviceFamily != DeviceFamily.Nautilus)
+                Ctrl(DaemonCommand.VgaMirror(_mirrorState));
             Ctrl(DaemonCommand.ScreensaverTimeout(_settings.ScreensaverTimeout));
             _topLeftOcr.Reset();
             _sysExService.ApplyMidiSettings(
@@ -127,7 +155,7 @@ public partial class MainWindow
             _topLeftOcr.Reset();
             SetConnectionStatus(ConnState.Disconnected);
             _helpActive = false;
-            BTN_Help.IsActive = false;
+            _kronosRightPanel.BTN_Help.IsActive = false;
             ModeText.Text = "";
             UpdateTitle("Connection Lost");
         });
@@ -198,8 +226,8 @@ public partial class MainWindow
 
     void ClearModeButtons()
     {
-        foreach (var btn in new[] { BTN_Setlist, BTN_Combi, BTN_Program,
-                                     BTN_Sequence, BTN_Sampling, BTN_Global, BTN_Disk })
+        foreach (var btn in new[] { _kronosRightPanel.BTN_Setlist, _kronosRightPanel.BTN_Combi, _kronosRightPanel.BTN_Program,
+                                     _kronosRightPanel.BTN_Sequence, _kronosRightPanel.BTN_Sampling, _kronosRightPanel.BTN_Global, _kronosRightPanel.BTN_Disk })
             btn.IsActive = false;
         ModeText.Text = "";
     }
@@ -209,9 +237,9 @@ public partial class MainWindow
         _editCtx.Active     = true;
         _editCtx.Origin     = ctx;
         _editCtx.FlashState = false;
-        BTN_Combi.IsActive    = ctx == EditContext.ProgramFromCombi;
-        BTN_Sequence.IsActive = ctx == EditContext.ProgramFromSequence;
-        BTN_Program.IsActive  = false;
+        _kronosRightPanel.BTN_Combi.IsActive    = ctx == EditContext.ProgramFromCombi;
+        _kronosRightPanel.BTN_Sequence.IsActive = ctx == EditContext.ProgramFromSequence;
+        _kronosRightPanel.BTN_Program.IsActive  = false;
         _editCtx.FlashTimer.Start();
         AppLog.Debug($"[mode] program-edit-from-{ctx.DisplayName()}: entered");
         ModeText.Text = $"Mode: Program (from {ctx.DisplayName()})";
@@ -227,17 +255,24 @@ public partial class MainWindow
         ButtonForMode(_currentMode)?.Activate();
     }
 
-    KronosButton? ButtonForMode(Mode mode) => mode switch
-    {
-        Mode.Setlist  => BTN_Setlist,
-        Mode.Combi    => BTN_Combi,
-        Mode.Program  => BTN_Program,
-        Mode.Sequence => BTN_Sequence,
-        Mode.Sampling => BTN_Sampling,
-        Mode.Global   => BTN_Global,
-        Mode.Disk     => BTN_Disk,
-        _             => null,
-    };
+    // Nautilus's Mode/Page lighting is removed entirely (your 2026-09-22 direction - it was
+    // lighting under strange conditions; simplest fix is no persistent front-panel indicator
+    // there at all, same as Sequence/Sampling/Global/Disk/Setlist already had none). _currentMode
+    // bookkeeping (ModeText, _seqTransport.CurrentMode, etc.) is untouched by this - only the
+    // button-lighting side is skipped for Nautilus.
+    KronosButton? ButtonForMode(Mode mode) => _deviceFamily == DeviceFamily.Nautilus
+        ? null
+        : mode switch
+        {
+            Mode.Setlist  => _kronosRightPanel.BTN_Setlist,
+            Mode.Combi    => _kronosRightPanel.BTN_Combi,
+            Mode.Program  => _kronosRightPanel.BTN_Program,
+            Mode.Sequence => _kronosRightPanel.BTN_Sequence,
+            Mode.Sampling => _kronosRightPanel.BTN_Sampling,
+            Mode.Global   => _kronosRightPanel.BTN_Global,
+            Mode.Disk     => _kronosRightPanel.BTN_Disk,
+            _             => null,
+        };
 
     void RenderTick(object? s, EventArgs e)
     {
@@ -262,7 +297,7 @@ public partial class MainWindow
         // overwrite bytes the UI is about to read.
         bool newFrame = false;
         byte[]? raw   = null;
-        int frameSize = _frameW * _frameH;
+        int frameSize = _frameW * _frameH * (_bpp / 8);
         // Only take a frame we can actually draw.  TryCopyLatestFrame is destructive - it clears the
         // receiver's has-frame flag - and _wb is null from SetConnectionStatus(Connecting) until
         // OnSessionConnected builds the bitmap.  The daemon's connect-time full frame lands inside
@@ -299,10 +334,16 @@ public partial class MainWindow
             // dark help-banner reference pixels score as false positives against the
             // still-mostly-black boot frame, so skip detection until the daemon itself
             // says the board is up.
-            if (_topLeftOcr.HasChanged(raw, _frameW) && !_daemonBooting)
+            //
+            // _bpp == 8 only: both detectors assume one palette-index byte per pixel at stride
+            // _frameW and a Kronos-shaped reference image (Resources/Refs/help.png). On Nautilus
+            // (RGB565LE, 2 bytes/pixel, different resolution/layout) they would read meaningless
+            // data - never run them there. No functional loss: they only drive _kronosRightPanel.BTN_Help, which
+            // is itself a Kronos front-panel concept.
+            if (_bpp == 8 && _topLeftOcr.HasChanged(raw, _frameW) && !_daemonBooting)
             {
                 _helpActive       = _helpDetector.IsHelpActive(raw, _frameW, _lut);
-                BTN_Help.IsActive = _helpActive;
+                _kronosRightPanel.BTN_Help.IsActive = _helpActive;
             }
         }
 
@@ -334,17 +375,38 @@ public partial class MainWindow
 
     void RebuildLut()
     {
-        // Brightness/contrast/gamma/saturation are baked into the 256-entry LUT here, so the
-        // per-pixel blit in ApplyLut stays a single lookup - the whole frame is tone-adjusted for
-        // free.  Sharpen is the exception (it needs neighbouring pixels) and runs in ApplyLut.
+        // Brightness/contrast/gamma/saturation are baked into the LUT here, so the per-pixel
+        // blit in ApplyLut stays a single lookup - the whole frame is tone-adjusted for free.
+        // Sharpen is the exception (it needs neighbouring pixels) and runs in ApplyLut.
         var curve  = ImageAdjust.BuildToneCurve(
             _settings.ImageBrightness, _settings.ImageContrast, _settings.ImageGamma);
         double sat = ImageAdjust.SaturationFactor(_settings.ImageSaturation);
-        for (int i = 0; i < 256; i++)
+
+        if (_fmt == StreamPixelFormat.Rgb565Le)
         {
-            var e = _overrides.TryGetValue(i, out var ov) ? ov : _basePal[i];
-            // Bgr32: uint32 = 0x00RRGGBB in little-endian → bytes B G R X ✓
-            _lut[i] = ImageAdjust.ApplyToChannel(e.R, e.G, e.B, curve, sat);
+            // Nautilus: no palette (Fmt.Rgb565Le never reports one - StreamReceiver.Palette is
+            // empty), so there is nothing to override, just decode + tone-adjust. Every 16-bit
+            // RGB565LE word maps to one Bgr32 entry (docs/api.md §4.5.2's decode: replicate the
+            // high bits when expanding 5/6-bit channels to 8-bit, don't just left-shift, or
+            // black clips to near-black instead of true black).
+            for (int v = 0; v < 65536; v++)
+            {
+                int r5 = (v >> 11) & 0x1F, g6 = (v >> 5) & 0x3F, b5 = v & 0x1F;
+                byte r = (byte)((r5 << 3) | (r5 >> 2));
+                byte g = (byte)((g6 << 2) | (g6 >> 4));
+                byte b = (byte)((b5 << 3) | (b5 >> 2));
+                _lut16[v] = ImageAdjust.ApplyToChannel(r, g, b, curve, sat);
+            }
+        }
+        else
+        {
+            var overrides = EffectiveOverrides;
+            for (int i = 0; i < 256; i++)
+            {
+                var e = overrides.TryGetValue(i, out var ov) ? ov : _basePal[i];
+                // Bgr32: uint32 = 0x00RRGGBB in little-endian → bytes B G R X ✓
+                _lut[i] = ImageAdjust.ApplyToChannel(e.R, e.G, e.B, curve, sat);
+            }
         }
     }
 
@@ -359,7 +421,8 @@ public partial class MainWindow
         // Guard the unsafe LUT loop: never read more bytes than the frame buffer holds.
         // A short/mismatched frame (e.g. a resolution change still queued after reconnect)
         // would otherwise cause an out-of-bounds read / access violation.
-        if (_rawFrame.Length < _frameW * _frameH) return;
+        int bytesPerPixel = _bpp / 8;
+        if (_rawFrame.Length < _frameW * _frameH * bytesPerPixel) return;
         int sharpen = _settings.ImageSharpen;
         try
         {
@@ -372,24 +435,49 @@ public partial class MainWindow
                 if (sharpen <= 0)
                 {
                     // Fast path (default): LUT straight into the back buffer.
-                    fixed (byte* frame = _rawFrame)
-                    fixed (int*  lut   = _lut)
-                        for (int i = 0; i < n; i++)
-                            back[i] = lut[frame[i]];
+                    if (_fmt == StreamPixelFormat.Rgb565Le)
+                    {
+                        fixed (byte* frame = _rawFrame)
+                        fixed (int*  lut   = _lut16)
+                            for (int i = 0; i < n; i++)
+                                back[i] = lut[frame[i * 2] | (frame[i * 2 + 1] << 8)];
+                    }
+                    else
+                    {
+                        fixed (byte* frame = _rawFrame)
+                        fixed (int*  lut   = _lut)
+                            for (int i = 0; i < n; i++)
+                                back[i] = lut[frame[i]];
+                    }
                 }
                 else
                 {
                     // Sharpen path: LUT into the scratch buffer, then unsharp-mask into the back buffer.
                     var src = _sharpBuf;
                     if (src == null || src.Length != n) { src = new int[n]; _sharpBuf = src; }
-                    fixed (byte* frame = _rawFrame)
-                    fixed (int*  lut   = _lut)
-                    fixed (int*  s     = src)
+                    if (_fmt == StreamPixelFormat.Rgb565Le)
                     {
-                        for (int i = 0; i < n; i++)
-                            s[i] = lut[frame[i]];
-                        ImageAdjust.UnsharpMask(s, back, _frameW, _frameH,
-                                                sharpen / 100.0 * ImageAdjust.MaxSharpen);
+                        fixed (byte* frame = _rawFrame)
+                        fixed (int*  lut   = _lut16)
+                        fixed (int*  s     = src)
+                        {
+                            for (int i = 0; i < n; i++)
+                                s[i] = lut[frame[i * 2] | (frame[i * 2 + 1] << 8)];
+                            ImageAdjust.UnsharpMask(s, back, _frameW, _frameH,
+                                                    sharpen / 100.0 * ImageAdjust.MaxSharpen);
+                        }
+                    }
+                    else
+                    {
+                        fixed (byte* frame = _rawFrame)
+                        fixed (int*  lut   = _lut)
+                        fixed (int*  s     = src)
+                        {
+                            for (int i = 0; i < n; i++)
+                                s[i] = lut[frame[i]];
+                            ImageAdjust.UnsharpMask(s, back, _frameW, _frameH,
+                                                    sharpen / 100.0 * ImageAdjust.MaxSharpen);
+                        }
                     }
                 }
                 _wb.AddDirtyRect(new Int32Rect(0, 0, _frameW, _frameH));

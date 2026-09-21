@@ -38,6 +38,7 @@ public partial class App : Application
             fails.AddRange(SyncPipelineSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(DataSafetySelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(PcgFileSelfTests.SelfTest());
+            fails.AddRange(PcgConversionSelfTests.SelfTest());
             fails.AddRange(PcgPaneLoadSelfTests.SelfTest());
             fails.AddRange(PcgSearchFilterSelfTests.SelfTest());
             fails.AddRange(CrossPanePlacementSelfTests.SelfTestAsync().GetAwaiter().GetResult());
@@ -54,6 +55,7 @@ public partial class App : Application
             fails.AddRange(DumpGateSelfTests.SelfTest());
             fails.AddRange(MidiTransportCoordinatorSelfTests.SelfTest());
             fails.AddRange(ScreenSessionSelfTests.SelfTestAsync().GetAwaiter().GetResult());
+            fails.AddRange(StreamReceiverV3SelfTests.SelfTest());
             fails.AddRange(MidiTransportReplySelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(MergeGroupPlacementSelfTests.SelfTestAsync().GetAwaiter().GetResult());
             fails.AddRange(MergeAutoFillSelfTests.SelfTestAsync().GetAwaiter().GetResult());
@@ -118,6 +120,76 @@ public partial class App : Application
         if (dumpStructureIdx >= 0 && dumpStructureIdx + 1 < e.Args.Length)
         {
             PcgStructureDump.Run(e.Args[dumpStructureIdx + 1]);
+        }
+
+        // Headless diagnostic: `--dump-nautilus-pcg-structure <path-to.pcg>` - see
+        // Tools/NautilusPcgStructureDump.cs for why this exists (validating
+        // NautilusPcgObjectExtractor against real Nautilus-written files).
+        int dumpNautilusStructureIdx = Array.IndexOf(e.Args, "--dump-nautilus-pcg-structure");
+        if (dumpNautilusStructureIdx >= 0 && dumpNautilusStructureIdx + 1 < e.Args.Length)
+        {
+            NautilusPcgStructureDump.Run(e.Args[dumpNautilusStructureIdx + 1]);
+        }
+
+        // Headless diagnostic: `--nautilus-sysex-capture [device-name-match] [output-dir]` -
+        // see Tools/NautilusSysExCapture.cs for why this exists (passive USB SysEx capture
+        // against a real Nautilus, no daemon/TCP needed, settling the real Excl Header length).
+        int nautilusSysexCaptureIdx = Array.IndexOf(e.Args, "--nautilus-sysex-capture");
+        if (nautilusSysexCaptureIdx >= 0)
+        {
+            string? match  = nautilusSysexCaptureIdx + 1 < e.Args.Length ? e.Args[nautilusSysexCaptureIdx + 1] : null;
+            string? outDir = nautilusSysexCaptureIdx + 2 < e.Args.Length ? e.Args[nautilusSysexCaptureIdx + 2] : null;
+            NautilusSysExCapture.Run(match, outDir);
+        }
+
+        // Headless diagnostic: `--nautilus-sysex-roundtrip [device-name-match] [obj] [bank]
+        // [index]` - active func 0x72 request / func 0x73 reply round trip against a real
+        // Nautilus using the hardware-confirmed NautilusSysEx framing. Read-only (0x72/0x73
+        // only - no Store/erase). Defaults to Program (obj=0) bank 0 index 0.
+        int nautilusRoundtripIdx = Array.IndexOf(e.Args, "--nautilus-sysex-roundtrip");
+        if (nautilusRoundtripIdx >= 0)
+        {
+            string? rtMatch = nautilusRoundtripIdx + 1 < e.Args.Length ? e.Args[nautilusRoundtripIdx + 1] : null;
+            int rtObj   = nautilusRoundtripIdx + 2 < e.Args.Length ? int.Parse(e.Args[nautilusRoundtripIdx + 2]) : 0;
+            int rtBank  = nautilusRoundtripIdx + 3 < e.Args.Length ? int.Parse(e.Args[nautilusRoundtripIdx + 3]) : 0;
+            int rtIndex = nautilusRoundtripIdx + 4 < e.Args.Length ? int.Parse(e.Args[nautilusRoundtripIdx + 4]) : 0;
+            NautilusSysExCapture.RunRequestReply(rtMatch, rtObj, rtBank, rtIndex);
+        }
+
+        // Headless diagnostic: `--nautilus-sysex-writeback-test [device-name-match] [obj] [bank]
+        // [index]` - DESTRUCTIVE: reads a real object, writes the SAME bytes back unchanged
+        // (func 0x73), commits with Store Bank Request (func 0x76), re-reads, and byte-diffs
+        // against the original. Only run with a fresh backup already in hand. Pauses for Enter
+        // before the write/store step so it's never fired unattended.
+        int nautilusWritebackIdx = Array.IndexOf(e.Args, "--nautilus-sysex-writeback-test");
+        if (nautilusWritebackIdx >= 0)
+        {
+            string? wbMatch = nautilusWritebackIdx + 1 < e.Args.Length ? e.Args[nautilusWritebackIdx + 1] : null;
+            int wbObj   = nautilusWritebackIdx + 2 < e.Args.Length ? int.Parse(e.Args[nautilusWritebackIdx + 2]) : 0;
+            int wbBank  = nautilusWritebackIdx + 3 < e.Args.Length ? int.Parse(e.Args[nautilusWritebackIdx + 3]) : 0;
+            int wbIndex = nautilusWritebackIdx + 4 < e.Args.Length ? int.Parse(e.Args[nautilusWritebackIdx + 4]) : 0;
+            NautilusSysExCapture.RunWriteBackTest(wbMatch, wbObj, wbBank, wbIndex);
+        }
+
+        // Headless diagnostic: `--nautilus-sysex-bank-digest-scan [device-name-match] [obj]` -
+        // read-only func 0x37/0x38 Bank Digest scan across the documented Program bank-byte
+        // ranges (Int A-F, User G-T). Match against `--dump-nautilus-bank-digests` to decode
+        // BankIdRaw. Defaults to obj=0 (Program).
+        int nautilusDigestScanIdx = Array.IndexOf(e.Args, "--nautilus-sysex-bank-digest-scan");
+        if (nautilusDigestScanIdx >= 0)
+        {
+            string? dsMatch = nautilusDigestScanIdx + 1 < e.Args.Length ? e.Args[nautilusDigestScanIdx + 1] : null;
+            int dsObj = nautilusDigestScanIdx + 2 < e.Args.Length ? int.Parse(e.Args[nautilusDigestScanIdx + 2]) : 0;
+            NautilusSysExCapture.RunBankDigestScan(dsMatch, dsObj);
+        }
+
+        // Headless diagnostic: `--dump-nautilus-bank-digests <path-to.pcg>` - see
+        // Tools/NautilusBankDigestDump.cs for why this exists (offline half of the BankIdRaw
+        // decode - compute the same SHA-1 the instrument reports live, from a real .pcg file).
+        int dumpNautilusDigestsIdx = Array.IndexOf(e.Args, "--dump-nautilus-bank-digests");
+        if (dumpNautilusDigestsIdx >= 0 && dumpNautilusDigestsIdx + 1 < e.Args.Length)
+        {
+            NautilusBankDigestDump.Run(e.Args[dumpNautilusDigestsIdx + 1]);
         }
 
         // Headless diagnostic: `--dump-pcg-blanks <path-to.pcg>` - see

@@ -15,8 +15,17 @@ static class KeyMap
         { Key.Z, 44 },
         { Key.D1, 2  }, { Key.D2, 3  }, { Key.D3, 4  }, { Key.D4, 5  }, { Key.D5, 6  },
         { Key.D6, 7  }, { Key.D7, 8  }, { Key.D8, 9  }, { Key.D9, 10 }, { Key.D0, 11 },
-        // Numpad digits are NOT in the keyboard map - they route to the control surface
-        // via BUTTON NUM0..NUM9 (see OnKeyDown capture block in MainWindow.xaml.cs).
+        // Numpad digits/minus/decimal - Linux evdev KEY_KP0..KEY_KP9/KEY_KPMINUS/KEY_KPDOT.
+        // On Kronos these are UNREACHABLE here: OnKeyDown's capture block intercepts them first
+        // and routes to BUTTON NUM0..NUM9/NUM_DASH/NUM_DOT (the front-panel numeric keypad) -
+        // these entries only matter for Nautilus, where that interception is skipped so real
+        // numpad keystrokes forward here instead, as an actual USB keyboard would (your
+        // 2026-09-22 direction: "keyboard sends, not daemon control injections").
+        { Key.NumPad0, 82 }, { Key.NumPad1, 79 }, { Key.NumPad2, 80 }, { Key.NumPad3, 81 },
+        { Key.NumPad4, 75 }, { Key.NumPad5, 76 }, { Key.NumPad6, 77 }, { Key.NumPad7, 71 },
+        { Key.NumPad8, 72 }, { Key.NumPad9, 73 },
+        { Key.Subtract, 74 },  // KEY_KPMINUS (same code as OemMinus above)
+        { Key.Decimal,  83 },  // KEY_KPDOT
         { Key.Escape,   1  },
         { Key.Space,   57  }, { Key.Back,   14  }, { Key.Tab,    15  },
         { Key.Return,  28  }, { Key.Delete, 111 }, { Key.Insert, 110 },
@@ -40,7 +49,6 @@ static class KeyMap
         { Key.OemPeriod,       52 },  // .
         { Key.OemQuestion,     12 },  // / → send KEY_MINUS      (Kronos maps that to /)
         { Key.OemTilde,        41 },  // `
-        // Key.Subtract and Key.Decimal omitted - route to control surface in capture block
         { Key.Multiply, 55 }, { Key.Add, 78 }, { Key.Divide, 98 },
         { Key.F1,  59 }, { Key.F2,  60 }, { Key.F3,  61 }, { Key.F4,  62 },
         { Key.F5,  63 }, { Key.F6,  64 }, { Key.F7,  65 }, { Key.F8,  66 },

@@ -1,0 +1,224 @@
+<UserControl x:Class="KronosScreenRemote.KronosRightPanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:KronosScreenRemote">
+    <!-- Kronos data-entry surface - moved out of MainWindow.xaml's Grid.Column="2" (formerly
+         "KronosControlGrid") into its own UserControl; see KronosLeftPanel.xaml's header comment
+         for why. NautilusRightPanel is this column's Nautilus counterpart. -->
+    <Grid>
+        <!-- Viewbox scales the fixed 800×600 design space to fill the host at any zoom level.
+             MainWindow.SetWindowSize keeps the host at exactly 800:600 ratio, so Uniform never
+             letterboxes. -->
+        <Viewbox x:Name="ControlViewbox" Stretch="Uniform">
+            <Grid Width="800" Height="600">
+
+                <Image x:Name="DataInput"
+                   Stretch="Fill"
+                   RenderOptions.BitmapScalingMode="HighQuality"
+                   SnapsToDevicePixels="False"
+                   IsHitTestVisible="False"
+                   Source="/Resources/Images/DataEntrySurfaceEmpty.png"/>
+
+                <!-- ── Mode buttons - confirmed by detection before lighting ──── -->
+                <local:KronosButton x:Name="BTN_Setlist"
+                    Margin="87,90,603,483"
+                    ToolTip="Setlist mode (F2)"
+                    TabIndex="40" AutomationProperties.Name="Setlist mode"
+                    UnlitSource="/Resources/Images/UnlitWideButton.png"
+                    LitSource="/Resources/Images/LitWideButton.png"
+                    ButtonMode="None" RadioGroup="ModeGroup"/>
+                <local:KronosButton x:Name="BTN_Combi"
+                    Margin="289,91,401,482"
+                    ToolTip="Combi mode (F3)"
+                    TabIndex="50" AutomationProperties.Name="Combi mode"
+                    UnlitSource="/Resources/Images/UnlitWideButton.png"
+                    LitSource="/Resources/Images/LitWideButton.png"
+                    ButtonMode="None" RadioGroup="ModeGroup"/>
+                <local:KronosButton x:Name="BTN_Program"
+                    Margin="407,91,283,482"
+                    ToolTip="Program mode (F4)"
+                    TabIndex="60" AutomationProperties.Name="Program mode"
+                    UnlitSource="/Resources/Images/UnlitWideButton.png"
+                    LitSource="/Resources/Images/LitWideButton.png"
+                    ButtonMode="None" RadioGroup="ModeGroup"/>
+                <local:KronosButton x:Name="BTN_Sequence"
+                    Margin="522,91,168,482"
+                    ToolTip="Sequence mode (F5)"
+                    TabIndex="70" AutomationProperties.Name="Sequence mode"
+                    UnlitSource="/Resources/Images/UnlitWideButton.png"
+                    LitSource="/Resources/Images/LitWideButton.png"
+                    ButtonMode="None" RadioGroup="ModeGroup"/>
+                <local:KronosButton x:Name="BTN_Sampling"
+                    Margin="289,169,401,404"
+                    ToolTip="Sampling mode (F6)"
+                    TabIndex="80" AutomationProperties.Name="Sampling mode"
+                    UnlitSource="/Resources/Images/UnlitWideButton.png"
+                    LitSource="/Resources/Images/LitWideButton.png"
+                    ButtonMode="None" RadioGroup="ModeGroup"/>
+                <local:KronosButton x:Name="BTN_Global"
+                    Margin="407,169,283,404"
+                    ToolTip="Global mode (F7)"
+                    TabIndex="90" AutomationProperties.Name="Global mode"
+                    UnlitSource="/Resources/Images/UnlitWideButton.png"
+                    LitSource="/Resources/Images/LitWideButton.png"
+                    ButtonMode="None" RadioGroup="ModeGroup"/>
+                <local:KronosButton x:Name="BTN_Disk"
+                    Margin="522,169,168,404"
+                    ToolTip="Disk mode (F8)"
+                    TabIndex="100" AutomationProperties.Name="Disk mode"
+                    UnlitSource="/Resources/Images/UnlitWideButton.png"
+                    LitSource="/Resources/Images/LitWideButton.png"
+                    ButtonMode="None" RadioGroup="ModeGroup"/>
+
+                <!-- ── Thin toggle buttons (Help / Compare) ──────────── -->
+                <local:KronosButton x:Name="BTN_Help"
+                    Margin="671,91,79,482"
+                    ToolTip="Send HELP button to Kronos (F1)"
+                    TabIndex="110" AutomationProperties.Name="Help"
+                    UnlitSource="/Resources/Images/UnlitThinButton.png"
+                    LitSource="/Resources/Images/LitThinButton.png"
+                    ButtonMode="Toggle"/>
+                <local:KronosButton x:Name="BTN_Compare"
+                    Margin="671,169,79,404"
+                    ToolTip="Send COMPARE button to Kronos"
+                    TabIndex="120" AutomationProperties.Name="Compare"
+                    UnlitSource="/Resources/Images/UnlitThinButton.png"
+                    LitSource="/Resources/Images/LitThinButton.png"
+                    ButtonMode="Toggle"/>
+
+                <!-- ── Number pad - no animation ──────────────────────── -->
+                <local:KronosButton x:Name="BTN_data7"
+                    Margin="289,250,401,325"
+                    ToolTip="Send 7 to Kronos"
+                    TabIndex="130" AutomationProperties.Name="7"
+                    UnlitSource="/Resources/Images/UnlitWideButton.png"
+                    ButtonMode="None"/>
+                <local:KronosButton x:Name="BTN_data8"
+                    Margin="407,250,283,325"
+                    ToolTip="Send 8 to Kronos"
+                    TabIndex="140" AutomationProperties.Name="8"
+                    UnlitSource="/Resources/Images/UnlitWideButton.png"
+                    ButtonMode="None"/>
+                <local:KronosButton x:Name="BTN_data9"
+                    Margin="522,250,168,325"
+                    ToolTip="Send 9 to Kronos"
+                    TabIndex="150" AutomationProperties.Name="9"
+                    UnlitSource="/Resources/Images/UnlitWideButton.png"
+                    ButtonMode="None"/>
+                <local:KronosButton x:Name="BTN_data4"
+                    Margin="289,328,401,245"
+                    ToolTip="Send 4 to Kronos"
+                    TabIndex="160" AutomationProperties.Name="4"
+                    UnlitSource="/Resources/Images/UnlitWideButton.png"
+                    ButtonMode="None"/>
+                <local:KronosButton x:Name="BTN_data5"
+                    Margin="407,328,283,245"
+                    ToolTip="Send 5 to Kronos"
+                    TabIndex="170" AutomationProperties.Name="5"
+                    UnlitSource="/Resources/Images/UnlitWideButton.png"
+                    ButtonMode="None"/>
+                <local:KronosButton x:Name="BTN_data6"
+                    Margin="524,328,166,245"
+                    ToolTip="Send 6 to Kronos"
+                    TabIndex="180" AutomationProperties.Name="6"
+                    UnlitSource="/Resources/Images/UnlitWideButton.png"
+                    ButtonMode="None"/>
+                <local:KronosButton x:Name="BTN_data1"
+                    Margin="289,409,401,164"
+                    ToolTip="Send 1 to Kronos"
+                    TabIndex="190" AutomationProperties.Name="1"
+                    UnlitSource="/Resources/Images/UnlitWideButton.png"
+                    ButtonMode="None"/>
+                <local:KronosButton x:Name="BTN_data2"
+                    Margin="407,409,283,164"
+                    ToolTip="Send 2 to Kronos"
+                    TabIndex="200" AutomationProperties.Name="2"
+                    UnlitSource="/Resources/Images/UnlitWideButton.png"
+                    ButtonMode="None"/>
+                <local:KronosButton x:Name="BTN_data3"
+                    Margin="524,409,166,164"
+                    ToolTip="Send 3 to Kronos"
+                    TabIndex="210" AutomationProperties.Name="3"
+                    UnlitSource="/Resources/Images/UnlitWideButton.png"
+                    ButtonMode="None"/>
+                <local:KronosButton x:Name="BTN_data_dash"
+                    Margin="290,489,400,84"
+                    ToolTip="Send – (dash) to Kronos"
+                    TabIndex="220" AutomationProperties.Name="Dash"
+                    UnlitSource="/Resources/Images/UnlitWideButton.png"
+                    ButtonMode="None"/>
+                <local:KronosButton x:Name="BTN_data0"
+                    Margin="407,489,283,84"
+                    ToolTip="Send 0 to Kronos"
+                    TabIndex="230" AutomationProperties.Name="0"
+                    UnlitSource="/Resources/Images/UnlitWideButton.png"
+                    ButtonMode="None"/>
+                <local:KronosButton x:Name="BTN_data_period"
+                    Margin="524,489,166,84"
+                    ToolTip="Send . (period) to Kronos"
+                    TabIndex="240" AutomationProperties.Name="Period"
+                    UnlitSource="/Resources/Images/UnlitWideButton.png"
+                    ButtonMode="None"/>
+
+                <!-- ── Exit / Enter - no animation ────────────────────── -->
+                <local:KronosButton x:Name="BTN_Exit"
+                    Margin="80,493,603,80"
+                    ToolTip="Send EXIT button to Kronos (Esc)"
+                    TabIndex="250" AutomationProperties.Name="Exit"
+                    UnlitSource="/Resources/Images/ExitButton.png"
+                    ButtonMode="None"/>
+                <local:KronosButton x:Name="BTN_Enter"
+                    Margin="639,489,44,84"
+                    ToolTip="Send ENTER button to Kronos (Enter)"
+                    TabIndex="260" AutomationProperties.Name="Enter"
+                    UnlitSource="/Resources/Images/ExitButton.png"
+                    ButtonMode="None"/>
+
+                <!-- ── Data wheel - drag up/down to scroll ───────────── -->
+                <Image x:Name="Data_Wheel"
+                   Margin="41,222,557,160"
+                   Source="/Resources/Images/DataWheelTransparent.png"
+                   RenderTransformOrigin="0.5,0.5"
+                   Cursor="SizeNS"
+                   KeyboardNavigation.TabIndex="270"
+                   AutomationProperties.Name="Data wheel"
+                   AutomationProperties.HelpText="Up/Down arrow keys rotate the wheel one step at a time."
+                   ToolTip="Data wheel - drag up/down or scroll to rotate; Ctrl+scroll to zoom frame">
+                    <Image.ContextMenu>
+                        <ContextMenu>
+                            <MenuItem x:Name="CTX_WheelSensitivity" Header="_Settings..."/>
+                            <MenuItem x:Name="CTX_WheelReset"       Header="Reset _Animation"/>
+                        </ContextMenu>
+                    </Image.ContextMenu>
+                    <Image.RenderTransform>
+                        <RotateTransform x:Name="WheelRotate" Angle="0"/>
+                    </Image.RenderTransform>
+                </Image>
+
+            </Grid>
+        </Viewbox>
+
+        <!-- Focused-mode rail: click to restore Full preset -->
+        <Border x:Name="ControlRail"
+                Width="28"
+                HorizontalAlignment="Right"
+                Background="#FF1A1A1A"
+                BorderThickness="1 0 0 0"
+                BorderBrush="#FF333333"
+                Visibility="Collapsed">
+            <Button x:Name="BtnRailExpand"
+                    Background="Transparent"
+                    Foreground="#FF88AADD"
+                    BorderThickness="0"
+                    Padding="0"
+                    FontSize="16"
+                    Focusable="False"
+                    VerticalContentAlignment="Center"
+                    HorizontalContentAlignment="Center"
+                    FocusVisualStyle="{x:Null}"
+                    ToolTip="Expand data input">
+                <TextBlock Text="›" FontSize="16"/>
+            </Button>
+        </Border>
+    </Grid>
+</UserControl>

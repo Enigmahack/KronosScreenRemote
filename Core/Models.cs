@@ -60,6 +60,7 @@ public readonly record struct Keybind(Key Key, ModifierKeys Modifiers = Modifier
 }
 
 record struct PaletteEntry(byte R, byte G, byte B);
+record struct HistEntry(int Idx, PaletteEntry? OldVal, PaletteEntry? NewVal, bool? OldLocked = null, bool? NewLocked = null);
 record struct CalBiasDot(int Nx, int Ny);
 
 enum CalHistKind { NodeMove, DotAdded, DotRemoved }

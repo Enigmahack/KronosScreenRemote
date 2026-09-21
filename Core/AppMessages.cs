@@ -46,7 +46,12 @@ public static class AppMessages
             "No Kronos IP address is configured.\n\nGo to Settings and enter the Kronos IP address.";
 
         // ── Status line ──
-        public static string Connected(string host)  => $"Connected - {host}";
+        public static string Connected(string host, DeviceFamily family) => family switch
+        {
+            DeviceFamily.Kronos   => $"Connected, Kronos - {host}",
+            DeviceFamily.Nautilus => $"Connected, Nautilus - {host}",
+            _                     => $"Connected - {host}",
+        };
         public static string Connecting(string host) => $"Connecting to {host}...";
         public const string UsbMidiScreenNotConnected = "USB MIDI - screen not connected";
         public const string NotConnected              = "Not connected";

@@ -1,0 +1,277 @@
+namespace KronosScreenRemote;
+
+// Off-hardware self-test for the Nautilus PCG conversion pieces built so far (RomWaveformMap,
+// SampleZoneRomRemapper). Same convention as ObjectBodySelfTests/Librarian.SelfTest - pure,
+// synchronous, returns failing check names (empty = all passed). Invoked from App.xaml.cs's
+// --librarian-selftest. See the PCG converter v1 plan's Phase 3a/Phase 5.
+static class PcgConversionSelfTests
+{
+    // Legacy KORG/MS-prefixed Bank UUID form (§7) - same 15-byte constant as
+    // SampleReferenceWalker.KorgMsPrefix, duplicated here rather than exposed from that
+    // display-only class, since a self-test fixture builder isn't a real caller of it.
+    static readonly byte[] KorgMsPrefix =
+        { 0x4B, 0x4F, 0x52, 0x47, 0, 0, 0, 0, 0, 0, 0, 0, 0x4D, 0x53, 0x00 };
+
+    // A real EXs pack's own Sxxx option-file text (verbatim content of F:\KRONOS EXs\
+    // EXs377_KApro Film Atmos & Pads.zip's S377, read this session) - used to build a
+    // synthetic ExsOptionIndex catalog that resolves a real-shaped raw UUID, so the
+    // "known EXs product -> refuse" path is tested against real bytes, not an invented shape.
+    const string Exs377OptionFileText = "EXs377\nKApro Film Atmos & Pads\n377\n2,uuid:e0ec1421-4c0f-49e8-9feb-83f74fc9fce8,EXs377 KApro Film Atmos & Pads";
+
+    // Builds a minimal synthetic HD-1 Program body (WireSizeHd1 bytes) with oscillator 1's
+    // zone 0 set to a legacy-form Sample zone referencing the given (nn, number) - same byte
+    // layout LibRefs.IterProgramSampleZoneRefs reads (typeOff=2774, uuid at +1..+16, Number LE
+    // at +18/+19), oscillator mode left at 0 (not Drums, so the zone is eligible).
+    static byte[] BuildHd1BodyWithZoneRef(int nn, int number)
+    {
+        var body = new byte[ProgramFormatConverter.WireSizeHd1];
+        const int typeOff = 2774;   // Osc1ZoneBase, zone 0
+        body[typeOff] = 1;          // msType = 1 (Sample)
+        Array.Copy(KorgMsPrefix, 0, body, typeOff + 1, 15);
+        body[typeOff + 16] = (byte)nn;
+        body[typeOff + 18] = (byte)(number & 0xFF);
+        body[typeOff + 19] = (byte)((number >> 8) & 0xFF);
+        return body;
+    }
+
+    // Same shape as BuildHd1BodyWithZoneRef but with a RAW (non-legacy-prefixed) 16-byte UUID
+    // instead of the KORG/MS legacy form - for testing the RawUuid classification branch.
+    static byte[] BuildHd1BodyWithRawUuidZoneRef(byte[] rawUuid, int number)
+    {
+        var body = new byte[ProgramFormatConverter.WireSizeHd1];
+        const int typeOff = 2774;
+        body[typeOff] = 1;
+        Array.Copy(rawUuid, 0, body, typeOff + 1, 16);
+        body[typeOff + 18] = (byte)(number & 0xFF);
+        body[typeOff + 19] = (byte)((number >> 8) & 0xFF);
+        return body;
+    }
+
+    // Builds a minimal synthetic Drum Kit body (real 38424-byte itemSize) with note 0, zone 0
+    // set to an on, legacy-form sample reference - same layout DrumKitBody.IterSampleZoneRefs
+    // reads (zoneBase=24, on/off at +0, uuid at +1..+16, SampleId LE at +18/+19).
+    static byte[] BuildDrumKitBodyWithZoneRef(int nn, int sampleId)
+    {
+        var body = new byte[38424];
+        const int zoneBase = 24;   // NoteBase, note 0, zone 0
+        body[zoneBase] = 1;        // on
+        Array.Copy(KorgMsPrefix, 0, body, zoneBase + 1, 15);
+        body[zoneBase + 16] = (byte)nn;
+        body[zoneBase + 18] = (byte)(sampleId & 0xFF);
+        body[zoneBase + 19] = (byte)((sampleId >> 8) & 0xFF);
+        return body;
+    }
+
+    // Builds a minimal synthetic Wave Sequence body (real 2216-byte itemSize) with step 0 set
+    // to a Multisample-type, legacy-form sample reference - same layout WaveSequenceBody.
+    // IterSampleStepRefs reads (stepBase=40, type at +0, uuid at +1..+16, Select LE at +18/+19).
+    static byte[] BuildWaveSeqBodyWithStepRef(int nn, int select)
+    {
+        var body = new byte[2216];
+        const int stepBase = 40;   // StepBase, step 0
+        body[stepBase] = 0;        // type = Multisample
+        Array.Copy(KorgMsPrefix, 0, body, stepBase + 1, 15);
+        body[stepBase + 16] = (byte)nn;
+        body[stepBase + 18] = (byte)(select & 0xFF);
+        body[stepBase + 19] = (byte)((select >> 8) & 0xFF);
+        return body;
+    }
+
+    public static List<string> SelfTest()
+    {
+        var fails = new List<string>();
+        void Check(string name, bool cond) { if (!cond) fails.Add(name); }
+
+        var noExsCatalog = ExsOptionIndex.FromCatalog("{}");
+
+        // ── RomWaveformMap: loads a synthetic catalog, looks up by (section, index) ──
+        var map = RomWaveformMap.FromCatalog(
+            """[{"section":"ROM_MULTISAMPLES","kronos_index":9,"nautilus_index":20,"name":"A.Piano-M1"}]""");
+        Check("rom-map-count", map.Count == 1);
+        Check("rom-map-hit", map.TryMapRomIndex("ROM_MULTISAMPLES", 9, out int hitIdx) && hitIdx == 20);
+        Check("rom-map-miss-unknown-index", !map.TryMapRomIndex("ROM_MULTISAMPLES", 1234, out _));
+        Check("rom-map-miss-unknown-section", !map.TryMapRomIndex("ROM_DRUMSAMPLES", 9, out _));
+
+        // ── SampleZoneRomRemapper: a mapped ROM (nn=0) zone reference gets remapped ──
+        var hd1Mapped = BuildHd1BodyWithZoneRef(nn: 0, number: 9);
+        var (remapped, unmapped1) = SampleZoneRomRemapper.RemapProgramHd1SampleZones(hd1Mapped, map, noExsCatalog);
+        var (_, _, _, remappedNumber) = LibRefs.IterProgramSampleZoneRefs(remapped).First();
+        Check("remap-rom-hit-changes-number", remappedNumber == 20);
+        Check("remap-rom-hit-no-unmapped", unmapped1.Count == 0);
+        var expectedTail = (byte[])hd1Mapped.Clone();
+        expectedTail[2774 + 18] = remapped[2774 + 18];
+        expectedTail[2774 + 19] = remapped[2774 + 19];
+        Check("remap-preserves-every-other-byte", remapped.AsSpan().SequenceEqual(expectedTail));
+
+        // ── An unmapped ROM index is a REFUSE candidate, not a silent skip ──
+        var hd1Unmapped = BuildHd1BodyWithZoneRef(nn: 0, number: 9999);
+        var (_, unmapped2) = SampleZoneRomRemapper.RemapProgramHd1SampleZones(hd1Unmapped, map, noExsCatalog);
+        Check("remap-rom-miss-reports-unmapped", unmapped2.Count == 1 &&
+            unmapped2[0].Reason.Contains("9999") && unmapped2[0].Reason.Contains("ROM_MULTISAMPLES"));
+
+        // ── Sampling Mode (RAM, nn=2 -> legacy bank 1) passes through unchanged - not
+        // platform content, never remapped, never reported as unmapped ──
+        var hd1Ram = BuildHd1BodyWithZoneRef(nn: 2, number: 42);
+        var (ramResult, unmapped3) = SampleZoneRomRemapper.RemapProgramHd1SampleZones(hd1Ram, map, noExsCatalog);
+        Check("remap-ram-passthrough", ramResult.AsSpan().SequenceEqual(hd1Ram) && unmapped3.Count == 0);
+
+        // ── Legacy-form EXs (nn=4 -> legacy bank 2 -> EXs1) ALWAYS refuses - there is no
+        // lookup table for EXs content at all (see SampleZoneRomRemapper's header comment:
+        // cross-platform availability of a purchased pack is unverified, not merely unmapped) ──
+        var hd1Exs = BuildHd1BodyWithZoneRef(nn: 4, number: 5);
+        var (_, unmapped4) = SampleZoneRomRemapper.RemapProgramHd1SampleZones(hd1Exs, map, noExsCatalog);
+        Check("remap-legacy-exs-always-refuses", unmapped4.Count == 1 && unmapped4[0].Reason.Contains("EXs1"));
+
+        // ── Raw UUID resolving to a KNOWN EXs product (via ExsOptionIndex) also refuses -
+        // confirmed EXs bank identity (small int <=126 OR real UUID >=127, per F:\KRONOS EXs\'s
+        // real Sxxx option files read this session) doesn't establish cross-platform byte
+        // compatibility, so a resolvable EXs product still refuses like any other EXs ref ──
+        var knownExsCatalog = ExsOptionIndex.FromCatalog($$"""{"377": {{System.Text.Json.JsonSerializer.Serialize(Exs377OptionFileText)}} }""");
+        var rawUuidBytes = ExsOptionIndex.RawUuidBytes("e0ec1421-4c0f-49e8-9feb-83f74fc9fce8")!;
+        var hd1KnownExsUuid = BuildHd1BodyWithRawUuidZoneRef(rawUuidBytes, number: 3);
+        var (_, unmapped5) = SampleZoneRomRemapper.RemapProgramHd1SampleZones(hd1KnownExsUuid, map, knownExsCatalog);
+        Check("remap-raw-uuid-known-exs-product-refuses", unmapped5.Count == 1 &&
+            unmapped5[0].Reason.Contains("KApro Film Atmos & Pads"));
+
+        // ── Raw UUID that DOESN'T resolve against the catalog is genuine user/3rd-party
+        // content - passes through unchanged, not refused (this is the fix for a real gap:
+        // these used to fall through silently with no Unmapped entry at all AND no test
+        // covering the case) ──
+        var unknownRawUuid = new byte[16];
+        for (int i = 0; i < 16; i++) unknownRawUuid[i] = (byte)(i * 7 + 1);   // arbitrary non-legacy, non-zero bytes
+        var hd1UnknownRawUuid = BuildHd1BodyWithRawUuidZoneRef(unknownRawUuid, number: 3);
+        var (userResult, unmapped6) = SampleZoneRomRemapper.RemapProgramHd1SampleZones(hd1UnknownRawUuid, map, noExsCatalog);
+        Check("remap-raw-uuid-unresolved-passthrough", userResult.AsSpan().SequenceEqual(hd1UnknownRawUuid) && unmapped6.Count == 0);
+
+        // ── Drum Kit zone remap: same shape, ROM_DRUMSAMPLES section ──
+        var dkMap = RomWaveformMap.FromCatalog(
+            """[{"section":"ROM_DRUMSAMPLES","kronos_index":5,"nautilus_index":99,"name":"BD-Test"}]""");
+        var dkMapped = BuildDrumKitBodyWithZoneRef(nn: 0, sampleId: 5);
+        var (dkRemapped, dkUnmapped1) = SampleZoneRomRemapper.RemapDrumKitSampleZones(dkMapped, dkMap, noExsCatalog);
+        var (_, _, _, dkRemappedId) = DrumKitBody.IterSampleZoneRefs(dkRemapped).First();
+        Check("drumkit-remap-rom-hit-changes-id", dkRemappedId == 99);
+        Check("drumkit-remap-rom-hit-no-unmapped", dkUnmapped1.Count == 0);
+
+        var dkUnmappedBody = BuildDrumKitBodyWithZoneRef(nn: 0, sampleId: 9999);
+        var (_, dkUnmapped2) = SampleZoneRomRemapper.RemapDrumKitSampleZones(dkUnmappedBody, dkMap, noExsCatalog);
+        Check("drumkit-remap-rom-miss-reports-unmapped", dkUnmapped2.Count == 1 &&
+            dkUnmapped2[0].Reason.Contains("9999") && dkUnmapped2[0].Reason.Contains("ROM_DRUMSAMPLES"));
+
+        // ── Wave Sequence step remap: same shape, ROM_MULTISAMPLES section ──
+        var wsMapped = BuildWaveSeqBodyWithStepRef(nn: 0, select: 9);
+        var (wsRemapped, wsUnmapped1) = SampleZoneRomRemapper.RemapWaveSequenceSampleSteps(wsMapped, map, noExsCatalog);
+        var (_, _, wsRemappedSelect) = WaveSequenceBody.IterSampleStepRefs(wsRemapped).First();
+        Check("waveseq-remap-rom-hit-changes-select", wsRemappedSelect == 20);
+        Check("waveseq-remap-rom-hit-no-unmapped", wsUnmapped1.Count == 0);
+
+        var wsUnmappedBody = BuildWaveSeqBodyWithStepRef(nn: 0, select: 9999);
+        var (_, wsUnmapped2) = SampleZoneRomRemapper.RemapWaveSequenceSampleSteps(wsUnmappedBody, map, noExsCatalog);
+        Check("waveseq-remap-rom-miss-reports-unmapped", wsUnmapped2.Count == 1 &&
+            wsUnmapped2[0].Reason.Contains("9999") && wsUnmapped2[0].Reason.Contains("ROM_MULTISAMPLES"));
+
+        // ── KarmaFieldStripper: zeroes [1304,2557], preserves everything outside it ──
+        var karmaBody = new byte[ProgramFormatConverter.WireSizeHd1];
+        for (int i = 0; i < karmaBody.Length; i++) karmaBody[i] = (byte)((i * 17 + 3) & 0xFF);   // non-zero everywhere
+        var (stripped, wasStripped) = KarmaFieldStripper.StripKarmaFields(karmaBody);
+        Check("karma-strip-reports-stripped", wasStripped);
+        bool rangeAllZero = true;
+        for (int i = KarmaFieldStripper.KarmaStart; i <= KarmaFieldStripper.KarmaEnd; i++)
+            if (stripped[i] != 0) rangeAllZero = false;
+        Check("karma-strip-zeroes-whole-range", rangeAllZero);
+        Check("karma-strip-preserves-byte-before-range", stripped[KarmaFieldStripper.KarmaStart - 1] == karmaBody[KarmaFieldStripper.KarmaStart - 1]);
+        Check("karma-strip-preserves-byte-after-range", stripped[KarmaFieldStripper.KarmaEnd + 1] == karmaBody[KarmaFieldStripper.KarmaEnd + 1]);
+        Check("karma-strip-preserves-name-field", stripped[0] == karmaBody[0] && stripped[10] == karmaBody[10]);
+
+        var alreadyBlankKarma = new byte[ProgramFormatConverter.WireSizeHd1];   // all zero - INIT-like
+        var (_, wasStrippedBlank) = KarmaFieldStripper.StripKarmaFields(alreadyBlankKarma);
+        Check("karma-strip-noop-on-already-blank", !wasStrippedBlank);
+
+        // ── KarmaGeCatalog + KarmaFieldStripper.DescribeGeAssignment: names a real GE ──
+        var geCatalog = KarmaGeCatalog.FromCatalog(
+            """[{"ge_number":47,"name":"Comp/Lead Generated-Riff"}]""");
+        Check("ge-catalog-count", geCatalog.Count == 1);
+        Check("ge-catalog-hit", geCatalog.NameForGeNumber(47) == "Comp/Lead Generated-Riff");
+        Check("ge-catalog-miss", geCatalog.NameForGeNumber(999) == null);
+
+        var bodyWithGe = new byte[ProgramFormatConverter.WireSizeHd1];
+        bodyWithGe[1814] = 47;   // GE Number = 47, LE
+        var geWarning = KarmaFieldStripper.DescribeGeAssignment(bodyWithGe, geCatalog);
+        Check("ge-warning-names-known-ge", geWarning != null && geWarning.Contains("#47") && geWarning.Contains("Comp/Lead Generated-Riff"));
+
+        var bodyWithUnknownGe = new byte[ProgramFormatConverter.WireSizeHd1];
+        bodyWithUnknownGe[1814] = 200;
+        var unknownGeWarning = KarmaFieldStripper.DescribeGeAssignment(bodyWithUnknownGe, geCatalog);
+        Check("ge-warning-unknown-ge-still-names-number", unknownGeWarning != null &&
+            unknownGeWarning.Contains("#200") && unknownGeWarning.Contains("name unknown"));
+
+        var bodyWithGeZero = new byte[ProgramFormatConverter.WireSizeHd1];   // GE Number 0 - no warning
+        Check("ge-warning-none-for-ge-zero", KarmaFieldStripper.DescribeGeAssignment(bodyWithGeZero, geCatalog) == null);
+
+        // ── ProgramConverter: full pipeline, success case ──
+        // A ROM-mapped zone + a GE assignment + non-zero KARMA bytes elsewhere in range, all
+        // in one body - exercises all 3 sub-pieces together, in one pass.
+        var fullBody = BuildHd1BodyWithZoneRef(nn: 0, number: 9);   // maps 9 -> 20 via `map`
+        fullBody[1814] = 47;                                       // GE Number = 47
+        fullBody[1400] = 0xAB;                                     // arbitrary non-zero KARMA byte
+        var success = ProgramConverter.KronosToNautilus(fullBody, map, noExsCatalog, geCatalog);
+        Check("converter-success-body-not-null", success.NautilusBody != null);
+        Check("converter-success-no-refusals", success.Refusals.Count == 0);
+        Check("converter-success-ge-warning-present", success.Warnings.Any(w => w.Contains("#47") && w.Contains("Comp/Lead Generated-Riff")));
+        Check("converter-success-karma-stripped-warning-present", success.Warnings.Any(w => w.Contains("KARMA performance data")));
+        if (success.NautilusBody != null)
+        {
+            var (_, _, _, convertedNumber) = LibRefs.IterProgramSampleZoneRefs(success.NautilusBody).First();
+            Check("converter-success-zone-remapped", convertedNumber == 20);
+            Check("converter-success-karma-zeroed", success.NautilusBody[1400] == 0);
+        }
+
+        // ── ProgramConverter: refusal case - unmapped ROM zone stops the whole conversion ──
+        var refuseBody = BuildHd1BodyWithZoneRef(nn: 0, number: 9999);
+        var refused = ProgramConverter.KronosToNautilus(refuseBody, map, noExsCatalog, geCatalog);
+        Check("converter-refusal-body-null", refused.NautilusBody == null);
+        Check("converter-refusal-has-refusal", refused.Refusals.Count == 1 && refused.Refusals[0].Contains("9999"));
+
+        // ── NautilusPcgWriter: round-trip a converted Program through a real file and read it
+        // back with NautilusPcgFile/NautilusPcgObjectExtractor (Phase 2) - the strongest
+        // available self-check without real hardware: an independently-written reader must
+        // recognize the file, find exactly the one Program, with byte-identical content and no
+        // checksum/rejection complaints. ──
+        var namedBody = ProgramBody.WriteName(success.NautilusBody!, "ROUNDTRIP TEST");
+        var pcgFile = NautilusPcgWriter.WriteSingleProgram(namedBody, isExi: false);
+        Check("writer-file-starts-with-korg-and-nautilus-model", pcgFile.Length > 16 &&
+            System.Text.Encoding.ASCII.GetString(pcgFile, 0, 4) == "KORG" && pcgFile[4] == 0xDD);
+
+        var roundTripped = NautilusPcgFile.Open(pcgFile);
+        Check("writer-roundtrip-file-recognized", roundTripped != null);
+        if (roundTripped != null)
+        {
+            Check("writer-roundtrip-no-rejected-banks", roundTripped.RejectedBanks.Count == 0);
+            Check("writer-roundtrip-no-checksum-warnings", roundTripped.ChecksumWarnings.Count == 0);
+            Check("writer-roundtrip-exactly-one-program", roundTripped.Objects.Count(o => o.ObjType == LibObj.Program) == 1);
+            var readBack = roundTripped.Objects.FirstOrDefault(o => o.ObjType == LibObj.Program);
+            Check("writer-roundtrip-body-byte-identical", readBack != null && readBack.Body.AsSpan().SequenceEqual(namedBody));
+            Check("writer-roundtrip-name-readable", readBack != null && readBack.Name == "ROUNDTRIP TEST");
+        }
+
+        // ── NautilusPcgWriter: same round-trip for Drum Kit and Wave Sequence ──
+        var namedDkBody = DrumKitBody.WriteName(dkRemapped, "ROUNDTRIP DK");
+        var dkPcgFile = NautilusPcgWriter.WriteSingleDrumKit(namedDkBody);
+        var dkRoundTripped = NautilusPcgFile.Open(dkPcgFile);
+        Check("writer-roundtrip-drumkit-recognized", dkRoundTripped != null &&
+            dkRoundTripped.RejectedBanks.Count == 0 && dkRoundTripped.ChecksumWarnings.Count == 0);
+        var dkReadBack = dkRoundTripped?.Objects.FirstOrDefault(o => o.ObjType == LibObj.DrumKit);
+        Check("writer-roundtrip-drumkit-body-and-name", dkReadBack != null &&
+            dkReadBack.Body.AsSpan().SequenceEqual(namedDkBody) && dkReadBack.Name == "ROUNDTRIP DK");
+
+        var namedWsBody = WaveSequenceBody.WriteName(wsRemapped, "ROUNDTRIP WS");
+        var wsPcgFile = NautilusPcgWriter.WriteSingleWaveSequence(namedWsBody);
+        var wsRoundTripped = NautilusPcgFile.Open(wsPcgFile);
+        Check("writer-roundtrip-waveseq-recognized", wsRoundTripped != null &&
+            wsRoundTripped.RejectedBanks.Count == 0 && wsRoundTripped.ChecksumWarnings.Count == 0);
+        var wsReadBack = wsRoundTripped?.Objects.FirstOrDefault(o => o.ObjType == LibObj.WaveSequence);
+        Check("writer-roundtrip-waveseq-body-and-name", wsReadBack != null &&
+            wsReadBack.Body.AsSpan().SequenceEqual(namedWsBody) && wsReadBack.Name == "ROUNDTRIP WS");
+
+        return fails;
+    }
+}

@@ -11,9 +11,11 @@ static class Storage
     public static string DataDir =>
         Path.GetDirectoryName(Environment.ProcessPath) ?? ".";
 
-    static string OverridePath  => Path.Combine(DataDir, "palette_override.json");
-    static string CalPath       => Path.Combine(DataDir, "cal_data.json");
-    static string SettingsPath  => Path.Combine(DataDir, "settings.json");
+    static string OverridePath    => Path.Combine(DataDir, "palette_override.json");
+    static string LockPath        => Path.Combine(DataDir, "palette_lock.json");
+    static string CalPath         => Path.Combine(DataDir, "cal_data.json");
+    static string SettingsPath    => Path.Combine(DataDir, "settings.json");
+    static string ButtonLabelsPath => Path.Combine(DataDir, "button_labels.json");
 
     // ── App settings ──────────────────────────────────────────────────────────
 
@@ -218,6 +220,77 @@ static class Storage
             return d;
         }
         catch { return new(); }
+    }
+
+    public static void SaveOverrides(Dictionary<int, PaletteEntry> ov)
+    {
+        var obj = new JsonObject();
+        foreach (var kv in ov.OrderBy(x => x.Key))
+            obj[kv.Key.ToString()] = new JsonArray(kv.Value.R, kv.Value.G, kv.Value.B);
+        File.WriteAllText(OverridePath, obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        Console.WriteLine($"[palette] {ov.Count} override(s) saved → {OverridePath}");
+    }
+
+    // ── Palette locks ─────────────────────────────────────────────────────────
+
+    public static HashSet<int> LoadLocks()
+    {
+        if (!File.Exists(LockPath)) return new();
+        try
+        {
+            var arr = JsonNode.Parse(File.ReadAllText(LockPath))?.AsArray();
+            if (arr == null) return new();
+            return arr.Select(n => n?.GetValue<int>() ?? -1).Where(i => i >= 0).ToHashSet();
+        }
+        catch { return new(); }
+    }
+
+    public static void SaveLocks(HashSet<int> locked)
+    {
+        var arr = new JsonArray();
+        foreach (var i in locked.OrderBy(x => x)) arr.Add(i);
+        File.WriteAllText(LockPath, arr.ToJsonString());
+        Console.WriteLine($"[lock] {locked.Count} locked entry/entries saved → {LockPath}");
+    }
+
+    // ── Button injector labels ───────────────────────────────────────────────────
+    // { "<layout name>": { "<wire token>": "<user label>", ... }, ... } - see
+    // ButtonInjectorWindow / ButtonReference. A layout with no saved file yet gets an
+    // empty dictionary; ButtonInjectorWindow supplies its own defaults on top.
+
+    public static Dictionary<string, Dictionary<string, string>> LoadButtonLabels()
+    {
+        if (!File.Exists(ButtonLabelsPath)) return new();
+        try
+        {
+            var node = JsonNode.Parse(File.ReadAllText(ButtonLabelsPath))?.AsObject();
+            if (node == null) return new();
+            var result = new Dictionary<string, Dictionary<string, string>>();
+            foreach (var layoutKv in node)
+            {
+                var inner = layoutKv.Value?.AsObject();
+                if (inner == null) continue;
+                var labels = new Dictionary<string, string>();
+                foreach (var tokenKv in inner)
+                    if (tokenKv.Value != null) labels[tokenKv.Key] = tokenKv.Value.GetValue<string>();
+                result[layoutKv.Key] = labels;
+            }
+            return result;
+        }
+        catch { return new(); }
+    }
+
+    public static void SaveButtonLabels(Dictionary<string, Dictionary<string, string>> labels)
+    {
+        var obj = new JsonObject();
+        foreach (var layoutKv in labels.OrderBy(x => x.Key))
+        {
+            var inner = new JsonObject();
+            foreach (var tokenKv in layoutKv.Value.OrderBy(x => x.Key))
+                inner[tokenKv.Key] = tokenKv.Value;
+            obj[layoutKv.Key] = inner;
+        }
+        File.WriteAllText(ButtonLabelsPath, obj.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     }
 
     // ── Set List cache ─────────────────────────────────────────────────────────

@@ -4,7 +4,15 @@ internal readonly record struct ScreenConnection(
     string Host, int Port, bool PullMode, int Fps, string FtpUsername, string FtpPassword);
 
 internal readonly record struct ScreenSessionInfo(
-    long Id, ScreenConnection Connection, int Width, int Height, PaletteEntry[] Palette);
+    long Id, ScreenConnection Connection, int Width, int Height,
+    StreamPixelFormat Fmt, int Bpp, PaletteEntry[] Palette,
+    DeviceModelInfo? Model);
+
+// FAMILY is the trusted signal (derived from fb1 bpp, hardware-confirmed both ways);
+// Model is the finer-grained /proc/cpuinfo-derived code and can be a "*_UNKNOWN" value
+// or (rarely, per the daemon's own MODEL command docs) disagree with Family on a
+// MODEL CONFLICT - callers that need to branch on device type should key off Family.
+internal readonly record struct DeviceModelInfo(string Family, string Model, int FbBpp);
 
 internal readonly record struct ScreenDaemonState(long Id, Mode Mode, EditContext EditContext, bool Booting);
 
@@ -142,15 +150,21 @@ internal sealed class ScreenSession : IDisposable
                 return;
             }
 
-            if (!connection.PullMode)
-            {
-                ICtrlClient ctrl;
-                lock (_gate) ctrl = _ctrl;
-                ctrl.Send(DaemonCommand.RefreshDisplay);
-            }
+            ICtrlClient ctrlForModel;
+            lock (_gate) ctrlForModel = _ctrl;
+            if (!connection.PullMode) ctrlForModel.Send(DaemonCommand.RefreshDisplay);
+
+            // MODEL is on the daemon's read-only allowlist and answered from any IP even
+            // before ownership is established, but this connection just became the owner
+            // regardless - safe to query once here, right after the stream handshake, per
+            // the daemon docs ("computed once at startup... safe to poll cheaply, or just
+            // read once per connection").
+            var model = ParseModelInfo(
+                await ctrlForModel.QueryAsync(DaemonCommand.QueryModel).ConfigureAwait(false));
 
             Connected?.Invoke(new ScreenSessionInfo(
-                id, connection, receiver.Width, receiver.Height, receiver.Palette));
+                id, connection, receiver.Width, receiver.Height,
+                receiver.Fmt, receiver.Bpp, receiver.Palette, model));
             StartPolling(id, receiver);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
@@ -277,6 +291,28 @@ internal sealed class ScreenSession : IDisposable
             }
         }
         return mode >= 0 ? ((Mode)mode, (EditContext)editContext, boot != 0) : null;
+    }
+
+    internal static DeviceModelInfo? ParseModelInfo(string? response)
+    {
+        if (response == null) return null;
+
+        string? family = null, model = null;
+        int fbBpp = 0;
+        foreach (var token in response.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            int equals = token.IndexOf('=');
+            if (equals <= 0) continue;
+            var value = token[(equals + 1)..];
+            if (token.StartsWith("FAMILY=", StringComparison.Ordinal)) family = value;
+            else if (token.StartsWith("MODEL=", StringComparison.Ordinal)) model = value;
+            else if (token.StartsWith("FB_BPP=", StringComparison.Ordinal))
+            {
+                if (!int.TryParse(value, out fbBpp)) fbBpp = 0;
+            }
+        }
+
+        return family != null ? new DeviceModelInfo(family, model ?? "", fbBpp) : null;
     }
 
     public void Dispose() => Disconnect();

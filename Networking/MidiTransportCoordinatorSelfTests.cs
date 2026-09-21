@@ -19,6 +19,7 @@ static class MidiTransportCoordinatorSelfTests
         public void Reset() => ResetCount++;
         public Task<bool> RecheckAvailabilityAsync() => Task.FromResult(IsAvailable);
         public void ApplyMidiSettings(bool midiMonitorEnabled, bool proactivePoll, int pollIntervalSec, bool pollOnChanges) { }
+        public void SetDeviceFamily(DeviceFamily family) { }
     }
 
     public static List<string> SelfTest()

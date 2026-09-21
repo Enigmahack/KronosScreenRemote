@@ -45,4 +45,15 @@ static class DrumKitBody
             }
         }
     }
+
+    // In-place write of just the Sample Id (LE u16) at a given zone - same offset
+    // IterSampleZoneRefs reads, for a caller (e.g. the PCG converter's ROM waveform remap)
+    // that already owns a mutable clone of `body` and wants to patch many zones without
+    // re-cloning per field, mirroring LibRefs.SetProgramZoneNumber's convention.
+    public static void SetSampleZoneId(byte[] body, int note, int zone, int newSampleId)
+    {
+        int idOff = NoteBase + note * NoteStride + zone * ZoneStride + ZoneIdOffset;
+        body[idOff]     = (byte)(newSampleId & 0xFF);
+        body[idOff + 1] = (byte)((newSampleId >> 8) & 0xFF);
+    }
 }

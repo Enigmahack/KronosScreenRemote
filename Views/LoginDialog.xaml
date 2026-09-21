@@ -31,7 +31,7 @@
         <TextBox   Grid.Row="4" x:Name="TxtUser"/>
 
         <TextBlock Grid.Row="6" Text="Password"/>
-        <PasswordBox Grid.Row="8" x:Name="PwdBox"/>
+        <local:RevealablePasswordBox Grid.Row="8" x:Name="PwdBox"/>
 
         <CheckBox Grid.Row="10" x:Name="ChkSave" Content="Save password" IsChecked="True"/>
 

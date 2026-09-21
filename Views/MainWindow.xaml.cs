@@ -31,13 +31,194 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     PaletteEntry[]  _basePal  = new PaletteEntry[256];
     byte[]?         _rawFrame = null;   // == _frameBuf once the first frame arrives; null before
     byte[]?         _frameBuf = null;   // UI-owned copy target for StreamReceiver.TryCopyLatestFrame
-    int[]           _lut      = new int[256];
+    int[]           _lut      = new int[256];    // Fmt.Index8: palette index -> Bgr32
+    int[]           _lut16    = new int[65536];  // Fmt.Rgb565Le: raw LE word -> Bgr32
+
+    // Native pixel format of the current/last session (StreamReceiver.Fmt/Bpp, set in
+    // OnSessionConnected). Defaults to the Kronos INDEX8 assumption before any connection.
+    StreamPixelFormat _fmt = StreamPixelFormat.Index8;
+    int             _bpp = 8;
 
     WriteableBitmap? _wb;
 
     // Persisted per-index color overrides, baked into the display LUT (RebuildLut) and
     // applied by the zoom loupe. Loaded from disk on startup.
     Dictionary<int, PaletteEntry> _overrides = new();
+    static readonly Dictionary<int, PaletteEntry> _noOverrides = new();
+
+    // Retired (3.0.2). The palette editor and _overrides existed solely to let a user
+    // hand-correct Nautilus colours under the old v2/3.0.1 stream, which carried the Nautilus
+    // framebuffer through the same 8bpp-index+palette path as Kronos - a format that cannot
+    // represent Nautilus's true RGB565 pixels, hence "wrong colours" (docs/api.md §15, 3.0.2:
+    // "Nautilus colours are correct... There is no palette on Nautilus and no client-side
+    // palette fix-up is needed or possible"). Protocol v3 streams Nautilus's native RGB565
+    // pixels directly (see MainWindow.Streaming.ApplyLut's Fmt.Rgb565Le path) and never
+    // reports a palette for it (StreamReceiver.Palette is empty when Fmt != Index8), so the
+    // per-index override dictionary has nothing left to correct on either device family.
+    // Always returns the empty dictionary; _overrides/_noOverrides stay in place only because
+    // Storage still loads/saves a previously-written overrides file.
+    Dictionary<int, PaletteEntry> EffectiveOverrides => _noOverrides;
+
+    // Applies every UI difference driven by _deviceFamily.
+    //
+    // The palette editor is hidden for every family now - see EffectiveOverrides above for why
+    // it no longer has a valid use on Nautilus (the one family it was ever shown for).
+    //
+    // This is also the intended seam for a future Nautilus-specific front-panel skin: both
+    // families currently render through the same MainWindow.xaml (laid out to match the
+    // Kronos panel). When a Nautilus skin exists, swapping which layout/UserControl the
+    // control column shows belongs here too, keyed off the same _deviceFamily. The button
+    // label/layout differences to eventually reflect are tracked in
+    // Documentation/nautilus_button_mapping.md (unverified - needs hardware testing).
+    void ApplyDeviceFamilyUi()
+    {
+        MNU_PaletteEd.Visibility = Visibility.Collapsed;
+        if (_edOpen)
+        {
+            _edOpen = false;
+            OverlayLayer.InvalidateVisual();
+        }
+
+        // The status-bar Inc/Dec stand-in is retired - Nautilus's own Data Inc/Dec buttons now
+        // live on NautilusRightPanel (wired to HELP/COMPARE, same as Kronos's thin toggle
+        // buttons - see WireButtons). _kronosLeftPanel.BTN_Inc/BTN_Dec/ValueSliderCanvas keep
+        // working as-is for Kronos.
+
+        // The Kronos left value-slider skin (KronosLeftSide2EMPTY.png, _kronosLeftPanel.BTN_Inc/_kronosLeftPanel.BTN_Dec,
+        // _kronosLeftPanel.ValueSliderCanvas, in KronosLeftPanel) isn't used on Nautilus at all - grill-me
+        // decision 2026-09-21. LeftPanelHost.Content is null there (no Nautilus equivalent
+        // exists) and the column collapses to 0 width so the live screen area (column 1) gets
+        // the freed space, same as if the column were never in the grid.
+        bool isNautilus = _deviceFamily == DeviceFamily.Nautilus;
+        LeftPanelColumn.Width = isNautilus ? new GridLength(0) : new GridLength(282, GridUnitType.Star);
+        LeftPanelHost.Content = isNautilus ? null : _kronosLeftPanel;
+
+        // Right-side data panel: Nautilus gets its own background (NautilusRightPanel,
+        // NautilusFront1.jpg) in place of the Kronos data-entry surface (KronosRightPanel) -
+        // stage 1 of the Nautilus front-panel skin, no buttons yet (see NautilusRightPanel.xaml's
+        // header comment). Both UserControl instances are built once in the ctor and kept alive
+        // regardless of which is attached here, so re-entering a family costs nothing beyond the
+        // ContentControl reparent (see the ctor's own comment on why they're built eagerly).
+        RightPanelHost.Content = isNautilus ? _nautilusRightPanel : (object)_kronosRightPanel;
+
+        // Drives Record()'s SEQ_REC vs MS2 choice - see SeqTransportViewModel's own comment.
+        _seqTransport.DeviceFamily = _deviceFamily;
+
+        // Bank Select: still visibly disabled on Nautilus - see BuildCommandRegistry's matching
+        // guard (which stops the underlying commands; this is what makes that visible rather
+        // than a silent no-op). The status bar's right-click Mode menu (CTX_Mode_*) has no
+        // single top-level item to disable, so its 7 entries are disabled individually; it stays
+        // Kronos-only for now (not given the Nautilus item-swap MENU_ModeSelect gets below - a
+        // smaller, secondary surface, revisit if it turns out to matter).
+        bool kronosOnly = _deviceFamily != DeviceFamily.Nautilus;
+        MENU_BankSelect.IsEnabled = kronosOnly;
+        CTX_Mode_Setlist.IsEnabled  = kronosOnly;
+        CTX_Mode_Combi.IsEnabled    = kronosOnly;
+        CTX_Mode_Program.IsEnabled  = kronosOnly;
+        CTX_Mode_Sequence.IsEnabled = kronosOnly;
+        CTX_Mode_Sampling.IsEnabled = kronosOnly;
+        CTX_Mode_Global.IsEnabled   = kronosOnly;
+        CTX_Mode_Disk.IsEnabled     = kronosOnly;
+
+        // Mode Select: dynamic per family (your direction, 2026-09-21) - always enabled, but
+        // shows a different item set. Kronos's 7 named modes don't exist as such on Nautilus;
+        // MNU_NautilusMode_* mirrors the front panel's own Mode/Page/A-F instead.
+        var kronosVis   = kronosOnly ? Visibility.Visible : Visibility.Collapsed;
+        var nautilusVis = kronosOnly ? Visibility.Collapsed : Visibility.Visible;
+        MNU_Mode_Setlist.Visibility  = kronosVis;
+        MNU_Mode_Combi.Visibility    = kronosVis;
+        MNU_Mode_Program.Visibility  = kronosVis;
+        MNU_Mode_Sequence.Visibility = kronosVis;
+        MNU_Mode_Sampling.Visibility = kronosVis;
+        MNU_Mode_Global.Visibility   = kronosVis;
+        MNU_Mode_Disk.Visibility     = kronosVis;
+        MNU_NautilusMode_Mode.Visibility = nautilusVis;
+        MNU_NautilusMode_Page.Visibility = nautilusVis;
+        MNU_NautilusMode_A.Visibility    = nautilusVis;
+        MNU_NautilusMode_B.Visibility    = nautilusVis;
+        MNU_NautilusMode_C.Visibility    = nautilusVis;
+        MNU_NautilusMode_D.Visibility    = nautilusVis;
+        MNU_NautilusMode_E.Visibility    = nautilusVis;
+        MNU_NautilusMode_F.Visibility    = nautilusVis;
+
+        // Footer Fast-Forward/Rewind: faded + non-clickable on Nautilus, kept in place rather
+        // than collapsed (your 2026-09-22 direction). SeqTransportBtn's ControlTemplate has no
+        // disabled-state trigger of its own (the icon is a plain Path, not standard WPF chrome
+        // that dims itself), so Opacity does the actual fading; IsEnabled does the non-clickable
+        // part. Unconditional for Nautilus - not just gated by Sequence mode like the rest of
+        // the transport row (IsTransportEnabled).
+        BTN_SeqFf.IsEnabled  = BTN_SeqRew.IsEnabled  = kronosOnly;
+        BTN_SeqFf.Opacity    = BTN_SeqRew.Opacity    = kronosOnly ? 1.0 : 0.35;
+
+        // Play/Record lighting removed on Nautilus (your 2026-09-22 direction) - IsPlaying/
+        // IsRecording are only ever the client's own optimistic guess (no daemon confirmation
+        // exists for them on Nautilus, same reasoning as Mode/Page above), so the checked/lit
+        // visual is actively misleading there. Still fully clickable either way - only the
+        // Style (and so the IsChecked-triggered background) changes; the underlying
+        // IsChecked="{Binding IsPlaying/IsRecording}" bindings and their bookkeeping are
+        // untouched (SeqTransportViewModel still needs IsPlaying to auto-clear IsRecording, etc.).
+        // FindResource must be called ON a descendant of AppStatusBar (these styles live in
+        // AppStatusBar.Resources, not MainWindow's own) - FindResource only searches UPWARD
+        // through logical-tree ancestors, so calling it on `this` (the Window, an ANCESTOR of
+        // AppStatusBar) can never see them and throws ResourceReferenceKeyNotFoundException.
+        BTN_SeqStart.Style = (Style)(kronosOnly ? BTN_SeqStart.FindResource("SeqTransportToggleBtn") : BTN_SeqStart.FindResource("SeqTransportToggleBtnNoLight"));
+        BTN_SeqRec.Style   = (Style)(kronosOnly ? BTN_SeqRec.FindResource("SeqRecordToggleBtn")       : BTN_SeqRec.FindResource("SeqTransportToggleBtnNoLight"));
+    }
+
+    // Built once in the ctor (before WireButtons() wires up their children - see the ctor's own
+    // comment) and attached/detached via LeftPanelHost.Content/RightPanelHost.Content in
+    // ApplyDeviceFamilyUi. Never null after the ctor runs - non-nullable so every reference below
+    // (moved here from bare field access when this content lived directly in this window's XAML)
+    // reads exactly as it did before the split, just qualified through these.
+    KronosLeftPanel    _kronosLeftPanel    = null!;
+    KronosRightPanel   _kronosRightPanel   = null!;
+    NautilusRightPanel _nautilusRightPanel = null!;
+
+    // Device family/model reported by the daemon's MODEL command, queried once per
+    // connection (ScreenSession.ConnectAsync). Null until connected, or if the query
+    // failed/timed out.
+    DeviceModelInfo? _deviceModel = null;
+
+    // Parsed from _deviceModel.Family. Unknown (never connected, or query failed) is
+    // treated the same as Kronos everywhere this gates behavior - see DeviceFamily.cs.
+    // The Kronos palette is fixed/hardware-correct and must never be touched; only a
+    // confirmed Nautilus gets the palette editor and palette overrides applied at all.
+    DeviceFamily _deviceFamily = DeviceFamily.Unknown;
+
+    // ── Palette editor state ─────────────────────────────────────────────────
+    bool   _edOpen   = false;
+    int    _edSel    = 0;
+    int    _edCh     = 0;         // 0=R 1=G 2=B
+    string? _edTyped = null;
+    int?   _hoverIdx = null;
+    HashSet<int> _locked = new();
+
+    List<HistEntry> _history = new();
+    int  _histPos   = -1;
+    PaletteEntry? _clipboard = null;
+
+    // True once _overrides has changed since the last successful Storage.SaveOverrides
+    // (Key.S) - drives the panel's [SAVED]/[UNSAVED] tag, since pressing S previously
+    // gave zero visible feedback either way (Console.WriteLine alone in a windowed app).
+    bool _paletteDirty = false;
+
+    // ── Palette overlay (reference-image color assignment) ──────────────────────
+    // See Views/MainWindow.PaletteOverlay.cs. A pasted clipboard image, dragged/resized over
+    // the live frame so its pixels can be compared against the frame's raw palette indices
+    // and auto-assigned - the interactive version of nautilus_palette_selector_brief.md's
+    // manual before/after-screenshot method.
+    BitmapSource? _ovlBitmapSrc;
+    byte[]?       _ovlPixels;         // Bgra32, stride = _ovlStride
+    int           _ovlPixelW, _ovlPixelH, _ovlStride;
+    Rect          _ovlRect;           // current on-screen position/size, RootGrid space
+    OverlayDragKind? _ovlActiveDrag;   // null = idle - see OverlayDragKind/OverlayHitTest
+    Point         _ovlDragStart;
+    Rect          _ovlDragStartRect;
+
+    // Panel geometry — updated each draw
+    Rect   _panelRect;
+    Point  _gridOrigin;
+    double _sliderTop;
 
     // ── Display state ─────────────────────────────────────────────────────────
     bool   _mirrorState = false;
@@ -163,6 +344,18 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     {
         InitializeComponent();
 
+        // Constructed eagerly (both families, regardless of which is ever detected) so every
+        // existing WireButtons()/keybind/etc. reference below has a non-null target to wire up
+        // to, exactly as when this content lived directly in this window's own XAML - only
+        // WHICH one is actually attached to LeftPanelHost/RightPanelHost changes, in
+        // ApplyDeviceFamilyUi. See KronosLeftPanel.xaml's header comment for why this split
+        // exists. NautilusRightPanel has no wiring yet (no buttons placed on it yet), so it
+        // doesn't need to be built before WireButtons() - built here anyway for symmetry/because
+        // it's cheap (one Image).
+        _kronosLeftPanel    = new KronosLeftPanel();
+        _kronosRightPanel   = new KronosRightPanel();
+        _nautilusRightPanel = new NautilusRightPanel();
+
         OverlayLayer.RenderCallback = DrawOverlay;
 
         _settings  = Storage.LoadSettings();
@@ -235,6 +428,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         _scrollDirection = _settings.ReverseScrolling;
         _hideValueInput = _settings.HideValueInput;
         _overrides    = Storage.LoadOverrides();
+        _locked       = Storage.LoadLocks();
         (_cal.Mesh, _cal.BiasDots) = Storage.LoadCal();
         if (!_cal.Mesh.IsIdentity() || _cal.BiasDots.Count > 0)
             Console.WriteLine($"[cal] mesh loaded, {_cal.BiasDots.Count} bias dot(s)");
@@ -287,8 +481,9 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         {
             var captured = Mouse.Captured;
             if (captured == null) return;
-            if (ReferenceEquals(captured, Data_Wheel)        && !_wheel.DragActive)  Mouse.Capture(null);
-            if (ReferenceEquals(captured, ValueSliderCanvas) && !_vsliderDragActive) Mouse.Capture(null);
+            if ((ReferenceEquals(captured, _kronosRightPanel.Data_Wheel) || ReferenceEquals(captured, _nautilusRightPanel.Data_Wheel))
+                && !_wheel.DragActive) Mouse.Capture(null);
+            if (ReferenceEquals(captured, _kronosLeftPanel.ValueSliderCanvas) && !_vsliderDragActive) Mouse.Capture(null);
         };
 
         // Build the command registry BEFORE any surface wires to it (WireButtons here, WireMenu in
@@ -303,7 +498,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         {
             if (!_editCtx.Active) { _editCtx.FlashTimer.Stop(); return; }
             _editCtx.FlashState = !_editCtx.FlashState;
-            BTN_Program.IsActive = _editCtx.FlashState;
+            _kronosRightPanel.BTN_Program.IsActive = _editCtx.FlashState;
         };
     }
 
@@ -346,35 +541,66 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     {
         // Mode buttons - send the hardware packet and record pending mode (via the shared "Mode ..."
         // registry commands). Icon only lights up once detection confirms (or timeout fallback fires).
-        WireCommand(BTN_Setlist,  "Mode Setlist");
-        WireCommand(BTN_Combi,    "Mode Combi");
-        WireCommand(BTN_Program,  "Mode Program");
-        WireCommand(BTN_Sequence, "Mode Sequence");
-        WireCommand(BTN_Sampling, "Mode Sampling");
-        WireCommand(BTN_Global,   "Mode Global");
-        WireCommand(BTN_Disk,     "Mode Disk");
+        WireCommand(_kronosRightPanel.BTN_Setlist,  "Mode Setlist");
+        WireCommand(_kronosRightPanel.BTN_Combi,    "Mode Combi");
+        WireCommand(_kronosRightPanel.BTN_Program,  "Mode Program");
+        WireCommand(_kronosRightPanel.BTN_Sequence, "Mode Sequence");
+        WireCommand(_kronosRightPanel.BTN_Sampling, "Mode Sampling");
+        WireCommand(_kronosRightPanel.BTN_Global,   "Mode Global");
+        WireCommand(_kronosRightPanel.BTN_Disk,     "Mode Disk");
 
-        BTN_Help.Click    += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Help));
-        BTN_Compare.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Compare));
+        _kronosRightPanel.BTN_Help.Click    += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Help));
+        _kronosRightPanel.BTN_Compare.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Compare));
 
-        BTN_data_dash.Click   += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.NumDash));
-        BTN_data0.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(0));
-        BTN_data_period.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.NumDot));
-        BTN_data1.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(1));
-        BTN_data2.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(2));
-        BTN_data3.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(3));
-        BTN_data4.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(4));
-        BTN_data5.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(5));
-        BTN_data6.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(6));
-        BTN_data7.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(7));
-        BTN_data8.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(8));
-        BTN_data9.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(9));
+        _kronosRightPanel.BTN_data_dash.Click   += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.NumDash));
+        _kronosRightPanel.BTN_data0.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(0));
+        _kronosRightPanel.BTN_data_period.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.NumDot));
+        _kronosRightPanel.BTN_data1.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(1));
+        _kronosRightPanel.BTN_data2.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(2));
+        _kronosRightPanel.BTN_data3.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(3));
+        _kronosRightPanel.BTN_data4.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(4));
+        _kronosRightPanel.BTN_data5.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(5));
+        _kronosRightPanel.BTN_data6.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(6));
+        _kronosRightPanel.BTN_data7.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(7));
+        _kronosRightPanel.BTN_data8.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(8));
+        _kronosRightPanel.BTN_data9.Click       += (sender, e) => Ctrl(DaemonCommand.NumberButton(9));
 
-        BTN_Exit.Click  += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Exit));
-        BTN_Enter.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Enter));
+        _kronosRightPanel.BTN_Exit.Click  += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Exit));
+        _kronosRightPanel.BTN_Enter.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Enter));
 
-        BTN_Inc.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Inc));
-        BTN_Dec.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Dec));
+        _kronosLeftPanel.BTN_Inc.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Inc));
+        _kronosLeftPanel.BTN_Dec.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Dec));
+
+        // Nautilus front panel (NautilusRightPanel) - your button-code table, 2026-09-21.
+        // Mode/Page share the existing "Mode Combi"/"Mode Program" registry commands, so they
+        // get the same SendMode/pending-mode/boot-gate path as Kronos's own mode buttons; the
+        // lighting side (which button reflects the confirmed mode) is ButtonForMode's Nautilus
+        // branch below.
+        WireCommand(_nautilusRightPanel.BTN_Mode, "Mode Combi");
+        WireCommand(_nautilusRightPanel.BTN_Page, "Mode Program");
+
+        // A-F: momentary quick-access shortcuts, sent directly rather than through SendMode -
+        // these are HoldLit (lit only while held) and don't reflect/track a confirmed mode, so
+        // they skip SetPendingMode's bookkeeping entirely (see NautilusRightPanel.xaml comment).
+        // Wire tokens are the fixed NKS4 scan codes for these QA positions (unchanged since
+        // 2026-09-21); the tooltips describe what your unit's QA slots are actually programmed
+        // to do, which can differ from the token name - see NautilusRightPanel.xaml's comment.
+        _nautilusRightPanel.BTN_A.Click += (sender, e) => Ctrl(DaemonCommand.Button(Mode.Sequence));
+        _nautilusRightPanel.BTN_B.Click += (sender, e) => Ctrl(DaemonCommand.Button(Mode.Sampling));
+        _nautilusRightPanel.BTN_C.Click += (sender, e) => Ctrl(DaemonCommand.Button(Mode.Global));
+        _nautilusRightPanel.BTN_D.Click += (sender, e) => Ctrl(DaemonCommand.Button(Mode.Disk));
+        _nautilusRightPanel.BTN_E.Click += (sender, e) => Ctrl(DaemonCommand.Button(Mode.Setlist));
+        // F = the new Save/Write shortcut (your QA slot F) - same wire token as the status bar's
+        // Save button on Nautilus (SeqTransportViewModel.Save).
+        _nautilusRightPanel.BTN_F.Click += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Exit));
+
+        // Exit/Enter, Data Inc/Dec - no lit version, direct sends (NautilusRightPanel.xaml
+        // comment). Exit=NUM1, Enter=KARMA_ONOFF (your 2026-09-22 correction - these are NOT
+        // Octave -/+, despite reusing Kronos's Exit/Enter button graphics as placeholder art).
+        _nautilusRightPanel.BTN_Exit.Click  += (sender, e) => Ctrl(DaemonCommand.NumberButton(1));
+        _nautilusRightPanel.BTN_Enter.Click += (sender, e) => Ctrl(DaemonCommand.Button("KARMA_ONOFF"));
+        _nautilusRightPanel.BTN_DataInc.Click    += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Help));
+        _nautilusRightPanel.BTN_DataDec.Click    += (sender, e) => Ctrl(DaemonCommand.Button(PanelButton.Compare));
 
         // Sequencer transport - daemon maps each to a front-panel SEQUENCER key press.
         // Record/Start are handled by SeqTransportBarItem's DataContext (SeqTransportViewModel)
@@ -385,8 +611,8 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         WireCommand(BTN_SeqPause,  "Seq Pause");
         WireCommand(BTN_TapTempo,  "Tap Tempo");   // global (not seq-mode gated) - see command registry
 
-        foreach (var btn in new KronosButton[] { BTN_Setlist, BTN_Combi, BTN_Program, BTN_Sequence,
-                                                  BTN_Sampling, BTN_Global, BTN_Disk, BTN_Help, BTN_Compare })
+        foreach (var btn in new KronosButton[] { _kronosRightPanel.BTN_Setlist, _kronosRightPanel.BTN_Combi, _kronosRightPanel.BTN_Program, _kronosRightPanel.BTN_Sequence,
+                                                  _kronosRightPanel.BTN_Sampling, _kronosRightPanel.BTN_Global, _kronosRightPanel.BTN_Disk, _kronosRightPanel.BTN_Help, _kronosRightPanel.BTN_Compare })
             AddButtonContextMenu(btn);
     }
 
@@ -404,25 +630,39 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
 
     KronosButton? NumButton(int n) => n switch
     {
-        0 => BTN_data0, 1 => BTN_data1, 2 => BTN_data2, 3 => BTN_data3,
-        4 => BTN_data4, 5 => BTN_data5, 6 => BTN_data6, 7 => BTN_data7,
-        8 => BTN_data8, 9 => BTN_data9, _ => null
+        0 => _kronosRightPanel.BTN_data0, 1 => _kronosRightPanel.BTN_data1, 2 => _kronosRightPanel.BTN_data2, 3 => _kronosRightPanel.BTN_data3,
+        4 => _kronosRightPanel.BTN_data4, 5 => _kronosRightPanel.BTN_data5, 6 => _kronosRightPanel.BTN_data6, 7 => _kronosRightPanel.BTN_data7,
+        8 => _kronosRightPanel.BTN_data8, 9 => _kronosRightPanel.BTN_data9, _ => null
     };
 
+    // Kronos's and Nautilus's Data_Wheel (KronosRightPanel/NautilusRightPanel) share these exact
+    // handlers - only one panel is ever attached to RightPanelHost at a time, so wiring both
+    // costs nothing and means neither family needs special-casing here or on a family switch.
+    // The handlers below resolve which wheel actually fired via the event's own sender rather
+    // than _deviceFamily, so they're correct even in the (currently impossible, but cheap to be
+    // robust against) case of a mid-drag family change.
     void InitWheelDrag()
     {
-        Data_Wheel.MouseDown        += OnWheelMouseDown;
-        Data_Wheel.MouseMove        += OnWheelMouseMove;
-        Data_Wheel.MouseUp          += OnWheelMouseUp;
-        Data_Wheel.LostMouseCapture += (sender, e) => _wheel.DragActive = false;
-        Data_Wheel.PreviewKeyDown   += OnWheelPreviewKeyDown;
+        foreach (var wheel in new[] { _kronosRightPanel.Data_Wheel, _nautilusRightPanel.Data_Wheel })
+        {
+            wheel.MouseDown        += OnWheelMouseDown;
+            wheel.MouseMove        += OnWheelMouseMove;
+            wheel.MouseUp          += OnWheelMouseUp;
+            wheel.LostMouseCapture += (sender, e) => _wheel.DragActive = false;
+            wheel.PreviewKeyDown   += OnWheelPreviewKeyDown;
+        }
 
         _wheel.AnimTimer.Interval = TimeSpan.FromMilliseconds(WheelState.AnimIntervalMs);
         _wheel.AnimTimer.Tick    += (sender, e) => AdvanceWheelAnim();
     }
 
-    // Keyboard counterpart to the mouse-drag path above - only reachable at all once
-    // Data_Wheel.Focusable is armed (remote typing off; see UpdateKbdStatus). Space is
+    // The currently-attached family's wheel/rotation - for call sites with no event sender to
+    // read the concrete Image from (EndWheelDrag, SetWheelAngle).
+    Image ActiveDataWheel => _deviceFamily == DeviceFamily.Nautilus ? _nautilusRightPanel.Data_Wheel : _kronosRightPanel.Data_Wheel;
+    RotateTransform ActiveWheelRotate => _deviceFamily == DeviceFamily.Nautilus ? _nautilusRightPanel.WheelRotate : _kronosRightPanel.WheelRotate;
+
+    // Keyboard counterpart to the mouse-drag path above - only reachable at all once the active
+    // Data_Wheel's Focusable is armed (remote typing off; see UpdateKbdStatus). Space is
     // explicitly swallowed rather than left unhandled: the wheel has no "press" action, and
     // an unhandled Space would otherwise bubble up to whatever routed command treats it as one.
     void OnWheelPreviewKeyDown(object s, KeyEventArgs e)
@@ -442,17 +682,18 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     void EndWheelDrag()
     {
         _wheel.DragActive = false;
-        if (Data_Wheel.IsMouseCaptured) Data_Wheel.ReleaseMouseCapture();
+        if (ActiveDataWheel.IsMouseCaptured) ActiveDataWheel.ReleaseMouseCapture();
     }
 
     void OnWheelMouseDown(object s, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left) return;
         if (Mouse.LeftButton != MouseButtonState.Pressed) { EndWheelDrag(); return; }
+        var wheel = (Image)s;
         _wheel.DragActive = true;
-        _wheel.DragStartY = e.GetPosition(Data_Wheel).Y;
+        _wheel.DragStartY = e.GetPosition(wheel).Y;
         _wheel.DragSteps  = 0;
-        Data_Wheel.CaptureMouse();
+        wheel.CaptureMouse();
         e.Handled = true;
     }
 
@@ -462,7 +703,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         // Primary recovery point: the first mouse move after a missed MouseUp ends the drag
         // instead of spinning the wheel for every pixel of ordinary cursor movement.
         if (e.LeftButton != MouseButtonState.Pressed) { EndWheelDrag(); return; }
-        double dy    = _wheel.DragStartY - e.GetPosition(Data_Wheel).Y; // +ve = up = CW
+        double dy    = _wheel.DragStartY - e.GetPosition((Image)s).Y; // +ve = up = CW
         int    steps = (int)(dy / WheelState.PxPerStep);
         
         int    diff  = steps - _wheel.DragSteps;
@@ -507,21 +748,21 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
 
     void SetWheelAngle(double angle)
     {
-        WheelRotate.BeginAnimation(RotateTransform.AngleProperty, null);
-        WheelRotate.Angle = angle;
+        ActiveWheelRotate.BeginAnimation(RotateTransform.AngleProperty, null);
+        ActiveWheelRotate.Angle = angle;
     }
 
     void InitValueSlider()
     {
-        ValueSliderCanvas.MouseDown        += OnVSliderMouseDown;
-        ValueSliderCanvas.MouseMove        += OnVSliderMouseMove;
-        ValueSliderCanvas.MouseUp          += OnVSliderMouseUp;
-        ValueSliderCanvas.LostMouseCapture += (_, _) => _vsliderDragActive = false;
-        ValueSliderCanvas.PreviewKeyDown   += OnVSliderPreviewKeyDown;
-        AutomationProperties.SetItemStatus(ValueSliderCanvas, _vsliderValue.ToString());
+        _kronosLeftPanel.ValueSliderCanvas.MouseDown        += OnVSliderMouseDown;
+        _kronosLeftPanel.ValueSliderCanvas.MouseMove        += OnVSliderMouseMove;
+        _kronosLeftPanel.ValueSliderCanvas.MouseUp          += OnVSliderMouseUp;
+        _kronosLeftPanel.ValueSliderCanvas.LostMouseCapture += (_, _) => _vsliderDragActive = false;
+        _kronosLeftPanel.ValueSliderCanvas.PreviewKeyDown   += OnVSliderPreviewKeyDown;
+        AutomationProperties.SetItemStatus(_kronosLeftPanel.ValueSliderCanvas, _vsliderValue.ToString());
     }
 
-    // Keyboard counterpart to the mouse-drag path - only reachable once ValueSliderCanvas.
+    // Keyboard counterpart to the mouse-drag path - only reachable once _kronosLeftPanel.ValueSliderCanvas.
     // Focusable is armed (remote typing off; see UpdateKbdStatus). Space is explicitly
     // swallowed, same reasoning as OnWheelPreviewKeyDown.
     void OnVSliderPreviewKeyDown(object s, KeyEventArgs e)
@@ -543,7 +784,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     void EndVSliderDrag()
     {
         _vsliderDragActive = false;
-        if (ValueSliderCanvas.IsMouseCaptured) ValueSliderCanvas.ReleaseMouseCapture();
+        if (_kronosLeftPanel.ValueSliderCanvas.IsMouseCaptured) _kronosLeftPanel.ValueSliderCanvas.ReleaseMouseCapture();
     }
 
     void OnVSliderMouseDown(object s, MouseButtonEventArgs e)
@@ -558,8 +799,8 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             return;
         }
         _vsliderDragActive = true;
-        ValueSliderCanvas.CaptureMouse();
-        UpdateVSliderFromMouse(e.GetPosition(ValueSliderCanvas).Y);
+        _kronosLeftPanel.ValueSliderCanvas.CaptureMouse();
+        UpdateVSliderFromMouse(e.GetPosition(_kronosLeftPanel.ValueSliderCanvas).Y);
         e.Handled = true;
     }
 
@@ -567,7 +808,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     {
         if (!_vsliderDragActive) return;
         if (e.LeftButton != MouseButtonState.Pressed) { EndVSliderDrag(); return; }
-        UpdateVSliderFromMouse(e.GetPosition(ValueSliderCanvas).Y);
+        UpdateVSliderFromMouse(e.GetPosition(_kronosLeftPanel.ValueSliderCanvas).Y);
         e.Handled = true;
     }
 
@@ -582,13 +823,13 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     void UpdateVSliderFromMouse(double mouseY)
     {
         double thumbTop = Math.Clamp(mouseY - VSliderThumbHalf, 0, VSliderTravel);
-        System.Windows.Controls.Canvas.SetTop(ValueSliderThumb, thumbTop);
+        System.Windows.Controls.Canvas.SetTop(_kronosLeftPanel.ValueSliderThumb, thumbTop);
         int newVal = (int)Math.Round(127.0 * (VSliderTravel - thumbTop) / VSliderTravel);
         if (newVal != _vsliderValue)
         {
             _vsliderValue = newVal;
             Ctrl(DaemonCommand.ValueSlider(_vsliderValue));
-            AutomationProperties.SetItemStatus(ValueSliderCanvas, _vsliderValue.ToString());
+            AutomationProperties.SetItemStatus(_kronosLeftPanel.ValueSliderCanvas, _vsliderValue.ToString());
         }
     }
 
@@ -598,9 +839,9 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     {
         val = Math.Clamp(val, 0, 127);
         double thumbTop = VSliderTravel * (127 - val) / 127.0;
-        System.Windows.Controls.Canvas.SetTop(ValueSliderThumb, thumbTop);
+        System.Windows.Controls.Canvas.SetTop(_kronosLeftPanel.ValueSliderThumb, thumbTop);
         _vsliderValue = val;
-        AutomationProperties.SetItemStatus(ValueSliderCanvas, val.ToString());
+        AutomationProperties.SetItemStatus(_kronosLeftPanel.ValueSliderCanvas, val.ToString());
     }
 
     // ── SysEx-driven UI sync (runs on the UI thread - events are marshaled
@@ -697,8 +938,18 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         {
             MNU_CalMode.IsChecked    = _cal.Mode;
             MNU_DisableKbd.IsChecked = !_kbdSendEnabled;
+            MNU_PaletteEd.IsChecked  = _edOpen;
         };
         MNU_CalMode.Click   += (sender, e) => { _cal.Mode = MNU_CalMode.IsChecked; if (_cal.Mode) EnterCalMode(); else ExitCalMode(); OverlayLayer.InvalidateVisual(); };
+        // Retired (3.0.2) - menu item is always hidden (ApplyDeviceFamilyUi); see EffectiveOverrides
+        // for why. Handler kept only so an already-open command-palette invocation (below) doesn't
+        // need a second code path.
+        MNU_PaletteEd.Click += (sender, e) =>
+        {
+            _edOpen = MNU_PaletteEd.IsChecked;
+            OverlayLayer.InvalidateVisual();
+        };
+        ApplyDeviceFamilyUi();   // hides the palette editor menu item unconditionally
 
         MNU_SettingsDlg.Click += (sender, e) => OpenSettingsDialog();
         MNU_ExportSettings.Click += (_, _) => ExportSettings();
@@ -728,7 +979,8 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             UpdateKbdStatus();
             OverlayLayer.InvalidateVisual();
         };
-        MNU_InputTester.Click  += (sender, e) => new InputTesterWindow(_ctrl).OwnedBy(this).Show();
+        MNU_InputTester.Click    += (sender, e) => new InputTesterWindow(_ctrl).OwnedBy(this).Show();
+        MNU_ButtonInjector.Click += (sender, e) => new ButtonInjectorWindow(_ctrl).OwnedBy(this).Show();
         MNU_SysExTool.Click    += (sender, e) => OpenSysExToolWindow();
         MNU_Librarian.Click    += (sender, e) => OpenLibrarianShellWindow();
         MNU_SampleEditor.Click += (sender, e) => OpenSampleEditorWindow();
@@ -775,6 +1027,19 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         WireCommand(MNU_Mode_Sampling, "Mode Sampling");
         WireCommand(MNU_Mode_Global,   "Mode Global");
         WireCommand(MNU_Mode_Disk,     "Mode Disk");
+
+        // Nautilus item set - same underlying commands as the front panel's own Mode/Page/A-F
+        // buttons (WireButtons); Mode/Page reuse the Kronos mode commands directly since the
+        // wire tokens are identical, only the label/position differs (see BuildCommandRegistry's
+        // Bank-only disable guard comment).
+        WireCommand(MNU_NautilusMode_Mode, "Mode Combi");
+        WireCommand(MNU_NautilusMode_Page, "Mode Program");
+        WireCommand(MNU_NautilusMode_A,    "Mode Sequence");
+        WireCommand(MNU_NautilusMode_B,    "Mode Sampling");
+        WireCommand(MNU_NautilusMode_C,    "Mode Global");
+        WireCommand(MNU_NautilusMode_D,    "Mode Disk");
+        WireCommand(MNU_NautilusMode_E,    "Mode Setlist");
+        WireCommand(MNU_NautilusMode_F,    "NautilusModeF");
 
         MENU_CalGrid.SubmenuOpened += (sender, e) =>
         {
@@ -841,8 +1106,10 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             CTX_ScaleHQ.IsChecked     = _settings.ImageScalingMode == ScalingQuality.HighQuality;
         };
 
-        CTX_WheelSensitivity.Click += (sender, e) => OpenSettingsDialog(SettingsTab.View);
-        CTX_WheelReset.Click       += (sender, e) => { SetWheelAngle(0); _wheel.AnimState = 0; };
+        _kronosRightPanel.CTX_WheelSensitivity.Click   += (sender, e) => OpenSettingsDialog(SettingsTab.View);
+        _kronosRightPanel.CTX_WheelReset.Click         += (sender, e) => { SetWheelAngle(0); _wheel.AnimState = 0; };
+        _nautilusRightPanel.CTX_WheelSensitivity.Click += (sender, e) => OpenSettingsDialog(SettingsTab.View);
+        _nautilusRightPanel.CTX_WheelReset.Click       += (sender, e) => { SetWheelAngle(0); _wheel.AnimState = 0; };
 
         CTX_StatusReconnect.Click  += (sender, e) => UserInitiatedReconnect();
         CTX_StatusDisconnect.Click += (sender, e) => Disconnect();
@@ -1151,9 +1418,11 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         }
         else if (IsConnected)
         {
-            // Push VGA mirror + screensaver to daemon immediately if connected
+            // Push VGA mirror + screensaver to daemon immediately if connected.
+            // MIRROR_ON is unsupported on Nautilus (ERR MIRROR_UNSUPPORTED) - see OnSessionConnected.
             _mirrorState = _settings.VgaMirrorEnabled;
-            Ctrl(DaemonCommand.VgaMirror(_mirrorState));
+            if (_deviceFamily != DeviceFamily.Nautilus)
+                Ctrl(DaemonCommand.VgaMirror(_mirrorState));
             Ctrl(DaemonCommand.ScreensaverTimeout(_settings.ScreensaverTimeout));
         }
     }
@@ -1346,10 +1615,12 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         // Canvas/Image aren't Control, so they have no IsTabStop of their own - the
         // KeyboardNavigation attached property is the WPF-wide equivalent for any element.
         bool panelFocusable = !_kbdSendEnabled;
-        ValueSliderCanvas.Focusable = panelFocusable;
-        KeyboardNavigation.SetIsTabStop(ValueSliderCanvas, panelFocusable);
-        Data_Wheel.Focusable = panelFocusable;
-        KeyboardNavigation.SetIsTabStop(Data_Wheel, panelFocusable);
+        _kronosLeftPanel.ValueSliderCanvas.Focusable = panelFocusable;
+        KeyboardNavigation.SetIsTabStop(_kronosLeftPanel.ValueSliderCanvas, panelFocusable);
+        _kronosRightPanel.Data_Wheel.Focusable = panelFocusable;
+        KeyboardNavigation.SetIsTabStop(_kronosRightPanel.Data_Wheel, panelFocusable);
+        _nautilusRightPanel.Data_Wheel.Focusable = panelFocusable;
+        KeyboardNavigation.SetIsTabStop(_nautilusRightPanel.Data_Wheel, panelFocusable);
         foreach (var b in new System.Windows.Controls.Primitives.ButtonBase[]
                  { BTN_SeqLocate, BTN_SeqRew, BTN_SeqFf, BTN_SeqPause,
                    BTN_SeqRec, BTN_SeqStart, BTN_TapTempo, BTN_SeqSave })
@@ -1416,7 +1687,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
                 : new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88));
             StatusText.Text = state switch
             {
-                ConnState.Connected  => AppMessages.Connection.Connected(_host),
+                ConnState.Connected  => AppMessages.Connection.Connected(_host, _deviceFamily),
                 ConnState.Connecting => AppMessages.Connection.Connecting(_host),
                 // When USB MIDI is live, say so - otherwise a disconnected screen reads
                 // as "broken" even though the SysEx features are fully working over USB.
@@ -1762,7 +2033,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     List<CommandEntry> BuildCommandRegistry()
     {
         string K(string action) => _settings.GetKeyName(action);
-        return
+        List<CommandEntry> entries =
         [
             // ── Connection
             new("Reconnect",       "Reconnect",       "",              () => TriggerReconnect()),
@@ -1787,8 +2058,9 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             new("KeyboardInfo",    "Keyboard Info",           "",              () => OpenKeyboardInfoWindow()),
             new("Sample Editor",   "Sample Editor",           K("Sample Editor"), () => OpenSampleEditorWindow()),
             new("Librarian",       "Librarian",               K("Librarian"),     () => OpenLibrarianShellWindow()),
-            new("Mirror",          "Toggle VGA Mirror",       K("Mirror"),        () => { _mirrorState = !_mirrorState; Ctrl(DaemonCommand.VgaMirror(_mirrorState)); }),
+            new("Mirror",          "Toggle VGA Mirror",       K("Mirror"),        () => { if (_deviceFamily == DeviceFamily.Nautilus) return; _mirrorState = !_mirrorState; Ctrl(DaemonCommand.VgaMirror(_mirrorState)); }),
             new("Calibrate",       "Toggle Calibration Mode", K("Calibrate"),     () => { _cal.Mode = !_cal.Mode; if (_cal.Mode) EnterCalMode(); else ExitCalMode(); OverlayLayer.InvalidateVisual(); }),
+            new("PaletteEditor",   "Toggle Palette Editor",  K("PaletteEditor"), () => { _edOpen = !_edOpen; OverlayLayer.InvalidateVisual(); }),
             new("SaveScreenshot",  "Save Screenshot...",        "",              () => SaveScreenshot()),
             new("ToggleKeyboardSend", "Toggle Remote Typing", "",              () => { _kbdSendEnabled = !_kbdSendEnabled; _instantKeys.Clear(); StopRepeat(); ReleaseActiveRawKeys(); UpdateKbdStatus(); OverlayLayer.InvalidateVisual(); }),
             // ── Mode select (Id = action name; also wired to mode buttons + menu + context menu + keybinds)
@@ -1799,6 +2071,10 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             new("Mode Sampling", "Mode: Sampling", K("Mode Sampling"), () => SendMode(Mode.Sampling)),
             new("Mode Global",   "Mode: Global",   K("Mode Global"),   () => SendMode(Mode.Global)),
             new("Mode Disk",     "Mode: Disk",     K("Mode Disk"),     () => SendMode(Mode.Disk)),
+            // Nautilus's front-panel "F" (Save) - not a Mode, so it isn't part of the Kronos
+            // "Mode "-prefixed set above; only reachable via MENU_ModeSelect's Nautilus item set
+            // and the front panel itself (NautilusRightPanel.BTN_F), not a keybind.
+            new("NautilusModeF", "F: Save",        "",                 () => Ctrl(DaemonCommand.Button(PanelButton.Exit))),
             // ── Bank select (Id = action name; also wired to the Bank Select menu + keybinds)
             new("Bank I-A",  "Bank I-A",  K("Bank I-A"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'A'))),
             new("Bank I-B",  "Bank I-B",  K("Bank I-B"),  () => Ctrl(DaemonCommand.BankButton(BankGroup.Internal, 'B'))),
@@ -1822,13 +2098,19 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             new("Bank U-FF", "Bank U-FF", K("Bank U-FF"), () => Ctrl(DaemonCommand.DoubleUserBank('F'))),
             new("Bank U-GG", "Bank U-GG", K("Bank U-GG"), () => Ctrl(DaemonCommand.DoubleUserBank('G'))),
             // ── Sequencer transport (Id = action name; also wired to seq buttons + keybinds)
-            new("Seq Locate",  "Seq: Locate",       K("Seq Locate"),  () => Ctrl(DaemonCommand.Button(PanelButton.SeqLocate))),
-            new("Seq Rewind",  "Seq: Rewind",       K("Seq Rewind"),  () => Ctrl(DaemonCommand.Button(PanelButton.SeqRewind))),
-            new("Seq Forward", "Seq: Fast-Forward", K("Seq Forward"), () => Ctrl(DaemonCommand.Button(PanelButton.SeqForward))),
-            new("Seq Pause",   "Seq: Pause",        K("Seq Pause"),   () => Ctrl(DaemonCommand.Button(PanelButton.SeqPause))),
+            // Nautilus tokens only (Kronos's own SEQ_LOCATE/SEQ_REW/SEQ_FF/SEQ_PAUSE are
+            // untouched) - Locate and Rewind swapped, per your 2026-09-22 correction: the
+            // BUTTON stays where it is (BTN_SeqLocate still means "Locate" in the UI), only
+            // which Nautilus scan code it actually sends changed. Forward (MP8) is unaffected.
+            new("Seq Locate",  "Seq: Locate",       K("Seq Locate"),  () => Ctrl(DaemonCommand.Button(NautilusToken(PanelButton.SeqLocate, "MS1")))),
+            new("Seq Rewind",  "Seq: Rewind",       K("Seq Rewind"),  () => Ctrl(DaemonCommand.Button(NautilusToken(PanelButton.SeqRewind, "MP7")))),
+            new("Seq Forward", "Seq: Fast-Forward", K("Seq Forward"), () => Ctrl(DaemonCommand.Button(NautilusToken(PanelButton.SeqForward, "MP8")))),
+            // Pause/Start(PlayStop) likewise swapped (Nautilus only) - see SeqTransportViewModel
+            // for the Start/Stop half of this swap.
+            new("Seq Pause",   "Seq: Pause",        K("Seq Pause"),   () => Ctrl(DaemonCommand.Button(NautilusToken(PanelButton.SeqPause, "MS3")))),
             new("Seq Record",  "Seq: Record",       K("Seq Record"),  () => _seqTransport.RecordCommand.Execute(null)),
             new("Seq Start",   "Seq: Start/Stop",   K("Seq Start"),   () => _seqTransport.StartStopCommand.Execute(null)),
-            new("Seq Save",    "Write / Save",      K("Seq Save"),    () => _seqTransport.RecordCommand.Execute(null)),
+            new("Seq Save",    "Write / Save",      K("Seq Save"),    () => _seqTransport.SaveCommand.Execute(null)),
             // Tap tempo: one BUTTON TAP_TEMPO press per invocation; the Kronos averages
             // successive taps itself. Global - enabled whenever connected, not seq-gated.
             new("Tap Tempo",   "Tap Tempo",         K("Tap Tempo"),   TapTempoOnce),
@@ -1837,6 +2119,41 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             new("About", "About",     "",        () => OpenAboutWindow()),
             new("Quit",  "Quit",      K("Quit"),  () => TryQuit()),
         ];
+        // Retired (3.0.2) - always removed, same as the Tools menu item; see
+        // ApplyDeviceFamilyUi's comment for why.
+        entries.RemoveAll(e => e.Id == "PaletteEditor");
+
+        // Bank Select sends Kronos front-panel scan codes with no confirmed Nautilus equivalent
+        // yet (only 3 of its ~28 tokens are known - BANK_IA/BANK_UF/BANK_UG). Disabled rather
+        // than guessed. Mode Select WAS disabled here too (grill-me follow-up, 2026-09-21) but
+        // is now confirmed and re-enabled: Mode.ButtonName()'s wire tokens (COMBI/PROGRAM/...)
+        // are literally unchanged on Nautilus (your button-code table, same date) - only the
+        // physical button LABEL/position differs (Mode/Page instead of Combi/Program printed
+        // directly), which MENU_ModeSelect's own Nautilus item set now reflects (see
+        // ApplyDeviceFamilyUi). Wrapping Execute here (rather than guarding RunCommand) covers
+        // every consumer of this list uniformly - menu/context/keybind (which all reach the
+        // action through RunCommand/_commands, built from this same list) AND the command
+        // palette, which builds its OWN fresh copy of this list rather than going through
+        // RunCommand (see this method's own header comment). ApplyDeviceFamilyUi additionally
+        // greys out MENU_BankSelect so this is visible, not just inert.
+        for (int i = 0; i < entries.Count; i++)
+        {
+            var e = entries[i];
+            if (!e.Id.StartsWith("Bank ")) continue;
+            entries[i] = e with
+            {
+                Execute = () =>
+                {
+                    if (_deviceFamily == DeviceFamily.Nautilus)
+                    {
+                        AppLog.Debug($"[cmd] '{e.Id}' disabled on Nautilus - no confirmed wire token yet");
+                        return;
+                    }
+                    e.Execute();
+                }
+            };
+        }
+        return entries;
     }
 
     // ── Command registry dispatch ──────────────────────────────────────────────
@@ -1866,10 +2183,19 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     // palette all share this one action. Requires the daemon ctrl channel (front-panel
     // injection is not available over the USB-MIDI-only path), so the button is enabled
     // only while connected - see SetConnectionStatus.
+    // Resolves a panel-function wire token to Nautilus's own scan code when connected to one,
+    // else the Kronos token unchanged. Source: button_labels.json (ButtonInjectorWindow-tested
+    // against real Nautilus hardware) - see SeqTransportViewModel's own comment on why this data
+    // supersedes the older Documentation/nautilus_button_mapping.md.
+    string NautilusToken(PanelButton kronos, string nautilus) =>
+        _deviceFamily == DeviceFamily.Nautilus ? nautilus : kronos.Token();
+
     void TapTempoOnce()
     {
         FlashTapTempo();
-        Ctrl(DaemonCommand.Button(PanelButton.TapTempo));
+        // button_labels.json: Nautilus's own TAP_TEMPO scan code lands on numeric key "8", not a
+        // tempo function - the real Tap Tempo button is NUM9 there (unambiguous, confirmed).
+        Ctrl(DaemonCommand.Button(NautilusToken(PanelButton.TapTempo, "NUM9")));
     }
 
     // Briefly highlight the footer Tap Tempo button so each tap (mouse or keybind) reads
@@ -1917,9 +2243,9 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             case LayoutPreset.Full:
                 _focusedDataExpanded  = false;
                 _focusedValueExpanded = false;
-                ControlRail.Visibility    = Visibility.Collapsed;
-                ValueRail.Visibility      = Visibility.Collapsed;
-                ControlViewbox.Visibility = Visibility.Visible;
+                _kronosRightPanel.ControlRail.Visibility    = Visibility.Collapsed;
+                _kronosLeftPanel.ValueRail.Visibility      = Visibility.Collapsed;
+                _kronosRightPanel.ControlViewbox.Visibility = Visibility.Visible;
                 ControlsColumn.Width = _hideDataInput
                     ? new GridLength(0, GridUnitType.Star)
                     : new GridLength(FrameDesignWidth, GridUnitType.Star);
@@ -1929,13 +2255,13 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             case LayoutPreset.Focused:
                 _focusedDataExpanded  = _settings.FocusedDataExpanded;
                 _focusedValueExpanded = _settings.FocusedValueExpanded;
-                ControlRail.Visibility    = Visibility.Visible;
-                ValueRail.Visibility      = Visibility.Visible;
-                ControlViewbox.Visibility = _focusedDataExpanded ? Visibility.Visible : Visibility.Collapsed;
-                ((TextBlock)BtnRailExpand.Content).Text = _focusedDataExpanded ? "‹" : "›";
-                BtnRailExpand.ToolTip = _focusedDataExpanded ? "Collapse data input" : "Expand data input";
-                ((TextBlock)BtnValueRailExpand.Content).Text = _focusedValueExpanded ? "›" : "‹";
-                BtnValueRailExpand.ToolTip = _focusedValueExpanded ? "Collapse value input" : "Expand value input";
+                _kronosRightPanel.ControlRail.Visibility    = Visibility.Visible;
+                _kronosLeftPanel.ValueRail.Visibility      = Visibility.Visible;
+                _kronosRightPanel.ControlViewbox.Visibility = _focusedDataExpanded ? Visibility.Visible : Visibility.Collapsed;
+                ((TextBlock)_kronosRightPanel.BtnRailExpand.Content).Text = _focusedDataExpanded ? "‹" : "›";
+                _kronosRightPanel.BtnRailExpand.ToolTip = _focusedDataExpanded ? "Collapse data input" : "Expand data input";
+                ((TextBlock)_kronosLeftPanel.BtnValueRailExpand.Content).Text = _focusedValueExpanded ? "›" : "‹";
+                _kronosLeftPanel.BtnValueRailExpand.ToolTip = _focusedValueExpanded ? "Collapse value input" : "Expand value input";
                 ControlsColumn.Width = _focusedDataExpanded
                     ? new GridLength(FrameDesignWidth, GridUnitType.Star)
                     : new GridLength(28);
@@ -1959,9 +2285,9 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         _settings.FocusedDataExpanded = _focusedDataExpanded;
         Storage.SaveSettings(_settings);
         AdjustWindowWidthForPanelChange((_focusedDataExpanded ? 1 : -1) * (FrameDesignWidth - 28.0));
-        ControlViewbox.Visibility = _focusedDataExpanded ? Visibility.Visible : Visibility.Collapsed;
-        ((TextBlock)BtnRailExpand.Content).Text = _focusedDataExpanded ? "‹" : "›";
-        BtnRailExpand.ToolTip = _focusedDataExpanded ? "Collapse data input" : "Expand data input";
+        _kronosRightPanel.ControlViewbox.Visibility = _focusedDataExpanded ? Visibility.Visible : Visibility.Collapsed;
+        ((TextBlock)_kronosRightPanel.BtnRailExpand.Content).Text = _focusedDataExpanded ? "‹" : "›";
+        _kronosRightPanel.BtnRailExpand.ToolTip = _focusedDataExpanded ? "Collapse data input" : "Expand data input";
         ControlsColumn.Width = _focusedDataExpanded
             ? new GridLength(FrameDesignWidth, GridUnitType.Star)
             : new GridLength(28);
@@ -1975,8 +2301,8 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         _settings.FocusedValueExpanded = _focusedValueExpanded;
         Storage.SaveSettings(_settings);
         AdjustWindowWidthForPanelChange((_focusedValueExpanded ? 1 : -1) * (282.0 - 28.0));
-        ((TextBlock)BtnValueRailExpand.Content).Text = _focusedValueExpanded ? "›" : "‹";
-        BtnValueRailExpand.ToolTip = _focusedValueExpanded ? "Collapse value input" : "Expand value input";
+        ((TextBlock)_kronosLeftPanel.BtnValueRailExpand.Content).Text = _focusedValueExpanded ? "›" : "‹";
+        _kronosLeftPanel.BtnValueRailExpand.ToolTip = _focusedValueExpanded ? "Collapse value input" : "Expand value input";
         ShowLeftPanel(_focusedValueExpanded, showRail: true);
         ResizeAndRefresh();
     }
@@ -2062,7 +2388,12 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
                                      + (_hideDataInput  ? 0.0 : FrameDesignWidth)
         };
         Width  = targetW * scale + chromeW;
-        Height = FrameDesignHeight * scale + menuH + chromeH;
+        // _frameH (not the FrameDesignHeight constant) so the window actually fits the
+        // CONNECTED stream's aspect ratio - 800x600 Kronos, 800x480 Nautilus (RefreshFrameRect
+        // already letterboxes correctly either way; this is what makes that letterboxing
+        // unnecessary by sizing the window to need none). Defaults to FrameDesignHeight (600)
+        // before any connection, since _frameH is seeded with it.
+        Height = _frameH * scale + menuH + chromeH;
         _scaledW = Width; _scaledH = Height;
     }
 
@@ -2127,6 +2458,10 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
 
     void ShowLeftPanel(bool show, bool showRail = false)
     {
+        // The Kronos left value-slider skin doesn't exist on Nautilus at all (ApplyDeviceFamilyUi)
+        // - centralized here too so a Focused-preset panel toggle (ToggleFocusedValueExpand etc.)
+        // can never re-show it out from under that, regardless of call order.
+        if (_deviceFamily == DeviceFamily.Nautilus) show = showRail = false;
         if (show)
         {
             LeftPanelColumn.Width    = new GridLength(282, GridUnitType.Star);
@@ -2142,7 +2477,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             LeftPanelColumn.Width    = new GridLength(0);
             LeftPanelColumn.MaxWidth = 0;
         }
-        LeftPanelViewbox.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        _kronosLeftPanel.LeftPanelViewbox.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
     }
 
     void ApplyHideInputPanels()
