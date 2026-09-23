@@ -219,6 +219,21 @@ public partial class App : Application
             NautilusSysExCapture.RunDiffAfterEdit(daePath, daeName, daePostEditPath, daePostEditName);
         }
 
+        // Headless diagnostic: `--nautilus-convert-bank <kronos.pcg> <source-bank> <target-bank>
+        // [device-name-match]` - DESTRUCTIVE: converts every Program in a whole Kronos wire bank
+        // (decimal, e.g. 76 for 0x4C) into the same slot numbers on a Nautilus Program bank,
+        // committing with one Store Bank Request at the end. Pauses once for Enter before any
+        // write. See Tools/NautilusSysExCapture.cs's RunConvertBank.
+        int nautilusConvertBankIdx = Array.IndexOf(e.Args, "--nautilus-convert-bank");
+        if (nautilusConvertBankIdx >= 0 && nautilusConvertBankIdx + 3 < e.Args.Length)
+        {
+            string cbPath = e.Args[nautilusConvertBankIdx + 1];
+            int cbSourceBank = int.Parse(e.Args[nautilusConvertBankIdx + 2]);
+            int cbTargetBank = int.Parse(e.Args[nautilusConvertBankIdx + 3]);
+            string? cbMatch = nautilusConvertBankIdx + 4 < e.Args.Length ? e.Args[nautilusConvertBankIdx + 4] : null;
+            NautilusSysExCapture.RunConvertBank(cbPath, cbSourceBank, cbTargetBank, cbMatch);
+        }
+
         // Headless diagnostic: `--nautilus-sysex-bank-digest-scan [device-name-match] [obj]` -
         // read-only func 0x37/0x38 Bank Digest scan across the documented Program bank-byte
         // ranges (Int A-F, User G-T). Match against `--dump-nautilus-bank-digests` to decode

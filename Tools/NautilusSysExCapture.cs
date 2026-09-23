@@ -633,4 +633,133 @@ static class NautilusSysExCapture
 
         Environment.Exit(0);
     }
+
+    // `--nautilus-convert-bank <kronos.pcg> <source-bank> <target-bank> [device-name-match]` -
+    // DESTRUCTIVE: converts every Program in a whole Kronos wire bank (0-127, index-for-index)
+    // and writes them into the same slot numbers in a Nautilus Program bank, committing with ONE
+    // Store Bank Request at the end (per sysex_protocol_kronos_vs_nautilus.md: "not committed
+    // until a Store Bank Request follows; can send multiple objects to one bank before a single
+    // Store" - avoids 128 separate non-volatile-write cycles). Refused conversions are skipped
+    // (target slot left untouched) and reported in the summary, never partially written. Pauses
+    // once for Enter before any write begins - confirm a fresh backup of the TARGET bank exists
+    // first, same standard as every other write path here.
+    public static void RunConvertBank(string kronosPcgPath, int sourceBank, int targetBank, string? match)
+    {
+        AttachOrAllocConsole();
+        match ??= "NAUTILUS";
+
+        byte[] pcgData;
+        try { pcgData = File.ReadAllBytes(kronosPcgPath); }
+        catch (Exception ex) { Console.WriteLine($"Couldn't read '{kronosPcgPath}': {ex.Message}"); Environment.Exit(1); return; }
+
+        var pcg = PcgFile.Open(pcgData);
+        if (pcg == null) { Console.WriteLine($"'{kronosPcgPath}' is not a recognizable Kronos .pcg file."); Environment.Exit(1); return; }
+
+        var sourceEntries = pcg.Objects
+            .Where(o => o.Loc.ObjType == LibObj.Program && o.Loc.Bank == sourceBank)
+            .OrderBy(o => o.Loc.Number)
+            .ToList();
+        if (sourceEntries.Count == 0) { Console.WriteLine($"No Program entries found in source bank {sourceBank} (0x{sourceBank:X2})."); Environment.Exit(1); return; }
+        Console.WriteLine($"Source bank 0x{sourceBank:X2}: {sourceEntries.Count} Program record(s).");
+
+        var map = RomWaveformMap.FromCatalog();
+        var exsCatalog = ExsOptionIndex.FromCatalog();
+        var geCatalog = KarmaGeCatalog.FromCatalog();
+        var codec = KorgSysExCodecs.For(DeviceFamily.Nautilus);
+        const int obj = LibObj.Program;
+
+        Console.WriteLine();
+        Console.WriteLine($"About to convert+write up to {sourceEntries.Count} Program(s) into Nautilus bank 0x{targetBank:X2},");
+        Console.WriteLine("same slot numbers, committing with ONE Store Bank Request at the end (non-volatile -");
+        Console.WriteLine("confirm you have a fresh backup of the TARGET bank).");
+        Console.WriteLine("Press Enter to continue, Ctrl+C to abort.");
+        Console.ReadLine();
+
+        var transport = OpenTransport(match);
+        if (transport == null) return;
+
+        int written = 0, refused = 0, badRecord = 0, writeFailed = 0;
+        var refusalLog = new List<string>();
+
+        foreach (var entry in sourceEntries)
+        {
+            int index = entry.Loc.Number;
+            byte[] wireBody;
+            try { wireBody = ProgramFormatConverter.PcgToWire(entry.Body, entry.IsExi); }
+            catch (ArgumentException ex)
+            {
+                badRecord++;
+                Console.WriteLine($"[{index,3}] SKIP (bad source record): {ex.Message}");
+                continue;
+            }
+
+            var readReq = codec.BuildObjectDumpRequest(obj, targetBank, index);
+            var targetReply = SendAndWait(transport, readReq, m => codec.HasHeaderAt(m, 0, 0x73),
+                $"[{index,3}] read target", timeoutMs: 5000, verbose: false);
+            if (targetReply == null)
+            {
+                writeFailed++;
+                Console.WriteLine($"[{index,3}] SKIP: couldn't read target slot (timeout).");
+                continue;
+            }
+            var targetBefore = codec.ParseObjectDump(targetReply);
+            if (targetBefore == null)
+            {
+                writeFailed++;
+                Console.WriteLine($"[{index,3}] SKIP: couldn't parse target slot's current dump.");
+                continue;
+            }
+
+            var result = ProgramConverter.KronosToNautilus(wireBody, map, exsCatalog, geCatalog, targetBefore.Body);
+            if (result.NautilusBody == null)
+            {
+                refused++;
+                string reason = string.Join("; ", result.Refusals);
+                refusalLog.Add($"[{index,3}] \"{entry.Name.Trim()}\": {reason}");
+                Console.WriteLine($"[{index,3}] REFUSED \"{entry.Name.Trim()}\": {reason}");
+                continue;
+            }
+
+            var writeMsg = codec.BuildObjectDumpMessage(obj, targetBank, index, targetBefore.Version, result.NautilusBody);
+            var writeReply = SendAndWait(transport, writeMsg, m => codec.ParseReply(m) != null,
+                $"[{index,3}] write", timeoutMs: 5000, verbose: false);
+            int? code = writeReply != null ? codec.ParseReply(writeReply) : null;
+            if (code != 0)
+            {
+                writeFailed++;
+                Console.WriteLine($"[{index,3}] WRITE FAILED \"{entry.Name.Trim()}\": reply code {code?.ToString() ?? "(timeout)"}");
+                continue;
+            }
+
+            written++;
+            Console.WriteLine($"[{index,3}] OK \"{entry.Name.Trim()}\"" +
+                (result.Warnings.Count > 0 ? $" ({result.Warnings.Count} warning(s))" : ""));
+        }
+
+        Console.WriteLine();
+        Console.WriteLine($"Converted+written: {written}  Refused: {refused}  Bad source record: {badRecord}  Write failed: {writeFailed}");
+
+        if (written == 0)
+        {
+            Console.WriteLine("Nothing written - skipping Store Bank Request.");
+            transport.Stop();
+            Environment.Exit(refused + badRecord + writeFailed > 0 ? 1 : 0);
+            return;
+        }
+
+        var storeReq = codec.BuildStoreBankRequest(obj, targetBank);
+        var storeReply = SendAndWait(transport, storeReq, m => codec.ParseReply(m) != null, "Store Bank Request (0x76)");
+        int? storeCode = storeReply != null ? codec.ParseReply(storeReply) : null;
+        Console.WriteLine($"Store reply code: {storeCode?.ToString() ?? "(timeout)"} (0 = success)");
+
+        if (refusalLog.Count > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine("Refusals:");
+            foreach (var line in refusalLog) Console.WriteLine("  " + line);
+        }
+
+        transport.Stop();
+        Environment.Exit(storeCode == 0 ? 0 : 1);
+    }
 }
