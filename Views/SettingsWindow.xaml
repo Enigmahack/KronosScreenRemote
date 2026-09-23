@@ -650,9 +650,13 @@
                     <!-- Logging -->
                     <CheckBox x:Name="ChkDebugLogging" Content="Enable debug logging"
                               Margin="0 0 0 10"
+                              Checked="OnDebugLoggingChanged" Unchecked="OnDebugLoggingChanged"
                               ToolTip="Writes verbose DEBUG entries to the log file. Takes effect immediately. Enable only when diagnosing issues - it can grow the log quickly."/>
-                    <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
+                    <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap" Margin="0 0 0 10"
                                Text="When enabled, verbose DEBUG entries are written to the log file. Only Info, Warn, and Error are logged when this is off. Takes effect immediately."/>
+                    <Button x:Name="BtnButtonInjector" Content="Button Injector..." HorizontalAlignment="Left"
+                            Padding="8 3" Click="OnButtonInjectorClick"
+                            ToolTip="Send any daemon-recognized front-panel BUTTON by name and watch what happens on the mirrored screen - for mapping Nautilus's relabeled buttons."/>
                 </StackPanel>
                 </ScrollViewer>
             </TabItem>

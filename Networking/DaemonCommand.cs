@@ -72,6 +72,8 @@ static class DaemonCommand
 
     // ── Queries (expect a response) ─────────────────────────────────────────────
 
+    // Nautilus adds " MODE_LIT=<0|1> PAGE_LIT=<0|1>" to the reply (daemon 3.1.0+); those two
+    // fields are the only source of the MODE/PAGE LED state - there is no command to query them.
     public const string QueryState      = "STATE";       // reply: "MODE=<n> EDITCTX=<e> BOOT=<0|1>"
     public const string QueryMidiStatus = "MIDI_STATUS";
     public const string QuerySysInfo    = "SYSINFO";

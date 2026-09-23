@@ -15,12 +15,32 @@ static class ScreenSessionSelfTests
         var safe = ScreenSession.ParseDaemonState("MODE=3 EDITCTX=x");
         Check("state-safe-defaults", safe is { EditContext: EditContext.None, Booting: true });
 
+        // MODE_LIT/PAGE_LIT (Nautilus only) - absent must stay null, not false: "the daemon
+        // never reported these" is not "the LEDs are off", and only the former leaves the
+        // front-panel lamps alone. MODE_LIT= must also never be read as MODE=.
+        Check("state-lit-absent", valid is { ModeLit: null, PageLit: null });
+        var lit = ScreenSession.ParseDaemonState("MODE=2 EDITCTX=0 BOOT=0 MODE_LIT=1 PAGE_LIT=0");
+        Check("state-lit-present", lit is { Mode: Mode.Combi, ModeLit: true, PageLit: false });
+        Check("state-lit-malformed",
+            ScreenSession.ParseDaemonState("MODE=2 MODE_LIT=x PAGE_LIT=1") is { ModeLit: null, PageLit: true });
+
         var kronos = ScreenSession.ParseModelInfo("FAMILY=KRONOS MODEL=KRONOS2 FB_BPP=8");
         Check("model-kronos", kronos is { Family: "KRONOS", Model: "KRONOS2", FbBpp: 8 });
         var nautilus = ScreenSession.ParseModelInfo("FAMILY=NAUTILUS MODEL=NAUTILUS FB_BPP=16");
         Check("model-nautilus", nautilus is { Family: "NAUTILUS", Model: "NAUTILUS", FbBpp: 16 });
         Check("model-null-response", ScreenSession.ParseModelInfo(null) == null);
         Check("model-missing-family", ScreenSession.ParseModelInfo("MODEL=KRONOS2 FB_BPP=8") == null);
+
+        // MIDI Monitor decode must read the func byte from the right offset for each family's
+        // Exclusive Header length (4 bytes Kronos, 6 Nautilus) - see MidiStreamMonitor.DecodeMidi.
+        var kronosMsg   = MidiHex.ToBytes("F0 42 30 68 42 00 00 00 F7")!;
+        var nautilusMsg = MidiHex.ToBytes("F0 42 30 00 01 5D 73 00 00 00 00 06 F7")!;
+        Check("decode-kronos-func",
+            MidiStreamMonitor.DecodeMidi(kronosMsg, DeviceFamily.Kronos).Contains("func=42"));
+        Check("decode-nautilus-func",
+            MidiStreamMonitor.DecodeMidi(nautilusMsg, DeviceFamily.Nautilus).Contains("func=73"));
+        Check("decode-nautilus-as-kronos-no-false-func",
+            !MidiStreamMonitor.DecodeMidi(nautilusMsg, DeviceFamily.Kronos).Contains("func="));
 
         var first = new FakeReceiver();
         var second = new FakeReceiver();
@@ -44,7 +64,7 @@ static class ScreenSessionSelfTests
         session.Disconnected += _ => Interlocked.Increment(ref disconnectCount);
 
         var connection = new ScreenConnection("fake", 7373, false, 15, "user", "pass");
-        session.Start(connection, _ => Task.FromResult(true));
+        session.Start(connection);
         try
         {
             await firstConnected.Task.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
@@ -58,7 +78,7 @@ static class ScreenSessionSelfTests
             Check("session-state-event", state is
                 { Mode: Mode.Program, EditContext: EditContext.ProgramFromCombi, Booting: false });
 
-            session.Start(connection, _ => Task.FromResult(true));
+            session.Start(connection);
             await secondConnected.Task.WaitAsync(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
             Check("session-change-mode-reconnect-refresh",
                 ctrl.SentCommands.SequenceEqual(new[]

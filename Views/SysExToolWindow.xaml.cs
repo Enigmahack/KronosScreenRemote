@@ -625,7 +625,7 @@ partial class SysExToolWindow : ThemedWindow
     // Dispatcher call, so a memory-speed burst can't swamp the UI thread.
     void OnTraffic(SysExTrafficEntry entry)
     {
-        _incoming.Enqueue((new SysExMessageItem(entry), entry.RawBytes, entry.IsMidi, entry.IsSend));
+        _incoming.Enqueue((new SysExMessageItem(entry, _sysEx.DeviceFamily), entry.RawBytes, entry.IsMidi, entry.IsSend));
     }
 
     // Drains queued traffic onto the UI thread in one batch per tick: at most one
@@ -744,7 +744,7 @@ class SysExMessageItem
     readonly byte[]? _raw;
     readonly string  _fallbackHex;
 
-    public SysExMessageItem(SysExTrafficEntry entry)
+    public SysExMessageItem(SysExTrafficEntry entry, DeviceFamily family = DeviceFamily.Unknown)
     {
         Time   = entry.Timestamp.ToString("HH:mm:ss.fff");
         Dir    = entry.IsSend ? "TX" : "RX";
@@ -762,7 +762,7 @@ class SysExMessageItem
         // nor hand the UI a 200k-char wrapping TextBlock to lay out. Full bytes stay
         // available for copy via RawHex.
         Hex = _raw != null
-            ? MidiStreamMonitor.DecodeMidi(_raw, maxHexBytes: 96)
+            ? MidiStreamMonitor.DecodeMidi(_raw, family, maxHexBytes: 96)
             : entry.Hex;
 
         var type  = Classify(entry.IsMidi, Hex);

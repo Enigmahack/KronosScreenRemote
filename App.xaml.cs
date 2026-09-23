@@ -171,6 +171,35 @@ public partial class App : Application
             NautilusSysExCapture.RunWriteBackTest(wbMatch, wbObj, wbBank, wbIndex);
         }
 
+        // Headless diagnostic: `--nautilus-convert-dry-run <kronos.pcg> <program-name>` - runs
+        // ProgramConverter.KronosToNautilus against a real Kronos .pcg record and prints
+        // warnings/refusals/result. No transport, no hardware, no write - safe to run anytime to
+        // preview a conversion before committing to a hardware test. `<program-name>` must be
+        // quoted if it contains spaces.
+        int nautilusConvertDryRunIdx = Array.IndexOf(e.Args, "--nautilus-convert-dry-run");
+        if (nautilusConvertDryRunIdx >= 0 && nautilusConvertDryRunIdx + 2 < e.Args.Length)
+        {
+            NautilusSysExCapture.RunConvertDryRun(e.Args[nautilusConvertDryRunIdx + 1], e.Args[nautilusConvertDryRunIdx + 2]);
+        }
+
+        // Headless diagnostic: `--nautilus-convert-and-write <kronos.pcg> <program-name>
+        // <target-bank> <target-index> [device-name-match]` - reads a real Program from a real
+        // Kronos .pcg file, runs it through ProgramConverter.KronosToNautilus, and writes the
+        // CONVERTED body (not a same-bytes echo, unlike --nautilus-sysex-writeback-test above)
+        // into a target slot on the real Nautilus, committing with Store Bank Request.
+        // Destructive - pauses for Enter before the write/store step. `<program-name>` must be
+        // quoted if it contains spaces. See Tools/NautilusSysExCapture.cs's RunConvertAndWrite.
+        int nautilusConvertWriteIdx = Array.IndexOf(e.Args, "--nautilus-convert-and-write");
+        if (nautilusConvertWriteIdx >= 0 && nautilusConvertWriteIdx + 4 < e.Args.Length)
+        {
+            string cwPath = e.Args[nautilusConvertWriteIdx + 1];
+            string cwName = e.Args[nautilusConvertWriteIdx + 2];
+            int cwBank  = int.Parse(e.Args[nautilusConvertWriteIdx + 3]);
+            int cwIndex = int.Parse(e.Args[nautilusConvertWriteIdx + 4]);
+            string? cwMatch = nautilusConvertWriteIdx + 5 < e.Args.Length ? e.Args[nautilusConvertWriteIdx + 5] : null;
+            NautilusSysExCapture.RunConvertAndWrite(cwPath, cwName, cwBank, cwIndex, cwMatch);
+        }
+
         // Headless diagnostic: `--nautilus-sysex-bank-digest-scan [device-name-match] [obj]` -
         // read-only func 0x37/0x38 Bank Digest scan across the documented Program bank-byte
         // ranges (Int A-F, User G-T). Match against `--dump-nautilus-bank-digests` to decode

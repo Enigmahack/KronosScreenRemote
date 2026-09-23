@@ -25,7 +25,7 @@ sealed class SysExService : ISysExService
     // id immediately, and retry once idle. Identity (func 0x33) is never gated.
     const double PerfDumpQuietSec = 0.8;
 
-    IKronosMidiTransport? _transport;
+    IMidiTransport? _transport;
     SysExDumpCollector? _dump;
     // Device family this instance believes it's talking to - Unknown until the daemon's MODEL
     // reply (MainWindow.OnSessionConnected, via SetDeviceFamily) or, for a USB-only session
@@ -34,6 +34,7 @@ sealed class SysExService : ISysExService
     // see IKorgSysExCodec.cs for why the rest of the family-specific work (button tokens, UI
     // layout) deliberately stays out of this interface.
     DeviceFamily _deviceFamily = DeviceFamily.Unknown;
+    public DeviceFamily DeviceFamily => _deviceFamily;
     IKorgSysExCodec _codec = KronosSysExCodec.Instance;
     // Pauses the func-33 perf-poll loop while a bulk dump/write streams (so the poll can't steal
     // one of its replies). Epoch-guarded refcount - see DumpGate for why a plain bool was racy
@@ -137,7 +138,7 @@ sealed class SysExService : ISysExService
             _dump = new SysExDumpCollector(_transport, _codec);
     }
 
-    public void Start(IKronosMidiTransport transport)
+    public void Start(IMidiTransport transport)
     {
         _cts?.Cancel();
         _cts?.Dispose();
@@ -229,7 +230,7 @@ sealed class SysExService : ISysExService
         _ = ProbeDeviceFamilyAsync(transport, ct);
     }
 
-    async Task ProbeDeviceFamilyAsync(IKronosMidiTransport transport, CancellationToken ct)
+    async Task ProbeDeviceFamilyAsync(IMidiTransport transport, CancellationToken ct)
     {
         var family = await MidiDeviceIdentity.ProbeAsync(transport, ct).ConfigureAwait(false);
         if (family == DeviceFamily.Unknown || ct.IsCancellationRequested) return;
@@ -986,7 +987,7 @@ sealed class SysExService : ISysExService
 
     public async Task<bool> SendMidiAsync(string hexBytes)
     {
-        var decoded = MidiStreamMonitor.DecodeHex(hexBytes);
+        var decoded = MidiStreamMonitor.DecodeHex(hexBytes, _deviceFamily);
         SysExTraffic?.Invoke(new SysExTrafficEntry(DateTime.Now, true, decoded, IsMidi: true));
 
         var transport = _transport;

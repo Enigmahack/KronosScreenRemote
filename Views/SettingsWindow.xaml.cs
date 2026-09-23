@@ -37,6 +37,7 @@ public partial class SettingsWindow : ThemedWindow
     bool        _rawEditCapturedShift;
 
     readonly Action? _showInputTester;
+    readonly Action? _showButtonInjector;
 
     // Live image-preview callback: fired on every image-slider change so the main window can
     // re-bake the tone LUT and re-render the current frame in real time. Armed only after the
@@ -53,14 +54,17 @@ public partial class SettingsWindow : ThemedWindow
     };
 
     public SettingsWindow(AppSettings settings, Action<MacroDefinition>? playMacro = null,
-                          Action? showInputTester = null, SettingsTab initialTab = SettingsTab.General,
+                          Action? showInputTester = null, Action? showButtonInjector = null,
+                          SettingsTab initialTab = SettingsTab.General,
                           Action<ImagePreview>? onImagePreview = null)
     {
         InitializeComponent();
         _playMacro      = playMacro;
         _showInputTester = showInputTester;
+        _showButtonInjector = showButtonInjector;
         _onImagePreview  = onImagePreview;
         BtnInputTester.IsEnabled = showInputTester != null;
+        BtnButtonInjector.Visibility = settings.DebugLogging ? Visibility.Visible : Visibility.Collapsed;
 
         // Full deep copy - Clone() carries every field (including pass-through fields not exposed
         // in this dialog, e.g. FocusedDataExpanded/FocusedValueExpanded, which the old hand-written
@@ -697,6 +701,11 @@ public partial class SettingsWindow : ThemedWindow
         _inputTesterOpened = true;
         _showInputTester?.Invoke();
     }
+
+    void OnDebugLoggingChanged(object s, RoutedEventArgs e) =>
+        BtnButtonInjector.Visibility = ChkDebugLogging.IsChecked == true ? Visibility.Visible : Visibility.Collapsed;
+
+    void OnButtonInjectorClick(object s, RoutedEventArgs e) => _showButtonInjector?.Invoke();
 
     // Selecting an existing row lights up the (always-visible) editor panel to edit it
     // directly - no separate Add-only "open" gesture needed. Suppressed while THIS class

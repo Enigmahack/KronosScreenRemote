@@ -13,7 +13,34 @@ static class ProgramConverter
     // data was dropped, but every ROM/EXs reference still resolved or wasn't present at all).
     public sealed record ConversionResult(byte[]? NautilusBody, List<string> Warnings, List<string> Refusals);
 
-    public static ConversionResult KronosToNautilus(byte[] kronosBody, RomWaveformMap map, ExsOptionIndex exsCatalog, KarmaGeCatalog geCatalog)
+    // A Nautilus Program body is 6 bytes shorter than a Kronos one (EXi 4960 -> 4954, HD-1
+    // 3706 -> 3700). The two layouts agree byte-for-byte on [0, SharedHeadEnd) and again from
+    // "Common | Oscillator Mode" (Kronos 2558, Nautilus 2552) to the end - Common, Track EQ,
+    // Tone Adjust, the HD-1 oscillator zones and the EXi1/EXi2 engine blocks all sit exactly
+    // NautilusSizeDelta bytes earlier on Nautilus. In between, Kronos's S/PDIF + Drum Track +
+    // KARMA block (1278 bytes) is replaced on Nautilus by an unrelated RT Controller / Scene /
+    // Step Seq block (1272 bytes) - see Prog_EXi_Common.txt / Prog_HD-1.txt for each model.
+    // Confirmed against real Nautilus dumps: EXi1 Algorithm Type reads a valid engine id at
+    // 2851, not at Kronos's 2857.
+    public const int SharedHeadEnd = 1280, KronosTailStart = 2558, NautilusTailStart = 2552;
+    public const int NautilusSizeDelta = KronosTailStart - NautilusTailStart;
+
+    // Nothing in Kronos's middle block maps onto Nautilus's, so that region comes from
+    // `nautilusTemplate` - a real Nautilus Program body of the target size (e.g. the target
+    // slot's current contents, read before writing). Without one it is zero-filled, with a
+    // warning.
+    static byte[] ToNautilusLayout(byte[] kronosBody, byte[]? nautilusTemplate)
+    {
+        var result = new byte[kronosBody.Length - NautilusSizeDelta];
+        Array.Copy(kronosBody, 0, result, 0, SharedHeadEnd);
+        if (nautilusTemplate != null)
+            Array.Copy(nautilusTemplate, SharedHeadEnd, result, SharedHeadEnd, NautilusTailStart - SharedHeadEnd);
+        Array.Copy(kronosBody, KronosTailStart, result, NautilusTailStart, kronosBody.Length - KronosTailStart);
+        return result;
+    }
+
+    public static ConversionResult KronosToNautilus(byte[] kronosBody, RomWaveformMap map, ExsOptionIndex exsCatalog,
+        KarmaGeCatalog geCatalog, byte[]? nautilusTemplate = null)
     {
         var warnings = new List<string>();
         var refusals = new List<string>();
@@ -43,11 +70,19 @@ static class ProgramConverter
             warnings.Add("KARMA performance data (Realtime Controls, Dynamic MIDI, per-Scene switch " +
                 "states, GE/Scene assignments) was present and has been removed - not supported on Nautilus.");
 
+        int nautilusSize = body.Length - NautilusSizeDelta;
+        if (nautilusTemplate == null)
+            warnings.Add("No Nautilus template Program supplied - the Nautilus-only RT Controller/Scene/Step Seq " +
+                "settings were zero-filled.");
+        else if (nautilusTemplate.Length != nautilusSize)
+            refusals.Add($"Nautilus template Program is {nautilusTemplate.Length} bytes, expected {nautilusSize} " +
+                "(an EXi template for an EXi Program, HD-1 for HD-1).");
+
         // Hard REFUSE per Q12: any unmapped ROM/EXs reference stops the conversion rather than
         // shipping a body with a wrong or missing waveform. NautilusBody stays null.
         if (refusals.Count > 0)
             return new ConversionResult(null, warnings, refusals);
 
-        return new ConversionResult(body, warnings, refusals);
+        return new ConversionResult(ToNautilusLayout(body, nautilusTemplate), warnings, refusals);
     }
 }

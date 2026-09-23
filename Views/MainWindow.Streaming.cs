@@ -38,8 +38,7 @@ public partial class MainWindow
         UpdateTitle($"Connecting to {_host}...");
         _screenSession.Start(
             new ScreenConnection(_host, _port, _pullMode, _fps,
-                                 _settings.FtpUsername, _settings.FtpPassword),
-            _ => EnsureFtpLoginAsync());
+                                 _settings.FtpUsername, _settings.FtpPassword));
     }
 
     void Disconnect(string title = "Not Connected")
@@ -51,8 +50,6 @@ public partial class MainWindow
         _deviceFamily = DeviceFamily.Unknown;
         ApplyDeviceFamilyUi();
     }
-
-    Task<bool> EnsureFtpLoginAsync() => KronosFtpSession.EnsureLoginAsync(this, _settings, _host);
 
     void OnSessionConnected(ScreenSessionInfo info)
     {
@@ -118,31 +115,27 @@ public partial class MainWindow
                 return;
             }
 
-            string titleSuffix, dialogTitle, dialogMessage, logMessage;
+            string logMessage;
             if (failure.Error is UnauthorizedAccessException)
             {
                 KronosFtpSession.ResetAuthentication();
-                titleSuffix = dialogTitle = AppMessages.Titles.AuthenticationFailed;
-                dialogMessage = AppMessages.Connection.DaemonRejectedCredentials;
                 logMessage = $"[conn] auth rejected: {failure.Error.Message}";
             }
             else if (failure.Error is TimeoutException or OperationCanceledException)
             {
-                titleSuffix = dialogTitle = AppMessages.Connection.TimedOutTitle;
-                dialogMessage = failure.Error.Message;
                 logMessage = $"[conn] timeout: {failure.Error.Message}";
             }
             else
             {
-                titleSuffix = "Connection Failed";
-                dialogTitle = AppMessages.Connection.FailedTitle;
-                dialogMessage = AppMessages.Connection.Failed(failure.Error.Message);
                 logMessage = $"[conn] failed: {failure.Error.GetType().Name}: {failure.Error.Message}";
             }
             AppLog.Error(logMessage);
             SetConnectionStatus(ConnState.Disconnected);
-            UpdateTitle(titleSuffix);
-            MessageBox.Show(dialogMessage, dialogTitle, MessageBoxButton.OK, MessageBoxImage.Error);
+            UpdateTitle("Connection Failed");
+
+            var dlg = new ConnectionFailedDialog(AppMessages.Connection.ConnectFailedMessage).OwnedBy(this);
+            ShowDialogPreservingGeometry(dlg);
+            if (dlg.OpenSettings) OpenSettingsDialog(SettingsTab.Connection);
         });
     }
 
@@ -167,6 +160,7 @@ public partial class MainWindow
         {
             if (!_screenSession.IsCurrent(state.Id)) return;
             _daemonBooting = state.Booting;
+            ApplyNautilusLamps(state.ModeLit, state.PageLit);
             ApplyDaemonState(state.Mode, state.EditContext);
         }, DispatcherPriority.Background);
     }
@@ -224,11 +218,16 @@ public partial class MainWindow
         }
     }
 
+    // Called from SetConnectionStatus's Disconnected branch - the one path BOTH a dropped session
+    // and a user-initiated Disconnect() reach (a manual disconnect never fires
+    // OnSessionDisconnected: ScreenSession.StopCurrent bumps its id first, so ReceiverDisconnected
+    // bails), which is why the Nautilus lamps are cleared here rather than there.
     void ClearModeButtons()
     {
         foreach (var btn in new[] { _kronosRightPanel.BTN_Setlist, _kronosRightPanel.BTN_Combi, _kronosRightPanel.BTN_Program,
                                      _kronosRightPanel.BTN_Sequence, _kronosRightPanel.BTN_Sampling, _kronosRightPanel.BTN_Global, _kronosRightPanel.BTN_Disk })
             btn.IsActive = false;
+        ApplyNautilusLamps(null, null);   // no session, no LED reading - don't leave stale lamps lit
         ModeText.Text = "";
     }
 
@@ -255,11 +254,22 @@ public partial class MainWindow
         ButtonForMode(_currentMode)?.Activate();
     }
 
-    // Nautilus's Mode/Page lighting is removed entirely (your 2026-09-22 direction - it was
-    // lighting under strange conditions; simplest fix is no persistent front-panel indicator
-    // there at all, same as Sequence/Sampling/Global/Disk/Setlist already had none). _currentMode
-    // bookkeeping (ModeText, _seqTransport.CurrentMode, etc.) is untouched by this - only the
-    // button-lighting side is skipped for Nautilus.
+    // Nautilus MODE/PAGE front-panel LEDs, mirrored straight from the STATE poll's MODE_LIT/
+    // PAGE_LIT fields. They are two independent popup toggles, not a mode reading, so they never
+    // go through ButtonForMode/SetModeButton - and the daemon's hook counts injected BUTTON
+    // presses as well as physical ones (mode_page_hook.c), so the client must not toggle
+    // optimistically on click or every press would count twice. null (Kronos, or a Nautilus
+    // whose mode_page_hook.ko didn't load) leaves both unlit rather than guessing.
+    void ApplyNautilusLamps(bool? modeLit, bool? pageLit)
+    {
+        _nautilusRightPanel.BTN_Mode.IsActive = modeLit ?? false;
+        _nautilusRightPanel.BTN_Page.IsActive = pageLit ?? false;
+    }
+
+    // Nautilus has no per-mode front-panel button to light: MODE/PAGE are popup toggles with
+    // their own LEDs (ApplyNautilusLamps), not mode-select keys. _currentMode bookkeeping
+    // (ModeText, _seqTransport.CurrentMode, etc.) is untouched by this - only the button-lighting
+    // side is skipped for Nautilus.
     KronosButton? ButtonForMode(Mode mode) => _deviceFamily == DeviceFamily.Nautilus
         ? null
         : mode switch

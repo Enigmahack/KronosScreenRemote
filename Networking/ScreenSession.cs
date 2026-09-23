@@ -14,7 +14,11 @@ internal readonly record struct ScreenSessionInfo(
 // MODEL CONFLICT - callers that need to branch on device type should key off Family.
 internal readonly record struct DeviceModelInfo(string Family, string Model, int FbBpp);
 
-internal readonly record struct ScreenDaemonState(long Id, Mode Mode, EditContext EditContext, bool Booting);
+// ModeLit/PageLit are the Nautilus MODE/PAGE front-panel LEDs (daemon 3.1.0+). null means the
+// daemon didn't report them at all - a Kronos, or a Nautilus whose mode_page_hook.ko failed to
+// load - which is not the same as "reported off" and must not light anything.
+internal readonly record struct ScreenDaemonState(
+    long Id, Mode Mode, EditContext EditContext, bool Booting, bool? ModeLit, bool? PageLit);
 
 internal readonly record struct ScreenSessionFailure(long Id, Exception? Error);
 
@@ -49,7 +53,7 @@ internal sealed class ScreenSession : IDisposable
         lock (_gate) _ctrl = ctrl;
     }
 
-    public void Start(ScreenConnection connection, Func<CancellationToken, Task<bool>> ensureFtpLogin)
+    public void Start(ScreenConnection connection)
     {
         var (connect, poll, receiver, ctrl) = StopCurrent();
         CancelAndDispose(connect, poll, receiver, ctrl);
@@ -62,7 +66,7 @@ internal sealed class ScreenSession : IDisposable
             _connectCts = cts;
             id = _id;
         }
-        _ = Task.Run(() => ConnectAsync(id, connection, ensureFtpLogin, cts));
+        _ = Task.Run(() => ConnectAsync(id, connection, cts));
     }
 
     public void Disconnect()
@@ -88,20 +92,11 @@ internal sealed class ScreenSession : IDisposable
         lock (_gate) return _id == id;
     }
 
-    async Task ConnectAsync(long id, ScreenConnection connection,
-                            Func<CancellationToken, Task<bool>> ensureFtpLogin,
-                            CancellationTokenSource cts)
+    async Task ConnectAsync(long id, ScreenConnection connection, CancellationTokenSource cts)
     {
         var ct = cts.Token;
         try
         {
-            if (!await ensureFtpLogin(ct).ConfigureAwait(false))
-            {
-                if (!ct.IsCancellationRequested) Fail(id, cts, null);
-                return;
-            }
-            if (ct.IsCancellationRequested) return;
-
             var receiver = _receiverFactory(connection);
             // StreamReceiver's receive thread starts at the tail of its own handshake, BEFORE
             // ConnectAsync's await below returns control here - so an immediate post-handshake
@@ -202,7 +197,8 @@ internal sealed class ScreenSession : IDisposable
                         return;
                 }
                 if (state is { } s)
-                    StateReceived?.Invoke(new ScreenDaemonState(id, s.Mode, s.EditContext, s.Booting));
+                    StateReceived?.Invoke(new ScreenDaemonState(
+                        id, s.Mode, s.EditContext, s.Booting, s.ModeLit, s.PageLit));
 
                 await Task.Delay(ModePollIntervalMs, cts.Token).ConfigureAwait(false);
             }
@@ -267,17 +263,29 @@ internal sealed class ScreenSession : IDisposable
         poll?.Dispose();
     }
 
-    internal static (Mode Mode, EditContext EditContext, bool Booting)? ParseDaemonState(string? response)
+    internal static (Mode Mode, EditContext EditContext, bool Booting, bool? ModeLit, bool? PageLit)?
+        ParseDaemonState(string? response)
     {
         if (response == null) return null;
 
         int mode = -1, editContext = 0, boot = 1;
+        bool? modeLit = null, pageLit = null;
         foreach (var token in response.Split(' ', StringSplitOptions.RemoveEmptyEntries))
         {
             int equals = token.IndexOf('=');
             if (equals <= 0) continue;
             var value = token[(equals + 1)..];
-            if (token.StartsWith("MODE=", StringComparison.Ordinal))
+            // MODE_LIT/PAGE_LIT before MODE= - not strictly required ("MODE_LIT=" doesn't start
+            // with "MODE="), but it keeps the two from ever depending on that coincidence.
+            if (token.StartsWith("MODE_LIT=", StringComparison.Ordinal))
+            {
+                modeLit = int.TryParse(value, out int lit) ? lit != 0 : null;
+            }
+            else if (token.StartsWith("PAGE_LIT=", StringComparison.Ordinal))
+            {
+                pageLit = int.TryParse(value, out int lit) ? lit != 0 : null;
+            }
+            else if (token.StartsWith("MODE=", StringComparison.Ordinal))
             {
                 if (!int.TryParse(value, out mode)) mode = -1;
             }
@@ -290,7 +298,9 @@ internal sealed class ScreenSession : IDisposable
                 if (!int.TryParse(value, out boot)) boot = 1;
             }
         }
-        return mode >= 0 ? ((Mode)mode, (EditContext)editContext, boot != 0) : null;
+        return mode >= 0
+            ? ((Mode)mode, (EditContext)editContext, boot != 0, modeLit, pageLit)
+            : null;
     }
 
     internal static DeviceModelInfo? ParseModelInfo(string? response)

@@ -5,7 +5,7 @@ namespace KronosScreenRemote;
 // The daemon's SYSEX command captures only a single F0...F7 block and caps at
 // 64 KB, so it can't return a multi-object bank dump or a large object (a full
 // Set List is ~79 KB of SysEx). Instead we send the request fire-and-forget
-// (IKronosMidiTransport.SendAsync) and gather the 0x73 replies off the
+// (IMidiTransport.SendAsync) and gather the 0x73 replies off the
 // transport's live stream (SysExMessageReceived), which broadcasts every message
 // with no size limit - identically over the TCP (port-9875) and USB backends.
 //
@@ -14,11 +14,11 @@ namespace KronosScreenRemote;
 // callers can't interleave their 0x73 streams.
 sealed class SysExDumpCollector
 {
-    readonly IKronosMidiTransport _transport;
+    readonly IMidiTransport _transport;
     readonly IKorgSysExCodec _codec;
     readonly SemaphoreSlim _gate = new(1, 1);
 
-    public SysExDumpCollector(IKronosMidiTransport transport, IKorgSysExCodec codec)
+    public SysExDumpCollector(IMidiTransport transport, IKorgSysExCodec codec)
     {
         _transport = transport;
         _codec = codec;

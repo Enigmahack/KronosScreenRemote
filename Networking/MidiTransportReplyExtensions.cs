@@ -18,7 +18,7 @@ static class MidiTransportReplyExtensions
     // Value-type replies (int reply code, ProgramBankTypes): `match` returns Nullable<T>, and a
     // send failure or timeout returns a genuine null Nullable<T>.
     public static async Task<T?> AwaitReplyAsync<T>(
-        this IKronosMidiTransport transport,
+        this IMidiTransport transport,
         Func<Task<bool>> send,
         Func<byte[], T?> match,
         int timeoutMs)
@@ -50,7 +50,7 @@ static class MidiTransportReplyExtensions
     // Reference-type replies (a byte[] digest): `match` returns a nullable reference, and a send
     // failure or timeout returns null.
     public static async Task<T?> AwaitReplyAsync<T>(
-        this IKronosMidiTransport transport,
+        this IMidiTransport transport,
         Func<Task<bool>> send,
         Func<byte[], T?> match,
         int timeoutMs)

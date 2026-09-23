@@ -49,10 +49,122 @@ static class NautilusSysExCapture
         Console.WriteLine();   // move off the shell's existing prompt line
     }
 
-    // Opens a UsbMidiTransport on `match`, printing the device lists and a clear error (then
-    // exiting 1) if either direction can't be found/opened. Returns null in that failure case.
-    static UsbMidiTransport? OpenTransport(string match)
+    // Opens either a USB or TCP transport depending on `match`'s format. A `match` starting
+    // with "tcp:" (e.g. "tcp:10.0.0.5:7374") connects through a screenremote daemon's TCP
+    // bridge - the SAME IMidiTransport backend already used for the Kronos when a daemon
+    // relays its own local USB-MIDI connection over the network (see MidiTransportCoordinator).
+    // Anything else is treated as a USB device-name substring match (original behavior, e.g.
+    // "NAUTILUS"). Needed because a Nautilus can be reached either way depending on setup: a
+    // direct USB-MIDI cable to this machine, or a daemon on a different machine relaying its
+    // own local USB connection to the Nautilus over TCP - printing "no MIDI device found" in
+    // the latter case (as this tool originally did, before it understood "tcp:") is misleading,
+    // since the instrument genuinely has no local USB presence to find.
+    // Kept alive for the process's lifetime (every caller ends in Environment.Exit, so explicit
+    // disposal is unnecessary - the OS reclaims the sockets on exit, same convention as every
+    // other resource in this file). Referenced here only so the GC never collects them while a
+    // headless run is in flight - see EstablishStreamOwnership's own comment for why this exists.
+    static ScreenSession? _ownershipSession;
+    static CtrlClient? _ownershipCtrl;
+
+    // The daemon's ctrl-port MIDI commands (MIDI_SEND, MIDI_STATUS - and everything else
+    // touch/button/wheel/slider/knob-related) are "ownership-gated": per KronosScreenRemoteDaemon/
+    // docs/api.md section 5, they're answered ONLY for the IP currently holding an authenticated
+    // connection on the FRAMEBUFFER STREAM port (7373 by default - a completely different thing
+    // from the port-9875 MIDI bridge, which needs no auth at all per the same doc). A short
+    // allowlist (VERSION/MODEL/STATE/etc.) is answered from any IP regardless - which is exactly
+    // why MODEL/STATE worked fine in this session's diagnosis while MIDI_SEND/MIDI_STATUS both
+    // silently returned zero bytes: nothing in this standalone tool ever opened a stream-port
+    // connection, so this IP was never a recognized owner. The full GUI app never hits this
+    // because it always holds a live ScreenSession (that's the whole point of the app - screen
+    // mirroring) as a side effect of normal operation.
+    //
+    // Reuses the app's own ScreenSession/CtrlClient/StreamReceiver classes (the exact same ones
+    // MainWindow uses) rather than reimplementing the KSCR v3 stream handshake's binary hello +
+    // credentials here - that protocol (KronosScreenRemoteDaemon/docs/api.md section 3) is
+    // nontrivial and already correctly implemented; this just needs the connection alive, not its
+    // pixel data. Credentials/host/port come from the same Storage.LoadSettings() the GUI uses -
+    // matches the credentials the user already has saved and already proven to work against this
+    // exact Nautilus (the live GUI session earlier this conversation).
+    static bool EstablishStreamOwnership(string host, int timeoutMs = 8000)
     {
+        var settings = Storage.LoadSettings();
+        var ctrl = new CtrlClient(host, CtrlQuery.CtrlPort);
+        var session = new ScreenSession(ctrl);
+
+        var tcs = new TaskCompletionSource<bool>();
+        session.Connected += _ => tcs.TrySetResult(true);
+        session.ConnectionFailed += f => tcs.TrySetResult(false);
+
+        Console.WriteLine($"Establishing stream-port ownership at {host}:{settings.StreamPort} " +
+                           "(required before the daemon will answer any MIDI_SEND/MIDI_STATUS command)...");
+        session.Start(new ScreenConnection(host, settings.StreamPort, settings.PullMode, settings.MaxFps,
+            settings.FtpUsername, settings.FtpPassword));
+
+        // Safe to block synchronously here (no Task.Run wrapper needed, unlike SendAndWait above):
+        // ScreenSession.Start's own ConnectAsync already runs via its own internal Task.Run, so
+        // tcs is completed from an already-isolated background thread, not from a continuation
+        // that needs this (WPF-dispatcher-bearing) thread to be free.
+        bool ok = Task.WhenAny(tcs.Task, Task.Delay(timeoutMs)).GetAwaiter().GetResult() == tcs.Task
+            && tcs.Task.Result;
+
+        if (!ok)
+        {
+            Console.WriteLine("Stream-port ownership failed or timed out - check KronosHost/StreamPort/" +
+                               "FtpUsername/FtpPassword in Settings match this Nautilus, and that no other " +
+                               "client (the GUI app itself, another copy of this tool) already owns the stream.");
+            session.Dispose();
+            ctrl.Dispose();
+            return false;
+        }
+
+        Console.WriteLine("Stream-port ownership established.");
+        _ownershipSession = session;
+        _ownershipCtrl = ctrl;
+        return true;
+    }
+
+    static IMidiTransport? OpenTransport(string match)
+    {
+        if (match.StartsWith("tcp:", StringComparison.OrdinalIgnoreCase))
+        {
+            var parts = match.Substring(4).Split(':');
+            if (parts.Length != 2 || parts[0].Length == 0 || !int.TryParse(parts[1], out int port))
+            {
+                Console.WriteLine($"Bad TCP address '{match}' - expected 'tcp:<host>:<port>', e.g. 'tcp:10.0.0.5:7374'.");
+                Environment.Exit(1);
+                return null;
+            }
+            if (!EstablishStreamOwnership(parts[0]))
+            {
+                Environment.Exit(1);
+                return null;
+            }
+            Console.WriteLine($"Connecting to daemon at {parts[0]}:{port}...");
+            var tcpTransport = new TcpMidiTransport(parts[0], port);
+            // TCP's live inbound stream (the port-9875 monitor) must be explicitly enabled -
+            // unlike USB, where the single device connection inherently carries replies (see
+            // IMidiTransport.SetStreamEnabled's own doc comment). Order matters: matches
+            // SysExService.Start's SetStreamEnabled-before-Start sequencing exactly.
+            tcpTransport.SetStreamEnabled(true);
+            tcpTransport.Start();
+            // Both SetStreamEnabled and Start kick off MidiStreamMonitor's TCP connect to 9875
+            // fire-and-forget (Task.Run, not awaited) - this call returns before that socket is
+            // actually connected. Port 9875 is a hub per KronosScreenRemoteDaemon/docs/api.md
+            // section 8 (broadcasts inbound MIDI to whichever clients are CURRENTLY joined, no
+            // replay/buffering for one that joins late) - a request sent immediately after this
+            // call risks the Nautilus's reply arriving before this socket finishes joining, which
+            // is simply lost, not delivered late. Hardware-confirmed 2026-09-23: a raw MIDI_SEND
+            // diagnostic got "OK" from the daemon (proving injection worked) while a full request/
+            // reply round trip through this same OpenTransport timed out - the send succeeded,
+            // the listener just wasn't ready yet. MidiStreamMonitor exposes no "connected" event
+            // to await properly (would need a small addition to that shared, Kronos-live-path
+            // class); this fixed delay is the low-risk fix for a standalone diagnostic tool where
+            // an extra fraction of a second per invocation costs nothing. A LAN handshake to the
+            // instrument's own embedded Linux should complete in well under this margin.
+            Task.Delay(750).Wait();
+            return tcpTransport;
+        }
+
         Console.WriteLine("Available MIDI IN devices:");
         for (int i = 0; i < MidiIn.NumberOfDevices; i++)
             Console.WriteLine($"  [{i}] {MidiIn.DeviceInfo(i).ProductName}");
@@ -118,44 +230,91 @@ static class NautilusSysExCapture
         Environment.Exit(0);
     }
 
-    // Active request->reply round trip: sends a real func-0x72 Object Dump Request (built via
-    // the newly hardware-confirmed NautilusSysEx 6-byte framing) and waits for the matching
-    // func-0x73 reply, parsing it. Read-only on the instrument (0x72/0x73 only - no Store/erase)
-    // but, unlike Run() above, this DOES transmit. Defaults to Program (obj=0) bank 0 index 0.
+    // Above this many bytes, route the send through SendLargeSysExAsync instead of SendAsync -
+    // see SendAndWait's own comment for why. Chosen well under every documented daemon limit
+    // (KronosScreenRemoteDaemon/docs/api.md: ctrl-port MIDI_SEND's ~2 KB line length and 4096-
+    // byte inbound decode buffer), with headroom - small requests (Object Dump Request, Store
+    // Bank Request, Bank Digest Request - all well under 32 bytes) stay on the already-proven
+    // SendAsync/ctrl-port path unchanged; only a real object body write needs this.
+    const int LargeSendThreshold = 1024;
+
+    // Shared "-> send, <- await first matching reply" wrapper for every request/reply method
+    // below - a thin printing layer over MidiTransportReplyExtensions.AwaitReplyAsync (the same
+    // subscribe/send/await/unsubscribe scaffold the Kronos live path already uses for exactly
+    // this shape), replacing what used to be 4 independently hand-rolled TaskCompletionSource
+    // closures with one shared call. `verbose=false` (used by RunBankDigestScan's per-bank loop)
+    // suppresses the hex-dump lines so a multi-bank scan doesn't drown in per-request noise.
+    //
+    // Request size determines the send path: TcpMidiTransport.SendAsync's ctrl-port MIDI_SEND
+    // sends the ENTIRE hex-encoded message as one line with no chunking - fine for the small
+    // requests (Object Dump Request, Store Bank Request) this tool sends everywhere else, but a
+    // full converted Program body (8-to-7 encoded, ~5.6 KB) blows past both of the daemon's
+    // documented single-write caps (docs/api.md: ctrl-port ~2 KB line limit, 4096-byte inbound
+    // decode buffer). Hardware-confirmed 2026-09-23: a real --nautilus-convert-and-write run sent
+    // exactly this oversized write, got no reply at all (not an error - just silence, since the
+    // daemon's own line/buffer limits were exceeded), and timed out - the target slot's original
+    // content was correctly never touched (the code never reaches Store without a write reply),
+    // but this needed to be diagnosed rather than assumed harmless. SendLargeSysExAsync already
+    // exists for exactly this (prefers writing the whole object as one shot over the already-
+    // connected 9875 socket, falling back to auto-chunked ctrl-port MIDI_SEND only if that fails)
+    // - this was simply never wired up for the write step.
+    //
+    // The Task.Run wrapper is load-bearing, not decoration: this app is WPF, so OnStartup (where
+    // every --nautilus-* CLI flag is dispatched, including this one) runs on a thread with an
+    // active DispatcherSynchronizationContext. AwaitReplyAsync's `send()` delegate calls down
+    // through TcpMidiTransport.SendAsync (correctly ConfigureAwait(false)'d) into
+    // CtrlQuery.QueryAsync, whose OWN internal awaits (ConnectAsync/SendAllAsync/ReceiveAsync)
+    // are NOT ConfigureAwait(false)'d - fine everywhere else in the app (nothing else blocks
+    // synchronously on that chain), but blocking on it here via .GetAwaiter().GetResult() directly
+    // deadlocks forever: those continuations try to resume on this very thread, which is busy
+    // waiting for them. Hardware-confirmed 2026-09-22 - the very first live TCP test hung
+    // indefinitely (25s+, no timeout message) at exactly this point until this fix.
+    // Task.Run moves the whole async chain onto a thread-pool thread with no captured
+    // SynchronizationContext, so every await in it resumes freely regardless of ConfigureAwait.
+    static byte[]? SendAndWait(IMidiTransport transport, byte[] request, Func<byte[], bool> matchFn,
+        string label, int timeoutMs = 5000, bool verbose = true)
+    {
+        if (verbose) Console.WriteLine($"-> {label}: {MidiHex.ToHex(request, 24)}");
+        var reply = Task.Run(() => transport.AwaitReplyAsync(
+            send: () => request.Length > LargeSendThreshold
+                ? transport.SendLargeSysExAsync(request)
+                : transport.SendAsync(request),
+            match: (byte[] m) => matchFn(m) ? m : null,
+            timeoutMs)).GetAwaiter().GetResult();
+        if (reply == null) { if (verbose) Console.WriteLine($"   TIMEOUT waiting for reply to: {label}"); return null; }
+        if (verbose) Console.WriteLine($"<- {reply.Length} bytes: {MidiHex.ToHex(reply, 16)}");
+        return reply;
+    }
+
+    // Active request->reply round trip: sends a real func-0x72 Object Dump Request and waits for
+    // the matching func-0x73 reply, parsing it, via the board-specific IKorgSysExCodec (Kronos
+    // vs Nautilus header framing) rather than calling NautilusSysEx directly - this method (and
+    // every other one below) is no longer Nautilus-only by construction, just Nautilus-only by
+    // which codec it happens to resolve. Read-only on the instrument (0x72/0x73 only - no Store/
+    // erase) but, unlike Run() above, this DOES transmit. Defaults to Program (obj=0) bank 0
+    // index 0.
     public static void RunRequestReply(string? match, int obj, int bank, int index)
     {
         AttachOrAllocConsole();
         match ??= "NAUTILUS";
+        var codec = KorgSysExCodecs.For(DeviceFamily.Nautilus);
 
         var transport = OpenTransport(match);
         if (transport == null) return;
 
-        var tcs = new TaskCompletionSource<byte[]>();
-        transport.SysExMessageReceived += msg =>
-        {
-            if (NautilusSysEx.HasHeaderAt(msg, 0, 0x73)) tcs.TrySetResult(msg);
-        };
-
-        var request = NautilusSysEx.BuildObjectDumpRequest(obj, bank, index);
         Console.WriteLine($"Listening on {transport.Description}.");
-        Console.WriteLine($"Sending Object Dump Request (obj=0x{obj:X2} bank={bank} index={index}): " +
-                           MidiHex.ToHex(request));
-        _ = transport.SendAsync(request);
-
-        var winner = Task.WhenAny(tcs.Task, Task.Delay(5000)).GetAwaiter().GetResult();
-        if (winner != tcs.Task)
+        var request = codec.BuildObjectDumpRequest(obj, bank, index);
+        var reply = SendAndWait(transport, request, m => codec.HasHeaderAt(m, 0, 0x73),
+            $"Object Dump Request (obj=0x{obj:X2} bank={bank} index={index})");
+        if (reply == null)
         {
-            Console.WriteLine("Timed out after 5s waiting for a func-0x73 reply. Is SysEx Rx/Tx " +
-                               "enabled on the instrument (Global/MIDI)? Is USB the active MIDI route?");
+            Console.WriteLine("Is SysEx Rx/Tx enabled on the instrument (Global/MIDI)? Is USB the active MIDI route?");
             transport.Stop();
             Environment.Exit(1);
             return;
         }
 
-        var reply = tcs.Task.Result;
-        Console.WriteLine($"Reply: {reply.Length} bytes. First 16: {MidiHex.ToHex(reply, 16)}");
-
-        var dump = NautilusSysEx.ParseObjectDump(reply);
+        var dump = codec.ParseObjectDump(reply);
         if (dump == null)
         {
             Console.WriteLine("Header matched func 0x73 but ParseObjectDump returned null - unexpected shape.");
@@ -181,36 +340,16 @@ static class NautilusSysExCapture
     {
         AttachOrAllocConsole();
         match ??= "NAUTILUS";
+        var codec = KorgSysExCodecs.For(DeviceFamily.Nautilus);
 
         var transport = OpenTransport(match);
         if (transport == null) return;
 
-        TaskCompletionSource<byte[]>? pending = null;
-        Func<byte[], bool>? pendingMatch = null;
-        transport.SysExMessageReceived += msg =>
-        {
-            if (pendingMatch != null && pendingMatch(msg)) pending?.TrySetResult(msg);
-        };
+        var readReq = codec.BuildObjectDumpRequest(obj, bank, index);
 
-        byte[]? SendAndWait(byte[] request, Func<byte[], bool> matchFn, string label, int timeoutMs = 5000)
-        {
-            pending = new TaskCompletionSource<byte[]>();
-            pendingMatch = matchFn;
-            Console.WriteLine($"-> {label}: {MidiHex.ToHex(request, 24)}");
-            _ = transport.SendAsync(request);
-            var winner = Task.WhenAny(pending.Task, Task.Delay(timeoutMs)).GetAwaiter().GetResult();
-            pendingMatch = null;
-            if (winner != pending.Task) { Console.WriteLine($"   TIMEOUT waiting for reply to: {label}"); return null; }
-            var reply = pending.Task.Result;
-            Console.WriteLine($"<- {reply.Length} bytes: {MidiHex.ToHex(reply, 16)}");
-            return reply;
-        }
-
-        var readReq = NautilusSysEx.BuildObjectDumpRequest(obj, bank, index);
-
-        var readReply = SendAndWait(readReq, m => NautilusSysEx.HasHeaderAt(m, 0, 0x73), "Object Dump Request (0x72)");
+        var readReply = SendAndWait(transport, readReq, m => codec.HasHeaderAt(m, 0, 0x73), "Object Dump Request (0x72)");
         if (readReply == null) { transport.Stop(); Environment.Exit(1); return; }
-        var original = NautilusSysEx.ParseObjectDump(readReply);
+        var original = codec.ParseObjectDump(readReply);
         if (original == null) { Console.WriteLine("Couldn't parse original dump."); transport.Stop(); Environment.Exit(1); return; }
         Console.WriteLine($"Original: version={original.Version} bodyLen={original.Body.Length}");
 
@@ -219,19 +358,19 @@ static class NautilusSysExCapture
         Console.WriteLine("non-volatile storage - this is the destructive step). Press Enter to continue, Ctrl+C to abort.");
         Console.ReadLine();
 
-        var writeMsg = NautilusSysEx.BuildObjectDumpMessage(obj, bank, index, original.Version, original.Body);
-        var writeReply = SendAndWait(writeMsg, m => NautilusSysEx.ParseReply(m) != null, "Object Dump WRITE (0x73), bytes unchanged");
+        var writeMsg = codec.BuildObjectDumpMessage(obj, bank, index, original.Version, original.Body);
+        var writeReply = SendAndWait(transport, writeMsg, m => codec.ParseReply(m) != null, "Object Dump WRITE (0x73), bytes unchanged");
         if (writeReply == null) { transport.Stop(); Environment.Exit(1); return; }
-        Console.WriteLine($"Write reply code: {NautilusSysEx.ParseReply(writeReply)} (0 = success)");
+        Console.WriteLine($"Write reply code: {codec.ParseReply(writeReply)} (0 = success)");
 
-        var storeReq = NautilusSysEx.BuildStoreBankRequest(obj, bank);
-        var storeReply = SendAndWait(storeReq, m => NautilusSysEx.ParseReply(m) != null, "Store Bank Request (0x76)");
+        var storeReq = codec.BuildStoreBankRequest(obj, bank);
+        var storeReply = SendAndWait(transport, storeReq, m => codec.ParseReply(m) != null, "Store Bank Request (0x76)");
         if (storeReply == null) { transport.Stop(); Environment.Exit(1); return; }
-        Console.WriteLine($"Store reply code: {NautilusSysEx.ParseReply(storeReply)} (0 = success)");
+        Console.WriteLine($"Store reply code: {codec.ParseReply(storeReply)} (0 = success)");
 
-        var reReadReply = SendAndWait(readReq, m => NautilusSysEx.HasHeaderAt(m, 0, 0x73), "Object Dump Request (0x72) - verify");
+        var reReadReply = SendAndWait(transport, readReq, m => codec.HasHeaderAt(m, 0, 0x73), "Object Dump Request (0x72) - verify");
         if (reReadReply == null) { transport.Stop(); Environment.Exit(1); return; }
-        var after = NautilusSysEx.ParseObjectDump(reReadReply);
+        var after = codec.ParseObjectDump(reReadReply);
         bool identical = after != null && after.Version == original.Version && after.Body.AsSpan().SequenceEqual(original.Body);
 
         Console.WriteLine();
@@ -239,6 +378,125 @@ static class NautilusSysExCapture
             ? "CONFIRMED: byte-identical after write + store + re-dump round trip."
             : $"MISMATCH after round trip - version {after?.Version} vs {original.Version}, " +
               $"bodyLen {after?.Body.Length} vs {original.Body.Length}.");
+
+        transport.Stop();
+        Environment.Exit(identical ? 0 : 1);
+    }
+
+    // Shared load+convert step for both RunConvertDryRun and RunConvertAndWrite below - reads a
+    // real Program from a real Kronos .pcg file (offline, no live Kronos or Nautilus needed) and
+    // runs it through the shipped ProgramConverter.KronosToNautilus pipeline. Touches no
+    // hardware at all - safe to call from anywhere, including outside this headless-tool file.
+    // `programName` matches PcgObjectEntry.Name (trimmed, case-insensitive) - simpler than
+    // requiring the caller to pre-decode the source bank/index for a one-off lookup.
+    public static ProgramConverter.ConversionResult? LoadAndConvert(string kronosPcgPath, string programName, out string? sourceDescription,
+        byte[]? nautilusTemplate = null)
+    {
+        sourceDescription = null;
+        byte[] pcgData;
+        try { pcgData = File.ReadAllBytes(kronosPcgPath); }
+        catch (Exception ex) { Console.WriteLine($"Couldn't read '{kronosPcgPath}': {ex.Message}"); return null; }
+
+        var pcg = PcgFile.Open(pcgData);
+        if (pcg == null) { Console.WriteLine($"'{kronosPcgPath}' is not a recognizable Kronos .pcg file."); return null; }
+
+        var candidates = pcg.Objects.Where(o => o.Loc.ObjType == LibObj.Program &&
+            string.Equals(o.Name.Trim(), programName.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+        if (candidates.Count == 0) { Console.WriteLine($"No Program named \"{programName}\" found in '{kronosPcgPath}'."); return null; }
+        if (candidates.Count > 1) { Console.WriteLine($"{candidates.Count} Programs named \"{programName}\" found - name isn't unique in this file, aborting."); return null; }
+        var source = candidates[0];
+
+        byte[] wireBody;
+        try { wireBody = ProgramFormatConverter.PcgToWire(source.Body, source.IsExi); }
+        catch (ArgumentException ex) { Console.WriteLine($"Couldn't convert .pcg record to wire format: {ex.Message}"); return null; }
+
+        string? engineName = source.IsExi ? LibRefs.ProgramEngineName(wireBody) : "HD-1";
+        sourceDescription = $"\"{source.Name}\" ({(source.IsExi ? "EXi" : "HD-1")}{(engineName != null ? $"/{engineName}" : "")}), wire body {wireBody.Length} bytes";
+        Console.WriteLine($"Source: {sourceDescription}.");
+
+        var map = RomWaveformMap.FromCatalog();
+        var exsCatalog = ExsOptionIndex.FromCatalog();
+        var geCatalog = KarmaGeCatalog.FromCatalog();
+        var result = ProgramConverter.KronosToNautilus(wireBody, map, exsCatalog, geCatalog, nautilusTemplate);
+
+        foreach (var w in result.Warnings) Console.WriteLine($"WARNING: {w}");
+        foreach (var r in result.Refusals) Console.WriteLine($"REFUSED: {r}");
+        if (result.NautilusBody == null)
+            Console.WriteLine("Conversion refused - see refusal(s) above.");
+        else
+            Console.WriteLine($"Converted OK: {result.NautilusBody.Length} bytes (was {wireBody.Length}).");
+        return result;
+    }
+
+    // `--nautilus-convert-dry-run <kronos.pcg> <program-name>` - runs LoadAndConvert and prints
+    // the result. No transport, no hardware, no write - safe to run anytime, as often as wanted,
+    // to preview what a conversion would produce/warn/refuse before ever touching real hardware.
+    public static void RunConvertDryRun(string kronosPcgPath, string programName)
+    {
+        AttachOrAllocConsole();
+        var result = LoadAndConvert(kronosPcgPath, programName, out _);
+        Environment.Exit(result?.NautilusBody != null ? 0 : 1);
+    }
+
+    // Writes the CONVERTED body (not a same-bytes echo, unlike RunWriteBackTest above) from
+    // LoadAndConvert into a target slot on the real Nautilus, committing with a Store Bank
+    // Request - same confirm-before-commit gate as RunWriteBackTest.
+    public static void RunConvertAndWrite(string kronosPcgPath, string programName, int targetBank, int targetIndex, string? match)
+    {
+        AttachOrAllocConsole();
+        match ??= "NAUTILUS";
+        var codec = KorgSysExCodecs.For(DeviceFamily.Nautilus);
+
+        // Dry-run first so a refused conversion never opens the transport; the real conversion
+        // below reuses the target slot's own Nautilus-only Scene/Step Seq region as its template.
+        if (LoadAndConvert(kronosPcgPath, programName, out _)?.NautilusBody == null) { Environment.Exit(1); return; }
+
+        var transport = OpenTransport(match);
+        if (transport == null) return;
+
+        const int obj = LibObj.Program;
+        var readReq = codec.BuildObjectDumpRequest(obj, targetBank, targetIndex);
+        var targetReply = SendAndWait(transport, readReq, m => codec.HasHeaderAt(m, 0, 0x73), "Object Dump Request (0x72) - reading TARGET slot first");
+        if (targetReply == null) { transport.Stop(); Environment.Exit(1); return; }
+        var targetBefore = codec.ParseObjectDump(targetReply);
+        if (targetBefore == null) { Console.WriteLine("Couldn't parse target slot's current dump."); transport.Stop(); Environment.Exit(1); return; }
+        string targetName = System.Text.Encoding.ASCII.GetString(
+            targetBefore.Body, 0, Math.Min(24, targetBefore.Body.Length)).TrimEnd('\0', ' ');
+        Console.WriteLine($"Target slot (bank={targetBank} index={targetIndex}) currently holds: \"{targetName}\" " +
+                           $"(version={targetBefore.Version}, {targetBefore.Body.Length} bytes) - this will be overwritten.");
+
+        var result = LoadAndConvert(kronosPcgPath, programName, out _, targetBefore.Body);
+        if (result?.NautilusBody == null) { transport.Stop(); Environment.Exit(1); return; }
+
+        Console.WriteLine();
+        Console.WriteLine("About to write the converted Program above into the target slot, then commit with a");
+        Console.WriteLine("Store Bank Request (non-volatile - confirm you have a fresh backup of the target bank).");
+        Console.WriteLine("Press Enter to continue, Ctrl+C to abort.");
+        Console.ReadLine();
+
+        var writeMsg = codec.BuildObjectDumpMessage(obj, targetBank, targetIndex, targetBefore.Version, result.NautilusBody);
+        var writeReply = SendAndWait(transport, writeMsg, m => codec.ParseReply(m) != null, "Object Dump WRITE (0x73), converted body");
+        if (writeReply == null) { transport.Stop(); Environment.Exit(1); return; }
+        Console.WriteLine($"Write reply code: {codec.ParseReply(writeReply)} (0 = success)");
+
+        var storeReq = codec.BuildStoreBankRequest(obj, targetBank);
+        var storeReply = SendAndWait(transport, storeReq, m => codec.ParseReply(m) != null, "Store Bank Request (0x76)");
+        if (storeReply == null) { transport.Stop(); Environment.Exit(1); return; }
+        Console.WriteLine($"Store reply code: {codec.ParseReply(storeReply)} (0 = success)");
+
+        var reReadReply = SendAndWait(transport, readReq, m => codec.HasHeaderAt(m, 0, 0x73), "Object Dump Request (0x72) - verify");
+        if (reReadReply == null) { transport.Stop(); Environment.Exit(1); return; }
+        var after = codec.ParseObjectDump(reReadReply);
+        bool identical = after != null && after.Body.AsSpan().SequenceEqual(result.NautilusBody);
+        string afterName = after == null ? "?" : System.Text.Encoding.ASCII.GetString(
+            after.Body, 0, Math.Min(24, after.Body.Length)).TrimEnd('\0', ' ');
+
+        Console.WriteLine();
+        Console.WriteLine(identical
+            ? $"CONFIRMED: re-dump byte-identical to the converted body just written. Name now reads \"{afterName}\"."
+            : $"MISMATCH after write+store+re-dump - bodyLen {after?.Body.Length} vs {result.NautilusBody.Length}, name \"{afterName}\".");
+        Console.WriteLine("Now go listen to it on the instrument - byte-identical only confirms the write stuck,");
+        Console.WriteLine("not that it sounds or behaves correctly.");
 
         transport.Stop();
         Environment.Exit(identical ? 0 : 1);
@@ -264,28 +522,23 @@ static class NautilusSysExCapture
     {
         AttachOrAllocConsole();
         match ??= "NAUTILUS";
+        var codec = KorgSysExCodecs.For(DeviceFamily.Nautilus);
 
         var transport = OpenTransport(match);
         if (transport == null) return;
-
-        TaskCompletionSource<byte[]>? pending = null;
-        int pendingBank = -1;
-        transport.SysExMessageReceived += msg =>
-        {
-            var d = NautilusSysEx.ParseBankDigest(msg);
-            if (d != null && d.Value.Obj == obj && d.Value.Bank == pendingBank) pending?.TrySetResult(msg);
-        };
 
         var banks = DigestScanBanksFor(obj);
         Console.WriteLine($"Scanning {banks.Count} bank(s) for obj=0x{obj:X2} via func 0x37/0x38...");
         foreach (int bank in banks)
         {
-            pending = new TaskCompletionSource<byte[]>();
-            pendingBank = bank;
-            _ = transport.SendAsync(NautilusSysEx.BuildBankDigestRequest(obj, bank));
-            var winner = Task.WhenAny(pending.Task, Task.Delay(2000)).GetAwaiter().GetResult();
-            if (winner != pending.Task) { Console.WriteLine($"  bank=0x{bank:X2}  (no reply / not present)"); continue; }
-            var d = NautilusSysEx.ParseBankDigest(pending.Task.Result)!.Value;
+            var request = codec.BuildBankDigestRequest(obj, bank);
+            var reply = SendAndWait(transport, request, m =>
+            {
+                var d = codec.ParseBankDigest(m);
+                return d != null && d.Value.Obj == obj && d.Value.Bank == bank;
+            }, $"Bank Digest Request bank=0x{bank:X2}", timeoutMs: 2000, verbose: false);
+            if (reply == null) { Console.WriteLine($"  bank=0x{bank:X2}  (no reply / not present)"); continue; }
+            var d = codec.ParseBankDigest(reply)!.Value;
             Console.WriteLine($"  bank=0x{bank:X2}  sha1={Convert.ToHexString(d.Sha1)}");
         }
 

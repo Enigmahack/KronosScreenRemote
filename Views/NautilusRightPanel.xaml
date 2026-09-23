@@ -9,37 +9,38 @@
          counterpart.
 
          Button groups (see MainWindow.xaml.cs's WireButtons for the exact wire tokens each sends):
-           - Mode/Page (BTN_Mode/BTN_Page): the only two states the daemon can confirm on
-             Nautilus (Combi/Program) - ButtonMode="None" + RadioGroup, IsActive driven
-             externally by ButtonForMode/SetModeButton, exactly like Kronos's own mode buttons.
+           - Mode/Page (BTN_Mode/BTN_Page): the two front-panel popup-toggle LEDs. ButtonMode="None"
+             and no RadioGroup - they are independent (both can be lit, or neither), and IsActive
+             is mirrored from the STATE poll's MODE_LIT/PAGE_LIT by MainWindow.ApplyNautilusLamps,
+             never set on click.
            - A-F (BTN_A..BTN_F): quick-access shortcuts - momentary, lit only while held
              (ButtonMode="HoldLit"), no persistent state.
            - Exit/Enter, Data Inc/Dec (BTN_Exit/Enter, BTN_DataInc/Dec): ButtonMode="None",
              Unlit-only (no LitSource) - depress-Y feedback only, matching Kronos's own
              Enter/Exit/Inc/Dec buttons exactly. -->
-    <Grid>
-        <Viewbox Stretch="Uniform">
-            <Grid Width="1024" Height="771">
+    <Grid ClipToBounds="True" SizeChanged="OnSizeChanged">
+        <Grid x:Name="DesignGrid" Width="1024" Height="771"
+              HorizontalAlignment="Center" VerticalAlignment="Center">
                 <Image Source="/Resources/Images/NautilusFront1.jpg"
                        Stretch="Fill"
                        RenderOptions.BitmapScalingMode="HighQuality"
                        SnapsToDevicePixels="False"
                        IsHitTestVisible="False"/>
 
-                <!-- ── Mode/Page - daemon-confirmed, exactly like Kronos's mode buttons. No
+                <!-- ── Mode/Page - lit state mirrors the daemon's MODE_LIT/PAGE_LIT. No
                      tooltip - the lit state itself is the indicator (2026-09-22 direction). ── -->
                 <local:KronosButton x:Name="BTN_Mode"
                     Margin="462,279,456,448"
                     AutomationProperties.Name="Mode"
                     UnlitSource="/Resources/Images/ButtonModeUnlit.png"
                     LitSource="/Resources/Images/ButtonModeLit.png"
-                    ButtonMode="None" RadioGroup="NautilusModeGroup"/>
+                    ButtonMode="None"/>
                 <local:KronosButton x:Name="BTN_Page"
                     Margin="782,278,137,449"
                     AutomationProperties.Name="Page"
                     UnlitSource="/Resources/Images/ButtonPageUnlit.png"
                     LitSource="/Resources/Images/ButtonPageLit.png"
-                    ButtonMode="None" RadioGroup="NautilusModeGroup"/>
+                    ButtonMode="None"/>
 
                 <!-- ── A-F quick access - momentary, lit only while held. Tooltips describe what
                      these QA slots are actually programmed to do on your unit (2026-09-22) -
@@ -140,7 +141,6 @@
                         <RotateTransform x:Name="WheelRotate" Angle="0"/>
                     </Image.RenderTransform>
                 </Image>
-            </Grid>
-        </Viewbox>
+        </Grid>
     </Grid>
 </UserControl>

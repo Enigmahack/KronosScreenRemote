@@ -15,7 +15,7 @@ static class MidiTransportCoordinatorSelfTests
         public bool DumpGateActive { get; set; }
         public int StartCount;
         public int ResetCount;
-        public void Start(IKronosMidiTransport transport) => StartCount++;
+        public void Start(IMidiTransport transport) => StartCount++;
         public void Reset() => ResetCount++;
         public Task<bool> RecheckAvailabilityAsync() => Task.FromResult(IsAvailable);
         public void ApplyMidiSettings(bool midiMonitorEnabled, bool proactivePoll, int pollIntervalSec, bool pollOnChanges) { }

@@ -27,7 +27,7 @@ static class MidiDeviceIdentity
     // Nautilus's confirmed manufacturer+family bytes within the reply (indices 5-8).
     static readonly byte[] NautilusFamily = { 0x42, 0x00, 0x01, 0x5D };
 
-    public static async Task<DeviceFamily> ProbeAsync(IKronosMidiTransport transport, CancellationToken ct, int timeoutMs = 1500)
+    public static async Task<DeviceFamily> ProbeAsync(IMidiTransport transport, CancellationToken ct, int timeoutMs = 1500)
     {
         var tcs = new TaskCompletionSource<DeviceFamily>(TaskCreationOptions.RunContinuationsAsynchronously);
 

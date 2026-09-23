@@ -20,18 +20,31 @@ namespace KronosScreenRemote;
 // any of these bytes (all get zeroed), so one warning naming the whole region is more useful
 // than hundreds of near-identical ones.
 //
-// Why zero-fill rather than remove/shrink: pcg_format_kronos_vs_nautilus.md confirms Nautilus's
-// own Program record is only 6 bytes smaller than Kronos's (4954 vs 4960) - far too small a
-// delta to represent removing a 1254-byte section - and confirms the Category byte (offset
-// 2568, immediately after this range) reads correctly at the SAME offset on two real Nautilus
-// files. Nautilus does not shift this region out; it repurposes/leaves it in place. Phase 3c
-// (Scene KARMA->Arp/DrumTrack structural conversion, Q7) will later write its own specific
-// bytes into small sub-ranges of this same [1304,2557] window once Nautilus's own Scene
-// layout there is pinned down - safe to run AFTER this stripper, same clone-and-patch pipeline
-// pattern as SampleZoneRomRemapper.
+// This operates on the Kronos-layout body. ProgramConverter then replaces the whole Kronos
+// [1280, 2558) block with Nautilus's own RT Controller/Scene/Step Seq block and shifts
+// everything after it down by 6 bytes (see ProgramConverter.ToNautilusLayout), so none of
+// these zeroed bytes reach the Nautilus body. Stripping still matters for the Chord bits
+// below, which share bytes with fields that do carry over.
 static class KarmaFieldStripper
 {
     public const int KarmaStart = 1304, KarmaEnd = 2557;   // inclusive, both HD-1 and EXi bodies
+
+    // Two more Kronos-only KARMA sub-fields sit just past [1304,2557], found 2026-09-22 via a
+    // full field-by-field doc diff (Prog_HD-1.txt/Prog_EXi_Common.txt vs their Nautilus
+    // equivalents - see pcg_format_kronos_vs_nautilus.md). These can NOT be handled by extending
+    // KarmaStart/KarmaEnd: byte 2558 also holds Oscillator Mode (bits 2-0 -
+    // LibRefs.OscModeOffset, load-bearing elsewhere in this codebase), Favorite (bit 5), Hold
+    // (bit 6), Assign Mode (bit 7); byte 2562 also holds Unison Thickness (bits 3-0). Only the
+    // specific KARMA-only bits are masked, leaving the rest of each byte untouched.
+    //
+    // Offsets 2572-2577 (Assignable Controller Switch1/2 Assign+Mode+Status, Knob5-8 Assign) are
+    // ALSO Kronos-only per the same doc diff, but deliberately NOT stripped here - unlike Chord
+    // Mode/Source, these aren't obviously KARMA-specific by name, and whether Nautilus silently
+    // repurposes these bytes for something else (like the Vector Control -> X-Y Control rename
+    // elsewhere in the same doc) or truly leaves them dead is unconfirmed. Left as an open
+    // question rather than guessed at - see pcg_format_kronos_vs_nautilus.md.
+    const int ChordModeOffset = 2558, ChordModeMask = 0b0001_1000;    // bits 4-3
+    const int ChordSourceOffset = 2562, ChordSourceMask = 0b0111_0000; // bits 6-4
 
     // `Stripped` is false only when every byte in range was already zero (e.g. an untouched
     // INIT Program) - lets a caller skip emitting a warning for a Program that had no real
@@ -46,7 +59,19 @@ static class KarmaFieldStripper
             if (result[i] != 0) stripped = true;
             result[i] = 0;
         }
+        if (MaskBits(result, ChordModeOffset, ChordModeMask)) stripped = true;
+        if (MaskBits(result, ChordSourceOffset, ChordSourceMask)) stripped = true;
         return (result, stripped);
+    }
+
+    // Clears only `mask`'s bits at `offset`, leaving the byte's other bits untouched. Returns
+    // whether any of those bits were set beforehand (for the caller's `Stripped` reporting).
+    static bool MaskBits(byte[] body, int offset, int mask)
+    {
+        if (offset >= body.Length) return false;
+        bool hadBits = (body[offset] & mask) != 0;
+        body[offset] &= (byte)~mask;
+        return hadBits;
     }
 
     // GE Number - the one KARMA GE assigned to the whole Program (not per-Scene, see

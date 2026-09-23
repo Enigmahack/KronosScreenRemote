@@ -33,12 +33,9 @@ public static class AppMessages
     /// <summary>Connection dialogs and the main-window status line.</summary>
     public static class Connection
     {
-        // ── Connect-failure dialogs (MainWindow.Streaming.ShowConnectError) ──
-        public const string TimedOutTitle = "Connection Timed Out";
-        public const string FailedTitle   = "Kronos ScreenRemote";   // generic connect-fail dialog title
-        public const string DaemonRejectedCredentials =
-            "The Kronos daemon rejected the FTP credentials.\n\nClick Reconnect to try again.";
-        public static string Failed(string detail) => $"Connection failed:\n{detail}";
+        // ── Connect-failure dialog (MainWindow.Streaming.OnSessionConnectionFailed) ──
+        public const string ConnectFailedMessage =
+            "Unable to connect to device - Please validate connection settings and the unit is available.";
 
         // ── No IP configured ──
         public const string NoIpTitle = "Connection";

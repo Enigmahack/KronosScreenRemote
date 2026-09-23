@@ -6,9 +6,9 @@ namespace KronosScreenRemote;
 //   • Fire-and-forget send → CtrlClient MIDI_SEND ctrl command.
 //   • Live inbound stream  → MidiStreamMonitor (port-9875 MIDI-out firehose).
 //
-// This class re-homes those three collaborators under one IKronosMidiTransport and
+// This class re-homes those three collaborators under one IMidiTransport and
 // merges their Traffic streams into one event.
-sealed class TcpMidiTransport : IKronosMidiTransport
+sealed class TcpMidiTransport : IMidiTransport
 {
     readonly string _host;
     readonly int    _ctrlPort;

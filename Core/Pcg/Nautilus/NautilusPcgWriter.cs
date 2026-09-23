@@ -30,13 +30,9 @@ using System.Text;
 //   in real files, but the doc's own stepping formula has no extra gap term and "reproduces the
 //   master chunk-order list exactly" without one - this writer follows the FORMULA (no extra
 //   gap), treating the trailer note as an unconfirmed curiosity rather than a requirement.
-// - This writer does NOT resize/truncate the Program body to Nautilus's own declared itemsize
-//   (4954, confirmed 6 bytes smaller than Kronos's 4960) - it writes exactly whatever length
-//   body the caller passes (itemSize = body.Length). ProgramConverter.KronosToNautilus doesn't
-//   resize either, so a body converted from a full Kronos .pcg-file record will currently come
-//   out 4960 bytes, 6 bytes LARGER than a real Nautilus record's declared size. What those
-//   trailing ~6 bytes represent on Nautilus is unresolved by this session's work - left as an
-//   explicit caveat rather than guessed at.
+// - This writer does NOT resize the Program body - it writes exactly whatever length body the
+//   caller passes (itemSize = body.Length). ProgramConverter.KronosToNautilus already produces
+//   Nautilus-size bodies (EXi 4954, HD-1 3700; see ProgramConverter.ToNautilusLayout).
 static class NautilusPcgWriter
 {
     const byte ModelNautilus = 0xDD;

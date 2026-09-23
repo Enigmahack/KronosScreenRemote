@@ -2,7 +2,7 @@ namespace KronosScreenRemote;
 
 // Off-hardware self-test for MidiTransportReplyExtensions.AwaitReplyAsync - the shared reply-
 // await scaffold behind SysExDumpCollector / SysExService. These four methods had NO behavioral
-// coverage (nothing constructs an IKronosMidiTransport under --librarian-selftest), which let a
+// coverage (nothing constructs an IMidiTransport under --librarian-selftest), which let a
 // real regression slip in unseen: a `where T : notnull` version returned Task<int> for the int
 // callers, so a TIMEOUT yielded reply-code 0 (= success) instead of null - a never-answered
 // Store Bank would have reported success. This locks the timeout/failure semantics down for the
@@ -54,9 +54,9 @@ static class MidiTransportReplySelfTests
         return fails;
     }
 
-    // Minimal IKronosMidiTransport: SendAsync optionally raises one message on the stream (for the
+    // Minimal IMidiTransport: SendAsync optionally raises one message on the stream (for the
     // success path) then reports SendResult; everything else is an inert stub.
-    sealed class FakeTransport : IKronosMidiTransport
+    sealed class FakeTransport : IMidiTransport
     {
         public byte[]? RaiseOnSend;
         public bool SendResult = true;

@@ -62,7 +62,7 @@ interface IMidiBackendControl
     // Start (or switch) the MIDI backend. The transport is chosen by the caller
     // (TCP daemon or direct USB); every SysEx feature works over either. Disposes
     // any previously-running transport.
-    void Start(IKronosMidiTransport transport);
+    void Start(IMidiTransport transport);
 
     void Reset();
 
@@ -95,6 +95,10 @@ interface IRawMidiSend
     Task<bool> SendMidiAsync(string hexBytes);
 
     event Action<SysExTrafficEntry>? SysExTraffic;
+
+    // So SysExToolWindow can decode traffic with the right Exclusive Header shape
+    // (MidiStreamMonitor.DecodeMidi/DecodeHex) - Kronos and Nautilus differ here.
+    DeviceFamily DeviceFamily { get; }
 }
 
 // The instrument's read/query surface: bank + object + set-list dumps and bank-type probes.
@@ -151,7 +155,7 @@ interface IBankDumpService
     //
     // Exposed here rather than letting callers read Storage.LoadNames themselves because the
     // name cache is keyed by the TRANSPORT's cache key - the TCP host for a network session,
-    // but "usb:<device match>" for a USB one (IKronosMidiTransport.CacheKey). A caller holding
+    // but "usb:<device match>" for a USB one (IMidiTransport.CacheKey). A caller holding
     // only the host string would therefore return nothing at all on USB, silently, and look
     // exactly like an instrument that simply has no names cached yet.
     IReadOnlyDictionary<int, string> CachedBankNames(int type, int objBank);

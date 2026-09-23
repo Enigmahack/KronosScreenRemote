@@ -93,6 +93,16 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         LeftPanelColumn.Width = isNautilus ? new GridLength(0) : new GridLength(282, GridUnitType.Star);
         LeftPanelHost.Content = isNautilus ? null : _kronosLeftPanel;
 
+        // Hide Value Input has no effect on Nautilus (the value-slider panel above doesn't
+        // exist there) and its width contribution to SetWindowSize's targetW would otherwise
+        // still be reserved - forcing it on and hiding the menu item keeps both the layout math
+        // and the menu honest. Kronos keeps the user's own setting.
+        _hideValueInput = isNautilus || _settings.HideValueInput;
+        MNU_HideValueInput.Visibility = isNautilus ? Visibility.Collapsed : Visibility.Visible;
+        MNU_HideValueInput.IsChecked  = _hideValueInput;
+
+        UpdateRootGridHeightCap();
+
         // Right-side data panel: Nautilus gets its own background (NautilusRightPanel,
         // NautilusFront1.jpg) in place of the Kronos data-entry surface (KronosRightPanel) -
         // stage 1 of the Nautilus front-panel skin, no buttons yet (see NautilusRightPanel.xaml's
@@ -163,6 +173,28 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         // AppStatusBar) can never see them and throws ResourceReferenceKeyNotFoundException.
         BTN_SeqStart.Style = (Style)(kronosOnly ? BTN_SeqStart.FindResource("SeqTransportToggleBtn") : BTN_SeqStart.FindResource("SeqTransportToggleBtnNoLight"));
         BTN_SeqRec.Style   = (Style)(kronosOnly ? BTN_SeqRec.FindResource("SeqRecordToggleBtn")       : BTN_SeqRec.FindResource("SeqTransportToggleBtnNoLight"));
+    }
+
+    void OnRootGridSizeChanged(object sender, SizeChangedEventArgs e) => UpdateRootGridHeightCap();
+
+    // Nautilus-only: RootGrid's height otherwise just fills whatever the window gives it (its
+    // own SizeChanged, VerticalAlignment="Center" is a no-op with no cap) - fine for Kronos,
+    // where the live screen's 800x600 already matches the column proportions this app was laid
+    // out for (KronosRightPanel.xaml). Nautilus's screen is 800x480 though, so an
+    // uncapped/oversized (maximized, or just a window bigger than the tight fit) RootGrid leaves
+    // FrameImage's own aspect-locked Uniform stretch (RefreshFrameRect) gapping gray above/below
+    // the live picture, and hands NautilusRightPanel's own width-driven scale (see its own
+    // comment) more height than it needs too, deepening its top/bottom crop for no reason.
+    // Capping RootGrid to the screen's own exact aspect-correct height - (RootGrid width / 2,
+    // since the screen and control columns split it evenly) * (_frameH/FrameDesignWidth) - makes
+    // the screen fill this row with zero gap, and gives the control panel the smallest height
+    // that still keeps the screen gap-free, rather than whatever's left over from an oversized
+    // window.
+    void UpdateRootGridHeightCap()
+    {
+        RootGrid.MaxHeight = _deviceFamily == DeviceFamily.Nautilus && RootGrid.ActualWidth > 0
+            ? RootGrid.ActualWidth * _frameH / FrameDesignWidth / 2.0
+            : double.PositiveInfinity;
     }
 
     // Built once in the ctor (before WireButtons() wires up their children - see the ctor's own
@@ -349,9 +381,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         // to, exactly as when this content lived directly in this window's own XAML - only
         // WHICH one is actually attached to LeftPanelHost/RightPanelHost changes, in
         // ApplyDeviceFamilyUi. See KronosLeftPanel.xaml's header comment for why this split
-        // exists. NautilusRightPanel has no wiring yet (no buttons placed on it yet), so it
-        // doesn't need to be built before WireButtons() - built here anyway for symmetry/because
-        // it's cheap (one Image).
+        // exists.
         _kronosLeftPanel    = new KronosLeftPanel();
         _kronosRightPanel   = new KronosRightPanel();
         _nautilusRightPanel = new NautilusRightPanel();
@@ -573,9 +603,8 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
 
         // Nautilus front panel (NautilusRightPanel) - your button-code table, 2026-09-21.
         // Mode/Page share the existing "Mode Combi"/"Mode Program" registry commands, so they
-        // get the same SendMode/pending-mode/boot-gate path as Kronos's own mode buttons; the
-        // lighting side (which button reflects the confirmed mode) is ButtonForMode's Nautilus
-        // branch below.
+        // get the same SendMode/pending-mode/boot-gate path as Kronos's own mode buttons; their
+        // lit state is separate and comes only from the daemon (MainWindow.ApplyNautilusLamps).
         WireCommand(_nautilusRightPanel.BTN_Mode, "Mode Combi");
         WireCommand(_nautilusRightPanel.BTN_Page, "Mode Program");
 
@@ -980,7 +1009,6 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             OverlayLayer.InvalidateVisual();
         };
         MNU_InputTester.Click    += (sender, e) => new InputTesterWindow(_ctrl).OwnedBy(this).Show();
-        MNU_ButtonInjector.Click += (sender, e) => new ButtonInjectorWindow(_ctrl).OwnedBy(this).Show();
         MNU_SysExTool.Click    += (sender, e) => OpenSysExToolWindow();
         MNU_Librarian.Click    += (sender, e) => OpenLibrarianShellWindow();
         MNU_SampleEditor.Click += (sender, e) => OpenSampleEditorWindow();
@@ -1312,6 +1340,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
 
         var dlg = new SettingsWindow(_settings, m => _ = RunUserMacroAsync(m),
             showInputTester: () => new InputTesterWindow(_ctrl).OwnedBy(this).Show(),
+            showButtonInjector: () => new ButtonInjectorWindow(_ctrl).OwnedBy(this).Show(),
             initialTab: tab,
             onImagePreview: PreviewImageAdjust)
             .OwnedBy(this);
@@ -1391,6 +1420,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             Ctrl(DaemonCommand.RefreshDisplay);
         ApplyHideInputPanels();
         MNU_HideDataInput.IsChecked  = _hideDataInput;
+        if (_deviceFamily == DeviceFamily.Nautilus) _hideValueInput = true;   // see ApplyDeviceFamilyUi
         MNU_HideValueInput.IsChecked = _hideValueInput;
 
         _sysExService.ValueSliderCc = _settings.ValueSliderCc;
@@ -2504,6 +2534,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
 
     void ToggleHideValueInput()
     {
+        if (_deviceFamily == DeviceFamily.Nautilus) return;   // always on, not user-toggleable
         _hideValueInput = !_hideValueInput;
         _settings.HideValueInput = _hideValueInput;
         Storage.SaveSettings(_settings);

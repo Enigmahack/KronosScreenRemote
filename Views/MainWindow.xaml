@@ -90,8 +90,6 @@
                 <Separator/>
                 <MenuItem x:Name="MNU_KeyboardInfo" Header="_Keyboard Info..."/>
                 <MenuItem x:Name="MNU_InputTester"  Header="_Input Tester..." Visibility="Collapsed"/>
-                <MenuItem x:Name="MNU_ButtonInjector" Header="_Button Injector..."
-                          ToolTip="Send any daemon-recognized front-panel BUTTON by name and watch what happens on the mirrored screen - for mapping Nautilus's relabeled buttons."/>
                 <MenuItem x:Name="MNU_TestMode"     Header="Enter Kronos _Test Mode"/>
                 <Separator/>
                 <MenuItem x:Name="MNU_DisableKbd"   Header="_Disable Remote Typing" IsCheckable="True" ToolTip="Disable sending keystrokes to the Kronos. All keyboard input remains local."/>
@@ -677,7 +675,7 @@
                  (or null, on Nautilus) in ApplyDeviceFamilyUi - see that file's header comment. -->
             <ContentControl x:Name="LeftPanelHost" Grid.Column="0" Focusable="False"/>
 
-        <Grid x:Name="RootGrid" Grid.Column="1">
+        <Grid x:Name="RootGrid" Grid.Column="1" VerticalAlignment="Center" SizeChanged="OnRootGridSizeChanged">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="173*"/>
                 <ColumnDefinition Width="627*"/>

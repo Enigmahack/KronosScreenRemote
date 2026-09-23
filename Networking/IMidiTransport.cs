@@ -1,18 +1,24 @@
 namespace KronosScreenRemote;
 
-// Byte-level MIDI I/O abstraction to the Kronos. Two backends implement it:
+// Byte-level MIDI I/O abstraction - originally Kronos-only (hence the two backends' own
+// Kronos-flavored naming below), now also used for Nautilus hardware testing (Tools/
+// NautilusSysExCapture.cs) since neither backend's transport-level plumbing cares which
+// instrument is on the other end. Two backends implement it:
 //   • TcpMidiTransport - through the screenremote daemon: SYSEX / MIDI_SEND ctrl
 //     commands for round-trip + fire-and-forget, and the port-9875 MIDI-out
 //     firehose for the live inbound stream.
-//   • UsbMidiTransport - direct USB-MIDI to the Kronos (NAudio/winmm), no daemon.
+//   • UsbMidiTransport - direct USB-MIDI (NAudio/winmm), no daemon.
 //
 // SysExService and SysExDumpCollector are written entirely against this interface,
 // so every SysEx feature (mode/perf follow, Sync Names, Set List dump, note/CC
-// send) works identically over either backend. The Kronos protocol itself
-// (request building, reply parsing, bank tables) lives above this layer in
-// SysExService / KronosSysEx; the transport only moves bytes and correlates a
-// reply to its request.
-interface IKronosMidiTransport : IDisposable
+// send) works identically over either backend. The instrument-specific protocol
+// itself (request building, reply parsing, header framing) lives above this layer,
+// behind IKorgSysExCodec (KronosSysExCodec/NautilusSysExCodec) for the primitives
+// both families share, or directly in KronosSysEx for Kronos-only live-UI features
+// (ProbeAsync's handshake, Librarian/SetListData's direct calls) that haven't been
+// generalized - see IKorgSysExCodec.cs's own header comment for the exact boundary.
+// The transport itself only moves bytes and correlates a reply to its request.
+interface IMidiTransport : IDisposable
 {
     // Human-readable label for logs/UI, e.g. "TCP 192.168.100.15:7374" or
     // "USB: KRONOS".

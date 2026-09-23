@@ -224,6 +224,7 @@ static class UiThemeSmokeTest
         }
         Try("LoginDialog",            () => new LoginDialog("", 0));
         Try("PromptDialog",           () => new PromptDialog("test"));
+        Try("ConnectionFailedDialog", () => new ConnectionFailedDialog("test"));
         Try("InsertSilenceDialog",    () => new InsertSilenceDialog(44100, 11025));
         Try("CreateMultisampleDialog", () => new CreateMultisampleDialog(0));
         // Loaded never fires for a constructed-but-unshown window (see Try's own body -
@@ -366,7 +367,7 @@ internal sealed class FakeSysExService : ISysExService
     public bool PullNamesOnChange { get; set; }
     public bool CanDump => false;
 
-    public void Start(IKronosMidiTransport transport) { }
+    public void Start(IMidiTransport transport) { }
     public void Reset() { }
     public Task<bool> RecheckAvailabilityAsync() => Task.FromResult(false);
     public void RefreshNow() { }
@@ -378,6 +379,7 @@ internal sealed class FakeSysExService : ISysExService
     public IReadOnlyDictionary<int, string> CachedBankNames(int type, int objBank) => new Dictionary<int, string>();
     public void ApplyMidiSettings(bool midiMonitorEnabled, bool proactivePoll, int pollIntervalSec, bool pollOnChanges) { }
     public void SetDeviceFamily(DeviceFamily family) { }
+    public DeviceFamily DeviceFamily => DeviceFamily.Unknown;
     public Task<bool> SendMidiAsync(string hexBytes) => Task.FromResult(false);
     public Task<ObjectDump?> DumpObjectAsync(int obj, int bank, int index, CancellationToken ct = default) => Task.FromResult<ObjectDump?>(null);
     public Task<Dictionary<int, ObjectDump>> DumpBankBulkAsync(int obj, int bank, int count, CancellationToken ct = default) => Task.FromResult(new Dictionary<int, ObjectDump>());

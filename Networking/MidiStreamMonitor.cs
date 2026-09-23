@@ -234,10 +234,13 @@ sealed class MidiStreamMonitor : IDisposable
     // ── MIDI message decoder ─────────────────────────────────────────────────
 
     // Decode a hex string (e.g. "90 3C 64") to a human-readable MIDI description.
-    internal static string DecodeHex(string hex)
+    // family picks the Exclusive Header shape (Kronos 4 bytes vs Nautilus 6, func byte at
+    // index 4 vs 6 - KorgSysExCodecs.For) so the func byte read below lands on the right byte
+    // for whichever device sent it; Unknown is treated as Kronos, same as everywhere else.
+    internal static string DecodeHex(string hex, DeviceFamily family = DeviceFamily.Unknown)
     {
         var bytes = MidiHex.ToBytes(hex);
-        return bytes == null ? hex : DecodeMidi(bytes);
+        return bytes == null ? hex : DecodeMidi(bytes, family);
     }
 
     // maxHexBytes caps how many bytes are rendered into the embedded hex preview.
@@ -245,7 +248,7 @@ sealed class MidiStreamMonitor : IDisposable
     // string here - expensive to allocate and catastrophic to lay out in a wrapping
     // TextBlock. The [{len}B] size tag already conveys the magnitude; the traffic log
     // passes a small cap while callers that want the full hex leave it unbounded.
-    internal static string DecodeMidi(byte[] msg, int maxHexBytes = int.MaxValue)
+    internal static string DecodeMidi(byte[] msg, DeviceFamily family = DeviceFamily.Unknown, int maxHexBytes = int.MaxValue)
     {
         if (msg.Length == 0) return "";
         byte status = msg[0];
@@ -253,9 +256,12 @@ sealed class MidiStreamMonitor : IDisposable
         if (status == 0xF0)
         {
             string raw = MidiHex.ToHex(msg, maxHexBytes);
-            // Korg SysEx: F0 42 3g 68 <func>
-            if (KronosSysEx.HasKorgHeaderAt(msg, 0) && msg.Length >= 5)
-                return $"SysEx Korg func={msg[4]:X2} [{msg.Length}B]  [{raw}]";
+            // Korg SysEx: Kronos F0 42 3g 68 <func>, Nautilus F0 42 3g 00 01 5D <func> - same
+            // function codes/semantics either way (NautilusSysEx.cs), only the header length
+            // (and so the func byte's index) differs.
+            int funcIdx = family == DeviceFamily.Nautilus ? 6 : 4;
+            if (KorgSysExCodecs.For(family).HasHeaderAt(msg, 0) && msg.Length > funcIdx)
+                return $"SysEx Korg func={msg[funcIdx]:X2} [{msg.Length}B]  [{raw}]";
             return $"SysEx [{msg.Length}B]  [{raw}]";
         }
 

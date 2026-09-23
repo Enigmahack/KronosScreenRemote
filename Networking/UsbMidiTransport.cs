@@ -19,7 +19,7 @@ using System.Threading.Channels;
 // the same requirement as the TCP backend. If the Kronos doesn't route unsolicited
 // messages to USB, request/reply still works but some follow-features degrade to
 // poll-only; ProbeAsync surfaces that (no reply → not capable).
-sealed class UsbMidiTransport : IKronosMidiTransport
+sealed class UsbMidiTransport : IMidiTransport
 {
     // Buffers large enough that a Set List dump needs only a few, with headroom so
     // the driver always has a queued buffer while one is being processed/re-added.

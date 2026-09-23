@@ -186,6 +186,25 @@ static class PcgConversionSelfTests
         var (_, wasStrippedBlank) = KarmaFieldStripper.StripKarmaFields(alreadyBlankKarma);
         Check("karma-strip-noop-on-already-blank", !wasStrippedBlank);
 
+        // ── KarmaFieldStripper: bit-level Chord Mode/Source strip at 2558/2562, preserving the
+        // other fields sharing those same bytes (Oscillator Mode/Favorite/Hold/Assign Mode at
+        // 2558; Unison Thickness at 2562) ──
+        var chordBody = new byte[ProgramFormatConverter.WireSizeHd1];
+        chordBody[2558] = 0b1111_1111;   // Oscillator Mode=7, Chord Mode=3, Favorite/Hold/Assign Mode all set
+        chordBody[2562] = 0b1111_1111;   // Unison Thickness=15, Chord Source=7
+        var (chordStripped, chordWasStripped) = KarmaFieldStripper.StripKarmaFields(chordBody);
+        Check("karma-strip-reports-stripped-for-chord-only", chordWasStripped);
+        Check("karma-strip-clears-chord-mode-bits", (chordStripped[2558] & 0b0001_1000) == 0);
+        Check("karma-strip-preserves-osc-mode-and-other-2558-bits", (chordStripped[2558] & 0b1110_0111) == 0b1110_0111);
+        Check("karma-strip-clears-chord-source-bits", (chordStripped[2562] & 0b0111_0000) == 0);
+        Check("karma-strip-preserves-unison-thickness", (chordStripped[2562] & 0b0000_1111) == 0b0000_1111);
+
+        var noChordBody = new byte[ProgramFormatConverter.WireSizeHd1];
+        noChordBody[2558] = 0b1110_0111;   // same non-KARMA bits set, Chord Mode bits already 0
+        noChordBody[2562] = 0b0000_1111;   // same non-KARMA bits set, Chord Source bits already 0
+        var (_, noChordWasStripped) = KarmaFieldStripper.StripKarmaFields(noChordBody);
+        Check("karma-strip-no-chord-bits-set-not-reported-stripped", !noChordWasStripped);
+
         // ── KarmaGeCatalog + KarmaFieldStripper.DescribeGeAssignment: names a real GE ──
         var geCatalog = KarmaGeCatalog.FromCatalog(
             """[{"ge_number":47,"name":"Comp/Lead Generated-Riff"}]""");
@@ -220,10 +239,34 @@ static class PcgConversionSelfTests
         Check("converter-success-karma-stripped-warning-present", success.Warnings.Any(w => w.Contains("KARMA performance data")));
         if (success.NautilusBody != null)
         {
-            var (_, _, _, convertedNumber) = LibRefs.IterProgramSampleZoneRefs(success.NautilusBody).First();
+            // LibRefs reads Kronos offsets; the Nautilus body carries the same zones
+            // NautilusSizeDelta bytes earlier, so re-pad it to Kronos layout to inspect them.
+            var asKronos = new byte[fullBody.Length];
+            Array.Copy(success.NautilusBody, 0, asKronos, 0, ProgramConverter.NautilusTailStart);
+            Array.Copy(success.NautilusBody, ProgramConverter.NautilusTailStart, asKronos, ProgramConverter.KronosTailStart,
+                success.NautilusBody.Length - ProgramConverter.NautilusTailStart);
+            var (_, _, _, convertedNumber) = LibRefs.IterProgramSampleZoneRefs(asKronos).First();
             Check("converter-success-zone-remapped", convertedNumber == 20);
             Check("converter-success-karma-zeroed", success.NautilusBody[1400] == 0);
+            Check("converter-success-nautilus-size", success.NautilusBody.Length == ProgramFormatConverter.WireSizeHd1 - 6);
+            Check("converter-success-no-template-warning", success.Warnings.Any(w => w.Contains("zero-filled")));
         }
+
+        // ── ProgramConverter: Kronos -> Nautilus relayout. Head [0,1280) copied, middle taken
+        // from the Nautilus template, tail from Kronos 2558 lands at Nautilus 2552. ──
+        var layoutSrc = new byte[ProgramFormatConverter.WireSizeExi];
+        for (int i = 0; i < layoutSrc.Length; i++) layoutSrc[i] = (byte)(i * 7 + 3);
+        var layoutTemplate = new byte[ProgramFormatConverter.WireSizeExi - 6];
+        Array.Fill(layoutTemplate, (byte)0x5A);
+        var layout = ProgramConverter.KronosToNautilus(layoutSrc, map, noExsCatalog, geCatalog, layoutTemplate);
+        var lb = layout.NautilusBody;
+        Check("relayout-exi-size", lb != null && lb.Length == 4954);
+        Check("relayout-head-copied", lb != null && lb[0] == layoutSrc[0] && lb[1279] == layoutSrc[1279]);
+        Check("relayout-middle-from-template", lb != null && lb[1280] == 0x5A && lb[2551] == 0x5A);
+        Check("relayout-tail-shifted", lb != null && lb[2553] == layoutSrc[2559] && lb[4953] == layoutSrc[4959]);
+        Check("relayout-no-template-warning-when-supplied", !layout.Warnings.Any(w => w.Contains("zero-filled")));
+        var badTemplate = ProgramConverter.KronosToNautilus(layoutSrc, map, noExsCatalog, geCatalog, new byte[3700]);
+        Check("relayout-wrong-template-size-refused", badTemplate.NautilusBody == null && badTemplate.Refusals.Count == 1);
 
         // ── ProgramConverter: refusal case - unmapped ROM zone stops the whole conversion ──
         var refuseBody = BuildHd1BodyWithZoneRef(nn: 0, number: 9999);
