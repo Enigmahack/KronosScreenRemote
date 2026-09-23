@@ -2581,6 +2581,18 @@
   },
   {
     "section": "ROM_MULTISAMPLES",
+    "kronos_index": 48,
+    "nautilus_index": 67,
+    "name": "E.Organ-Perc/Jazz 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 49,
+    "nautilus_index": 68,
+    "name": "E.Organ-Perc/Jazz 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
     "kronos_index": 50,
     "nautilus_index": 69,
     "name": "E.Organ-Perc. 1"
@@ -9148,5 +9160,137 @@
     "kronos_index": 1504,
     "nautilus_index": 1770,
     "name": "Marc Tree"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 10,
+    "nautilus_index": 21,
+    "name": "Electric Grand Piano"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 36,
+    "nautilus_index": 47,
+    "name": "E.Piano Pad 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 37,
+    "nautilus_index": 48,
+    "name": "E.Piano Pad 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 38,
+    "nautilus_index": 57,
+    "name": "Clavi 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 39,
+    "nautilus_index": 58,
+    "name": "Clavi 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 40,
+    "nautilus_index": 59,
+    "name": "Clavi 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 41,
+    "nautilus_index": 60,
+    "name": "Clavi 4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 42,
+    "nautilus_index": 61,
+    "name": "Clavi 2-Muted"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 43,
+    "nautilus_index": 62,
+    "name": "Clavi 3-Muted"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 44,
+    "nautilus_index": 63,
+    "name": "Clavi 4-Muted"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 54,
+    "nautilus_index": 75,
+    "name": "E.Organ-CX-3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 57,
+    "nautilus_index": 91,
+    "name": "E.Organ-Perc.2nd"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 59,
+    "nautilus_index": 81,
+    "name": "E.Organ-Full"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 62,
+    "nautilus_index": 72,
+    "name": "E.Organ-BX-3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 70,
+    "nautilus_index": 99,
+    "name": "Pipe Organ-Reed"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 74,
+    "nautilus_index": 102,
+    "name": "Ehorn Pipe Organ -L"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 75,
+    "nautilus_index": 103,
+    "name": "Ehorn Pipe Organ -R"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 108,
+    "nautilus_index": 137,
+    "name": "Flute"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 109,
+    "nautilus_index": 138,
+    "name": "Flute-Vibrato"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 110,
+    "nautilus_index": 150,
+    "name": "Flute-Flutter Tonguing"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 112,
+    "nautilus_index": 142,
+    "name": "Flute-Attack p"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 113,
+    "nautilus_index": 143,
+    "name": "Flute-Attack f"
   }
 ]
