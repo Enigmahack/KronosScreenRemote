@@ -171,6 +171,72 @@ sealed class CalMesh
     }
 }
 
+// Text form of a calibration, as stored on the unit by the daemon's CAL_SET/CAL_GET
+// (/korg/rw/HD/ScreenRemote/calibration.txt): "G=<grid> M=<col,row,dx,dy;...> D=<x,y;...>".
+// Only non-zero mesh nodes are listed. The daemon accepts at most MaxLength characters from
+// the set 0-9 - , ; = G M D and space, and never interprets the text.
+static class CalText
+{
+    public const int MaxLength = 4096;
+
+    public static string Serialize(CalMesh mesh, IReadOnlyList<CalBiasDot> dots)
+    {
+        var nodes = new List<string>();
+        for (int c = 0; c < mesh.Cols; c++)
+            for (int r = 0; r < mesh.Rows; r++)
+            {
+                var (ox, oy) = mesh.GetOffset(c, r);
+                if (ox != 0 || oy != 0) nodes.Add($"{c},{r},{ox},{oy}");
+            }
+        var dotText = dots.Select(d => $"{d.Nx},{d.Ny}");
+        return $"G={mesh.Cols} M={string.Join(';', nodes)} D={string.Join(';', dotText)}";
+    }
+
+    // null if the text is malformed; a partly-readable calibration is not applied at all.
+    public static (CalMesh mesh, List<CalBiasDot> dots)? Parse(string text)
+    {
+        int size = 5;
+        string meshPart = "", dotPart = "";
+        foreach (var field in text.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        {
+            if (field.StartsWith("G=", StringComparison.Ordinal))
+            {
+                if (!int.TryParse(field[2..], out size) || size is not (3 or 4 or 5)) return null;
+            }
+            else if (field.StartsWith("M=", StringComparison.Ordinal)) meshPart = field[2..];
+            else if (field.StartsWith("D=", StringComparison.Ordinal)) dotPart  = field[2..];
+            else return null;
+        }
+
+        var mesh = new CalMesh(size, size);
+        foreach (var node in meshPart.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var v = ParseInts(node, 4);
+            if (v == null || v[0] < 0 || v[0] >= size || v[1] < 0 || v[1] >= size) return null;
+            mesh.SetOffset(v[0], v[1], v[2], v[3]);
+        }
+        var dots = new List<CalBiasDot>();
+        foreach (var dot in dotPart.Split(';', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var v = ParseInts(dot, 2);
+            if (v == null) return null;
+            dots.Add(new CalBiasDot(v[0], v[1]));
+        }
+        return (mesh, dots);
+    }
+
+    static int[]? ParseInts(string s, int count)
+    {
+        var parts = s.Split(',');
+        if (parts.Length != count) return null;
+        var v = new int[count];
+        for (int i = 0; i < count; i++)
+            if (!int.TryParse(parts[i], System.Globalization.NumberStyles.AllowLeadingSign,
+                              System.Globalization.CultureInfo.InvariantCulture, out v[i])) return null;
+        return v;
+    }
+}
+
 static class WindowTheme
 {
     [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int value, int size);

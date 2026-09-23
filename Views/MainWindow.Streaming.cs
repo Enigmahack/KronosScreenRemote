@@ -73,6 +73,7 @@ public partial class MainWindow
             // Authoritative source (daemon MODEL reply) - see SysExService.SetDeviceFamily's own
             // comment for why a USB-only session resolves this itself instead.
             _sysExService.SetDeviceFamily(_deviceFamily);
+            ApplyUnitCalibration(info.Calibration);
             AppLog.Info($"[conn] connected - {_frameW}×{_frameH} {(_pullMode ? "pull" : "change-driven")} cap={_fps}fps");
             if (info.Model is { } dm)
                 AppLog.Info($"[conn] device - FAMILY={dm.Family} MODEL={dm.Model} FB_BPP={dm.FbBpp} -> {_deviceFamily}");
@@ -80,15 +81,13 @@ public partial class MainWindow
                 AppLog.Info("[conn] device - MODEL query failed/unavailable, treating as non-Nautilus");
             SetConnectionStatus(ConnState.Connected);
             UpdateTitle(info.Connection.Host);
-            AddRecentHost(info.Connection.Host);
+            AddRecentHost(info.Connection.Host, info.Connection.FtpUsername, info.Connection.FtpPassword);
             _wb = new WriteableBitmap(_frameW, _frameH, 96, 96, PixelFormats.Bgr32, null);
             FrameImage.Source = _wb;
             RefreshFrameRect();
-            // Re-fits the window to THIS stream's height (800x480 Nautilus vs 800x600 Kronos -
-            // see SetWindowSize's own comment) instead of leaving it sized for whatever family
-            // was last connected. No-op if maximized/fullscreen/user-resized, same as every other
-            // layout-affecting change in this window (ResizeAndRefresh's own guard).
-            ResizeAndRefresh();
+            // Re-fit on every family switch: Kronos has a left value pane and a 600px screen;
+            // Nautilus has neither, so retaining prior-window geometry leaves blank space.
+            SetWindowSize(_currentScale);
             // MIRROR_ON replies ERR MIRROR_UNSUPPORTED on Nautilus - no VGA output behind the
             // panel to mirror to (docs/api.md, MIRROR_ON, 3.0.2+). Don't send it there.
             _mirrorState = _settings.VgaMirrorEnabled;

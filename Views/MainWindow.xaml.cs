@@ -101,8 +101,6 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         MNU_HideValueInput.Visibility = isNautilus ? Visibility.Collapsed : Visibility.Visible;
         MNU_HideValueInput.IsChecked  = _hideValueInput;
 
-        UpdateRootGridHeightCap();
-
         // Right-side data panel: Nautilus gets its own background (NautilusRightPanel,
         // NautilusFront1.jpg) in place of the Kronos data-entry surface (KronosRightPanel) -
         // stage 1 of the Nautilus front-panel skin, no buttons yet (see NautilusRightPanel.xaml's
@@ -173,28 +171,8 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         // AppStatusBar) can never see them and throws ResourceReferenceKeyNotFoundException.
         BTN_SeqStart.Style = (Style)(kronosOnly ? BTN_SeqStart.FindResource("SeqTransportToggleBtn") : BTN_SeqStart.FindResource("SeqTransportToggleBtnNoLight"));
         BTN_SeqRec.Style   = (Style)(kronosOnly ? BTN_SeqRec.FindResource("SeqRecordToggleBtn")       : BTN_SeqRec.FindResource("SeqTransportToggleBtnNoLight"));
-    }
 
-    void OnRootGridSizeChanged(object sender, SizeChangedEventArgs e) => UpdateRootGridHeightCap();
-
-    // Nautilus-only: RootGrid's height otherwise just fills whatever the window gives it (its
-    // own SizeChanged, VerticalAlignment="Center" is a no-op with no cap) - fine for Kronos,
-    // where the live screen's 800x600 already matches the column proportions this app was laid
-    // out for (KronosRightPanel.xaml). Nautilus's screen is 800x480 though, so an
-    // uncapped/oversized (maximized, or just a window bigger than the tight fit) RootGrid leaves
-    // FrameImage's own aspect-locked Uniform stretch (RefreshFrameRect) gapping gray above/below
-    // the live picture, and hands NautilusRightPanel's own width-driven scale (see its own
-    // comment) more height than it needs too, deepening its top/bottom crop for no reason.
-    // Capping RootGrid to the screen's own exact aspect-correct height - (RootGrid width / 2,
-    // since the screen and control columns split it evenly) * (_frameH/FrameDesignWidth) - makes
-    // the screen fill this row with zero gap, and gives the control panel the smallest height
-    // that still keeps the screen gap-free, rather than whatever's left over from an oversized
-    // window.
-    void UpdateRootGridHeightCap()
-    {
-        RootGrid.MaxHeight = _deviceFamily == DeviceFamily.Nautilus && RootGrid.ActualWidth > 0
-            ? RootGrid.ActualWidth * _frameH / FrameDesignWidth / 2.0
-            : double.PositiveInfinity;
+        ApplyHideInputPanels();
     }
 
     // Built once in the ctor (before WireButtons() wires up their children - see the ctor's own
@@ -459,9 +437,8 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         _hideValueInput = _settings.HideValueInput;
         _overrides    = Storage.LoadOverrides();
         _locked       = Storage.LoadLocks();
-        (_cal.Mesh, _cal.BiasDots) = Storage.LoadCal();
-        if (!_cal.Mesh.IsIdentity() || _cal.BiasDots.Count > 0)
-            Console.WriteLine($"[cal] mesh loaded, {_cal.BiasDots.Count} bias dot(s)");
+        // Calibration is per unit, so none is loaded until a connection says which unit this
+        // is - see SelectCalibration.
 
         Loaded      += OnLoaded;
         Closing     += OnClosing;
@@ -485,7 +462,12 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         MouseLeave += OnMouseLeave;
         MouseWheel += OnMouseWheel;
         FrameImage.LostMouseCapture += OnFrameLostMouseCapture;
-        SizeChanged += (sender, e) => RefreshFrameRect();
+        SizeChanged += (sender, e) =>
+        {
+            UpdateStatusBarWrap();
+            RefitToWindowSize();
+            RefreshFrameRect();
+        };
 
         // The window's own SizeChanged is NOT enough. FrameImage gets resized or moved by
         // plenty of things that leave the window's size alone - the status bar growing when
@@ -501,6 +483,14 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         // Grid of star-sized columns every known trigger resizes FrameImage rather than purely
         // moving it, so SizeChanged covers them.)
         FrameImage.SizeChanged += (sender, e) => RefreshFrameRect();
+
+        // Same reasoning as FrameImage.SizeChanged just above: the status bar's own content can
+        // grow or shrink (performance name, MIDI badge, sequencer transport enabling) without the
+        // window ever resizing, so the wrap decision needs its own trigger independent of the
+        // window's SizeChanged. Re-entrant-safe: moving RightClusterHost between rows changes
+        // AppStatusBar's size and fires this again, but the second call is a no-op (state already
+        // matches).
+        AppStatusBar.SizeChanged += (sender, e) => UpdateStatusBarWrap();
 
         // Last-resort reconciliation for the wheel/slider capture hazard described at
         // EndWheelDrag. If either still holds capture while claiming no active drag, a MouseUp
@@ -884,8 +874,38 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         SetVSliderValue(val);
     }
 
+    // Menu shortcut labels come from the live keybindings, so a label never advertises a key
+    // that does something else (or nothing). Items with no global hotkey show no label; their
+    // underlined access key is what works while the menu is open.
+    void RefreshMenuGestureTexts()
+    {
+        string K(string action)
+        {
+            var kb = _settings.GetKeybind(action);
+            return kb.Key == Key.None ? "" : kb.ToDisplayString();
+        }
+        MNU_Quit.InputGestureText          = K("Quit");
+        MNU_Zoom.InputGestureText          = K("Zoom Window");
+        MNU_Fullscreen.InputGestureText    = K("Fullscreen");
+        CTX_Fullscreen.InputGestureText    = K("Fullscreen");
+        MNU_HideDataInput.InputGestureText  = K("HideDataInput");
+        MNU_HideValueInput.InputGestureText = K("HideValueInput");
+        MNU_CalMode.InputGestureText       = K("Calibrate");
+        MNU_Librarian.InputGestureText     = K("Librarian");
+        MNU_SampleEditor.InputGestureText  = K("Sample Editor");
+        MNU_ShowHelp.InputGestureText      = K("Help");
+        MNU_Mode_Setlist.InputGestureText  = K("Mode Setlist");
+        MNU_Mode_Combi.InputGestureText    = K("Mode Combi");
+        MNU_Mode_Program.InputGestureText  = K("Mode Program");
+        MNU_Mode_Sequence.InputGestureText = K("Mode Sequence");
+        MNU_Mode_Sampling.InputGestureText = K("Mode Sampling");
+        MNU_Mode_Global.InputGestureText   = K("Mode Global");
+        MNU_Mode_Disk.InputGestureText     = K("Mode Disk");
+    }
+
     void WireMenu()
     {
+        RefreshMenuGestureTexts();
         MENU_Connection.SubmenuOpened += (sender, e) =>
         {
             MNU_Disconnect.IsEnabled     = _connState != ConnState.Disconnected;  // allow aborting a hanging connect
@@ -908,12 +928,24 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             {
                 var host = h;
                 var mi = new MenuItem { Header = host };
-                mi.Click += (_, _) => { _host = host; _settings.KronosHost = host; Storage.SaveSettings(_settings); SetCtrlClient(_host, _ctrlPort); TriggerReconnect(); };
+                mi.Click += (_, _) =>
+                {
+                    _host = host;
+                    _settings.KronosHost = host;
+                    if (_settings.HostCredentials.TryGetValue(host, out var cred))
+                    {
+                        _settings.FtpUsername = cred.Username;
+                        _settings.FtpPassword = cred.Password;
+                    }
+                    Storage.SaveSettings(_settings);
+                    SetCtrlClient(_host, _ctrlPort);
+                    TriggerReconnect();
+                };
                 MENU_RecentHosts.Items.Add(mi);
             }
             MENU_RecentHosts.Items.Add(new Separator());
             var miClear = new MenuItem { Header = "C_lear All" };
-            miClear.Click += (_, _) => { _settings.RecentHosts.Clear(); Storage.SaveSettings(_settings); };
+            miClear.Click += (_, _) => { _settings.RecentHosts.Clear(); _settings.HostCredentials.Clear(); Storage.SaveSettings(_settings); };
             MENU_RecentHosts.Items.Add(miClear);
         };
 
@@ -1255,13 +1287,18 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         catch (Exception ex) { SetNotification(AppMessages.Notify.CouldNotOpenFolder(ex.Message), isError: true); }
     }
 
-    void AddRecentHost(string host)
+    // Called on a successful connect with the login that just worked, so choosing this host
+    // from Recent Connections later restores it.
+    void AddRecentHost(string host, string username, string password)
     {
         if (string.IsNullOrWhiteSpace(host)) return;
         _settings.RecentHosts.Remove(host);
         _settings.RecentHosts.Insert(0, host);
         if (_settings.RecentHosts.Count > 5)
             _settings.RecentHosts.RemoveRange(5, _settings.RecentHosts.Count - 5);
+        _settings.HostCredentials[host] = new HostCredential(username, password);
+        foreach (var stale in _settings.HostCredentials.Keys.Where(h => !_settings.RecentHosts.Contains(h)).ToList())
+            _settings.HostCredentials.Remove(stale);
         Storage.SaveSettings(_settings);
     }
 
@@ -1419,6 +1456,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         if (_rawFrame != null && _lut != null)
             Ctrl(DaemonCommand.RefreshDisplay);
         ApplyHideInputPanels();
+        RefreshMenuGestureTexts();
         MNU_HideDataInput.IsChecked  = _hideDataInput;
         if (_deviceFamily == DeviceFamily.Nautilus) _hideValueInput = true;   // see ApplyDeviceFamilyUi
         MNU_HideValueInput.IsChecked = _hideValueInput;
@@ -1706,6 +1744,18 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         // Dispatcher.InvokeAsync is safe from any thread and queues the lambda for later.
         Dispatcher.InvokeAsync(() =>
         {
+            // Stale-callback guard: _connState (set synchronously, above) may already have
+            // moved on by the time this queued lambda runs. Concretely - BeginConnect calls
+            // SetConnectionStatus(Connecting) and returns immediately, long before the network
+            // handshake resolves; if that lambda is still queued when OnSessionConnected calls
+            // SetConnectionStatus(Connected) moments later (its own lambda queuing BEHIND this
+            // one), this stale Connecting lambda would run AFTER Connected's, hit the
+            // "state != Connected" branch below, and null out the _wb/FrameImage.Source that
+            // OnSessionConnected had just set - leaving the frame area permanently blank (RenderTick's
+            // "if (_wb != null)" guard then never passes again until the next real reconnect
+            // recreates _wb). Bailing here when a newer call has already superseded this one
+            // makes every branch below apply only the CURRENT state, never an overtaken one.
+            if (_connState != state) return;
             StatusDot.Fill = state switch
             {
                 ConnState.Connected  => Brushes.LimeGreen,
@@ -1753,8 +1803,19 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
                 ClearModeButtons();
                 _seqTransport.Reset();
                 _seqTransport.CurrentMode = Mode.Unknown;
-                OverlayLayer.InvalidateVisual();
             }
+            // Unconditional, not just on Disconnected: DrawOverlay (MainWindow.Rendering.cs)
+            // paints a fully opaque black "Disconnected..." rectangle over the frame area
+            // whenever _connState is Disconnected, and OverlayLayer only ever repaints when
+            // told to. Without this here, that black rectangle - drawn once at startup, before
+            // the very first auto-connect completes - simply stays on screen forever once the
+            // state flips to Connected, since nothing else reliably repaints OverlayLayer at
+            // that exact moment (RefreshFrameRect only invalidates it when the frame rect's
+            // geometry actually changes size/position, which it usually won't across a same-
+            // shaped reconnect). A manual Connect click happens to clear it because Disconnect()
+            // is called first, and something else nudges a repaint before the next Connected -
+            // this makes clearing it deterministic instead of incidental.
+            OverlayLayer.InvalidateVisual();
         });
     }
 
@@ -2276,9 +2337,6 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
                 _kronosRightPanel.ControlRail.Visibility    = Visibility.Collapsed;
                 _kronosLeftPanel.ValueRail.Visibility      = Visibility.Collapsed;
                 _kronosRightPanel.ControlViewbox.Visibility = Visibility.Visible;
-                ControlsColumn.Width = _hideDataInput
-                    ? new GridLength(0, GridUnitType.Star)
-                    : new GridLength(FrameDesignWidth, GridUnitType.Star);
                 ShowLeftPanel(!_hideValueInput);
                 break;
 
@@ -2292,15 +2350,12 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
                 _kronosRightPanel.BtnRailExpand.ToolTip = _focusedDataExpanded ? "Collapse data input" : "Expand data input";
                 ((TextBlock)_kronosLeftPanel.BtnValueRailExpand.Content).Text = _focusedValueExpanded ? "›" : "‹";
                 _kronosLeftPanel.BtnValueRailExpand.ToolTip = _focusedValueExpanded ? "Collapse value input" : "Expand value input";
-                ControlsColumn.Width = _focusedDataExpanded
-                    ? new GridLength(FrameDesignWidth, GridUnitType.Star)
-                    : new GridLength(28);
                 ShowLeftPanel(_focusedValueExpanded, showRail: true);
                 break;
 
         }
 
-        ResizeAndRefresh();
+        ResizeForPanelChange();
 
         MNU_PresetFull.IsChecked     = preset == LayoutPreset.Full;
         MNU_PresetFocused.IsChecked  = preset == LayoutPreset.Focused;
@@ -2314,14 +2369,10 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         _focusedDataExpanded = !_focusedDataExpanded;
         _settings.FocusedDataExpanded = _focusedDataExpanded;
         Storage.SaveSettings(_settings);
-        AdjustWindowWidthForPanelChange((_focusedDataExpanded ? 1 : -1) * (FrameDesignWidth - 28.0));
         _kronosRightPanel.ControlViewbox.Visibility = _focusedDataExpanded ? Visibility.Visible : Visibility.Collapsed;
         ((TextBlock)_kronosRightPanel.BtnRailExpand.Content).Text = _focusedDataExpanded ? "‹" : "›";
         _kronosRightPanel.BtnRailExpand.ToolTip = _focusedDataExpanded ? "Collapse data input" : "Expand data input";
-        ControlsColumn.Width = _focusedDataExpanded
-            ? new GridLength(FrameDesignWidth, GridUnitType.Star)
-            : new GridLength(28);
-        ResizeAndRefresh();
+        ResizeForPanelChange();
     }
 
     void ToggleFocusedValueExpand()
@@ -2330,11 +2381,10 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         _focusedValueExpanded = !_focusedValueExpanded;
         _settings.FocusedValueExpanded = _focusedValueExpanded;
         Storage.SaveSettings(_settings);
-        AdjustWindowWidthForPanelChange((_focusedValueExpanded ? 1 : -1) * (282.0 - 28.0));
         ((TextBlock)_kronosLeftPanel.BtnValueRailExpand.Content).Text = _focusedValueExpanded ? "›" : "‹";
         _kronosLeftPanel.BtnValueRailExpand.ToolTip = _focusedValueExpanded ? "Collapse value input" : "Expand value input";
         ShowLeftPanel(_focusedValueExpanded, showRail: true);
-        ResizeAndRefresh();
+        ResizeForPanelChange();
     }
 
     // ── Fullscreen ────────────────────────────────────────────────────────────
@@ -2369,25 +2419,24 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         Dispatcher.InvokeAsync(RefreshFrameRect, DispatcherPriority.Loaded);
     }
 
-    // Smallest client width that still shows every footer status-bar item (icons +
-    // spacing) without clipping. Measured live from the bar's own content, so adding
-    // items in XAML automatically widens the floor - there's no constant to keep in sync.
-    // Probes at infinite width (rather than reading DesiredSize at the current width) so
-    // the result is correct even when this runs while the window is already narrow, e.g.
-    // when Focused is the startup preset.
-    double MeasureStatusBarNaturalWidth()
+    // Probes an element's natural (unconstrained) width by measuring it at infinite width,
+    // then undoes the probe so the real constraint re-applies on the next layout pass. Used
+    // for both the menu-driven minimum width and the status-bar wrap threshold below - both
+    // need "how wide does this actually want to be", not its current clamped ActualWidth.
+    static double MeasureNaturalWidth(FrameworkElement el)
     {
-        double h = AppStatusBar.ActualHeight > 0 ? AppStatusBar.ActualHeight : 28;
-        AppStatusBar.Measure(new Size(double.PositiveInfinity, h));
-        double w = AppStatusBar.DesiredSize.Width;
-        AppStatusBar.InvalidateMeasure();   // undo the probe; the real constraint re-applies next pass
+        double h = el.ActualHeight > 0 ? el.ActualHeight : double.PositiveInfinity;
+        el.Measure(new Size(double.PositiveInfinity, h));
+        double w = el.DesiredSize.Width;
+        el.InvalidateMeasure();
         return w;
     }
 
-    // Pin the window's minimum width to the footer's natural width so it can never be
-    // dragged - or preset-sized - narrower than the status-bar icons. Computed once at
-    // load while the stretchy performance-name item is still empty, so the floor is
-    // "icons + spacing", not "icons + whatever performance name is showing".
+    // Pin the window's minimum width to the main menu's natural width, so every menu item
+    // stays reachable - it can never be dragged, or preset-sized, narrower than that. Deliberately
+    // NOT also floored by the status bar's natural width: the status bar is the one thing in this
+    // window allowed to get narrower than its natural size, by wrapping to a second line
+    // (UpdateStatusBarWrap) - flooring on it too would make that wrap unreachable.
     void UpdateMinimumWindowWidth()
     {
         if (!IsLoaded) return;
@@ -2395,8 +2444,16 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         var dp = (FrameworkElement)Content;
         if (dp.ActualWidth <= 0) return;
         double chromeW = Width - dp.ActualWidth;
-        MinWidth = MeasureStatusBarNaturalWidth() + chromeW;
+        MinWidth = MeasureNaturalWidth(MainMenu) + chromeW;
     }
+
+    // Height of everything in the window's content area other than the OuterGrid (the menu
+    // above it, the status bar - one or two rows - below it). Measured directly from those
+    // elements' own ActualHeight rather than "dp.ActualHeight - RootGrid.ActualHeight": that
+    // subtraction is only correct when OuterGrid exactly fills the space between them, which
+    // is no longer guaranteed now that a manual resize can leave slack around a centered,
+    // fixed-size OuterGrid (see RefitToWindowSize/OuterGrid's Center alignment in XAML).
+    double VerticalChromeHeight() => MainMenu.ActualHeight + AppStatusBar.ActualHeight + AppStatusBarRow2.ActualHeight;
 
     void SetWindowSize(double scale)
     {
@@ -2407,24 +2464,59 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         var dp         = (FrameworkElement)Content;
         double chromeW = Width  - dp.ActualWidth;
         double chromeH = Height - dp.ActualHeight;
-        double menuH   = dp.ActualHeight - RootGrid.ActualHeight;
-        double targetW = _layoutPreset switch
-        {
-            LayoutPreset.Focused  => FrameDesignWidth
-                                     + (_focusedValueExpanded ? 282.0 : 28.0)
-                                     + (_focusedDataExpanded  ? FrameDesignWidth : 28.0),
-            _                     => FrameDesignWidth
-                                     + (_hideValueInput ? 0.0 : 282.0)
-                                     + (_hideDataInput  ? 0.0 : FrameDesignWidth)
-        };
-        Width  = targetW * scale + chromeW;
+        Width  = LayoutDesignWidth() * scale + chromeW;
         // _frameH (not the FrameDesignHeight constant) so the window actually fits the
         // CONNECTED stream's aspect ratio - 800x600 Kronos, 800x480 Nautilus (RefreshFrameRect
         // already letterboxes correctly either way; this is what makes that letterboxing
         // unnecessary by sizing the window to need none). Defaults to FrameDesignHeight (600)
         // before any connection, since _frameH is seeded with it.
-        Height = _frameH * scale + menuH + chromeH;
+        Height = _frameH * scale + VerticalChromeHeight() + chromeH;
+        ApplyContentScale(scale);
         _scaledW = Width; _scaledH = Height;
+    }
+
+    double ControlsDesignWidth() => _layoutPreset == LayoutPreset.Focused
+        ? (_focusedDataExpanded ? FrameDesignWidth : 28.0)
+        : (_hideDataInput ? 0.0 : FrameDesignWidth);
+
+    double LeftPanelDesignWidth() => _deviceFamily == DeviceFamily.Nautilus
+        ? 0.0
+        : _layoutPreset == LayoutPreset.Focused
+            ? (_focusedValueExpanded ? 282.0 : 28.0)
+            : (_hideValueInput ? 0.0 : 282.0);
+
+    double LayoutDesignWidth() => _layoutPreset switch
+    {
+        _ => LeftPanelDesignWidth() + FrameDesignWidth + ControlsDesignWidth()
+    };
+
+    void SetWindowSizeForContentWidth(double contentWidth)
+    {
+        if (contentWidth > 0)
+            SetWindowSize(contentWidth / LayoutDesignWidth());
+    }
+
+    // OuterGrid is content-sized, not a Star-grid approximation. Every pane gets its design
+    // width at one shared scale, so hiding a pane leaves no unclaimed client area.
+    void ApplyContentScale(double scale)
+    {
+        if (scale <= 0 || double.IsNaN(scale) || double.IsInfinity(scale)) return;
+
+        double left = LeftPanelDesignWidth() * scale;
+        double controls = ControlsDesignWidth() * scale;
+        double main = FrameDesignWidth * scale + controls;
+        double height = _frameH * scale;
+
+        OuterGrid.Width = left + main;
+        OuterGrid.Height = height;
+        LeftPanelColumn.Width = new GridLength(left);
+        MainAreaColumn.Width = new GridLength(main);
+        RootGrid.Width = main;
+        RootGrid.Height = height;
+        RootGrid.MaxHeight = double.PositiveInfinity;
+        RootGrid.ColumnDefinitions[0].Width = new GridLength(173.0 * scale);
+        RootGrid.ColumnDefinitions[1].Width = new GridLength(627.0 * scale);
+        ControlsColumn.Width = new GridLength(controls);
     }
 
     // Settings > View > "Default Window Size" - applied once at launch (OnLoaded) in place
@@ -2441,49 +2533,115 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         });
     }
 
-    // Grows/shrinks the actual window Width by exactly the design-width a panel's
-    // show/hide just added or removed, scaled the same way SetWindowSize's own targetW
-    // is - unlike SetWindowSize (which recomputes an ABSOLUTE target and only applies
-    // when the window is still untouched, see ResizeAndRefresh's own userResized check),
-    // this keeps whatever size the user has already dragged the window to. Without it,
-    // hiding a panel collapsed its Grid column to 0 but left the window's own physical
-    // Width unchanged - the vacated Star-sizing space was redistributed into the
-    // Viewbox-wrapped screen/panel content instead of actually shrinking the window,
-    // which reads as blank grey letterboxing rather than the panel's space disappearing.
-    // Keeps _scaledW in lockstep so ResizeAndRefresh's own "has the user resized since
-    // the last programmatic size change" check stays meaningful after this runs.
-    void AdjustWindowWidthForPanelChange(double deltaDesignWidth)
-    {
-        if (!IsLoaded || _fs.Active || WindowState == WindowState.Maximized) return;
-        double delta = deltaDesignWidth * _currentScale;
-        Width = Math.Max(MinWidth, Width + delta);
-        if (!double.IsNaN(_scaledW)) _scaledW += delta;
-    }
-
-    void ResizeAndRefresh()
+    // Re-applies the CURRENT (unchanged) scale after a side panel's visibility changed, then
+    // grows or shrinks the window's Width by exactly the resulting content-width delta. Height
+    // is never touched here: the main viewing frame (RootGrid columns 0+1, and OuterGrid's
+    // Height) is the fixed anchor a shown/hidden panel must never move or resize - only the
+    // window around it changes, by exactly as much as that panel is wide.
+    void ResizeForPanelChange()
     {
         if (!IsLoaded) return;
-        SyncMainAreaColumn();
-        // Skip SetWindowSize when already maximized (non-fullscreen): the window fills
-        // the screen and there is nothing to resize. SetWindowSize would force it back
-        // to Normal, which is exactly the bug we are avoiding here.
-        // Re-apply the preset scale only while the window is still exactly the size
-        // SetWindowSize last produced. Once it has been dragged to a size of the user's own,
-        // forcing _currentScale back would silently discard it - which is what made OK on a
-        // child dialog snap the main window back to the default. Unknown (_scaledW == NaN,
-        // i.e. SetWindowSize has not run yet) keeps the original behaviour.
-        bool userResized = !double.IsNaN(_scaledW)
-                           && (Math.Abs(Width - _scaledW) > 0.5 || Math.Abs(Height - _scaledH) > 0.5);
-        if (!_fs.Active && WindowState != WindowState.Maximized && !userResized)
-            SetWindowSize(_currentScale);
-        // SizeChanged may not fire (fullscreen, or maximized with no size change),
-        // so always defer an explicit layout refresh.
+        double oldOuterW = OuterGrid.Width;   // NaN before the first-ever ApplyContentScale call
+        ApplyContentScale(_currentScale);
+        if (!_fs.Active && WindowState != WindowState.Maximized && !double.IsNaN(oldOuterW))
+            Width += OuterGrid.Width - oldOuterW;
+        // Mark this resize as our own so the SizeChanged handler's RefitToWindowSize doesn't
+        // treat it as a manual drag and re-derive (and so overwrite) the scale we just fixed.
+        _scaledW = Width; _scaledH = Height;
         Dispatcher.InvokeAsync(RefreshFrameRect, DispatcherPriority.Loaded);
     }
 
-    void SyncMainAreaColumn()
+    // Tracks WindowState across calls so a Normal<->Maximized transition always re-fits
+    // (below), even on the rare tick where Width/Height happen to already match _scaledW/_scaledH.
+    WindowState _lastRefitState = WindowState.Normal;
+
+    // Re-derives the content scale from whatever space is actually available, whenever the
+    // window's size changed for a reason OTHER than our own code (SetWindowSize or
+    // ResizeForPanelChange, both of which stamp _scaledW/_scaledH to mark the size as theirs).
+    // That covers a manual drag-resize, a maximize/restore, and a restored window position -
+    // the content always re-fits to use the space rather than being clipped by it or leaving
+    // gaps around it. Uses the smaller of the width-fit and height-fit scale so the frame never
+    // exceeds the window in either dimension; OuterGrid's Center alignment (MainWindow.xaml)
+    // turns any resulting slack into symmetric letterboxing instead of a lopsided gap.
+    void RefitToWindowSize()
     {
-        MainAreaColumn.Width = new GridLength(FrameDesignWidth + ControlsColumn.Width.Value, GridUnitType.Star);
+        if (!IsLoaded || _fs.Active) return;
+
+        bool stateChanged = WindowState != _lastRefitState;
+        _lastRefitState = WindowState;
+        bool ours = !stateChanged && WindowState == WindowState.Normal
+                    && Math.Abs(Width - _scaledW) < 0.5 && Math.Abs(Height - _scaledH) < 0.5;
+        if (ours) return;
+
+        var dp = (FrameworkElement)Content;
+        double availW = dp.ActualWidth;
+        double availH = dp.ActualHeight - VerticalChromeHeight();
+        if (availW <= 0 || availH <= 0) return;
+
+        double fitScale = Math.Min(availW / LayoutDesignWidth(), availH / _frameH);
+        if (fitScale <= 0 || double.IsNaN(fitScale) || double.IsInfinity(fitScale)) return;
+
+        _currentScale = fitScale;
+        ApplyContentScale(fitScale);
+        _scaledW = Width; _scaledH = Height;
+    }
+
+    // Status bar word-wrap: the six Sec_* groups (MainWindow.xaml - Mode, StreamMode, Vu,
+    // SeqTransport, TapTempo, Save) wrap down into AppStatusBarRow2 one at a time as the window
+    // narrows, in this order (index 0 = wraps first - it sits closest to the fill/perf-name
+    // boundary, so it's the first to run out of room; the last entry, Mode, is pinned nearest
+    // the window's right edge and so is the last to move and the first to come back).
+    FrameworkElement[] FooterSections => _footerSections ??=
+        [Sec_Save, Sec_TapTempo, Sec_SeqTransport, Sec_Vu, Sec_StreamMode, Sec_Mode];
+    FrameworkElement[]? _footerSections;
+    int _footerRow2Count = -1;   // how many of FooterSections (from index 0) are on row 2
+
+    // Measures the natural (single-line) width of everything that never wraps - the left/fill
+    // cluster and the stretchy performance name - plus each section's own natural width,
+    // regardless of which row currently holds it. Then, walking from "wraps last" back to
+    // "wraps first", keeps sections on row 1 while they still fit; the rest go to row 2. Runs a
+    // fresh decision every call rather than nudging the previous one, so it can't drift.
+    void UpdateStatusBarWrap()
+    {
+        if (!IsLoaded) return;
+        double avail = ((FrameworkElement)Content).ActualWidth;
+        if (avail <= 0) return;
+
+        var sections = FooterSections;
+        double grandTotal = MeasureNaturalWidth(AppStatusBar) + MeasureNaturalWidth(AppStatusBarRow2);
+        double sectionsWidth = 0;
+        foreach (var s in sections) sectionsWidth += MeasureNaturalWidth(s);
+        double fixedWidth = grandTotal - sectionsWidth;
+
+        double running = fixedWidth;
+        int keepOnRow1 = 0;
+        for (int i = sections.Length - 1; i >= 0; i--)
+        {
+            double w = MeasureNaturalWidth(sections[i]);
+            if (running + w > avail) break;
+            running += w;
+            keepOnRow1++;
+        }
+        int row2Count = sections.Length - keepOnRow1;
+        if (row2Count == _footerRow2Count) return;
+        _footerRow2Count = row2Count;
+
+        // Rebuild both rows' membership from scratch rather than incrementally add/remove -
+        // with at most 6 sections this is cheap, and it sidesteps any ordering bug from trying
+        // to patch in just the sections that changed side.
+        foreach (var s in sections) { AppStatusBar.Items.Remove(s); AppStatusBarRow2.Items.Remove(s); }
+
+        // FooterSections is wraps-first..wraps-last; declaration order (which Dock="Right"
+        // needs to keep each row's relative left-to-right arrangement matching the original
+        // layout) is the reverse of that, so build each row by walking backwards.
+        int insertAt = 0;
+        for (int i = sections.Length - 1; i >= row2Count; i--)
+            AppStatusBar.Items.Insert(insertAt++, sections[i]);
+        insertAt = 0;
+        for (int i = row2Count - 1; i >= 0; i--)
+            AppStatusBarRow2.Items.Insert(insertAt++, sections[i]);
+
+        AppStatusBarRow2.Visibility = row2Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     void ShowLeftPanel(bool show, bool showRail = false)
@@ -2513,13 +2671,8 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     void ApplyHideInputPanels()
     {
         if (_layoutPreset == LayoutPreset.Full)
-        {
-            ControlsColumn.Width = _hideDataInput
-                ? new GridLength(0, GridUnitType.Star)
-                : new GridLength(FrameDesignWidth, GridUnitType.Star);
             ShowLeftPanel(!_hideValueInput);
-        }
-        ResizeAndRefresh();
+        ResizeForPanelChange();
     }
 
     void ToggleHideDataInput()
@@ -2527,7 +2680,6 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         _hideDataInput = !_hideDataInput;
         _settings.HideDataInput = _hideDataInput;
         Storage.SaveSettings(_settings);
-        AdjustWindowWidthForPanelChange(_hideDataInput ? -FrameDesignWidth : FrameDesignWidth);
         ApplyHideInputPanels();
         MNU_HideDataInput.IsChecked = _hideDataInput;
     }
@@ -2538,7 +2690,6 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         _hideValueInput = !_hideValueInput;
         _settings.HideValueInput = _hideValueInput;
         Storage.SaveSettings(_settings);
-        AdjustWindowWidthForPanelChange(_hideValueInput ? -282.0 : 282.0);
         ApplyHideInputPanels();
         MNU_HideValueInput.IsChecked = _hideValueInput;
     }

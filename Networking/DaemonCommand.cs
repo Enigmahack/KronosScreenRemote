@@ -82,6 +82,10 @@ static class DaemonCommand
     // only reads FAMILY/MODEL/FB_BPP; the stream handshake itself (StreamReceiver.Fmt/Bpp) is the
     // authoritative source for pixel format, not this query.
     public const string QueryModel      = "MODEL";
+    // Touch calibration stored on the unit (daemon 3.1.2+, owner only) - see CalText for the
+    // format. CAL_GET replies "CAL <text>" or "CAL NONE"; older daemons answer with an ERR line.
+    public const string QueryCalibration = "CAL_GET";
+    public static string CalibrationSet(string text) => $"CAL_SET {text}";
 
     // ── MIDI bridge ─────────────────────────────────────────────────────────────
 

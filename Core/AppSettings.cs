@@ -116,6 +116,11 @@ public class AppSettings
 
     public List<string> RecentHosts { get; set; } = new();
 
+    // Login last used successfully for each RecentHosts entry, keyed by host, so choosing a
+    // recent connection fills in that unit's username/password. Kept in step with RecentHosts
+    // (pruned and cleared with it). Stored like FtpPassword: plain text in settings.json.
+    public Dictionary<string, HostCredential> HostCredentials { get; set; } = new();
+
     public List<MacroDefinition> Macros { get; set; } = new();
 
     public string FtpUsername { get; set; } = "";
@@ -245,6 +250,7 @@ public class AppSettings
                 p.SetValue(copy, p.GetValue(this));
 
         copy.RecentHosts = new List<string>(RecentHosts);
+        copy.HostCredentials = new Dictionary<string, HostCredential>(HostCredentials);
         copy.WindowPlacements = new Dictionary<string, WindowPlacement>(WindowPlacements);
         copy.SampleRecentFiles = new List<string>(SampleRecentFiles);
         copy.Keybinds    = new Dictionary<string, Keybind>(Keybinds);
@@ -258,6 +264,8 @@ public class AppSettings
         return copy;
     }
 }
+
+public sealed record HostCredential(string Username, string Password);
 
 // One window's remembered geometry (AppSettings.WindowPlacements). Always the NORMAL-state
 // bounds even when the window was closed maximized (Window.RestoreBounds), so un-maximizing

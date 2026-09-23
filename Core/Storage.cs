@@ -13,7 +13,6 @@ static class Storage
 
     static string OverridePath    => Path.Combine(DataDir, "palette_override.json");
     static string LockPath        => Path.Combine(DataDir, "palette_lock.json");
-    static string CalPath         => Path.Combine(DataDir, "cal_data.json");
     static string SettingsPath    => Path.Combine(DataDir, "settings.json");
     static string ButtonLabelsPath => Path.Combine(DataDir, "button_labels.json");
 
@@ -67,6 +66,7 @@ static class Storage
                 if (prop.Name == nameof(AppSettings.Keybinds)     ||
                     prop.Name == nameof(AppSettings.Macros)        ||
                     prop.Name == nameof(AppSettings.RecentHosts)   ||
+                    prop.Name == nameof(AppSettings.HostCredentials) ||
                     prop.Name == nameof(AppSettings.SampleRecentFiles) || !prop.CanWrite) continue;
                 if (root[ToSnakeCase(prop.Name)] is not JsonNode node) continue;
                 try
@@ -87,6 +87,13 @@ static class Storage
             if (root["recent_hosts"] is JsonArray recentArr)
                 foreach (var rn in recentArr)
                     if (rn?.GetValue<string>() is string h) s.RecentHosts.Add(h);
+
+            if (root["host_credentials"] is JsonObject credObj)
+                foreach (var kv in credObj)
+                    if (kv.Value is JsonObject co)
+                        s.HostCredentials[kv.Key] = new HostCredential(
+                            co["username"]?.GetValue<string>() ?? "",
+                            co["password"]?.GetValue<string>() ?? "");
 
             if (root["sample_recent_files"] is JsonArray recentSampleArr)
                 foreach (var rn in recentSampleArr)
@@ -135,6 +142,7 @@ static class Storage
                 if (prop.Name == nameof(AppSettings.Keybinds)     ||
                     prop.Name == nameof(AppSettings.Macros)        ||
                     prop.Name == nameof(AppSettings.RecentHosts)   ||
+                    prop.Name == nameof(AppSettings.HostCredentials) ||
                     prop.Name == nameof(AppSettings.SampleRecentFiles) || !prop.CanRead) continue;
                 root[ToSnakeCase(prop.Name)] = prop.GetValue(s) switch
                 {
@@ -150,6 +158,15 @@ static class Storage
             var recentOut = new JsonArray();
             foreach (var h in s.RecentHosts) recentOut.Add(h);
             root["recent_hosts"] = recentOut;
+
+            var credOut = new JsonObject();
+            foreach (var kv in s.HostCredentials)
+                credOut[kv.Key] = new JsonObject
+                {
+                    ["username"] = kv.Value.Username,
+                    ["password"] = kv.Value.Password,
+                };
+            root["host_credentials"] = credOut;
 
             var recentSampleOut = new JsonArray();
             foreach (var p in s.SampleRecentFiles) recentSampleOut.Add(p);
@@ -488,69 +505,5 @@ static class Storage
         var d = Path.Combine(DataDir, "librarian_backups");
         Directory.CreateDirectory(d);
         return d;
-    }
-
-    // ── Calibration ───────────────────────────────────────────────────────────
-
-    public static (CalMesh mesh, List<CalBiasDot> dots) LoadCal()
-    {
-        var dots = new List<CalBiasDot>();
-
-        try
-        {
-            // No user calibration file -> default (identity mesh, no bias dots): the same
-            // "cleared" state the in-app Reset (R) / Clear-dots (X) keys produce. A fresh
-            // install and a post-"Reset settings" run (which deletes cal_data.json) therefore
-            // both start uncalibrated, rather than inheriting a baked-in factory mesh.
-            if (!File.Exists(CalPath)) return (new CalMesh(), dots);
-            string json = File.ReadAllText(CalPath);
-
-            var root = JsonNode.Parse(json)?.AsObject();
-            if (root == null) return (new CalMesh(), dots);
-
-            int size = root["grid_size"]?.GetValue<int>() ?? 5;
-            size = size is 3 or 4 or 5 ? size : 5;
-            var mesh = new CalMesh(size, size);
-
-            if (root["mesh"] is JsonArray meshArr)
-                foreach (var n in meshArr)
-                    if (n is JsonArray row && row.Count >= 4)
-                        mesh.SetOffset(row[0]!.GetValue<int>(), row[1]!.GetValue<int>(),
-                                       row[2]!.GetValue<int>(), row[3]!.GetValue<int>());
-
-            if (root["bias_dots"] is JsonArray dotsArr)
-                foreach (var d in dotsArr)
-                    if (d is JsonArray row && row.Count >= 2)
-                        dots.Add(new CalBiasDot(row[0]!.GetValue<int>(), row[1]!.GetValue<int>()));
-
-            return (mesh, dots);
-        }
-        catch { return (new CalMesh(), dots); }
-    }
-
-    public static void SaveCal(CalMesh mesh, List<CalBiasDot> dots)
-    {
-        try
-        {
-            var root    = new JsonObject();
-            root["grid_size"] = mesh.Cols;
-            var meshArr = new JsonArray();
-            for (int c = 0; c < mesh.Cols; c++)
-                for (int r = 0; r < mesh.Rows; r++)
-                {
-                    var (ox, oy) = mesh.GetOffset(c, r);
-                    if (ox != 0 || oy != 0)
-                        meshArr.Add(new JsonArray(c, r, ox, oy));
-                }
-            root["mesh"] = meshArr;
-
-            var dotsArr = new JsonArray();
-            foreach (var d in dots) dotsArr.Add(new JsonArray(d.Nx, d.Ny));
-            root["bias_dots"] = dotsArr;
-
-            File.WriteAllText(CalPath, root.ToJsonString(
-                new JsonSerializerOptions { WriteIndented = true }));
-        }
-        catch (Exception e) { Console.WriteLine($"[cal] save failed: {e.Message}"); }
     }
 }

@@ -97,6 +97,14 @@ public static class AppMessages
 
         public const string UnsavedTitle   = "Unsaved Calibration";
         public const string UnsavedChanges = "You have unsaved calibration changes.\nSave before exiting?";
+
+        // Calibration is stored on the unit (daemon CAL_SET), so saving needs a live connection.
+        public const string SaveNotConnected = "Calibration not saved: it is stored on the unit, so connect to it first.";
+        public const string SaveNoAnswer     = "Calibration not saved: the unit did not answer.";
+        public const string SaveTooLarge     = "Calibration not saved: too many bias dots to store on the unit.";
+        public const string SaveDaemonTooOld = "Calibration not saved: the ScreenRemote daemon on this unit is too old to store it (needs 3.1.2 or later).";
+        public static string SaveRejected(string reply) => $"Calibration not saved: the unit replied \"{reply}\".";
+        public static string ExitAfterSaveFailed(string error) => $"{error}\n\nExit anyway and lose the changes?";
     }
 
     /// <summary>Settings import/export dialog bodies shared by MainWindow and SettingsWindow.</summary>

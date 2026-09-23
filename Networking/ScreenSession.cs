@@ -3,10 +3,12 @@ namespace KronosScreenRemote;
 internal readonly record struct ScreenConnection(
     string Host, int Port, bool PullMode, int Fps, string FtpUsername, string FtpPassword);
 
+// Calibration is the unit's stored touch calibration text (CAL_GET): "" when the unit has none,
+// null when the daemon can't store one (older than 3.1.2) or the query failed.
 internal readonly record struct ScreenSessionInfo(
     long Id, ScreenConnection Connection, int Width, int Height,
     StreamPixelFormat Fmt, int Bpp, PaletteEntry[] Palette,
-    DeviceModelInfo? Model);
+    DeviceModelInfo? Model, string? Calibration);
 
 // FAMILY is the trusted signal (derived from fb1 bpp, hardware-confirmed both ways);
 // Model is the finer-grained /proc/cpuinfo-derived code and can be a "*_UNKNOWN" value
@@ -156,10 +158,12 @@ internal sealed class ScreenSession : IDisposable
             // read once per connection").
             var model = ParseModelInfo(
                 await ctrlForModel.QueryAsync(DaemonCommand.QueryModel).ConfigureAwait(false));
+            var calibration = ParseCalibrationReply(
+                await ctrlForModel.QueryAsync(DaemonCommand.QueryCalibration).ConfigureAwait(false));
 
             Connected?.Invoke(new ScreenSessionInfo(
                 id, connection, receiver.Width, receiver.Height,
-                receiver.Fmt, receiver.Bpp, receiver.Palette, model));
+                receiver.Fmt, receiver.Bpp, receiver.Palette, model, calibration));
             StartPolling(id, receiver);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
@@ -323,6 +327,13 @@ internal sealed class ScreenSession : IDisposable
         }
 
         return family != null ? new DeviceModelInfo(family, model ?? "", fbBpp) : null;
+    }
+
+    internal static string? ParseCalibrationReply(string? response)
+    {
+        var line = response?.Trim();
+        if (line == "CAL NONE") return "";
+        return line != null && line.StartsWith("CAL ", StringComparison.Ordinal) ? line[4..] : null;
     }
 
     public void Dispose() => Disconnect();

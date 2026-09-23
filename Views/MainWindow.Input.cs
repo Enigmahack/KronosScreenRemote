@@ -43,9 +43,11 @@ public partial class MainWindow
         // Restore saved window bounds after layout settles
         Dispatcher.InvokeAsync(() =>
         {
-            // Pin the minimum width to the footer's natural width first, so a restored
-            // (or later dragged) window can never be narrower than the status-bar icons.
+            // Pin the minimum width to the menu's natural width first, so a restored (or
+            // later dragged) window can never be narrower than the menu items, and settle
+            // the status bar's one-line/two-line split for whatever width that leaves.
             UpdateMinimumWindowWidth();
+            UpdateStatusBarWrap();
 
             if (_settings.WindowLeft >= 0 && _settings.WindowTop >= 0)
             {
@@ -62,6 +64,10 @@ public partial class MainWindow
                 ApplyDefaultWindowSize(_settings.DefaultWindowSize);
             else if (_settings.WindowMaximized)
                 WindowState = WindowState.Maximized;
+            else
+                Dispatcher.InvokeAsync(
+                    () => SetWindowSizeForContentWidth(((FrameworkElement)Content).ActualWidth),
+                    DispatcherPriority.Render);
         }, DispatcherPriority.Loaded);
 
         // Screen gestures must use the preview route so a handled Image event cannot drop them.
@@ -134,7 +140,15 @@ public partial class MainWindow
             }
             if (result == MessageBoxResult.Yes)
             {
-                Storage.SaveCal(_cal.Mesh, _cal.BiasDots);
+                var error = SaveCalibrationBlocking();
+                if (error != null &&
+                    MessageBox.Show(AppMessages.Calibration.ExitAfterSaveFailed(error),
+                                    AppMessages.Calibration.UnsavedTitle,
+                                    MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+                {
+                    e.Cancel = true;
+                    return;
+                }
                 _cal.Dirty = false;
             }
         }
@@ -195,8 +209,35 @@ public partial class MainWindow
         if (_llKbHook != IntPtr.Zero) { UnhookWindowsHookEx(_llKbHook); _llKbHook = IntPtr.Zero; }
     }
 
+    // True while a menu (the main menu bar, one of its dropdowns, or any context menu) has the
+    // keyboard. Key presses there bubble up to the window's KeyDown, where a plain letter would
+    // otherwise fire a global hotkey or be typed on the Kronos instead of picking the menu item
+    // whose access key it is.
+    bool MenuHasKeyboard(KeyEventArgs e)
+    {
+        if (MainMenu.IsKeyboardFocusWithin) return true;
+        foreach (var item in MainMenu.Items)
+            if (item is System.Windows.Controls.MenuItem { IsSubmenuOpen: true }) return true;
+        return IsInsideMenu(e.OriginalSource as DependencyObject)
+            || IsInsideMenu(Keyboard.FocusedElement as DependencyObject);
+    }
+
+    static bool IsInsideMenu(DependencyObject? d)
+    {
+        while (d != null)
+        {
+            if (d is System.Windows.Controls.Primitives.MenuBase or System.Windows.Controls.MenuItem) return true;
+            d = d is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(d) ?? LogicalTreeHelper.GetParent(d)
+                : LogicalTreeHelper.GetParent(d);
+        }
+        return false;
+    }
+
     void OnKeyDown(object s, KeyEventArgs e)
     {
+        if (MenuHasKeyboard(e)) return;
+
         bool ctrl  = Keyboard.Modifiers.HasFlag(ModifierKeys.Control);
         _shiftHeld = Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
 
@@ -468,14 +509,14 @@ public partial class MainWindow
         {
             _cal.BiasDots.Clear();
             _cal.History.Clear(); _cal.HistPos = -1;
-            Storage.SaveCal(_cal.Mesh, _cal.BiasDots);
+            SaveCalibration();
             Console.WriteLine("[cal] bias dots cleared");
             OverlayLayer.InvalidateVisual(); return;
         }
 
         if (_cal.Mode && e.Key == Key.S)
         {
-            Storage.SaveCal(_cal.Mesh, _cal.BiasDots);
+            SaveCalibration();
             _cal.Dirty = false;
             Console.WriteLine("[cal] mesh saved");
             OverlayLayer.InvalidateVisual(); return;
@@ -790,7 +831,7 @@ public partial class MainWindow
                         DotIdx: _cal.BiasDots.Count - 1, Dot: dot));
                     Console.WriteLine($"[cal] bias dot → ({nx}, {ny}) stored as ({sx}, {sy})");
                 }
-                Storage.SaveCal(_cal.Mesh, _cal.BiasDots);
+                SaveCalibration();
                 OverlayLayer.InvalidateVisual();
                 return;
             }

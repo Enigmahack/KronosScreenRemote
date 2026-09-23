@@ -328,8 +328,13 @@ static class OverlayRenderer
 
         dc.DrawRectangle(B(0, 0, 0, 80), null, frameRect);
 
+        // (kronW-1)/(kronH-1), not kronW/kronH: matches KronosToScreen/ScreenToKronos
+        // (MainWindow.Calibration.cs), the pair that places a dot from a click and hit-tests
+        // it back. Using kronW/kronH here (a different, unwarped/pixel-edges convention) drew
+        // every node and bias dot a few pixels off from where a click at that native coordinate
+        // actually lands, growing toward the frame's right/bottom edge.
         Point ToScr((int x, int y) p) =>
-            new(fx + p.x * fw / kronW, fy + p.y * fh / kronH);
+            new(fx + p.x * fw / (kronW - 1), fy + p.y * fh / (kronH - 1));
 
         var gridPen = new Pen(new SolidColorBrush(Color.FromArgb(160, 60, 120, 200)), 1.0);
 
@@ -365,7 +370,7 @@ static class OverlayRenderer
         foreach (var dot in biasDots)
         {
             var sp = ToScr(mesh.Apply(dot.Nx, dot.Ny, kronW, kronH));
-            dc.DrawEllipse(B(220, 60, 60), null, sp, 3, 3);
+            dc.DrawEllipse(B(220, 60, 60), null, sp, 2, 2);
         }
 
         int n = biasDots.Count;

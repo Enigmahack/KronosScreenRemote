@@ -31,6 +31,26 @@ static class ScreenSessionSelfTests
         Check("model-null-response", ScreenSession.ParseModelInfo(null) == null);
         Check("model-missing-family", ScreenSession.ParseModelInfo("MODEL=KRONOS2 FB_BPP=8") == null);
 
+        Check("cal-reply", ScreenSession.ParseCalibrationReply("CAL G=5 M=1,2,-3,4 D=\n") == "G=5 M=1,2,-3,4 D=");
+        Check("cal-reply-none", ScreenSession.ParseCalibrationReply("CAL NONE\n") == "");
+        Check("cal-reply-old-daemon", ScreenSession.ParseCalibrationReply("ERR\n") == null);
+        Check("cal-reply-null", ScreenSession.ParseCalibrationReply(null) == null);
+
+        var mesh = new CalMesh(4, 4);
+        mesh.SetOffset(1, 2, -3, 4);
+        mesh.SetOffset(3, 3, 7, -1);
+        var text = CalText.Serialize(mesh, [new CalBiasDot(10, 20), new CalBiasDot(-5, 799)]);
+        Check("cal-text-format", text == "G=4 M=1,2,-3,4;3,3,7,-1 D=10,20;-5,799");
+        var back = CalText.Parse(text);
+        Check("cal-text-roundtrip", back is { } rt && rt.mesh.Cols == 4
+            && rt.mesh.GetOffset(1, 2) == (-3, 4) && rt.mesh.GetOffset(3, 3) == (7, -1)
+            && rt.mesh.GetOffset(0, 0) == (0, 0) && rt.dots.Count == 2 && rt.dots[1] == new CalBiasDot(-5, 799));
+        Check("cal-text-identity", CalText.Parse(CalText.Serialize(new CalMesh(), [])) is { } id
+            && id.mesh.IsIdentity() && id.dots.Count == 0);
+        Check("cal-text-bad-grid", CalText.Parse("G=9 M= D=") == null);
+        Check("cal-text-node-out-of-range", CalText.Parse("G=3 M=3,0,1,1 D=") == null);
+        Check("cal-text-garbage", CalText.Parse("G=5 M=1,2 D=") == null);
+
         // MIDI Monitor decode must read the func byte from the right offset for each family's
         // Exclusive Header length (4 bytes Kronos, 6 Nautilus) - see MidiStreamMonitor.DecodeMidi.
         var kronosMsg   = MidiHex.ToBytes("F0 42 30 68 42 00 00 00 F7")!;

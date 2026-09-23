@@ -10,7 +10,7 @@
     <DockPanel>
         <Menu x:Name="MainMenu" DockPanel.Dock="Top">
             <MenuItem x:Name="MENU_File" Header="_File">
-                <MenuItem x:Name="MNU_SettingsDlg"    Header="_Settings..." InputGestureText="S"/>
+                <MenuItem x:Name="MNU_SettingsDlg"    Header="_Settings..."/>
                 <Separator/>
                 <MenuItem x:Name="MNU_ImportSettings" Header="_Import Settings..."
                           ToolTip="Load application settings from a .json file and apply them now."/>
@@ -24,11 +24,11 @@
                 <Separator/>
                 <MenuItem x:Name="MNU_OpenLog"     Header="Open _Log File"/>
                 <Separator/>
-                <MenuItem x:Name="MNU_Quit"        Header="_Quit" InputGestureText="Q"/>
+                <MenuItem x:Name="MNU_Quit"        Header="_Quit"/>
             </MenuItem>
             <MenuItem x:Name="MENU_Connection" Header="_Connection">
-                <MenuItem x:Name="MNU_Reconnect"   Header="_Connect" InputGestureText="C"/>
-                <MenuItem x:Name="MNU_Disconnect"  Header="_Disconnect" IsEnabled="False" InputGestureText="D"/>
+                <MenuItem x:Name="MNU_Reconnect"   Header="_Connect"/>
+                <MenuItem x:Name="MNU_Disconnect"  Header="_Disconnect" IsEnabled="False"/>
                 <Separator/>
                 <MenuItem x:Name="MENU_RecentHosts" Header="_Recent Connections">
                     <MenuItem x:Name="MNU_NoRecentHosts" Header="(none)" IsEnabled="False"/>
@@ -36,9 +36,9 @@
                 <MenuItem x:Name="MNU_CopyIP" Header="Copy _IP Address"/>
             </MenuItem>
             <MenuItem x:Name="MENU_View" Header="_View">
-                <MenuItem x:Name="MNU_Zoom"          Header="_Zoom Window"      IsCheckable="True" InputGestureText="Z"/>
+                <MenuItem x:Name="MNU_Zoom"          Header="_Zoom Window"      IsCheckable="True"/>
                 <Separator/>
-                <MenuItem x:Name="MNU_Fullscreen"    Header="_Fullscreen"                          InputGestureText="F"/>
+                <MenuItem x:Name="MNU_Fullscreen"    Header="_Fullscreen"/>
                 <MenuItem x:Name="MNU_HideDataInput"  Header="Hide _Data Input"   IsCheckable="True"/>
                 <MenuItem x:Name="MNU_HideValueInput" Header="Hide _Value Input"  IsCheckable="True"/>
                 <MenuItem x:Name="MNU_AlwaysOnTop"   Header="Always on _Top"   IsCheckable="True"/>
@@ -72,8 +72,8 @@
                 </MenuItem>
             </MenuItem>
             <MenuItem x:Name="MENU_Tools" Header="_Tools">
-                <MenuItem x:Name="MNU_PaletteEd"  Header="_Palette Editor"  IsCheckable="True" InputGestureText="P"/>
-                <MenuItem x:Name="MNU_CalMode"    Header="_Calibration"      IsCheckable="True" InputGestureText="C"/>
+                <MenuItem x:Name="MNU_PaletteEd"  Header="_Palette Editor"  IsCheckable="True"/>
+                <MenuItem x:Name="MNU_CalMode"    Header="_Calibration"      IsCheckable="True"/>
                 <MenuItem x:Name="MNU_KbdWarp"    Header="Enable _Warp Mode" IsCheckable="True"/>
                 <MenuItem x:Name="MENU_CalGrid"   Header="Calibration _Grid Size">
                     <MenuItem x:Name="MNU_CalGrid3" Header="_3×3" IsCheckable="True"/>
@@ -81,12 +81,12 @@
                     <MenuItem x:Name="MNU_CalGrid5" Header="_5×5" IsCheckable="True"/>
                 </MenuItem>
                 <Separator/>
-                <MenuItem x:Name="MNU_SysExTool"    Header="_MIDI Monitor..." InputGestureText="M"/>
-                <MenuItem x:Name="MNU_Librarian"    Header="_Librarian..." InputGestureText="L"
+                <MenuItem x:Name="MNU_SysExTool"    Header="_MIDI Monitor..."/>
+                <MenuItem x:Name="MNU_Librarian"    Header="_Librarian..."
                           ToolTip="Local editable library copy - Sync/Commit with the Kronos, load a .pcg file to compare and drag objects in, edit names/categories/Set List slots."/>
-                <MenuItem x:Name="MNU_SampleEditor" Header="Sample _Editor..." InputGestureText="E"
+                <MenuItem x:Name="MNU_SampleEditor" Header="Sample _Editor..."
                           ToolTip="View/edit .KSC/.KMP/.KSF sample content on disk - key range, loop points, sample rate."/>
-                <MenuItem x:Name="MNU_FileManager" Header="_File Manager..." InputGestureText="F"/>
+                <MenuItem x:Name="MNU_FileManager" Header="_File Manager..."/>
                 <Separator/>
                 <MenuItem x:Name="MNU_KeyboardInfo" Header="_Keyboard Info..."/>
                 <MenuItem x:Name="MNU_InputTester"  Header="_Input Tester..." Visibility="Collapsed"/>
@@ -97,13 +97,13 @@
             <MenuItem x:Name="MENU_ModeSelect" Header="_Mode Select">
                 <!-- Kronos item set - visible for Kronos/Unknown, collapsed for Nautilus (toggled
                      in ApplyDeviceFamilyUi, same pattern as KronosControlGrid/NautilusControlGrid). -->
-                <MenuItem x:Name="MNU_Mode_Setlist"  Header="_Setlist" InputGestureText="S"/>
-                <MenuItem x:Name="MNU_Mode_Combi"    Header="_Combi" InputGestureText="C"/>
-                <MenuItem x:Name="MNU_Mode_Program"  Header="_Program" InputGestureText="P"/>
-                <MenuItem x:Name="MNU_Mode_Sequence" Header="S_equence" InputGestureText="E"/>
-                <MenuItem x:Name="MNU_Mode_Sampling" Header="S_ampling" InputGestureText="A"/>
-                <MenuItem x:Name="MNU_Mode_Global"   Header="_Global" InputGestureText="G"/>
-                <MenuItem x:Name="MNU_Mode_Disk"     Header="_Disk" InputGestureText="D"/>
+                <MenuItem x:Name="MNU_Mode_Setlist"  Header="_Setlist"/>
+                <MenuItem x:Name="MNU_Mode_Combi"    Header="_Combi"/>
+                <MenuItem x:Name="MNU_Mode_Program"  Header="_Program"/>
+                <MenuItem x:Name="MNU_Mode_Sequence" Header="S_equence"/>
+                <MenuItem x:Name="MNU_Mode_Sampling" Header="S_ampling"/>
+                <MenuItem x:Name="MNU_Mode_Global"   Header="_Global"/>
+                <MenuItem x:Name="MNU_Mode_Disk"     Header="_Disk"/>
                 <!-- Nautilus item set - the 7 Kronos-named modes above don't exist as such on
                      Nautilus; these mirror the front panel's own Mode/Page/A-F buttons instead
                      (same wire tokens - see MainWindow.xaml.cs's WireButtons/BuildCommandRegistry). -->
@@ -118,10 +118,10 @@
             </MenuItem>
             <MenuItem x:Name="MENU_BankSelect" Header="Ban_k Select"/>
             <MenuItem Header="_Help">
-                <MenuItem x:Name="MNU_ShowHelp"          Header="_Show Help"            InputGestureText="F1"/>
+                <MenuItem x:Name="MNU_ShowHelp"          Header="_Show Help"/>
                 <MenuItem x:Name="MNU_CommandPalette"    Header="_Command Palette"      InputGestureText="Ctrl+K"/>
                 <Separator/>
-                <MenuItem x:Name="MNU_About"             Header="_About..." InputGestureText="A"/>
+                <MenuItem x:Name="MNU_About"             Header="_About..."/>
                 <!-- Future: Check for Updates / Report Issue - hidden until a public release pipeline exists -->
                 <Separator x:Name="SEP_HelpExternal"    Visibility="Collapsed"/>
                 <MenuItem x:Name="MNU_CheckForUpdates"  Header="Check for _Updates..."   Visibility="Collapsed"/>
@@ -130,10 +130,15 @@
         </Menu>
 
         <!-- ── Status bar ──────────────────────────────────────────────────── -->
+        <!-- Two stacked rows rather than one: UpdateStatusBarWrap (MainWindow.xaml.cs) moves
+             RightClusterHost - everything below still marked DockPanel.Dock="Right" - down into
+             AppStatusBarRow2 whenever the window is too narrow to show both groups on one line,
+             the status-bar equivalent of word-wrap. Row2 starts collapsed/empty; on a wide
+             window RightClusterHost stays up here and row2 is never shown. -->
+        <StackPanel x:Name="StatusBarStack" DockPanel.Dock="Bottom">
         <StatusBar x:Name="AppStatusBar"
-                   DockPanel.Dock="Bottom"
                    Background="#FF1A1A1A"
-                   Height="28"
+                   MinHeight="28"
                    Padding="0">
             <StatusBar.Resources>
                 <BooleanToVisibilityConverter x:Key="BoolToVis"/>
@@ -267,7 +272,17 @@
                     </Setter>
                 </Style>
             </StatusBar.Resources>
-            <!-- Right-aligned items must be declared BEFORE fill items in DockPanel -->
+            <!-- Right-aligned items must be declared BEFORE fill items in DockPanel. Each of the
+                 six Sec_* groups below (Mode, StreamMode, Vu, SeqTransport, TapTempo, Save) is its
+                 own movable unit - UpdateStatusBarWrap (MainWindow.xaml.cs) relocates them to
+                 AppStatusBarRow2 one at a time, starting from Sec_Save, as the window narrows, so
+                 the footer wraps section-by-section instead of all six moving together. Each
+                 wrapper nests its content one DockPanel deeper purely so its own trailing
+                 Separator travels with it as one atomic unit; every item's own
+                 DockPanel.Dock="Right" still applies exactly as before, now against that inner
+                 DockPanel instead of AppStatusBar's directly. -->
+            <StatusBarItem x:Name="Sec_Mode" DockPanel.Dock="Right" Padding="0">
+            <DockPanel LastChildFill="False">
             <StatusBarItem DockPanel.Dock="Right" Padding="4 0 8 0">
                 <TextBlock x:Name="ModeText" Foreground="#FF88AADD" FontSize="11"
                            VerticalAlignment="Center"
@@ -286,12 +301,20 @@
                 </TextBlock>
             </StatusBarItem>
             <Separator DockPanel.Dock="Right" Margin="2 4" Background="#FF444444" Width="1"/>
+            </DockPanel>
+            </StatusBarItem>
+            <StatusBarItem x:Name="Sec_StreamMode" DockPanel.Dock="Right" Padding="0">
+            <DockPanel LastChildFill="False">
             <StatusBarItem DockPanel.Dock="Right" Padding="4 0">
                 <TextBlock x:Name="ConnModeText" Foreground="#FF666666" FontSize="11"
                            VerticalAlignment="Center"
                            ToolTip="Streaming mode (Pull = server pushes every frame; Change = server pushes on screen change)"/>
             </StatusBarItem>
             <Separator DockPanel.Dock="Right" Margin="2 4" Background="#FF444444" Width="1"/>
+            </DockPanel>
+            </StatusBarItem>
+            <StatusBarItem x:Name="Sec_Vu" DockPanel.Dock="Right" Padding="0">
+            <DockPanel LastChildFill="False">
             <StatusBarItem DockPanel.Dock="Right" Padding="2 0" VerticalContentAlignment="Center">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <local:VuMeterBar x:Name="VuMeter"
@@ -353,11 +376,15 @@
                 </StackPanel>
             </StatusBarItem>
             <Separator DockPanel.Dock="Right" Margin="2 4" Background="#FF444444" Width="1"/>
+            </DockPanel>
+            </StatusBarItem>
             <!-- ── Sequencer transport ───────────────────────────────────────────
                  Panel-button emulation: each sends "BUTTON SEQ_*" over the ctrl port,
                  which the daemon converts to a front-panel SEQUENCER key press. -->
             <!-- DataContext = SeqTransportViewModel (set in MainWindow's constructor) -
                  everything below binds Command/IsChecked/IsEnabled to it directly. -->
+            <StatusBarItem x:Name="Sec_SeqTransport" DockPanel.Dock="Right" Padding="0">
+            <DockPanel LastChildFill="False">
             <StatusBarItem x:Name="SeqTransportBarItem" DockPanel.Dock="Right" Padding="2 0" VerticalContentAlignment="Center">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
                                 IsEnabled="{Binding IsTransportEnabled}"
@@ -404,6 +431,8 @@
                     </StackPanel>
             </StatusBarItem>
             <Separator DockPanel.Dock="Right" Margin="2 4" Background="#FF444444" Width="1"/>
+            </DockPanel>
+            </StatusBarItem>
             <!-- The status-bar Inc/Dec stand-in (NautilusValueBarItem) that used to live here is
                  retired - now that the Nautilus front panel has its own Data Inc/Dec buttons
                  (NautilusRightPanel.xaml), the status-bar duplicate is redundant. Per-family
@@ -417,6 +446,8 @@
                  enabled on connection from code-behind, not by IsTransportEnabled.
                  Click + the "Tap Tempo" keybind both route through the command
                  registry; each tap briefly flashes the button (FlashTapTempo). -->
+            <StatusBarItem x:Name="Sec_TapTempo" DockPanel.Dock="Right" Padding="0">
+            <DockPanel LastChildFill="False">
             <StatusBarItem x:Name="TapTempoBarItem" DockPanel.Dock="Right" Padding="2 0" VerticalContentAlignment="Center">
                 <Button x:Name="BTN_TapTempo" Style="{StaticResource SeqTransportBtn}"
                         Width="30" Height="24" IsEnabled="False"
@@ -427,6 +458,8 @@
                 </Button>
             </StatusBarItem>
             <Separator DockPanel.Dock="Right" Margin="2 4" Background="#FF444444" Width="1"/>
+            </DockPanel>
+            </StatusBarItem>
             <!-- Save/Write: on Kronos, fires the same REC/WRITE key press as Record (one physical
                  key that means Record in Sequence mode and Write everywhere else it applies) - a
                  separate SaveCommand from Record's, but sending the identical wire token there
@@ -435,6 +468,8 @@
                  see SeqTransportViewModel.Save's own comment), hence the separate command rather
                  than sharing RecordCommand outright. Its own StatusBarItem (not nested in
                  SeqTransportBarItem) since its enabled modes don't overlap with Sequence. -->
+            <StatusBarItem x:Name="Sec_Save" DockPanel.Dock="Right" Padding="0">
+            <DockPanel LastChildFill="False">
             <StatusBarItem x:Name="SeqSaveBarItem" DockPanel.Dock="Right" Padding="2 0" VerticalContentAlignment="Center">
                 <Button x:Name="BTN_SeqSave" Style="{StaticResource SeqTransportBtn}"
                         Width="30" Height="24"
@@ -447,6 +482,8 @@
                 </Button>
             </StatusBarItem>
             <Separator DockPanel.Dock="Right" Margin="2 4" Background="#FF444444" Width="1"/>
+            </DockPanel>
+            </StatusBarItem>
             <StatusBarItem Padding="8 0 4 0">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                     <StackPanel.ContextMenu>
@@ -663,8 +700,18 @@
                 </TextBlock>
             </StatusBarItem>
         </StatusBar>
+        <!-- Overflow row - empty and collapsed until UpdateStatusBarWrap moves RightClusterHost
+             into it. Its own ItemsPanel (default DockPanel, LastChildFill honors the single
+             item's Dock="Right") puts that cluster flush against the right edge here too. -->
+        <StatusBar x:Name="AppStatusBarRow2"
+                   Background="#FF1A1A1A"
+                   MinHeight="28"
+                   Padding="0"
+                   Visibility="Collapsed"/>
+        </StackPanel>
 
-        <Grid x:Name="OuterGrid" Background="{StaticResource WindowBackgroundBrush}">
+        <Grid x:Name="OuterGrid" Background="{StaticResource WindowBackgroundBrush}"
+              HorizontalAlignment="Center" VerticalAlignment="Center">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition x:Name="LeftPanelColumn" Width="282*"/>
                 <ColumnDefinition x:Name="MainAreaColumn" Width="1600*"/>
@@ -675,7 +722,7 @@
                  (or null, on Nautilus) in ApplyDeviceFamilyUi - see that file's header comment. -->
             <ContentControl x:Name="LeftPanelHost" Grid.Column="0" Focusable="False"/>
 
-        <Grid x:Name="RootGrid" Grid.Column="1" VerticalAlignment="Center" SizeChanged="OnRootGridSizeChanged">
+        <Grid x:Name="RootGrid" Grid.Column="1" VerticalAlignment="Center">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="173*"/>
                 <ColumnDefinition Width="627*"/>
@@ -698,7 +745,7 @@
                         <MenuItem x:Name="CTX_ZoomOut"         Header="Zoom _Out"/>
                         <MenuItem x:Name="CTX_ZoomReset"       Header="_Reset Zoom"/>
                         <Separator/>
-                        <MenuItem x:Name="CTX_Fullscreen"      Header="_Fullscreen"  IsCheckable="True" InputGestureText="F"/>
+                        <MenuItem x:Name="CTX_Fullscreen"      Header="_Fullscreen"  IsCheckable="True"/>
                         <Separator/>
                         <MenuItem x:Name="CTX_ScalingMode" Header="Scaling _Quality">
                             <MenuItem x:Name="CTX_ScaleSharp"  Header="_Sharp (crisp pixels)" IsCheckable="True"/>
@@ -709,8 +756,8 @@
                         <Separator/>
                         <MenuItem x:Name="CTX_KeyboardInfo"    Header="_Keyboard Info..."/>
                         <Separator/>
-                        <MenuItem x:Name="CTX_Reconnect"       Header="Reconn_ect" InputGestureText="E"/>
-                        <MenuItem x:Name="CTX_Disconnect"      Header="_Disconnect" InputGestureText="D"/>
+                        <MenuItem x:Name="CTX_Reconnect"       Header="Reconn_ect"/>
+                        <MenuItem x:Name="CTX_Disconnect"      Header="_Disconnect"/>
                     </ContextMenu>
                 </Image.ContextMenu>
             </Image>
