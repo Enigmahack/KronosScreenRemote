@@ -204,6 +204,21 @@ public partial class App : Application
             NautilusSysExCapture.RunConvertAndWrite(cwPath, cwName, cwBank, cwIndex, cwMatch, cwNamePrefix);
         }
 
+        // Headless diagnostic: `--nautilus-diff-after-edit <kronos.pcg> <program-name>
+        // <post-edit.pcg> [post-edit-name]` - offline, no hardware. Reproduces the exact body
+        // --nautilus-convert-and-write would have written and byte-diffs it against the real
+        // post-front-panel-edit object pulled back from the Nautilus. See
+        // Tools/NautilusSysExCapture.cs's RunDiffAfterEdit for the full rationale.
+        int nautilusDiffAfterEditIdx = Array.IndexOf(e.Args, "--nautilus-diff-after-edit");
+        if (nautilusDiffAfterEditIdx >= 0 && nautilusDiffAfterEditIdx + 3 < e.Args.Length)
+        {
+            string daePath = e.Args[nautilusDiffAfterEditIdx + 1];
+            string daeName = e.Args[nautilusDiffAfterEditIdx + 2];
+            string daePostEditPath = e.Args[nautilusDiffAfterEditIdx + 3];
+            string? daePostEditName = nautilusDiffAfterEditIdx + 4 < e.Args.Length ? e.Args[nautilusDiffAfterEditIdx + 4] : null;
+            NautilusSysExCapture.RunDiffAfterEdit(daePath, daeName, daePostEditPath, daePostEditName);
+        }
+
         // Headless diagnostic: `--nautilus-sysex-bank-digest-scan [device-name-match] [obj]` -
         // read-only func 0x37/0x38 Bank Digest scan across the documented Program bank-byte
         // ranges (Int A-F, User G-T). Match against `--dump-nautilus-bank-digests` to decode

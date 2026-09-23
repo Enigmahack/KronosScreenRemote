@@ -557,4 +557,80 @@ static class NautilusSysExCapture
         transport.Stop();
         Environment.Exit(0);
     }
+
+    // `--nautilus-diff-after-edit <kronos.pcg> <program-name> <post-edit.pcg> [post-edit-name]`
+    // - offline, no hardware. Reproduces the exact body this tool would have written for
+    // `programName` (same LoadAndConvert pipeline, template = the first "Init Program" found in
+    // `post-edit.pcg` - a stand-in for whatever Init Program content the real target slot held
+    // before the original live write, since Nautilus's factory Init Program pattern is the same
+    // across slots), then byte-diffs that reproduction against the real object named
+    // `post-edit-name` (default: same as `programName`) extracted from `post-edit.pcg` - i.e.
+    // what the instrument's own front-panel Edit+Save actually wrote. Built to investigate the
+    // 2026-09-23 "wrong category, present in Bank view but not Category view" finding: run after
+    // pulling a post-edit .pcg back from the Nautilus to see exactly which bytes the front panel
+    // changed relative to our conversion.
+    public static void RunDiffAfterEdit(string kronosPcgPath, string programName, string postEditPcgPath, string? postEditName)
+    {
+        AttachOrAllocConsole();
+        postEditName ??= programName;
+
+        byte[] postEditData;
+        try { postEditData = File.ReadAllBytes(postEditPcgPath); }
+        catch (Exception ex) { Console.WriteLine($"Couldn't read '{postEditPcgPath}': {ex.Message}"); Environment.Exit(1); return; }
+
+        var objects = NautilusPcgObjectExtractor.Extract(postEditData);
+        var template = objects.FirstOrDefault(o => o.ObjType == LibObj.Program &&
+            string.Equals(o.Name.Trim(), "Init Program", StringComparison.OrdinalIgnoreCase));
+        if (template == null) { Console.WriteLine($"No 'Init Program' found in '{postEditPcgPath}' to use as a template."); Environment.Exit(1); return; }
+        Console.WriteLine($"Template: Init Program at bankIdRaw=0x{template.BankIdRaw:X} index={template.Index}, {template.Body.Length} bytes (.pcg slot).");
+
+        var postEdit = objects.FirstOrDefault(o => o.ObjType == LibObj.Program &&
+            string.Equals(o.Name.Trim(), postEditName.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (postEdit == null) { Console.WriteLine($"No Program named \"{postEditName}\" found in '{postEditPcgPath}'."); Environment.Exit(1); return; }
+        Console.WriteLine($"Post-edit: \"{postEdit.Name}\" at bankIdRaw=0x{postEdit.BankIdRaw:X} index={postEdit.Index}, {postEdit.Body.Length} bytes (.pcg slot).");
+
+        byte[] templateWire, postEditWire;
+        try
+        {
+            templateWire = NautilusProgramFormatConverter.PcgToWire(template.Body, template.IsExi);
+            postEditWire = NautilusProgramFormatConverter.PcgToWire(postEdit.Body, postEdit.IsExi);
+        }
+        catch (ArgumentException ex) { Console.WriteLine($"Couldn't convert .pcg record to wire format: {ex.Message}"); Environment.Exit(1); return; }
+        Console.WriteLine($"Trimmed to wire size: template {templateWire.Length} bytes, post-edit {postEditWire.Length} bytes.");
+
+        var result = LoadAndConvert(kronosPcgPath, programName, out _, templateWire);
+        if (result?.NautilusBody == null) { Console.WriteLine("Reproduction refused - see refusal(s) above."); Environment.Exit(1); return; }
+        var repro = result.NautilusBody;
+        var postEditBody = postEditWire;
+
+        if (repro.Length != postEditBody.Length)
+        {
+            Console.WriteLine($"LENGTH MISMATCH: reproduced {repro.Length} bytes, post-edit {postEditBody.Length} bytes - byte-offset diff below won't align past the shorter length.");
+        }
+
+        int n = Math.Min(repro.Length, postEditBody.Length);
+        int diffCount = 0;
+        Console.WriteLine();
+        Console.WriteLine("offset  repro  post-edit");
+        for (int i = 0; i < n; i++)
+        {
+            if (repro[i] == postEditBody[i]) continue;
+            diffCount++;
+            Console.WriteLine($"0x{i:X4}  0x{repro[i]:X2}   0x{postEditBody[i]:X2}");
+        }
+        Console.WriteLine();
+        Console.WriteLine(diffCount == 0
+            ? "No byte differences in the overlapping range."
+            : $"{diffCount} differing byte(s) out of {n} compared.");
+
+        const int categoryOffsetNautilus = 2568 - ProgramConverter.NautilusSizeDelta; // 2562
+        if (categoryOffsetNautilus < n)
+        {
+            byte r = repro[categoryOffsetNautilus], p = postEditBody[categoryOffsetNautilus];
+            Console.WriteLine($"Category byte @0x{categoryOffsetNautilus:X4}: repro=0x{r:X2} (cat={r & 0x1F}, sub={(r >> 5) & 0x07})  " +
+                               $"post-edit=0x{p:X2} (cat={p & 0x1F}, sub={(p >> 5) & 0x07})");
+        }
+
+        Environment.Exit(0);
+    }
 }
