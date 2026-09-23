@@ -441,7 +441,11 @@ static class NautilusSysExCapture
     // Writes the CONVERTED body (not a same-bytes echo, unlike RunWriteBackTest above) from
     // LoadAndConvert into a target slot on the real Nautilus, committing with a Store Bank
     // Request - same confirm-before-commit gate as RunWriteBackTest.
-    public static void RunConvertAndWrite(string kronosPcgPath, string programName, int targetBank, int targetIndex, string? match)
+    // `namePrefix`, when given, overwrites the converted body's Name field (offset 0, 24 bytes,
+    // ASCII, space-padded - see KarmaFieldStripper's header comment) with `namePrefix +
+    // sourceName`, truncated to 24 chars - lets an exploratory write be found/identified later
+    // (e.g. a "111-" search prefix) without touching the source .pcg file.
+    public static void RunConvertAndWrite(string kronosPcgPath, string programName, int targetBank, int targetIndex, string? match, string? namePrefix = null)
     {
         AttachOrAllocConsole();
         match ??= "NAUTILUS";
@@ -467,6 +471,14 @@ static class NautilusSysExCapture
 
         var result = LoadAndConvert(kronosPcgPath, programName, out _, targetBefore.Body);
         if (result?.NautilusBody == null) { transport.Stop(); Environment.Exit(1); return; }
+
+        if (namePrefix != null)
+        {
+            string newName = (namePrefix + programName).PadRight(24)[..24];
+            var nameBytes = System.Text.Encoding.ASCII.GetBytes(newName);
+            Array.Copy(nameBytes, 0, result.NautilusBody, 0, Math.Min(24, result.NautilusBody.Length));
+            Console.WriteLine($"Renamed for this test write: \"{newName.TrimEnd()}\"");
+        }
 
         Console.WriteLine();
         Console.WriteLine("About to write the converted Program above into the target slot, then commit with a");
