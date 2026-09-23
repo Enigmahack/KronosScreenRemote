@@ -5113,6 +5113,12 @@
   },
   {
     "section": "ROM_MULTISAMPLES",
+    "kronos_index": 710,
+    "nautilus_index": 891,
+    "name": "saw"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
     "kronos_index": 711,
     "nautilus_index": 892,
     "name": "OBPUL1"
@@ -6373,6 +6379,12 @@
   },
   {
     "section": "ROM_MULTISAMPLES",
+    "kronos_index": 921,
+    "nautilus_index": 1102,
+    "name": "Conga Loop"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
     "kronos_index": 922,
     "nautilus_index": 1103,
     "name": "Claves"
@@ -6883,6 +6895,12 @@
   },
   {
     "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1018,
+    "nautilus_index": 1199,
+    "name": "Conga loop"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
     "kronos_index": 1019,
     "nautilus_index": 1200,
     "name": "Tri O loop"
@@ -7282,6 +7300,12 @@
     "kronos_index": 1085,
     "nautilus_index": 1266,
     "name": "ClavTS-5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1086,
+    "nautilus_index": 1267,
+    "name": "Saw"
   },
   {
     "section": "ROM_MULTISAMPLES",
