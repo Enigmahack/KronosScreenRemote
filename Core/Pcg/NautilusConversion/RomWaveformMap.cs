@@ -12,12 +12,17 @@ using System.Text.Json.Serialization;
 // override-file-next-to-exe-else-embedded convention as ExsOptionIndex/Core/Sample/
 // ExsOptionIndex.cs, for the same reason: lets a revised table ship without a rebuild.
 //
-// Sections actually populated as of the 2026-09-16 generation: ROM_MULTISAMPLES (1088 matched
-// entries, 73% of Kronos's table - the one Program HD-1 zone remapping actually uses) and
-// ROM_DRUMSAMPLES (378 matched, only 29% - Nautilus renamed its ROM drum-sample set with an
-// incompatible naming convention, a confirmed real limitation, not a bug - see the generator's
-// own REVIEW.md). EXs<N> sections are present in the JSON's shape but empty in practice AND are
-// never looked up by the remapper regardless (see SampleZoneRomRemapper's header comment: an
+// Sections actually populated as of the 2026-09-23 regeneration (fixed two real bugs in the
+// generator: a column-splitting gap threshold that silently merged and dropped adjacent-column
+// entries when a name ran long, and a space-before-hyphen inconsistency between the two source
+// PDFs that spuriously failed otherwise-identical names, e.g. Kronos "mf -L" vs Nautilus
+// "mf-L" - together recovered 55 entries, including the whole "Acoustic Piano 1" ROM run):
+// ROM_MULTISAMPLES (1129 matched entries, 75% of Kronos's table - the one Program HD-1 zone
+// remapping actually uses) and ROM_DRUMSAMPLES (392 matched, 28% - Nautilus renamed its ROM
+// drum-sample set with an incompatible naming convention, a confirmed real limitation, not a
+// bug - see the generator's own REVIEW.md). EXs<N> sections are present in the JSON's shape but
+// empty in practice AND are never looked up by the remapper regardless (see
+// SampleZoneRomRemapper's header comment: an
 // EXs reference is always a hard refuse, not a table lookup - EXs bank identity is a real
 // Korg-assigned global product id, but that does NOT establish the reference resolves
 // identically on Nautilus, which is unverified). Do NOT read the PDF-sourced "1-18 vs 301-314"

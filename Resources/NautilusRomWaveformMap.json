@@ -727,9 +727,33 @@
   },
   {
     "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 292,
+    "nautilus_index": 1184,
+    "name": "SD-Dance 45"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 293,
+    "nautilus_index": 1185,
+    "name": "SD-Dance 46"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
     "kronos_index": 294,
     "nautilus_index": 1186,
     "name": "SD-Dance 47"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 295,
+    "nautilus_index": 1187,
+    "name": "SD-Dance 48"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 296,
+    "nautilus_index": 1188,
+    "name": "SD-Dance 49"
   },
   {
     "section": "ROM_DRUMSAMPLES",
@@ -949,6 +973,12 @@
   },
   {
     "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 534,
+    "nautilus_index": 2205,
+    "name": "Orchestral Cymbal-Closed"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
     "kronos_index": 573,
     "nautilus_index": 1139,
     "name": "Finger Snap"
@@ -1021,6 +1051,30 @@
   },
   {
     "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 744,
+    "nautilus_index": 2949,
+    "name": "Tambourine 1-Push"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 745,
+    "nautilus_index": 2950,
+    "name": "Tambourine 1-Pull"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 746,
+    "nautilus_index": 2951,
+    "name": "Tambourine 1-Accent"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 747,
+    "nautilus_index": 2952,
+    "name": "Tambourine 2-Push"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
     "kronos_index": 748,
     "nautilus_index": 2955,
     "name": "Tambourine 2-Pull a"
@@ -1030,6 +1084,12 @@
     "kronos_index": 749,
     "nautilus_index": 2958,
     "name": "Tambourine 2-Pull b"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 750,
+    "nautilus_index": 2959,
+    "name": "Tambourine 2-Accent"
   },
   {
     "section": "ROM_DRUMSAMPLES",
@@ -1582,6 +1642,24 @@
     "kronos_index": 1061,
     "nautilus_index": 3683,
     "name": "DJ Vinyl Sliced 06"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1062,
+    "nautilus_index": 3684,
+    "name": "DJ Vinyl Sliced 07"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1063,
+    "nautilus_index": 3685,
+    "name": "DJ Vinyl Sliced 08"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1064,
+    "nautilus_index": 3686,
+    "name": "DJ Vinyl Sliced 09"
   },
   {
     "section": "ROM_DRUMSAMPLES",
@@ -2245,6 +2323,12 @@
   },
   {
     "section": "ROM_DRUMSAMPLES",
+    "kronos_index": 1348,
+    "nautilus_index": 3947,
+    "name": "Ac.Bs-String Slap"
+  },
+  {
+    "section": "ROM_DRUMSAMPLES",
     "kronos_index": 1374,
     "nautilus_index": 3444,
     "name": "Berimbau-Wah-Lo"
@@ -2266,6 +2350,42 @@
     "kronos_index": 1377,
     "nautilus_index": 3447,
     "name": "Berimbau-PO"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 0,
+    "nautilus_index": 2,
+    "name": "Acoustic Piano 1 mf -L"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1,
+    "nautilus_index": 3,
+    "name": "Acoustic Piano 1 mf -R"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 2,
+    "nautilus_index": 4,
+    "name": "Acoustic Piano 1 f -L"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 3,
+    "nautilus_index": 5,
+    "name": "Acoustic Piano 1 f -R"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 4,
+    "nautilus_index": 6,
+    "name": "Acoustic Piano 1 ff -L"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 5,
+    "nautilus_index": 7,
+    "name": "Acoustic Piano 1 ff -R"
   },
   {
     "section": "ROM_MULTISAMPLES",
@@ -3019,6 +3139,18 @@
   },
   {
     "section": "ROM_MULTISAMPLES",
+    "kronos_index": 191,
+    "nautilus_index": 301,
+    "name": "Brass Ensemble 1 -L"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 192,
+    "nautilus_index": 302,
+    "name": "Brass Ensemble 1 -R"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
     "kronos_index": 193,
     "nautilus_index": 303,
     "name": "Brass Ensemble 2"
@@ -3028,6 +3160,18 @@
     "kronos_index": 194,
     "nautilus_index": 304,
     "name": "Brass Ensemble 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 195,
+    "nautilus_index": 305,
+    "name": "Brass Ensemble 4 -L"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 196,
+    "nautilus_index": 306,
+    "name": "Brass Ensemble 4 -R"
   },
   {
     "section": "ROM_MULTISAMPLES",
@@ -3124,6 +3268,12 @@
     "kronos_index": 217,
     "nautilus_index": 367,
     "name": "Violin-Vibrato"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 218,
+    "nautilus_index": 373,
+    "name": "Viola"
   },
   {
     "section": "ROM_MULTISAMPLES",
@@ -3355,6 +3505,12 @@
   },
   {
     "section": "ROM_MULTISAMPLES",
+    "kronos_index": 378,
+    "nautilus_index": 573,
+    "name": "SynReso-Pro5_1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
     "kronos_index": 379,
     "nautilus_index": 574,
     "name": "SynReso-Pro5_2"
@@ -3370,6 +3526,18 @@
     "kronos_index": 381,
     "nautilus_index": 576,
     "name": "SynReso-Poly6_2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 382,
+    "nautilus_index": 580,
+    "name": "Bass/Lead-MG"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 383,
+    "nautilus_index": 585,
+    "name": "Bass/Lead-800DV 1"
   },
   {
     "section": "ROM_MULTISAMPLES",
@@ -3523,6 +3691,12 @@
   },
   {
     "section": "ROM_MULTISAMPLES",
+    "kronos_index": 423,
+    "nautilus_index": 622,
+    "name": "Analog Strings 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
     "kronos_index": 433,
     "nautilus_index": 627,
     "name": "POWER SAW"
@@ -3544,6 +3718,18 @@
     "kronos_index": 445,
     "nautilus_index": 634,
     "name": "White Pad"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 455,
+    "nautilus_index": 639,
+    "name": "Cymbal Flute -L"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 456,
+    "nautilus_index": 640,
+    "name": "Cymbal Flute -R"
   },
   {
     "section": "ROM_MULTISAMPLES",
@@ -3580,6 +3766,18 @@
     "kronos_index": 464,
     "nautilus_index": 650,
     "name": "Swish Terra"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 465,
+    "nautilus_index": 651,
+    "name": "Spectone -L"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 466,
+    "nautilus_index": 652,
+    "name": "Spectone -R"
   },
   {
     "section": "ROM_MULTISAMPLES",
@@ -3904,6 +4102,12 @@
     "kronos_index": 533,
     "nautilus_index": 714,
     "name": "Overblown"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 534,
+    "nautilus_index": 715,
+    "name": "Bottle WS"
   },
   {
     "section": "ROM_MULTISAMPLES",
@@ -8047,6 +8251,30 @@
   },
   {
     "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1331,
+    "nautilus_index": 1572,
+    "name": "El.Gtr-Glissando Down 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1332,
+    "nautilus_index": 1573,
+    "name": "El.Gtr-Glissando Down 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1333,
+    "nautilus_index": 1574,
+    "name": "El.Gtr-Glissando Down 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1334,
+    "nautilus_index": 1575,
+    "name": "El.Gtr-Glissando Down 4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
     "kronos_index": 1335,
     "nautilus_index": 1576,
     "name": "El.Gtr-Glissando Up 1"
@@ -8062,6 +8290,42 @@
     "kronos_index": 1337,
     "nautilus_index": 1578,
     "name": "El.Gtr-Glissando Up 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1339,
+    "nautilus_index": 1579,
+    "name": "El.Gtr-ChordGhost Down 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1340,
+    "nautilus_index": 1580,
+    "name": "El.Gtr-ChordGhost Down 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1341,
+    "nautilus_index": 1581,
+    "name": "El.Gtr-ChordGhost Down 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1342,
+    "nautilus_index": 1582,
+    "name": "El.Gtr-ChordGhost Down 4"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1343,
+    "nautilus_index": 1583,
+    "name": "El.Gtr-ChordGhost Down 5"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1344,
+    "nautilus_index": 1584,
+    "name": "El.Gtr-ChordGhost Down 6"
   },
   {
     "section": "ROM_MULTISAMPLES",
@@ -8419,6 +8683,42 @@
   },
   {
     "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1406,
+    "nautilus_index": 1656,
+    "name": "El.Bs-SlapGhostSlide 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1407,
+    "nautilus_index": 1657,
+    "name": "El.Bs-SlapGhostSlide 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1408,
+    "nautilus_index": 1658,
+    "name": "El.Bs-Fret Noise 1"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1409,
+    "nautilus_index": 1659,
+    "name": "El.Bs-Fret Noise 2"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1410,
+    "nautilus_index": 1660,
+    "name": "El.Bs-Fret Noise 3"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1411,
+    "nautilus_index": 1661,
+    "name": "El.Bs-SlapGhostNote 01"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
     "kronos_index": 1412,
     "nautilus_index": 1662,
     "name": "El.Bs-SlapGhostNote 02"
@@ -8440,6 +8740,42 @@
     "kronos_index": 1415,
     "nautilus_index": 1665,
     "name": "El.Bs-SlapGhostNote 05"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1416,
+    "nautilus_index": 1666,
+    "name": "El.Bs-SlapGhostNote 06"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1417,
+    "nautilus_index": 1667,
+    "name": "El.Bs-SlapGhostNote 07"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1418,
+    "nautilus_index": 1668,
+    "name": "El.Bs-SlapGhostNote 08"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1419,
+    "nautilus_index": 1669,
+    "name": "El.Bs-SlapGhostNote 09"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1420,
+    "nautilus_index": 1670,
+    "name": "El.Bs-SlapGhostNote 10"
+  },
+  {
+    "section": "ROM_MULTISAMPLES",
+    "kronos_index": 1421,
+    "nautilus_index": 1671,
+    "name": "El.Bs-SlapGhostNote 11"
   },
   {
     "section": "ROM_MULTISAMPLES",
@@ -8566,12 +8902,6 @@
     "kronos_index": 1446,
     "nautilus_index": 1697,
     "name": "Car Stop"
-  },
-  {
-    "section": "ROM_MULTISAMPLES",
-    "kronos_index": 1447,
-    "nautilus_index": 1698,
-    "name": "Car Pass"
   },
   {
     "section": "ROM_MULTISAMPLES",
