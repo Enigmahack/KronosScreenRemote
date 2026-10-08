@@ -324,6 +324,8 @@ public sealed class SampleWaveformControl : FrameworkElement
     int _dragAnchorFrame = -1;
     int _lastFrameCount = -1;
     bool _dragMoved;
+    double _dragPressX;
+    const double DragDeadZonePx = 4;
 
     // Live crop-selection drag preview - separate from the committed SelectionStartFrame/
     // SelectionEndFrame DPs, which are now written ONCE at mouse-up instead of on every
@@ -807,6 +809,7 @@ public sealed class SampleWaveformControl : FrameworkElement
 
         _dragAnchorFrame = clickFrame;
         _dragMoved = false;
+        _dragPressX = x;
         SetPreviewSelection(_dragAnchorFrame, _dragAnchorFrame);
         CaptureMouse();
     }
@@ -898,8 +901,11 @@ public sealed class SampleWaveformControl : FrameworkElement
             return;
         }
 
-        int selFrame = PixelToFrame(e.GetPosition(this).X);
-        if (selFrame != _dragAnchorFrame) _dragMoved = true;
+        // Dead zone: a press-drag within DragDeadZonePx of the press stays a plain click.
+        double selX = e.GetPosition(this).X;
+        if (!_dragMoved && Math.Abs(selX - _dragPressX) <= DragDeadZonePx) return;
+        int selFrame = PixelToFrame(selX);
+        _dragMoved = true;
         SetPreviewSelection(Math.Min(_dragAnchorFrame, selFrame), Math.Max(_dragAnchorFrame, selFrame));
         SelectionPreviewChanged?.Invoke();
     }

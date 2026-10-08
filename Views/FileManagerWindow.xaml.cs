@@ -15,7 +15,7 @@ namespace KronosScreenRemote;
 public partial class FileManagerWindow : ThemedWindow
 {
     // ── File entry model ──────────────────────────────────────────────────────
-    record FileEntry(string Name, string FullPath, bool IsDirectory, long Bytes, DateTime Modified)
+    record FileEntry(string Name, string FullPath, bool IsDirectory, long Bytes, DateTime Modified, bool ReadOnly = false)
     {
         public string DisplayName => IsDirectory ? "📁 " + Name : Name;
         public string SizeText    => IsDirectory ? "<DIR>" :
@@ -197,6 +197,13 @@ public partial class FileManagerWindow : ThemedWindow
     // OUT of anything that acts destructively on a selection (Delete/Rename/Cut/Copy/transfer/
     // drag-source) - navigation itself needs no such filter (see RefreshRemoteAsync's comment).
     const string ParentEntryName = "..";
+    const string ReadOnlyRefusal = "Read-only item(s) can't be cut, copied, renamed or deleted.";
+
+    // Read-only only on explicit evidence: a unix-style mode string ("-r--r--r--") where nobody can
+    // write. Anything else (no listing permissions, MLSD perm facts, odd servers) counts as writable,
+    // since a wrong "read-only" would disable the item's whole context menu.
+    static bool IsUnixModeReadOnly(string? raw) =>
+        raw is { Length: 10 } && "-dl".Contains(raw[0]) && raw.IndexOf('w', 1) < 0;
 
     static List<FileEntry> RealItems(IEnumerable<FileEntry> items) =>
         items.Where(f => f.Name != ParentEntryName).ToList();
@@ -424,7 +431,8 @@ public partial class FileManagerWindow : ThemedWindow
             var listing = await _ftp!.GetListing(_remote.Dir);
             var entries = listing
                 .Select(i => new FileEntry(i.Name, i.FullName,
-                    i.Type == FtpObjectType.Directory, i.Size, i.Modified))
+                    i.Type == FtpObjectType.Directory, i.Size, i.Modified,
+                    ReadOnly: IsUnixModeReadOnly(i.RawPermissions)))
                 .ToList();
             _remote.Items.Clear();
             foreach (var entry in entries) _remote.Items.Add(entry);
@@ -452,9 +460,9 @@ public partial class FileManagerWindow : ThemedWindow
             _local.Items.Clear();
             int count = 0;
             foreach (var d in Directory.GetDirectories(_local.Dir).Select(p => new DirectoryInfo(p)))
-                { _local.Items.Add(new FileEntry(d.Name, d.FullName, true, 0, d.LastWriteTime)); count++; }
+                { _local.Items.Add(new FileEntry(d.Name, d.FullName, true, 0, d.LastWriteTime, false)); count++; }
             foreach (var f in Directory.GetFiles(_local.Dir).Select(p => new FileInfo(p)))
-                { _local.Items.Add(new FileEntry(f.Name, f.FullName, false, f.Length, f.LastWriteTime)); count++; }
+                { _local.Items.Add(new FileEntry(f.Name, f.FullName, false, f.Length, f.LastWriteTime, f.IsReadOnly)); count++; }
             // ".." - see RefreshRemoteAsync's own comment on why this is a plain directory entry.
             if (Directory.GetParent(_local.Dir)?.FullName is { } parent)
                 _local.Items.Add(new FileEntry(ParentEntryName, parent, true, 0, default));
@@ -692,6 +700,7 @@ public partial class FileManagerWindow : ThemedWindow
     {
         var items = RealItems(RemoteList.SelectedItems.Cast<FileEntry>());
         if (items.Count == 0) { SetStatus(AppMessages.FileManager.SelectItemsToDelete); return; }
+        if (items.Any(f => f.ReadOnly)) { SetStatus(ReadOnlyRefusal); return; }
         if (MessageBox.Show(AppMessages.FileManager.ConfirmDeleteRemote(items.Count), AppMessages.Titles.Delete,
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         await RunExclusive(async () =>
@@ -717,6 +726,7 @@ public partial class FileManagerWindow : ThemedWindow
     {
         var items = RealItems(LocalList.SelectedItems.Cast<FileEntry>());
         if (items.Count == 0) { SetStatus(AppMessages.FileManager.SelectItemsToDelete); return; }
+        if (items.Any(f => f.ReadOnly)) { SetStatus(ReadOnlyRefusal); return; }
         if (MessageBox.Show(AppMessages.FileManager.ConfirmDeleteLocal(items.Count), AppMessages.Titles.Delete,
                 MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes) return;
         int done = 0;
@@ -740,6 +750,7 @@ public partial class FileManagerWindow : ThemedWindow
         if (RemoteList.SelectedItems.Count != 1 || RemoteList.SelectedItem is FileEntry { Name: ParentEntryName })
             { SetStatus(AppMessages.FileManager.SelectOneToRename); return; }
         var item = (FileEntry)RemoteList.SelectedItem!;
+        if (item.ReadOnly) { SetStatus(ReadOnlyRefusal); return; }
         // Top-level entries are the Kronos's own SSD1/SSD2/SSD3/... storage volumes - see
         // FtpPathSafety's own comment for why renaming one is never allowed. Checked here,
         // ahead of even prompting for a new name, so the context menu's own disabled state
@@ -764,6 +775,7 @@ public partial class FileManagerWindow : ThemedWindow
         if (LocalList.SelectedItems.Count != 1 || LocalList.SelectedItem is FileEntry { Name: ParentEntryName })
             { SetStatus(AppMessages.FileManager.SelectOneToRename); return; }
         var item    = (FileEntry)LocalList.SelectedItem!;
+        if (item.ReadOnly) { SetStatus(ReadOnlyRefusal); return; }
         var newName = PromptInput(AppMessages.Prompts.NewName, item.Name);
         if (string.IsNullOrWhiteSpace(newName) || newName == item.Name) return;
         var newPath = Path.Combine(Path.GetDirectoryName(item.FullPath) ?? _local.Dir, newName);
@@ -1231,7 +1243,13 @@ public partial class FileManagerWindow : ThemedWindow
         });
     }
 
-    async Task MoveLocalItemsAsync(IList<FileEntry> items, string destFolder) =>
+    async Task MoveLocalItemsAsync(IList<FileEntry> items, string destFolder)
+    {
+        if (items.Any(f => f.ReadOnly)) { SetStatus(ReadOnlyRefusal); return; }
+        await MoveLocalItemsCoreAsync(items, destFolder);
+    }
+
+    async Task MoveLocalItemsCoreAsync(IList<FileEntry> items, string destFolder) =>
         await RunBusyAsync(AppMessages.FileManager.MovingItems(items.Count), async () =>
     {
         int done = 0;
@@ -1310,6 +1328,7 @@ public partial class FileManagerWindow : ThemedWindow
 
     async Task MoveRemoteItemsAsync(IList<FileEntry> items, string destFolder)
     {
+        if (items.Any(f => f.ReadOnly)) { SetStatus(ReadOnlyRefusal); return; }
         if (!await EnsureConnectedAsync()) return;
         await RunBusyAsync(AppMessages.FileManager.MovingFiles(items.Count), async () =>
         {
@@ -1408,6 +1427,7 @@ public partial class FileManagerWindow : ThemedWindow
         // or renamed - see FtpPathSafety's own comment. Local entries have no such
         // restriction, and Open (navigating INTO the volume) is unaffected.
         bool remoteTopLevelSelected = isRemote && realSelected.Any(f => FtpPathSafety.IsTopLevelPath(f.FullPath));
+        bool readOnlySelected = realSelected.Any(f => f.ReadOnly);
 
         var cm = new ContextMenu();
 
@@ -1430,15 +1450,15 @@ public partial class FileManagerWindow : ThemedWindow
                 isRemote ? (RoutedEventHandler)OnDownload : OnUpload));
         }
 
-        cm.Items.Add(MakeItem("Cut",   hasSelection && !remoteTopLevelSelected, (_, _) => DoCut(lv, isRemote)));
-        cm.Items.Add(MakeItem("Copy",  hasSelection && !remoteTopLevelSelected, (_, _) => DoCopy(lv, isRemote)));
+        cm.Items.Add(MakeItem("Cut",   hasSelection && !remoteTopLevelSelected && !readOnlySelected, (_, _) => DoCut(lv, isRemote)));
+        cm.Items.Add(MakeItem("Copy",  hasSelection && !remoteTopLevelSelected && !readOnlySelected, (_, _) => DoCopy(lv, isRemote)));
         cm.Items.Add(MakeItem("Paste", _clipboard != null && !_busy,
                               async (_, _) => await RunExclusive(() => DoPasteAsync(isRemote))));
         cm.Items.Add(new Separator());
-        bool canRename = isSingle && entry != null && !remoteTopLevelSelected;
+        bool canRename = isSingle && entry != null && !remoteTopLevelSelected && !readOnlySelected;
         cm.Items.Add(MakeItem("Rename", canRename,
                      isRemote ? (RoutedEventHandler)OnRemoteRename : OnLocalRename));
-        cm.Items.Add(MakeItem("Delete", hasSelection && !remoteTopLevelSelected,
+        cm.Items.Add(MakeItem("Delete", hasSelection && !remoteTopLevelSelected && !readOnlySelected,
                      isRemote ? (RoutedEventHandler)OnRemoteDelete : OnLocalDelete));
         cm.Items.Add(new Separator());
         cm.Items.Add(MakeItem("New Folder", !_busy,
@@ -1461,6 +1481,7 @@ public partial class FileManagerWindow : ThemedWindow
     {
         var items = RealItems(lv.SelectedItems.Cast<FileEntry>());
         if (items.Count == 0) return;
+        if (items.Any(f => f.ReadOnly)) { SetStatus(ReadOnlyRefusal); return; }
         _clipboard = new ClipboardPayload(IsCut: true, FromRemote: isRemote, Items: items);
         SetStatus(AppMessages.FileManager.CutToMove(items.Count));
     }
@@ -1469,6 +1490,7 @@ public partial class FileManagerWindow : ThemedWindow
     {
         var items = RealItems(lv.SelectedItems.Cast<FileEntry>());
         if (items.Count == 0) return;
+        if (items.Any(f => f.ReadOnly)) { SetStatus(ReadOnlyRefusal); return; }
         _clipboard = new ClipboardPayload(IsCut: false, FromRemote: isRemote, Items: items);
         SetStatus(AppMessages.FileManager.CopiedToCopy(items.Count));
     }

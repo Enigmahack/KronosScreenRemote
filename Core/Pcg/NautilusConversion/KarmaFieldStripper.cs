@@ -87,11 +87,12 @@ static class KarmaFieldStripper
     // Up/Dn", a real named pattern, not a documented "off" sentinel; treating it as "nothing to
     // warn about" is a heuristic (avoids a spurious warning on the common case of a Program
     // that never touched KARMA, which defaults to 0), not a proven detection of "KARMA unused."
+    public static int? ReadGeNumber(byte[] body) =>
+        GeNumberOffset + 1 < body.Length ? body[GeNumberOffset] | (body[GeNumberOffset + 1] << 8) : null;
+
     public static string? DescribeGeAssignment(byte[] body, KarmaGeCatalog catalog)
     {
-        if (GeNumberOffset + 1 >= body.Length) return null;
-        int geNumber = body[GeNumberOffset] | (body[GeNumberOffset + 1] << 8);
-        if (geNumber == 0) return null;
+        if (ReadGeNumber(body) is not int geNumber || geNumber == 0) return null;
 
         string name = catalog.NameForGeNumber(geNumber) is { } n ? $"\"{n}\"" : "(name unknown)";
         return $"KARMA GE #{geNumber} {name} was assigned - Nautilus has no automatic translation " +

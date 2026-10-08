@@ -102,6 +102,19 @@ static class SampleZoneRomRemapper
         return (result, unmapped);
     }
 
+    // Program ROM zones that do get remapped, but to a Nautilus waveform whose audio isn't
+    // byte-identical (a re-sampled equivalent) - worth telling the user about.
+    public static List<(int Osc, int Zone, int Number)> ProgramZonesNotAudioIdentical(byte[] hd1Body, RomWaveformMap map)
+    {
+        var list = new List<(int, int, int)>();
+        foreach (var (osc, zone, uuid, number) in LibRefs.IterProgramSampleZoneRefs(hd1Body))
+            if (SampleReferenceWalker.Classify(uuid).Class == SampleReferenceWalker.RefClass.LegacyRom
+                && map.TryMapRomIndex(RomWaveformSections.RomMultisamples, number, out _)
+                && !map.IsAudioIdentical(RomWaveformSections.RomMultisamples, number))
+                list.Add((osc, zone, number));
+        return list;
+    }
+
     public static (byte[] Body, List<UnmappedDrumKitZoneRef> Unmapped) RemapDrumKitSampleZones(byte[] drumKitBody, RomWaveformMap map, ExsOptionIndex exsCatalog)
     {
         var result = (byte[])drumKitBody.Clone();

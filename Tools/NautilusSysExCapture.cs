@@ -6,8 +6,7 @@ using System.Runtime.InteropServices;
 using NAudio.Midi;
 
 // Standalone, passive USB SysEx capture tool for real-hardware RE work against the Nautilus.
-// See scratch_debug/pcg-converter-grillme-capsule.md's "HARDWARE-INVESTIGATION SESSION" entry
-// for why this exists: Korg's own Nautilus MIDI Implementation doc prints a 6-byte Exclusive
+// Why it exists: Korg's own Nautilus MIDI Implementation doc prints a 6-byte Exclusive
 // Header (F0 42 3g 00 01 5D) where Kronos's is 4 bytes (F0 42 3g 68), but the same Nautilus
 // doc's own function-code table caption ("5th byte of exclusive message") only makes sense for
 // the 4-byte form - the vendor doc contradicts itself, so this needs a real capture, not more
@@ -34,7 +33,7 @@ static class NautilusSysExCapture
     // Console.WriteLine/ReadLine would silently go nowhere. Attach to the launching terminal's
     // console explicitly, or open a fresh window if there isn't one (e.g. double-clicked),
     // before touching Console at all. Shared by every entry point in this file.
-    static void AttachOrAllocConsole()
+    internal static void AttachOrAllocConsole()
     {
         // If stdout is already redirected/piped (a file, `| grep`, a captured test run), the
         // inherited handle already works fine - AttachConsole can fail in that situation and
@@ -97,8 +96,13 @@ static class NautilusSysExCapture
 
         Console.WriteLine($"Establishing stream-port ownership at {host}:{settings.StreamPort} " +
                            "(required before the daemon will answer any MIDI_SEND/MIDI_STATUS command)...");
+        // The top-level Ftp* pair is whichever host the GUI last connected to; with two boards in
+        // play that's often the other one, so prefer this host's own remembered credentials.
+        var (user, pass) = settings.HostCredentials.TryGetValue(host, out var cred)
+            ? (cred.Username, cred.Password)
+            : (settings.FtpUsername, settings.FtpPassword);
         session.Start(new ScreenConnection(host, settings.StreamPort, settings.PullMode, settings.MaxFps,
-            settings.FtpUsername, settings.FtpPassword));
+            user, pass));
 
         // Safe to block synchronously here (no Task.Run wrapper needed, unlike SendAndWait above):
         // ScreenSession.Start's own ConnectAsync already runs via its own internal Task.Run, so
@@ -331,6 +335,47 @@ static class NautilusSysExCapture
         Environment.Exit(0);
     }
 
+    // Read-only sweep of 0x72 Object Dump Requests over obj codes [objFrom, objTo] at one
+    // bank/index, accepting either a 0x73 dump or a 0x24 Reply - for finding object types the
+    // vendor doc omits (ArpPattern.txt documents a 556-byte object but NAUTILUS_MIDI_SysEx.txt's
+    // obj table lists no code for it). Each decoded body is saved to outDir for offline diffing.
+    public static void RunObjectProbe(string? match, int objFrom, int objTo, int bank, int index, string? outDir,
+        DeviceFamily family = DeviceFamily.Nautilus, int count = 1)
+    {
+        AttachOrAllocConsole();
+        match ??= "NAUTILUS";
+        outDir ??= Path.Combine(Path.GetTempPath(), "nautilus_obj_probe");
+        Directory.CreateDirectory(outDir);
+        var codec = KorgSysExCodecs.For(family);
+
+        var transport = OpenTransport(match);
+        if (transport == null) return;
+
+        for (int obj = objFrom; obj <= objTo; obj++)
+        for (int n = 0; n < count; n++)
+        {
+            int idx = index + n;
+            var reply = SendAndWait(transport, codec.BuildObjectDumpRequest(obj, bank, idx),
+                m => codec.HasHeaderAt(m, 0, 0x73) || codec.HasHeaderAt(m, 0, 0x24),
+                $"obj=0x{obj:X2}", timeoutMs: 3000, verbose: false);
+            if (reply == null) { Console.WriteLine($"obj=0x{obj:X2} bank=0x{bank:X2} idx={idx}: TIMEOUT"); continue; }
+            var dump = codec.ParseObjectDump(reply);
+            if (dump == null)
+            {
+                Console.WriteLine($"obj=0x{obj:X2} bank=0x{bank:X2} idx={idx}: Reply code=0x{codec.ParseReply(reply):X2}");
+                continue;
+            }
+            string name = new string(System.Text.Encoding.ASCII.GetString(dump.Body, 0, Math.Min(24, dump.Body.Length))
+                .Select(c => c >= ' ' && c < 0x7F ? c : '.').ToArray());
+            File.WriteAllBytes(Path.Combine(outDir, $"obj{obj:X2}_b{bank:X2}_i{idx:0000}_v{dump.Version}.bin"), dump.Body);
+            Console.WriteLine($"obj=0x{obj:X2} bank=0x{bank:X2} idx={idx}: DUMP version={dump.Version} " +
+                               $"bodyLen={dump.Body.Length} name=\"{name}\"");
+        }
+
+        transport.Stop();
+        Environment.Exit(0);
+    }
+
     // Full write-path round trip: read a real object, write the SAME bytes back unchanged
     // (func 0x73), commit with Store Bank Request (func 0x76 - DESTRUCTIVE, this is the whole
     // point of the test), then re-read and byte-diff against the original. Zero content risk
@@ -381,6 +426,98 @@ static class NautilusSysExCapture
 
         transport.Stop();
         Environment.Exit(identical ? 0 : 1);
+    }
+
+    // Saves the edit buffer for `obj` (0x74 request -> 0x75 reply: header, 0x75, obj, version,
+    // 8-to-7 data) as a decoded body, so a UI-driven test can put it back afterwards.
+    public static void RunSaveCurrentObject(string? match, int obj, string outPath)
+    {
+        AttachOrAllocConsole();
+        match ??= "NAUTILUS";
+        var codec = KorgSysExCodecs.For(DeviceFamily.Nautilus);
+        var transport = OpenTransport(match);
+        if (transport == null) return;
+
+        var reply = SendAndWait(transport, codec.KorgMessage(0x74, (byte)obj),
+            m => codec.HasHeaderAt(m, 0, 0x75) || codec.HasHeaderAt(m, 0, 0x24), $"Current Object Dump Request obj=0x{obj:X2}");
+        if (reply == null || !codec.HasHeaderAt(reply, 0, 0x75)) { Console.WriteLine("No 0x75 reply."); transport.Stop(); Environment.Exit(1); return; }
+        byte version = reply[8];
+        var body = KronosSysEx.Decode8to7(reply, 9, reply.Length - 10);
+        File.WriteAllBytes(outPath, body);
+        Console.WriteLine($"Saved edit buffer obj=0x{obj:X2} version={version} bodyLen={body.Length} -> {outPath}");
+        transport.Stop();
+        Environment.Exit(0);
+    }
+
+    // Replaces an edit buffer with a decoded body (0x75 Current Object Dump), then re-reads it
+    // with 0x74 and byte-diffs - the undo for RunSaveCurrentObject. Nothing is stored.
+    public static void RunSendCurrentObject(string? match, int obj, byte version, string bodyPath)
+    {
+        AttachOrAllocConsole();
+        match ??= "NAUTILUS";
+        var codec = KorgSysExCodecs.For(DeviceFamily.Nautilus);
+        byte[] body = File.ReadAllBytes(bodyPath);
+        var transport = OpenTransport(match);
+        if (transport == null) return;
+
+        var payload = new byte[] { (byte)obj, version }.Concat(KronosSysEx.Encode7to8(body, 0, body.Length)).ToArray();
+        var reply = SendAndWait(transport, codec.KorgMessage(0x75, payload), m => codec.ParseReply(m) != null,
+            $"Current Object Dump obj=0x{obj:X2} len={body.Length}");
+        Console.WriteLine($"Reply code: {(reply == null ? "none" : codec.ParseReply(reply).ToString())} (0 = success)");
+
+        var check = SendAndWait(transport, codec.KorgMessage(0x74, (byte)obj), m => codec.HasHeaderAt(m, 0, 0x75), "verify 0x74");
+        var after = check == null ? null : KronosSysEx.Decode8to7(check, 9, check.Length - 10);
+        Console.WriteLine(after != null && after.AsSpan().SequenceEqual(body)
+            ? "CONFIRMED: edit buffer is byte-identical to the sent body."
+            : $"DIFF: edit buffer differs ({after?.Length} vs {body.Length} bytes).");
+        transport.Stop();
+        Environment.Exit(0);
+    }
+
+    // Writes an arbitrary decoded object body from a file into one slot (0x73), optionally
+    // commits it (0x76 - DESTRUCTIVE), then re-reads and byte-diffs. No confirmation prompt:
+    // callers are scripted load tests that have already taken a backup. The previous slot
+    // content is saved next to the body file as <body>.before.bin so a test can be undone.
+    public static void RunWriteObject(string? match, int obj, int bank, int index, byte version, string bodyPath, bool store)
+    {
+        AttachOrAllocConsole();
+        match ??= "NAUTILUS";
+        var codec = KorgSysExCodecs.For(DeviceFamily.Nautilus);
+        byte[] body = File.ReadAllBytes(bodyPath);
+
+        var transport = OpenTransport(match);
+        if (transport == null) return;
+        int Fail() { transport.Stop(); Environment.Exit(1); return 1; }
+
+        var readReq = codec.BuildObjectDumpRequest(obj, bank, index);
+        var before = SendAndWait(transport, readReq, m => codec.HasHeaderAt(m, 0, 0x73) || codec.HasHeaderAt(m, 0, 0x24), "read before");
+        var beforeDump = before == null ? null : codec.ParseObjectDump(before);
+        if (beforeDump != null) File.WriteAllBytes(bodyPath + ".before.bin", beforeDump.Body);
+        else Console.WriteLine("No readable previous content (slot empty or invalid) - continuing.");
+
+        var writeReply = SendAndWait(transport, codec.BuildObjectDumpMessage(obj, bank, index, version, body),
+            m => codec.ParseReply(m) != null, $"WRITE obj=0x{obj:X2} bank=0x{bank:X2} idx={index} len={body.Length}");
+        if (writeReply == null) { Fail(); return; }
+        Console.WriteLine($"Write reply code: {codec.ParseReply(writeReply)} (0 = success)");
+
+        if (store)
+        {
+            var storeReply = SendAndWait(transport, codec.BuildStoreBankRequest(obj, bank), m => codec.ParseReply(m) != null, "STORE (0x76)");
+            if (storeReply == null) { Fail(); return; }
+            Console.WriteLine($"Store reply code: {codec.ParseReply(storeReply)} (0 = success)");
+        }
+
+        var after = SendAndWait(transport, readReq, m => codec.HasHeaderAt(m, 0, 0x73), "re-read");
+        var afterDump = after == null ? null : codec.ParseObjectDump(after);
+        if (afterDump == null) { Console.WriteLine("Re-read failed."); Fail(); return; }
+        File.WriteAllBytes(bodyPath + ".after.bin", afterDump.Body);
+        var diffs = Enumerable.Range(0, Math.Min(body.Length, afterDump.Body.Length)).Where(i => body[i] != afterDump.Body[i]).ToList();
+        Console.WriteLine(diffs.Count == 0 && body.Length == afterDump.Body.Length
+            ? "CONFIRMED: re-read body is byte-identical to what was written."
+            : $"DIFF: {diffs.Count} byte(s) differ (len {afterDump.Body.Length} vs {body.Length}); first offsets: {string.Join(",", diffs.Take(16))}");
+
+        transport.Stop();
+        Environment.Exit(0);
     }
 
     // Shared load+convert step for both RunConvertDryRun and RunConvertAndWrite below - reads a
@@ -512,6 +649,123 @@ static class NautilusSysExCapture
 
         transport.Stop();
         Environment.Exit(identical ? 0 : 1);
+    }
+
+    // `--nautilus-convert-combi <kronos.pcg> <combi-name> [<device-match> <bank> <index>]` - converts one
+    // Kronos Combi with CombiConverter. Without a target it only prints the result; with one it reads
+    // the target slot first (its Nautilus-only Scene/ARP block is the template), writes, Store Banks
+    // (DESTRUCTIVE) and re-reads. Default ArpConversionOptions (ARP A/B <- KARMA A/B, Scene 1).
+    public static void RunConvertCombi(string kronosPcgPath, string combiName, string? match, int? targetBank, int? targetIndex)
+    {
+        AttachOrAllocConsole();
+        var pcg = PcgFile.Open(File.ReadAllBytes(kronosPcgPath));
+        if (pcg == null) { Console.WriteLine($"'{kronosPcgPath}' is not a recognizable Kronos .pcg file."); Environment.Exit(1); return; }
+        var matches = pcg.Objects.Where(o => o.Loc.ObjType == LibObj.Combi &&
+            string.Equals(o.Name.Trim(), combiName.Trim(), StringComparison.OrdinalIgnoreCase)).ToList();
+        if (matches.Count != 1) { Console.WriteLine($"{matches.Count} Combis named \"{combiName}\" in the file - need exactly one."); Environment.Exit(1); return; }
+        var source = matches[0];
+        Console.WriteLine($"Source: \"{source.Name}\" ({source.Body.Length} bytes)");
+        var geCatalog = KarmaGeCatalog.FromCatalog();
+
+        byte[]? template = null;
+        IMidiTransport? transport = null;
+        var codec = KorgSysExCodecs.For(DeviceFamily.Nautilus);
+        if (match != null && targetBank is int tb && targetIndex is int ti)
+        {
+            transport = OpenTransport(match);
+            if (transport == null) return;
+            var before = SendAndWait(transport, codec.BuildObjectDumpRequest(LibObj.Combi, tb, ti), m => codec.HasHeaderAt(m, 0, 0x73), "read target Combi");
+            var dump = before == null ? null : codec.ParseObjectDump(before);
+            if (dump == null) { Console.WriteLine("Couldn't read the target slot."); transport.Stop(); Environment.Exit(1); return; }
+            File.WriteAllBytes(Path.Combine(Path.GetTempPath(), $"nautilus_combi_b{tb:X2}_i{ti:000}_before.bin"), dump.Body);
+            Console.WriteLine($"Target bank 0x{tb:X2} index {ti}: \"{System.Text.Encoding.ASCII.GetString(dump.Body, 0, 24).TrimEnd('\0', ' ')}\" " +
+                $"(version {dump.Version}, {dump.Body.Length} bytes) - saved to %TEMP% before overwriting.");
+            template = dump.Body;
+        }
+
+        // Names of the Programs actually in this .pcg, so only still-factory references get re-pointed.
+        var progNames = pcg.Objects.Where(o => o.Loc.ObjType == LibObj.Program && KronosBanks.ObjBankToFunc33(1, o.Loc.Bank) >= 0)
+            .GroupBy(o => (KronosBanks.ObjBankToFunc33(1, o.Loc.Bank), o.Loc.Number)).ToDictionary(g => g.Key, g => g.First().Name);
+        var result = CombiConverter.KronosToNautilus(source.Body, geCatalog, template, null, KarmaGePatternLibrary.FromCatalog(),
+            TimbreProgramRefs.FactoryEquivalents, ProgramRefMap.FromCatalog(), (b, i) => progNames.GetValueOrDefault((b, i)));
+        foreach (var w in result.Warnings) Console.WriteLine($"  warning: {w}");
+        foreach (var r in result.Refusals) Console.WriteLine($"  REFUSED: {r}");
+        if (result.NautilusBody == null) { transport?.Stop(); Environment.Exit(1); return; }
+        string outPath = Path.Combine(Path.GetTempPath(), "nautilus_combi_converted.bin");
+        File.WriteAllBytes(outPath, result.NautilusBody);
+        Console.WriteLine($"Converted: {result.NautilusBody.Length} bytes -> {outPath}");
+        if (transport == null) { Environment.Exit(0); return; }
+
+        int bank = targetBank!.Value, index = targetIndex!.Value;
+        var w1 = SendAndWait(transport, codec.BuildObjectDumpMessage(LibObj.Combi, bank, index, 4, result.NautilusBody), m => codec.ParseReply(m) != null, "WRITE Combi (0x73)");
+        var s1 = SendAndWait(transport, codec.BuildStoreBankRequest(LibObj.Combi, bank), m => codec.ParseReply(m) != null, "STORE (0x76)");
+        Console.WriteLine($"write reply {(w1 == null ? "none" : codec.ParseReply(w1).ToString())}, store reply {(s1 == null ? "none" : codec.ParseReply(s1).ToString())} (0 = success)");
+        var again = SendAndWait(transport, codec.BuildObjectDumpRequest(LibObj.Combi, bank, index), m => codec.HasHeaderAt(m, 0, 0x73), "re-read");
+        var after = again == null ? null : codec.ParseObjectDump(again);
+        Console.WriteLine(after != null && after.Body.AsSpan().SequenceEqual(result.NautilusBody)
+            ? "CONFIRMED: re-read is byte-identical to the converted Combi."
+            : "MISMATCH on re-read.");
+        transport.Stop();
+        Environment.Exit(0);
+    }
+
+    // `--combi-factory-compare <kronos PRELOAD.PCG> <nautilus PRELOAD.PCG>` - offline check of
+    // CombiConverter against Korg's own ports: for every Combi name present once in both factory
+    // sets, convert the Kronos record using the Nautilus record as the template, then report which
+    // Nautilus byte offsets still differ (aggregated across the corpus, per region / Timbre offset).
+    public static void RunCombiFactoryCompare(string kronosPcg, string nautilusPcg)
+    {
+        AttachOrAllocConsole();
+        var k = PcgFile.Open(File.ReadAllBytes(kronosPcg));
+        var nData = File.ReadAllBytes(nautilusPcg);
+        if (k == null) { Console.WriteLine("Couldn't open the Kronos file."); Environment.Exit(1); return; }
+        // NautilusPcgObjectExtractor deliberately skips CBK1 (Combi banks), so read them here: same
+        // 24-byte bank header as every other bank chunk (BE32 count @0x0C, itemSize @0x10).
+        static int BE32(byte[] d, int o) => d[o] << 24 | d[o + 1] << 16 | d[o + 2] << 8 | d[o + 3];
+        var nCombis = new List<(string Name, byte[] Body)>();
+        for (int pos = 0; pos + 24 <= nData.Length; pos++)
+        {
+            if (nData[pos] != 'C' || nData[pos + 1] != 'B' || nData[pos + 2] != 'K' || nData[pos + 3] != '1') continue;
+            int count = BE32(nData, pos + 0x0C), size = BE32(nData, pos + 0x10);
+            if (count is < 1 or > 200 || size != CombiConverter.NautilusSize || pos + 24L + count * size > nData.Length) continue;
+            for (int r = 0; r < count; r++)
+            {
+                var body = nData.AsSpan(pos + 24 + r * size, size).ToArray();
+                nCombis.Add((System.Text.Encoding.ASCII.GetString(body, 0, 24).TrimEnd('\0', ' '), body));
+            }
+            pos += 24 + count * size - 1;
+        }
+        var kc = k.Objects.Where(o => o.Loc.ObjType == LibObj.Combi && o.Body.Length == CombiConverter.KronosSize)
+            .GroupBy(o => o.Name.Trim()).Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.First().Body);
+        var nc = nCombis.GroupBy(o => o.Name.Trim()).Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.First().Body);
+        var names = kc.Keys.Intersect(nc.Keys).Where(nm => !nm.StartsWith("Init", StringComparison.OrdinalIgnoreCase)).OrderBy(x => x).ToList();
+        Console.WriteLine($"Kronos factory Combis {kc.Count}, Nautilus {nc.Count}, shared names {names.Count}");
+        var geCatalog = KarmaGeCatalog.FromCatalog();
+        var perOffset = new int[CombiConverter.NautilusSize];
+        int identical = 0, refsActive = 0, refsSame = 0;
+        var refMap = ProgramRefMap.FromCatalog();
+        foreach (var nm in names)
+        {
+            var body = CombiConverter.KronosToNautilus(kc[nm], geCatalog, nc[nm], null, null, TimbreProgramRefs.FactoryEquivalents, refMap).NautilusBody!;
+            for (int t = 0; t < 16; t++)
+            {
+                int o = 2632 + 188 * t;
+                if (nc[nm][o + 2] >> 5 == 0 || body[o + 2] >> 5 == 0) continue;
+                refsActive++;
+                if (body[o] == nc[nm][o] && body[o + 1] == nc[nm][o + 1]) refsSame++;
+            }
+            int diffs = 0;
+            for (int i = 0; i < body.Length; i++) if (body[i] != nc[nm][i]) { perOffset[i]++; diffs++; }
+            if (diffs == 0) identical++;
+        }
+        Console.WriteLine($"Byte-identical after conversion: {identical}/{names.Count}");
+        Console.WriteLine($"Active-timbre Program references matching Korg's port: {refsSame}/{refsActive}");
+        string Where(int o) => o < 1268 ? $"head+{o}" : o < 2620 ? $"middle+{o}" : o < 2632 ? $"tail+{o}" : $"timbre+{(o - 2632) % 188}";
+        foreach (var g in Enumerable.Range(0, perOffset.Length).Where(i => perOffset[i] > 0)
+                     .GroupBy(Where).Select(g => (Key: g.Key, Count: g.Sum(i => perOffset[i]), Offsets: g.ToList()))
+                     .OrderByDescending(g => g.Count).Take(40))
+            Console.WriteLine($"  {g.Key,-14} {g.Count,5} differing bytes (first offset {g.Offsets[0]})");
+        Environment.Exit(0);
     }
 
     // Bank-byte ranges per NAUTILUS_MIDI_SysEx.txt *2* and *37* ("Digests are not available

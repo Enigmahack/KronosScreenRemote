@@ -507,8 +507,8 @@
                                     <ComboBox x:Name="ZoneSampleCombo" Width="220" Margin="0 0 8 6" VerticalAlignment="Bottom"
                                               DisplayMemberPath="DisplayName" SelectionChanged="OnZoneSampleComboChanged"
                                               ToolTip="Assigns a sample to this zone - lists everything already imported into the collection's repository (Un-referenced Samples), first entry is whatever's currently assigned"/>
-                                    <CheckBox x:Name="LinkSampleBox" Content="Link" VerticalAlignment="Bottom" Margin="0 0 20 8"
-                                              ToolTip="When checked, picking a sample from the Sample list shares its audio instead of copying it (a real Kronos mechanism, keyed by matching Sample Number - see Help) - this zone gets its own loop points/flags but no separate audio data on disk. Unchecked (default): copies the audio into this zone's own file, as before."/>
+                                    <CheckBox x:Name="LinkSampleBox" Content="Sample Shortcut" VerticalAlignment="Bottom" Margin="0 0 20 8"
+                                              ToolTip="Enabled: create a shortcut to a sample without duplicating. Disabled: duplicate with separate settings and controls. See help for details."/>
                                 </StackPanel>
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="Orig.Key:" Style="{StaticResource FieldLabel}"/>

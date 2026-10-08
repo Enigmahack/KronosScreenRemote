@@ -156,6 +156,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         // part. Unconditional for Nautilus - not just gated by Sequence mode like the rest of
         // the transport row (IsTransportEnabled).
         BTN_SeqFf.IsEnabled  = BTN_SeqRew.IsEnabled  = kronosOnly;
+        UpdateTapTempoEnabled();   // family decides whether Tap Tempo is allowed in Sequence mode
         BTN_SeqFf.Opacity    = BTN_SeqRew.Opacity    = kronosOnly ? 1.0 : 0.35;
 
         // Play/Record lighting removed on Nautilus (your 2026-09-22 direction) - IsPlaying/
@@ -169,7 +170,9 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         // AppStatusBar.Resources, not MainWindow's own) - FindResource only searches UPWARD
         // through logical-tree ancestors, so calling it on `this` (the Window, an ANCESTOR of
         // AppStatusBar) can never see them and throws ResourceReferenceKeyNotFoundException.
-        BTN_SeqStart.Style = (Style)(kronosOnly ? BTN_SeqStart.FindResource("SeqTransportToggleBtn") : BTN_SeqStart.FindResource("SeqTransportToggleBtnNoLight"));
+        // Start/Stop never shows a checked/lit state on either family (its play+stop icon is fixed -
+        // the play state can't be read back from the instrument), so it always uses the no-light style.
+        BTN_SeqStart.Style = (Style)BTN_SeqStart.FindResource("SeqTransportToggleBtnNoLight");
         BTN_SeqRec.Style   = (Style)(kronosOnly ? BTN_SeqRec.FindResource("SeqRecordToggleBtn")       : BTN_SeqRec.FindResource("SeqTransportToggleBtnNoLight"));
 
         ApplyHideInputPanels();
@@ -304,9 +307,6 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     bool             _shiftHeld   = false;
     readonly FullscreenState _fs = new();
     bool             _kbdCapture      = false;
-    bool             _extendedKey     = false;   // set by LLKeyboardProc; true = numpad/extended key
-    LowLevelKbProc?  _llKbProc        = null;    // field keeps delegate alive so GC won't collect it
-    IntPtr           _llKbHook        = IntPtr.Zero;
     bool             _kbdSendEnabled  = true;   // false = capture active but nothing forwarded to Kronos
     HashSet<Key>     _instantKeys     = new();  // shifted overrides sent as press+release pair
     HashSet<Key>     _capsShiftedKeys = new();  // letters whose KEY 42 was injected for CapsLock mode
@@ -1779,7 +1779,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
                 : "";
             // Tap tempo injects a front-panel key over the daemon ctrl channel, so it's
             // meaningful only while connected (unlike USB-MIDI SysEx features).
-            BTN_TapTempo.IsEnabled = state == ConnState.Connected;
+            UpdateTapTempoEnabled();
             if (state != ConnState.Connected) { FpsText.Text = ""; PingText.Text = ""; _fpsCounter.Reset(); }
             if (state == ConnState.Connected) StartPing(); else StopPing();
             if (state == ConnState.Connected) StartAudioCapture(); else StopAudioCapture();
@@ -1803,6 +1803,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
                 ClearModeButtons();
                 _seqTransport.Reset();
                 _seqTransport.CurrentMode = Mode.Unknown;
+                UpdateTapTempoEnabled();
             }
             // Unconditional, not just on Disconnected: DrawOverlay (MainWindow.Rendering.cs)
             // paints a fully opaque black "Disconnected..." rectangle over the frame area
@@ -2198,7 +2199,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
             new("Seq Forward", "Seq: Fast-Forward", K("Seq Forward"), () => Ctrl(DaemonCommand.Button(NautilusToken(PanelButton.SeqForward, "MP8")))),
             // Pause/Start(PlayStop) likewise swapped (Nautilus only) - see SeqTransportViewModel
             // for the Start/Stop half of this swap.
-            new("Seq Pause",   "Seq: Pause",        K("Seq Pause"),   () => Ctrl(DaemonCommand.Button(NautilusToken(PanelButton.SeqPause, "MS3")))),
+            new("Seq Pause",   "Seq: Pause",        K("Seq Pause"),   () => Ctrl(DaemonCommand.Button(NautilusToken(PanelButton.SeqPause, "MP6")))),
             new("Seq Record",  "Seq: Record",       K("Seq Record"),  () => _seqTransport.RecordCommand.Execute(null)),
             new("Seq Start",   "Seq: Start/Stop",   K("Seq Start"),   () => _seqTransport.StartStopCommand.Execute(null)),
             new("Seq Save",    "Write / Save",      K("Seq Save"),    () => _seqTransport.SaveCommand.Execute(null)),
@@ -2281,8 +2282,17 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     string NautilusToken(PanelButton kronos, string nautilus) =>
         _deviceFamily == DeviceFamily.Nautilus ? nautilus : kronos.Token();
 
+    // Tap Tempo is disabled in Sequence mode on Nautilus: the first tap there snaps the tempo straight
+    // to 99 instead of averaging. Not yet known whether the Kronos has the same problem, so it stays
+    // enabled there until tested.
+    bool TapTempoAllowed =>
+        IsConnected && !(_deviceFamily == DeviceFamily.Nautilus && _seqTransport.CurrentMode == Mode.Sequence);
+
+    void UpdateTapTempoEnabled() => BTN_TapTempo.IsEnabled = TapTempoAllowed;
+
     void TapTempoOnce()
     {
+        if (!TapTempoAllowed) return;   // keybind / command palette path
         FlashTapTempo();
         // button_labels.json: Nautilus's own TAP_TEMPO scan code lands on numeric key "8", not a
         // tempo function - the real Tap Tempo button is NUM9 there (unambiguous, confirmed).

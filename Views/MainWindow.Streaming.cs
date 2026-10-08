@@ -196,6 +196,7 @@ public partial class MainWindow
                 _prevMode = _currentMode;
                 _seqTransport.Reset();   // see SeqTransportViewModel.Reset for why
                 _seqTransport.CurrentMode = mode;
+                UpdateTapTempoEnabled();
             }
             _currentMode = mode;
             _pendingMode = Mode.Unknown;  // detection is authoritative - clear pending

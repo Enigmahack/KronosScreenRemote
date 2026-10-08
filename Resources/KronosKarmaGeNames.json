@@ -89,11 +89,11 @@
   },
   {
     "ge_number": 22,
-    "name": "Basic Arp"
+    "name": "Basic Arp ALT1"
   },
   {
     "ge_number": 23,
-    "name": "Basic Arp"
+    "name": "Basic Arp ALT2"
   },
   {
     "ge_number": 24,
@@ -2864,6 +2864,10 @@
     "name": "Long Comp"
   },
   {
+    "ge_number": 716,
+    "name": "M1 Organ"
+  },
+  {
     "ge_number": 717,
     "name": "MalletGame 09"
   },
@@ -3337,7 +3341,7 @@
   },
   {
     "ge_number": 835,
-    "name": "LA"
+    "name": "LA EP2"
   },
   {
     "ge_number": 836,
@@ -6325,23 +6329,23 @@
   },
   {
     "ge_number": 1582,
-    "name": "Drum'n'Bass 03 [Dance Kits]"
+    "name": "Drum'n'Bass 04 [Dance Kits]"
   },
   {
     "ge_number": 1583,
-    "name": "Drum'n'Bass 04 [All Kits]"
-  },
-  {
-    "ge_number": 1584,
     "name": "Drum'n'Bass 05 [All Kits]"
   },
   {
-    "ge_number": 1585,
+    "ge_number": 1584,
     "name": "Drum'n'Bass 06 [All Kits]"
   },
   {
+    "ge_number": 1585,
+    "name": "Drum'n'Bass 07 [All Kits]"
+  },
+  {
     "ge_number": 1586,
-    "name": "Drum'n'Bass 07 [HipHop Kit]"
+    "name": "Drum'n'Bass 08 [HipHop Kit]"
   },
   {
     "ge_number": 1587,
@@ -7805,7 +7809,7 @@
   },
   {
     "ge_number": 1952,
-    "name": "Udo [Misc Kit]"
+    "name": "Udu [Misc Kit]"
   },
   {
     "ge_number": 1953,
@@ -8048,6 +8052,10 @@
     "name": "WaveSeq Comp"
   },
   {
+    "ge_number": 2013,
+    "name": "CC83 alternator"
+  },
+  {
     "ge_number": 2014,
     "name": "Cutoff + Reso cycle"
   },
@@ -8105,7 +8113,15 @@
   },
   {
     "ge_number": 2028,
-    "name": "VJS motion Custom Generated-Riff Regular 118 119 -- -- -- 2 1 2"
+    "name": "VJS motion"
+  },
+  {
+    "ge_number": 2029,
+    "name": "CC11 gate fx 1"
+  },
+  {
+    "ge_number": 2030,
+    "name": "CC11 gate fx 2"
   },
   {
     "ge_number": 2031,
@@ -8145,7 +8161,7 @@
   },
   {
     "ge_number": 2040,
-    "name": "Dyno Tyne EP RT Custom Real-Time Regular 10 -- 74 71 10 [On] [On] 1 1"
+    "name": "Dyno Tyne EP RT"
   },
   {
     "ge_number": 2041,

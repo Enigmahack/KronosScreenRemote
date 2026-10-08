@@ -3350,7 +3350,7 @@ partial class SampleEditorViewModel : ObservableObject
             if (!KsfSample.IsValidStubTarget(sourceFileName))
             {
                 StatusText = $"Can't link to '{sourceFileName}' - its filename is {Encoding.ASCII.GetByteCount(sourceFileName)} characters, "
-                    + "longer than the Kronos's own 12-character SMF1 link limit. Uncheck Link to copy its audio into this zone instead.";
+                    + "longer than the Kronos's own 12-character SMF1 link limit. Uncheck Sample Shortcut to copy its audio into this zone instead.";
                 return null;
             }
 
@@ -3888,6 +3888,12 @@ partial class SampleEditorViewModel : ObservableObject
 
             if (Directory.Exists(zoneDir)) Directory.Delete(zoneDir, recursive: true);
             if (File.Exists(kmpPath)) File.Delete(kmpPath);
+
+            // A pending edit for the deleted multisample (or any sample under its zone folder) would otherwise be
+            // written straight back by the next Save, resurrecting what was just deleted.
+            _dirtyMultisamples.Remove(kmpPath);
+            foreach (var p in _dirtySamples.Keys.Where(k => IsUnder(k, zoneDir)).ToList())
+                _dirtySamples.Remove(p);
 
             SelectNode(null);
             RebuildTreeFromCollection(_collectionPath, _collection);

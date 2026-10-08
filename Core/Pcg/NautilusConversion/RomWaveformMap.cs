@@ -33,11 +33,18 @@ using System.Text.Json.Serialization;
 sealed class RomWaveformMap
 {
     readonly Dictionary<(string Section, int KronosIndex), int> _map = new();
+    // Pairings whose Nautilus waveform is known NOT to play byte-identical audio (the merged map's
+    // "audio": "differs" - a manual or name pairing to a re-sampled equivalent).
+    readonly HashSet<(string Section, int KronosIndex)> _audioDiffers = new();
 
     public int Count => _map.Count;
 
     public bool TryMapRomIndex(string section, int kronosIndex, out int nautilusIndex) =>
         _map.TryGetValue((section, kronosIndex), out nautilusIndex);
+
+    // False only when the catalog says the paired Nautilus waveform's audio differs; maps without the
+    // "audio" field (older catalogs, tests) are treated as unknown, i.e. not flagged.
+    public bool IsAudioIdentical(string section, int kronosIndex) => !_audioDiffers.Contains((section, kronosIndex));
 
     public static string OverridePath => Path.Combine(Storage.DataDir, "nautilus_rom_waveform_map.json");
 
@@ -47,7 +54,8 @@ sealed class RomWaveformMap
         [property: JsonPropertyName("section")] string Section,
         [property: JsonPropertyName("kronos_index")] int KronosIndex,
         [property: JsonPropertyName("nautilus_index")] int NautilusIndex,
-        [property: JsonPropertyName("name")] string Name);
+        [property: JsonPropertyName("name")] string Name,
+        [property: JsonPropertyName("audio")] string? Audio = null);
 
     // Pure, no network, no hardware - `json` is only ever passed by self-tests.
     public static RomWaveformMap FromCatalog(string? json = null)
@@ -69,7 +77,10 @@ sealed class RomWaveformMap
         if (entries == null) return map;
 
         foreach (var e in entries)
+        {
             map._map[(e.Section, e.KronosIndex)] = e.NautilusIndex;
+            if (e.Audio == "differs") map._audioDiffers.Add((e.Section, e.KronosIndex));
+        }
         return map;
     }
 

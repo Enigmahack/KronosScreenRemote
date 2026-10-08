@@ -416,17 +416,20 @@
                                 ToolTip="Record">
                             <Ellipse Width="10" Height="10" Fill="#FFE05656"/>
                         </ToggleButton>
-                        <ToggleButton x:Name="BTN_SeqStart" Style="{StaticResource SeqTransportToggleBtn}"
+                        <ToggleButton x:Name="BTN_SeqStart" Style="{StaticResource SeqTransportToggleBtnNoLight}"
                                 IsChecked="{Binding IsPlaying, Mode=TwoWay}"
                                 Command="{Binding StartStopCommand}"
                                 TabIndex="330" AutomationProperties.Name="Start / Stop"
                                 ToolTip="Start / Stop">
-                            <Grid>
-                                <Path Fill="#FF5EC26A" Data="M0.5,0 L10,5 L0.5,10 Z"
-                                      Visibility="{Binding IsStopped, Converter={StaticResource BoolToVis}}"/>
-                                <Path Fill="#FF5EC26A" Data="M1,1 H9 V9 H1 Z"
-                                      Visibility="{Binding IsPlaying, Converter={StaticResource BoolToVis}}"/>
-                            </Grid>
+                            <!-- One fixed icon for both states: a green Play triangle (top-left) laid over
+                                 a red Stop square (lower-right). The play/stop state can't be read back from
+                                 the instrument (Nautilus especially), so the button never alternates - it
+                                 shows both at once and only the click animation changes. -->
+                            <Canvas Width="10" Height="10">
+                                <Path Fill="#FFE05656" Data="M4,4 H10 V10 H4 Z"/>
+                                <Path Fill="#FF5EC26A" Stroke="#FF1A1A1A" StrokeThickness="0.8"
+                                      Data="M0.3,0.3 L7.8,4.7 L0.3,9.1 Z"/>
+                            </Canvas>
                         </ToggleButton>
                     </StackPanel>
             </StatusBarItem>

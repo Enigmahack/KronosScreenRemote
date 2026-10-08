@@ -156,6 +156,104 @@ public partial class App : Application
             NautilusSysExCapture.RunRequestReply(rtMatch, rtObj, rtBank, rtIndex);
         }
 
+        // Headless diagnostic: `--nautilus-sysex-probe <device-name-match> <objFrom> <objTo>
+        // [bank] [index] [output-dir] [nautilus|kronos] [count]` - read-only 0x72 sweep over obj
+        // codes (and `count` consecutive indices), reporting 0x73 dumps or 0x24 reply codes.
+        // Obj/bank accept hex with a 0x prefix.
+        int nautilusProbeIdx = Array.IndexOf(e.Args, "--nautilus-sysex-probe");
+        if (nautilusProbeIdx >= 0)
+        {
+            string? Arg(int k) => nautilusProbeIdx + k < e.Args.Length ? e.Args[nautilusProbeIdx + k] : null;
+            static int Num(string? s, int dflt) => s == null ? dflt
+                : s.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? Convert.ToInt32(s[2..], 16) : int.Parse(s);
+            NautilusSysExCapture.RunObjectProbe(Arg(1), Num(Arg(2), 0), Num(Arg(3), 0x1F),
+                Num(Arg(4), 0), Num(Arg(5), 0), Arg(6),
+                string.Equals(Arg(7), "kronos", StringComparison.OrdinalIgnoreCase) ? DeviceFamily.Kronos : DeviceFamily.Nautilus,
+                Num(Arg(8), 1));
+        }
+
+        // Headless: `--karma-ge-verify <nautilusHost> <batchDir> <bSlot> <ge> [ge...]` - plays stored
+        // transcriptions on the Nautilus and compares against the simulated playback model.
+        int karmaVerifyIdx = Array.IndexOf(e.Args, "--karma-ge-verify");
+        if (karmaVerifyIdx >= 0 && karmaVerifyIdx + 4 < e.Args.Length)
+            KarmaGeTranscribe.RunVerify(e.Args[karmaVerifyIdx + 1], e.Args[karmaVerifyIdx + 2], int.Parse(e.Args[karmaVerifyIdx + 3]),
+                e.Args.Skip(karmaVerifyIdx + 4).Select(int.Parse).ToList(), 6);
+
+        // Headless: `--karma-ge-retranscribe <batchDir>` - offline re-run over saved captures.
+        int karmaRetxIdx = Array.IndexOf(e.Args, "--karma-ge-retranscribe");
+        if (karmaRetxIdx >= 0 && karmaRetxIdx + 1 < e.Args.Length)
+            KarmaGeTranscribe.RunRetranscribe(e.Args[karmaRetxIdx + 1]);
+
+        // Headless: `--karma-ge-pack <batchDir> <out.bin> [minScore]` - packs batch output into the
+        // KarmaGePatternLibrary resource format.
+        int karmaPackIdx = Array.IndexOf(e.Args, "--karma-ge-pack");
+        if (karmaPackIdx >= 0 && karmaPackIdx + 2 < e.Args.Length)
+            KarmaGeTranscribe.RunPack(e.Args[karmaPackIdx + 1], e.Args[karmaPackIdx + 2],
+                karmaPackIdx + 3 < e.Args.Length ? double.Parse(e.Args[karmaPackIdx + 3], System.Globalization.CultureInfo.InvariantCulture) : 0);
+
+        // Headless: `--kronos-restore-editbuf <kronosHost> <snapshot.bin>` - write back a saved edit buffer.
+        int restoreIdx = Array.IndexOf(e.Args, "--kronos-restore-editbuf");
+        if (restoreIdx >= 0 && restoreIdx + 2 < e.Args.Length)
+            KarmaGeTranscribe.RunRestoreEditBuffer(e.Args[restoreIdx + 1], e.Args[restoreIdx + 2]);
+
+        // Headless: `--karma-ge-batch <kronosHost> <from> <to> <outDir> [holdSec] [--redo-nonperiodic]` - Kronos-only
+        // render + transcribe of a GE range to files, resumable. See Tools/KarmaGeTranscribe.cs.
+        int karmaBatchIdx = Array.IndexOf(e.Args, "--karma-ge-batch");
+        if (karmaBatchIdx >= 0 && karmaBatchIdx + 4 < e.Args.Length)
+            KarmaGeTranscribe.RunBatch(e.Args[karmaBatchIdx + 1], int.Parse(e.Args[karmaBatchIdx + 2]), int.Parse(e.Args[karmaBatchIdx + 3]),
+                e.Args[karmaBatchIdx + 4], karmaBatchIdx + 5 < e.Args.Length ? double.Parse(e.Args[karmaBatchIdx + 5], System.Globalization.CultureInfo.InvariantCulture) : 10,
+                e.Args.Contains("--redo-nonperiodic"));
+
+        // Headless: `--karma-ge-to-nautilus <kronosHost> <nautilusHost> <ge> <bSlot> [holdSec]` -
+        // renders a KARMA GE on the Kronos, transcribes it to Nautilus Arp Pattern B<bSlot>
+        // (stored), and A/B-plays it; both edit buffers are restored. See Tools/KarmaGeTranscribe.cs.
+        int karmaGeIdx = Array.IndexOf(e.Args, "--karma-ge-to-nautilus");
+        if (karmaGeIdx >= 0 && karmaGeIdx + 4 < e.Args.Length)
+            KarmaGeTranscribe.Run(e.Args[karmaGeIdx + 1], e.Args[karmaGeIdx + 2], int.Parse(e.Args[karmaGeIdx + 3]),
+                int.Parse(e.Args[karmaGeIdx + 4]), karmaGeIdx + 5 < e.Args.Length ? double.Parse(e.Args[karmaGeIdx + 5], System.Globalization.CultureInfo.InvariantCulture) : 8.5);
+
+        // Headless: `--combi-factory-compare <kronos PRELOAD.PCG> <nautilus PRELOAD.PCG>` - offline
+        // CombiConverter check against Korg's own Nautilus ports of the factory Combis.
+        int combiCmpIdx = Array.IndexOf(e.Args, "--combi-factory-compare");
+        if (combiCmpIdx >= 0 && combiCmpIdx + 2 < e.Args.Length)
+            NautilusSysExCapture.RunCombiFactoryCompare(e.Args[combiCmpIdx + 1], e.Args[combiCmpIdx + 2]);
+
+        // Headless: `--nautilus-convert-combi <kronos.pcg> <combi-name> [<device-match> <bank> <index>]`
+        // - CombiConverter dry run, or write + Store (DESTRUCTIVE) into a Nautilus Combi slot.
+        int convCombiIdx = Array.IndexOf(e.Args, "--nautilus-convert-combi");
+        if (convCombiIdx >= 0 && convCombiIdx + 2 < e.Args.Length)
+        {
+            string? A(int k) => convCombiIdx + k < e.Args.Length ? e.Args[convCombiIdx + k] : null;
+            static int? N(string? v) => v == null ? null : v.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? Convert.ToInt32(v[2..], 16) : int.Parse(v);
+            NautilusSysExCapture.RunConvertCombi(A(1)!, A(2)!, A(3), N(A(4)), N(A(5)));
+        }
+
+        // Headless diagnostic: `--nautilus-sysex-save-current <device-name-match> <obj> <out.bin>` -
+        // read-only 0x74/0x75: saves an edit buffer's decoded body.
+        int nautilusSaveCurIdx = Array.IndexOf(e.Args, "--nautilus-sysex-save-current");
+        if (nautilusSaveCurIdx >= 0 && nautilusSaveCurIdx + 3 < e.Args.Length)
+            NautilusSysExCapture.RunSaveCurrentObject(e.Args[nautilusSaveCurIdx + 1],
+                int.Parse(e.Args[nautilusSaveCurIdx + 2]), e.Args[nautilusSaveCurIdx + 3]);
+
+        // Headless diagnostic: `--nautilus-sysex-send-current <device-name-match> <obj> <version> <body.bin>`
+        // - replaces an edit buffer via 0x75 and verifies via 0x74. Not stored.
+        int nautilusSendCurIdx = Array.IndexOf(e.Args, "--nautilus-sysex-send-current");
+        if (nautilusSendCurIdx >= 0 && nautilusSendCurIdx + 4 < e.Args.Length)
+            NautilusSysExCapture.RunSendCurrentObject(e.Args[nautilusSendCurIdx + 1],
+                int.Parse(e.Args[nautilusSendCurIdx + 2]), byte.Parse(e.Args[nautilusSendCurIdx + 3]), e.Args[nautilusSendCurIdx + 4]);
+
+        // Headless diagnostic: `--nautilus-sysex-write-object <device-name-match> <obj> <bank>
+        // <index> <version> <body.bin> [store]` - DESTRUCTIVE when `store` is given: writes a raw
+        // decoded body into one slot, optionally Store Banks it, re-reads and byte-diffs.
+        int nautilusWriteObjIdx = Array.IndexOf(e.Args, "--nautilus-sysex-write-object");
+        if (nautilusWriteObjIdx >= 0)
+        {
+            string? Arg(int k) => nautilusWriteObjIdx + k < e.Args.Length ? e.Args[nautilusWriteObjIdx + k] : null;
+            static int Num(string s) => s.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? Convert.ToInt32(s[2..], 16) : int.Parse(s);
+            NautilusSysExCapture.RunWriteObject(Arg(1), Num(Arg(2)!), Num(Arg(3)!), Num(Arg(4)!), (byte)Num(Arg(5)!),
+                Arg(6)!, string.Equals(Arg(7), "store", StringComparison.OrdinalIgnoreCase));
+        }
+
         // Headless diagnostic: `--nautilus-sysex-writeback-test [device-name-match] [obj] [bank]
         // [index]` - DESTRUCTIVE: reads a real object, writes the SAME bytes back unchanged
         // (func 0x73), commits with Store Bank Request (func 0x76), re-reads, and byte-diffs

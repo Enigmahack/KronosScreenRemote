@@ -14,9 +14,9 @@
 		<SignAssembly>False</SignAssembly>
 		<PackageIcon>AppIcon.png</PackageIcon>
 		<AssemblyTitle>Kronos ScreenRemote</AssemblyTitle>
-		<Version>3.0.3</Version>
-		<AssemblyVersion>3.0.3</AssemblyVersion>
-		<FileVersion>3.0.3</FileVersion>
+		<Version>3.1.0</Version>
+		<AssemblyVersion>3.1.0</AssemblyVersion>
+		<FileVersion>3.1.0</FileVersion>
 		<Product>Kronos ScreenRemote</Product>
 		<Description>Remote viewer and control interface for Korg Kronos</Description>
 		<ApplicationIcon>Resources\Icons\AppIcon.ico</ApplicationIcon>
@@ -71,6 +71,10 @@
 	     mapping" section for why), not to remap anything. -->
 	<ItemGroup>
 		<EmbeddedResource Include="Resources\KronosKarmaGeNames.json" />
+		<!-- Kronos factory GE to transcribed Nautilus Arp Pattern (KarmaGePatternLibrary), built by the karma-ge-batch and karma-ge-pack CLI commands. -->
+		<EmbeddedResource Include="Resources\KronosKarmaGePatterns.bin" />
+		<!-- Kronos factory Program reference to Nautilus equivalent (ProgramRefMap), from Nautilus Research/scripts/build_program_ref_map.py. -->
+		<EmbeddedResource Include="Resources\KronosToNautilusProgramRefs.json" />
 	</ItemGroup>
 
 	<ItemGroup>

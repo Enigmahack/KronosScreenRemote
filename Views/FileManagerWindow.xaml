@@ -23,9 +23,8 @@
                         <Setter Property="Foreground"  Value="White"/>
                         <Setter Property="FontWeight"  Value="Normal"/>
                         <Style.Triggers>
-                            <DataTrigger Binding="{Binding IsDirectory}" Value="True">
+                            <DataTrigger Binding="{Binding ReadOnly}" Value="True">
                                 <Setter Property="Foreground" Value="#FFA8CFFF"/>
-                                <Setter Property="FontWeight" Value="SemiBold"/>
                             </DataTrigger>
                         </Style.Triggers>
                     </Style>

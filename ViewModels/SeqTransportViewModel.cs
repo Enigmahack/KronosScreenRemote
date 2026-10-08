@@ -21,8 +21,8 @@ partial class SeqTransportViewModel : ObservableObject
     // Save (Setlist/Combi/Program/Global) share ONE physical key on Kronos (SEQ_REC) - hence
     // sharing a single command there historically - but are genuinely DIFFERENT physical buttons
     // on Nautilus: Record is MS2 ("SEQ REC"), Save is front-panel "F" (wire EXIT - your QA slot
-    // F is programmed as Write/Save), and Start/Stop is MP6 (swapped with Pause's MS3 per your
-    // 2026-09-22 correction - see StartStop's own comment). Hence Save is its own RelayCommand
+    // F is programmed as Write/Save), and Start/Stop is MS3 (swapped with Pause's MP6 per your
+    // 2026-10-08 correction, reversing the 2026-09-22 one - see StartStop's own comment). Hence Save is its own RelayCommand
     // below rather than reusing Record's.
     public DeviceFamily DeviceFamily { get; set; } = DeviceFamily.Unknown;
 
@@ -59,10 +59,10 @@ partial class SeqTransportViewModel : ObservableObject
 
     // Nautilus token swapped with Pause's (MainWindow.xaml.cs's "Seq Pause" registry entry) per
     // your 2026-09-22 correction - the Start/Stop BUTTON is unchanged, only which scan code it
-    // sends changed (was MS3 "SEQ PLAY/PAUSE", now MP6 "SEQ PAUSE").
+    // sends changed (was MP6 "SEQ PAUSE", now MS3 "SEQ PLAY/PAUSE").
     [RelayCommand]
     void StartStop() => _ctrl.Send(DaemonCommand.Button(
-        DeviceFamily == DeviceFamily.Nautilus ? "MP6" : PanelButton.SeqStart.Token()));
+        DeviceFamily == DeviceFamily.Nautilus ? "MS3" : PanelButton.SeqStart.Token()));
 
     // Front-panel "F" on Nautilus (wire EXIT - see this class's own header comment); Kronos
     // keeps sending Record's own token, since Write/Record really is the same physical key there.

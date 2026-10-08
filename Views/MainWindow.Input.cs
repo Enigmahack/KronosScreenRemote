@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -8,20 +7,19 @@ namespace KronosScreenRemote;
 
 public partial class MainWindow
 {
-    delegate IntPtr LowLevelKbProc(int code, IntPtr wParam, IntPtr lParam);
-    [DllImport("user32.dll")] static extern IntPtr SetWindowsHookEx(int id, LowLevelKbProc cb, IntPtr mod, uint thread);
-    [DllImport("user32.dll")] static extern bool   UnhookWindowsHookEx(IntPtr hook);
-    [DllImport("user32.dll")] static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr wParam, IntPtr lParam);
+    // Numpad Enter and main Enter both arrive as Key.Return; only the extended-key flag tells
+    // them apart. WPF records it on every KeyEventArgs but keeps the property internal.
+    static readonly System.Reflection.PropertyInfo? IsExtendedKeyProp =
+        typeof(KeyEventArgs).GetProperty("IsExtendedKey",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+
+    static bool IsNumpadEnter(KeyEventArgs e) =>
+        e.Key == Key.Return && IsExtendedKeyProp?.GetValue(e) is true;
 
     void OnLoaded(object s, RoutedEventArgs e)
     {
         _pixPerDip = VisualTreeHelper.GetDpi(this).PixelsPerDip;
         UpdateKbdStatus();
-
-        // WH_KEYBOARD_LL fires before WPF dispatches the key event, so _extendedKey is always
-        // up-to-date when OnKeyDown runs.  Distinguishes numpad Enter (extended) from main Enter.
-        _llKbProc = LLKeyboardProc;
-        _llKbHook = SetWindowsHookEx(13 /*WH_KEYBOARD_LL*/, _llKbProc, IntPtr.Zero, 0);
 
         _repeatTimer.Tick += OnRepeatTick;
 
@@ -93,20 +91,6 @@ public partial class MainWindow
         {
             BeginConnect();
         }
-    }
-
-    IntPtr LLKeyboardProc(int code, IntPtr wParam, IntPtr lParam)
-    {
-        // KBDLLHOOKSTRUCT layout: vkCode(0) scanCode(4) flags(8) time(12) dwExtraInfo(16)
-        // flags bit 0 = LLKHF_EXTENDED (set for numpad Enter, right-side Ctrl/Alt, etc.)
-        if (code >= 0 && (int)wParam == 0x0100 /*WM_KEYDOWN*/)
-        {
-            int vk    = Marshal.ReadInt32(lParam, 0);
-            int flags = Marshal.ReadInt32(lParam, 8);
-            if (vk == 13 /*VK_RETURN*/)
-                _extendedKey = (flags & 1) != 0;
-        }
-        return CallNextHookEx(_llKbHook, code, wParam, lParam);
     }
 
     void OnClosing(object? s, System.ComponentModel.CancelEventArgs e)
@@ -206,7 +190,6 @@ public partial class MainWindow
         CleanupAudio();
         _pingCts?.Cancel();
         _pingCts?.Dispose();
-        if (_llKbHook != IntPtr.Zero) { UnhookWindowsHookEx(_llKbHook); _llKbHook = IntPtr.Zero; }
     }
 
     // True while a menu (the main menu bar, one of its dropdowns, or any context menu) has the
@@ -310,7 +293,7 @@ public partial class MainWindow
         //    instead (KeyMap.ToLinux(Key.Return) = 28), sending a real keystroke rather than
         //    a front-panel button injection (your 2026-09-22 direction). ────────────────────
         if (_deviceFamily != DeviceFamily.Nautilus
-            && _kbdCapture && _kbdSendEnabled && !ctrl && !e.IsRepeat && !_edOpen && !_cal.Mode && e.Key == Key.Return && _extendedKey)
+            && _kbdCapture && _kbdSendEnabled && !ctrl && !e.IsRepeat && !_edOpen && !_cal.Mode && IsNumpadEnter(e))
         {
             _instantKeys.Add(Key.Return);   // suppress KEY-up so KEY 28 0 is never sent to vkbd
             _kronosRightPanel.BTN_Enter.FlashDepress();
@@ -348,9 +331,12 @@ public partial class MainWindow
         }
 
         // ── Keyboard capture: forward before any local shortcut ──────────────
-        // F1–F12 fall through to the IsAction checks below (mode select, help, etc.).
+        // F1–F12 fall through to the IsAction checks below (mode select, help, etc.). So does
+        // Escape on Kronos, which is the front-panel EXIT button there (handled below) rather
+        // than a keystroke; Nautilus still forwards it as a real Esc key.
         if (_kbdCapture && _kbdSendEnabled && !ctrl && !e.IsRepeat && !_edOpen && !_cal.Mode
-            && (e.Key < Key.F1 || e.Key > Key.F12))
+            && (e.Key < Key.F1 || e.Key > Key.F12)
+            && !(e.Key == Key.Escape && _deviceFamily != DeviceFamily.Nautilus))
         {
             // Shifted override: Kronos needs a different keycode or Shift handling
             var shifted = _shiftHeld ? KeyMap.ToLinuxShifted(e.Key) : null;
@@ -415,6 +401,10 @@ public partial class MainWindow
                 OverlayLayer.InvalidateVisual(); return;
             }
             if (_zoomOn)                     { _zoomOn = false; OverlayLayer.InvalidateVisual(); return; }
+            if (e.IsRepeat) return;   // holding Esc presses EXIT once, not repeatedly
+            // No KEY-down was sent for it, so suppress the KEY-up OnKeyUp would otherwise emit.
+            if (_kbdCapture && _kbdSendEnabled) _instantKeys.Add(Key.Escape);
+            if (_deviceFamily != DeviceFamily.Nautilus) _kronosRightPanel.BTN_Exit.FlashDepress();
             Ctrl(DaemonCommand.Button(PanelButton.Exit)); return;
         }
 
