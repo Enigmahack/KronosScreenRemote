@@ -13,12 +13,12 @@
 		<Optimize>true</Optimize>
 		<SignAssembly>False</SignAssembly>
 		<PackageIcon>AppIcon.png</PackageIcon>
-		<AssemblyTitle>Kronos ScreenRemote</AssemblyTitle>
+		<AssemblyTitle>Keyboard Screen Remote</AssemblyTitle>
 		<Version>3.1.0</Version>
 		<AssemblyVersion>3.1.0</AssemblyVersion>
 		<FileVersion>3.1.0</FileVersion>
-		<Product>Kronos ScreenRemote</Product>
-		<Description>Remote viewer and control interface for Korg Kronos</Description>
+		<Product>Keyboard Screen Remote</Product>
+		<Description>Remote viewer and control interface for Korg Kronos and Nautilus</Description>
 		<ApplicationIcon>Resources\Icons\AppIcon.ico</ApplicationIcon>
 		<Configurations>Debug;Release;Publish</Configurations>
 		<Platforms>AnyCPU;x86</Platforms>

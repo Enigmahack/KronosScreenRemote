@@ -1,6 +1,8 @@
-# Kronos ScreenRemote - User Guide
+# Keyboard Screen Remote - User Guide
 
-Windows client for the Kronos ScreenRemote system. View and interact with the Kronos touchscreen from your PC over a wired LAN connection.
+Windows client for the Keyboard Screen Remote system. View and interact with the touchscreen and front panel of a **Kronos** or **Nautilus** from your PC over a wired LAN connection.
+
+Where a feature exists on only one of the two instruments, this guide says so. Everything else works the same on both.
 
 ---
 
@@ -8,30 +10,28 @@ Windows client for the Kronos ScreenRemote system. View and interact with the Kr
 
 - Windows 10 or Windows 11
 - .NET 10 desktop runtime
-- Kronos running with the `Kronos Screen Remote` daemon installed and active
-- Network connection to the Kronos (USB network adapter or direct Ethernet; default IP `192.168.1.2`)
+- A Kronos or Nautilus running the Screen Remote daemon, installed and active
+- Network connection to the instrument (USB network adapter or direct Ethernet; default IP `192.168.1.2`)
 
 ---
 
 ## Getting Started
 
-### 1. Connect to the Kronos
+### 1. Enter the instrument's address
 
-Open the application. The connection bar is at the top of the window. Enter the Kronos IP address (e.g., `192.168.1.2`) and press **Connect** (or the Enter key).
+Open **File → Settings... → Connection** and enter the **Instrument IP address** (e.g., `192.168.1.2`), or pick a named entry from **Saved connections** at the top of the tab. The daemon ports are fixed (stream 7373, control 7374).
 
-If the address was used before, the host drop-down shows recent connections.
+### 2. Connect
 
-The app sends a UDP discovery probe to detect the daemon's stream and control ports automatically. If discovery fails, the configured ports are used (default 7373 / 7374).
+Use **Connection → Connect**, or simply launch the app - it connects automatically using the saved address. Previously used addresses are listed under **Connection → Recent Connections**.
 
-If the Kronos address was used before and credentials were saved, the app connects without prompting.
+### 3. Log In
 
-### 2. Log In
-
-On first connect - or when saved credentials have expired - a login dialog appears. Enter the FTP username and password for the Kronos. These are the same credentials used by the Kronos FTP service (vsftpd), set via `/etc/shadow`, `/korg/rw/screenremote/KronosNet.conf`, or the vsftpd password database.
+If no credentials are saved - or the saved credentials have stopped working - a login dialog appears. Enter the FTP username and password for the instrument. These are the same credentials used by the instrument's FTP service (vsftpd), set via `/etc/shadow`, `/korg/rw/screenremote/KronosNet.conf`, or the vsftpd password database.
 
 Check **Save password** to skip the dialog on future connections. The same credentials are used for both the screen stream and the File Manager.
 
-### 3. Connecting
+### 4. Connecting
 
 The connection goes through a handshake:
 - "TCP connected - sending handshake..."
@@ -39,38 +39,40 @@ The connection goes through a handshake:
 
 If credentials are wrong, an "Authentication Failed" message appears. If the connection times out after 10 seconds, a message lists likely causes: firewall blocking port 7373, daemon not running, or cable unplugged.
 
-### 4. Once Connected
+The app does not reconnect on its own after a network interruption; use **Connection → Connect** again.
 
-The Kronos screen is displayed live in the main window. The status bar shows the current mode (Setlist, Combi, Program, etc.), read from the daemon (see [Mode Detection](#mode-detection)).
+### 5. Once Connected
+
+The instrument screen is displayed live in the main window. The status bar shows the current mode, read from the daemon (see [Mode Detection](#mode-detection)). The app identifies whether it is talking to a Kronos or a Nautilus and adjusts its panels and menus to match.
 
 ---
 
-## Interacting with the Kronos
+## Interacting with the Instrument
 
 ### Touch Input
 
-Click anywhere on the displayed screen to send a tap to the Kronos at the corresponding position. The coordinates are scaled from the window display size back to the native 800×600 framebuffer space automatically.
+Click anywhere on the displayed screen to send a tap to the instrument at the corresponding position. The coordinates are scaled from the window display size back to the native 800×600 framebuffer space automatically.
 
 - **Click** - tap (press + release)
-- **Click and drag** - pen-down, move, pen-up (swipe or drag gestures)
+- **Click and drag** - pen-down, move, pen-up (swipe or drag gestures). The drag must exceed 8 screen pixels before the touch-down is sent.
 
 If touch calibration has been set up (see [Calibration](#calibration)), coordinates are corrected before being sent.
 
-### Value Slider (Left Panel)
+### Value Slider (Left Panel, Kronos only)
 
-The left panel mirrors the Kronos front-panel **VALUE** slider and increment/decrement buttons.
+The left panel mirrors the Kronos front-panel **VALUE** slider and increment/decrement buttons. It is not shown on a Nautilus.
 
 | Control | Action |
 |---|---|
-| INC button | Send a single increment step to the Kronos |
-| DEC button | Send a single decrement step to the Kronos |
+| INC button | Send a single increment step |
+| DEC button | Send a single decrement step |
 | Slider thumb | Drag up or down to send a continuous value (0–127). Top = 127, bottom = 0 |
 
-The value slider command is sent only when the value changes. The left panel is visible in the **Full** layout when controls are shown. It hides automatically in **Focused** layout or when controls are hidden.
+The value slider command is sent only when the value changes. The left panel is visible in the **Full** layout while the value input is shown; it hides in the **Focused** layout or via **View → Hide Value Input**.
 
 ### Control Surface (Right Panel)
 
-The right panel mirrors the physical Kronos front panel. Clicking any button sends the corresponding hardware button press to the Kronos.
+The right panel mirrors the physical front panel. Clicking any button sends the corresponding hardware button press to the instrument.
 
 | Group | Buttons |
 |---|---|
@@ -80,35 +82,57 @@ The right panel mirrors the physical Kronos front panel. Clicking any button sen
 | Number pad | 0–9, Dot, Dash |
 | Data wheel | Drag up/down to scroll; mouse scroll wheel also works everywhere |
 
-Bank select is available from the **Bank Select** menu (I-A through I-G, U-A through U-G, and chord banks U-AA through U-GG).
+The lit mode button shows the current operating mode.
+
+**On a Nautilus** the panel switches to the Nautilus layout, and the **Mode Select** menu lists the front panel's own Mode, Page and A–F buttons instead of the seven Kronos modes (F is the Write/Save quick-access slot). Bank Select and the status-bar mode menu are Kronos-only and are greyed out on a Nautilus.
+
+### Bank Select (Kronos only)
+
+Bank select is available from the **Bank Select** menu: Internal and User list the single letters A through G, and User (AA–GG) lists the doubled-letter pairs, which send a chord of the U and I buttons together.
 
 ### Keyboard Input
 
-When the Kronos screen is focused (click on the frame), host keyboard events are forwarded to the Kronos. Most keys translate directly; uppercase and lowercase are handled via the Kronos character mapping.
+Click inside the screen panel to activate keyboard capture. While active, most host keystrokes are forwarded to the instrument as if typed on a connected USB keyboard. Most keys translate directly; uppercase and lowercase are handled via the character mapping.
 
-**Physical key routing:** Numpad keys (0–9, minus, decimal) are routed to the corresponding Kronos number-pad buttons rather than typed as characters. This cannot be disabled, but these keys can be freed from physical routing by removing them from the raw key map (see [Raw Key Map](#raw-key-map)).
+**Physical key routing:** Numpad keys (0–9, minus, decimal) are routed to the corresponding number-pad buttons rather than typed as characters. This cannot be disabled, but these keys can be freed from physical routing by removing them from the input map (see [Input Mapping](#input-mapping)).
 
-**Data wheel:** Scroll the mouse wheel over the frame to send data wheel ticks (CW/CCW).
+**Data wheel:** Scroll the mouse wheel to send data wheel ticks (CW/CCW). Ctrl+scroll zooms instead.
+
+Click outside the screen panel - on the control surface, the wheel, or the menu bar - to release keyboard capture. The ⌨ indicator in the status bar shows the capture state (blue = active, gray slash = inactive, red slash = remote typing disabled via **Tools → Disable Remote Typing**).
 
 ### Mode Keyboard Shortcuts
 
-By default, function keys F2–F8 switch the Kronos mode:
+By default, function keys F2–F8 switch the mode:
 
-| Key | Mode |
-|---|---|
-| F2 | Setlist |
-| F3 | Combi |
-| F4 | Program |
-| F5 | Sequence |
-| F6 | Sampling |
-| F7 | Global |
-| F8 | Disk |
+| Key | Kronos mode | Nautilus button |
+|---|---|---|
+| F2 | Setlist | E |
+| F3 | Combi | Mode |
+| F4 | Program | Page |
+| F5 | Sequence | A |
+| F6 | Sampling | B |
+| F7 | Global | C |
+| F8 | Disk | D |
 
 These can be rebound in Settings → Key Bindings.
 
-### Bank Select Shortcuts
+### Bank Select Shortcuts (Kronos only)
 
 Bank shortcuts are unassigned by default. Assign them in Settings → Key Bindings under the "Bank" group.
+
+### Sequencer Transport, Save and Tap Tempo
+
+The status bar footer has a small transport row (Locate, Rewind, Fast-Forward, Pause, Record, Start/Stop) plus a separate **Save** button and a **Tap Tempo** button. The transport and Save buttons are greyed out - not hidden - when the current mode doesn't support them.
+
+| Control | Behavior |
+|---|---|
+| Locate / Rewind / Fast-Forward / Pause | Momentary. Active only in Sequence mode |
+| Record | Toggle; stays depressed while armed. Active only in Sequence mode. Stopping playback or changing mode clears it |
+| Start / Stop | Toggle; the icon swaps between ▶ and ■. Active only in Sequence mode |
+| Save | One-shot Write key press. Active in Setlist, Combi, Program, and Global modes |
+| Tap Tempo | One tap per click; the instrument averages the taps itself, so two taps is enough. Available whenever connected, except in Sequence mode on a Nautilus (the first tap would snap the tempo to 99) |
+
+REC/WRITE is one physical key on the instrument; the app splits its two roles onto two buttons so both stay visible regardless of mode.
 
 ---
 
@@ -116,20 +140,21 @@ Bank shortcuts are unassigned by default. Assign them in Settings → Key Bindin
 
 ### Zoom
 
-- **Mouse wheel** over the frame - zoom in/out while keeping the area under the cursor centred.
-- **Toggle Zoom Window** (default: `Z`) - opens a floating magnification window. The zoom level and window size are set in Settings → View.
+- **Ctrl + mouse wheel** - zoom in/out.
+- **`+` / `−`** - zoom in/out in 0.5× steps (range 2.5×–10×); `+` enables the zoom window automatically if it is off.
+- **Toggle Zoom Window** (default: `Z`, or **View → Zoom Window**) - a floating magnification window that follows the cursor over the screen. The default level and window size are set in Settings → View.
 
 ### Aspect Ratio
 
-The frame is always letterboxed to the Kronos' native 800×600 ratio - it is never stretched to fill the window. (There is no longer an aspect-lock toggle.)
+The frame is always letterboxed to the native 800×600 (4:3) ratio - it is never stretched to fill the window.
 
 ### Fullscreen
 
-Press `F` (default) to toggle fullscreen. The title bar and controls are hidden in fullscreen; move the mouse to the top edge to reveal them temporarily.
+Press `F` (default) to toggle fullscreen. The title bar is hidden; press `~` to show or hide the menu bar. `F` or `Esc` exits fullscreen.
 
-### Hide Controls
+### Hide Data Input / Hide Value Input
 
-Press the collapse button on the button rail to hide the right-side control panel. Reassignable in Settings.
+**View → Hide Data Input** and **View → Hide Value Input** collapse the right-hand and left-hand panels. Both can be set to start hidden (Settings → General). The value input panel does not exist on a Nautilus.
 
 ### Layout Presets
 
@@ -140,18 +165,25 @@ Two layout presets are available (View → Layout Preset):
 | **Full** | Value slider, screen panel, and control surface side by side (default) |
 | **Focused** | Screen fills the window; a narrow rail on the right edge can be clicked to temporarily expand the control surface. The value slider is hidden |
 
+### Window Size
+
+**View → Window Size** (or `Ctrl+1`–`Ctrl+5`) scales the whole window to 75%, 100%, 125%, 150% or 200%. **View → Always on Top** keeps the window in front of other applications.
+
+### Image Adjustments and Scaling
+
+**View → Scaling Quality** chooses how the 800×600 screen is resampled when enlarged: Sharp (crisp pixels), Smooth (bilinear), or High Quality (default). **View → Image Adjustments...** (also Settings → Image) offers brightness, contrast, gamma, saturation and sharpen sliders with a live preview; Cancel undoes the preview.
 
 ---
 
-## VGA Mirror
+## VGA Mirror (Kronos only)
 
-When enabled, the daemon also copies the Kronos screen to the VGA output (`/dev/fb0`). This lets you connect an external monitor directly to the Kronos VGA port.
+When enabled, the daemon also copies the Kronos screen to the VGA output (`/dev/fb0`). This lets you connect an external monitor directly to the Kronos VGA port. A Nautilus does not support it.
 
-Toggle via **View → VGA Mirror** or the `M` key (default), or enable it by default in Settings → VGA Output → Enable on connect.
+Toggle with the `M` key (default) or the command palette, or enable it by default in Settings → General → Enable VGA mirror on connect.
 
 ### Screensaver
 
-When the VGA mirror is active and the Kronos screen has been static for the screensaver timeout period, the VGA output is blanked automatically. It wakes on any screen change. The timeout is configurable (Settings → VGA Output → Screensaver timeout; 0 to disable). It can also be changed at runtime from the control port.
+When the VGA mirror is active and the screen has been static for the screensaver timeout period, the VGA output is blanked automatically. It wakes on any screen change. The timeout is set in Settings → General (0 to disable).
 
 ---
 
@@ -164,20 +196,20 @@ When the VGA mirror is active and the Kronos screen has been static for the scre
 | **Copy Frame to Clipboard** | Copies the current frame to the system clipboard |
 | **Open Screenshots Folder** | Opens the screenshot output directory in Explorer |
 
-The output directory is set in Settings → General → Screenshot Directory.
+These are in the File menu and the screen's right-click menu. The output folder is set in Settings → General → Screenshots.
 
 ---
 
 ## File Manager
 
-The File Manager (Connection → File Manager) is a dual-pane file browser for transferring files between your PC and the Kronos over FTP.
+The File Manager (Tools → File Manager...) is a dual-pane file browser for transferring files between your PC and the instrument over FTP.
 
 | Pane | Contents |
 |---|---|
-| Left | Your local PC (starts at the Desktop folder) |
-| Right | Kronos filesystem (`/` by default) |
+| Left | Your local PC (starts at the Desktop folder, or a folder you set) |
+| Right | Instrument filesystem (`/` by default) |
 
-It uses the same FTP credentials as the screen stream. Ensure the Kronos FTP service (vsftpd) is running before opening the File Manager.
+It uses the same FTP credentials as the screen stream. The instrument's FTP service (vsftpd) must be running.
 
 ### Transferring Files
 
@@ -190,8 +222,8 @@ It uses the same FTP credentials as the screen stream. Ensure the Kronos FTP ser
 | Key / Action | Effect |
 |---|---|
 | Double-click a folder | Navigate into it |
-| Backspace | Go up to the parent folder |
-| Hover over a folder (750 ms) | Navigate into it (dwell-to-navigate) |
+| `..` row / Backspace / ↑ button | Go up to the parent folder |
+| Hover over a folder while dragging | Navigate into it (dwell-to-navigate) |
 | F5 | Refresh the active pane |
 | F2 | Rename the selected item |
 | Del | Delete the selected item (confirmation required) |
@@ -201,38 +233,43 @@ It uses the same FTP credentials as the screen stream. Ensure the Kronos FTP ser
 | Column header click | Sort by Name, Size, or Modified date |
 | Drive selector (local pane) | Switch between drives on your PC |
 
-Rubber-band selection (click-drag on empty space) and drag-scroll (drag to the top or bottom edge of a pane) are supported.
+Right-click a folder in the local pane for **Set Default Start Folder**. Rubber-band selection (click-drag on empty space) and drag-scroll (drag to the top or bottom edge of a pane) are supported.
 
 ---
 
 ## Calibration
 
-The calibration system corrects for systematic touch-position offsets between what is displayed in the client window and where the Kronos registers the touch.
+The calibration system corrects for systematic touch-position offsets between what is displayed in the client window and where the instrument registers the touch.
 
-Press `C` (default) to enter calibration mode. In this mode:
-- A 5×5 grid of calibration nodes is overlaid on the frame.
-- Drag any node to offset it from its natural (evenly-spaced) position.
-- Optionally, add "bias dots" - extra test points - by clicking on the frame outside a node.
+Press `C` (default), or use **Tools → Calibration**, to enter calibration mode. It has two stages:
 
-Calibration applies a bilinear mesh warp: client coordinates are mapped through the mesh before being sent as touch events. If all nodes are at their natural positions (zero offset), no correction is applied.
+**Observe mode**
+- Click sends a tap with the current calibration applied.
+- Right-click adds an indicator dot at that position, or removes the nearest existing dot.
+- `W` enters Warp mode; `C` exits calibration.
 
-Changes take effect immediately and are saved automatically.
+**Warp mode**
+- Drag the blue nodes to shift the correction mesh.
+- Right-click removes the nearest bias dot.
+- `S` saves the mesh, `R` resets it to identity, `X` clears all bias dots, `W` returns to Observe mode.
 
-**Reset calibration:** Drag all nodes back to their natural positions, or use Settings → Reset All Settings (this resets everything, not just calibration).
+Calibration applies a bilinear mesh warp: client coordinates are mapped through the mesh before being sent as touch events. If all nodes are at their natural positions, no correction is applied. The grid size (3×3, 4×4, 5×5) is set in **Tools → Calibration Grid Size**; changing it clears existing calibration data. `Ctrl+Z` / `Ctrl+Y` undo and redo in calibration mode.
+
+**Reset calibration:** Drag all nodes back to their natural positions, or use Settings → General → Reset All Settings (this resets everything, not just calibration).
 
 ---
 
-## Test Mode
+## Test Mode (Kronos only)
 
-Access via **Tools → Enter Kronos Test Mode**. This sends the Kronos into its built-in hardware test mode for diagnostics and hardware verification.
+Access via **File → Settings... → Debug → Enter Instrument Test Mode...**. This sends the Kronos into its built-in hardware test mode for diagnostics and hardware verification. The button is hidden when connected to a Nautilus, which has no equivalent.
 
-> **Warning:** All unsaved changes on the Kronos will be lost, and the Kronos must be restarted after testing is complete. A confirmation dialog warns before proceeding. Only use this if you understand the risk.
+> **Warning:** All unsaved changes on the instrument will be lost, and the instrument must be restarted after testing is complete. A confirmation dialog warns before proceeding. Only use this if you understand the risk.
 
 ---
 
 ## Macros
 
-Macros record a sequence of key presses and replays them on demand. They are assigned a keyboard trigger that fires them globally while the app is in focus.
+Macros record a sequence of key presses and replay them on demand. They are assigned a keyboard trigger that fires them globally while the app is in focus.
 
 ### Creating a Macro
 
@@ -243,7 +280,7 @@ Macros record a sequence of key presses and replays them on demand. They are ass
 5. Click **● Record** and press the keys for your macro sequence.
 6. Click **■ Stop** when done.
 7. Adjust **Step delay** if needed (default 50 ms between steps).
-8. Click **Play** to test.
+8. Click **▶ Play** to test.
 9. Click OK.
 
 ### Macro Triggers
@@ -252,165 +289,170 @@ Triggers require a modifier key. Single keys without a modifier are not accepted
 
 ### Step Delay
 
-The delay between macro steps is configurable per-macro (10–2000 ms). A higher delay gives slower Kronos UIs more time to process each step.
+The delay between macro steps is configurable per-macro (10–500 ms). A higher delay gives the instrument more time to process each step.
 
 ---
 
-## Raw Key Map
+## Input Mapping
 
-The raw key map lets you bind a host key (optionally with Shift) to a specific Linux keycode sent to the Kronos, bypassing the normal character-map translation.
+The input map lets you bind a host key (optionally with Shift) to a specific Linux keycode sent to the instrument, bypassing the normal character-map translation.
 
 This is useful for:
-- Triggering Kronos functions that do not have a named button or standard key mapping.
-- Remapping keys that Eva interprets differently from what the standard map produces.
+- Triggering functions that do not have a named button or standard key mapping.
+- Remapping keys that the instrument interprets differently from what the standard map produces.
 - Sending key combos that do not exist on the host keyboard layout.
 
-Open Settings → Raw Key Map.
+Open Settings → Input Mapping.
 
 | Column | Meaning |
 |---|---|
 | Host Key | The Windows key to intercept (with optional Shift) |
-| Raw Code | The Linux keycode (1–767) to send to the Kronos |
-| Shift | Whether to send Shift along with the raw code |
+| → Sends | The Linux keycode (1–767) sent to the instrument |
 | Label | Optional description |
 
 **Adding a mapping:**
-1. Click **Add** (or double-click an existing entry to edit).
+1. Click **Add** (or select an existing entry to edit).
 2. Click **Host key** and press the key to capture.
 3. Enter the raw Linux keycode.
 4. Check **Send Shift** if needed.
 5. Click **Save**.
 
-**Keys that cannot be raw-mapped:** Numpad 0–9, numpad minus, and numpad decimal are reserved for physical button routing and cannot be remapped. The UI will reject them.
+**Keys that cannot be mapped:** Numpad 0–9, numpad minus, and numpad decimal are reserved for physical button routing and cannot be remapped. The UI will reject them.
 
 ---
 
 ## Settings
 
-Open via **Settings → Settings...**.
-
-### Connection
-
-| Setting | Description |
-|---|---|
-| Kronos Host | IP address or hostname of the Kronos |
-| UDP Discovery | The app probes the daemon's UDP discovery port to find the stream/control ports automatically (falls back to the configured 7373/7374) |
-| Stream Port | TCP port for the framebuffer stream (default 7373) |
-| Control Port | TCP port for the control channel (default 7374) |
-| FTP Port | TCP port for FTP file access used by the File Manager (default 21) |
-| Username / Password | FTP credentials - used for both the screen stream and the File Manager. Set via the login dialog on first connect. |
-
-### Streaming
-
-| Setting | Description |
-|---|---|
-| Mode | **Change** (server pushes on change) or **Pull** (client polls at set FPS) |
-| Max FPS | Maximum frame rate (1–15). Change mode caps the delivery rate; Pull mode sets the polling interval. |
-
-**Change mode** (default) uses less bandwidth and CPU and is recommended for most use. The server only sends a frame when the Kronos screen content changes.
-
-**Pull mode** sends frames at the fixed FPS regardless of whether the screen changed.
+Open via **File → Settings...**. Export, import and reset are described at the end of this section.
 
 ### General
 
 | Setting | Description |
 |---|---|
 | Prompt before quitting | Show a confirmation dialog before closing the app |
-| Hide Controls by default | Start with the button rail hidden |
-| Screenshot Directory | Folder where Ctrl+S saves PNG screenshots |
+| Hide data / value input panel on startup | Start with the corresponding panel hidden |
+| Reverse mouse scrolling direction | Flip the data wheel direction |
+| Screenshots → Output folder | Folder where screenshots are saved (empty = desktop) |
+| Enable VGA mirror on connect | Kronos only. Automatically enable the VGA mirror when connected |
+| Screensaver timeout | Seconds of inactivity before blanking the VGA output (0 = disabled) |
+| Reset All Settings | See [Import / Export / Reset](#import--export--reset) |
 
-### VGA Output
+### Connection
 
 | Setting | Description |
 |---|---|
-| Enable VGA mirror on connect | Automatically send `MIRROR_ON` when connected |
-| Screensaver timeout | Seconds of inactivity before blanking the VGA output (0 = disabled) |
+| Saved connections | Named instruments. **+** saves a new entry (pre-filled from the fields below), **-** removes the selected one, **Edit...** changes its name, IP address, FTP login and port. Choosing an entry fills in the IP address and FTP login below |
+| Instrument IP address | IP address or hostname of the instrument |
+| FTP Username / Password | FTP credentials - used for both the screen stream and the File Manager. Also set via the login dialog on first connect |
+| FTP Port | TCP port for FTP file access used by the File Manager (default 21) |
+| Clear FTP Credentials | Forget the saved username and password |
+
+### Streaming
+
+| Setting | Description |
+|---|---|
+| Stream mode | **Change-driven** (the instrument pushes a frame only when the screen changes) or **Pull** (the app requests each frame individually) |
+| Max frame rate | Maximum frame rate (1–15). Change mode caps the delivery rate; Pull mode sets the polling interval |
+
+**Change mode** (default) uses less bandwidth and CPU and is recommended for most use.
+
+**Pull mode** requests frames at the fixed rate regardless of whether the screen changed. It may help if frames are occasionally missed. Streaming changes take effect on the next connect.
 
 ### View
 
 | Setting | Description |
 |---|---|
-| Layout Preset | Full / Focused (see [Layout Presets](#layout-presets)) |
-| Zoom default level | Magnification level for the zoom window (2.5×–10×) |
-| Zoom window size | Size multiplier for the floating zoom window |
-| Always on top | Keep the main window above all other windows |
+| Default window size | Last Used / Small / Medium / Large / Maximized |
+| Default zoom level | Magnification level for the zoom window (2.5×–5.0× here; the zoom window itself goes to 10×) |
+| Zoom tool size | Size multiplier for the floating zoom window |
+
+### Image
+
+Upscaling filter (Sharp / Smooth / High Quality) and the brightness, contrast, gamma, saturation and sharpen adjustments, with **Reset Adjustments**.
 
 ### Key Bindings
 
-All rebindable actions are listed. Double-click any row to capture a new key combination. Press Escape to cancel; press Delete to clear a binding.
+All rebindable actions are listed. Double-click a row to capture a new key combination (hold Ctrl/Alt/Shift first to set a chord). Press Escape to cancel; select a row and press Delete to clear its binding.
 
-**Rebindable actions:**
+**Rebindable actions include:**
 
-- Quit, Toggle Fullscreen, Toggle Zoom Window, Zoom In, Zoom Out
-- Toggle Aspect Lock, Toggle VGA Mirror, Toggle Help
-- Toggle Calibration Mode, Hide/Show Controls
+- Quit, Fullscreen, Zoom Window, Zoom In/Out, Help, Calibrate, Mirror (Kronos only)
+- Hide Data Input / Hide Value Input
 - Mode: Setlist / Combi / Program / Sequence / Sampling / Global / Disk
-- Bank: I-A through I-G, U-A through U-G, U-AA through U-GG
+- Sequencer: Locate, Rewind, Forward, Pause, Record, Start/Stop, Save, and Tap Tempo
+- Bank select: I-A through I-G, U-A through U-G, U-AA through U-GG (Kronos only)
+
+### Input Mapping and Macros
+
+See [Input Mapping](#input-mapping) and [Macros](#macros).
+
+### Debug
+
+| Setting | Description |
+|---|---|
+| Enable debug logging | Write verbose connection and frame diagnostics to the log file. Takes effect immediately; can grow the log quickly |
+| Button Injector... | Shown while debug logging is on. Sends any daemon-recognized front-panel button by name - used for mapping the Nautilus's relabeled buttons |
+| Enter Instrument Test Mode... | Kronos only. See [Test Mode](#test-mode-kronos-only) |
 
 ### MIDI/SysEx
 
 | Setting | Description |
 |---|---|
-| MIDI transport | **Auto** (USB if present, else TCP) / **USB** / **TCP** |
-| USB device name | Device-name substring used to find the Kronos USB-MIDI port (default `KRONOS`) |
-| Monitor incoming MIDI | Connect/read the live MIDI stream (needed for follow, the monitor, and dumps) |
-| Proactive SysEx polling | Periodically query the current performance id even when no change was seen |
-| SysEx poll interval | Seconds between proactive polls (default 60) |
-| Value slider CC# | MIDI controller number the Kronos VALUE slider transmits (default 18) |
+| MIDI transport | **Auto** (prefer USB) / **TCP** (daemon) / **USB** (direct) |
+| Monitor MIDI | Connect/read the live MIDI stream (needed for follow, the monitor, and dumps) |
+| SysEx Poll on Changes | Check in via SysEx when a Program Change or Bank Select is received. Requires Monitor MIDI |
+| Pull Names on Program Change | Fill the performance name as you navigate, without a full names pull |
+| Proactive SysEx Polling | Periodically query the current performance on a schedule, regardless of MIDI activity. Can slow the instrument during the check-in |
+| Poll interval | Seconds between proactive polls |
+| Value slider CC# | MIDI controller number the instrument's VALUE slider transmits (default 18) |
 
 ### Librarian
 
 | Setting | Description |
 |---|---|
 | Merge behavior | **Temporary Memory** (staging cleared on close) or **Local Storage** (persisted across sessions) |
-| Full sync on launch | Off by default. Pulls every bank as soon as the Librarian opens, rather than only the banks whose digest changed. Pull only - it never pushes, so nothing reaches the Kronos without an explicit Sync Library. |
-| Force destructive write | Off by default. Treats the keyboard library as the source of truth: 2-Way Sync skips the conflict pre-scan and overwrites banks that changed on the Kronos since the last pull, without asking. Front-panel edits made since then are lost, and the pre-write backup does not cover them. A red banner in the Librarian shows while it is armed. |
+| Programs / Combis: preserve duplication | See [Merge Window](#merge-window-right) |
+| Full sync on launch | Off by default. Pulls every bank as soon as the Librarian opens, rather than only the banks whose digest changed. Pull only - it never pushes, so nothing reaches the instrument without an explicit Sync |
+| Force destructive write | Off by default. Treats the keyboard library as the source of truth: 2-Way Sync overwrites banks that changed on the instrument since the last pull, without asking. Front-panel edits made since then are lost, and the pre-write backup does not cover them. A red banner in the Librarian shows while it is armed |
 
-### Macros
+### Sample Editor
 
-See [Macros](#macros).
-
-### Debug
-
-| Setting | Description |
-|---|---|
-| Debug logging | Write verbose connection and frame diagnostics to the application log |
+Playback output device and the Create Zone preferences (position, key range, and original-key position).
 
 ### Import / Export / Reset
 
-- **Export** - save all settings (including key bindings, macros, and raw key map) to a JSON file.
-- **Import** - load settings from a previously exported JSON file.
-- **Reset All Settings** - permanently deletes all saved settings, key mappings, calibration data, and palette overrides. The app returns to its out-of-the-box state.
+- **File → Export Settings...** - save all settings (including key bindings, macros, and the input map) to a JSON file.
+- **File → Import Settings...** - load settings from a previously exported JSON file.
+- **Reset All Settings** (Settings → General) - permanently deletes all saved settings, key mappings, calibration data, and palette overrides. The app returns to its out-of-the-box state.
 
 ---
 
 ## MIDI / SysEx
 
-The app monitors the Kronos' live MIDI output - program-change and mode-change follow, the VALUE-slider mirror, and the SysEx/MIDI traffic window all run off it.
+The app monitors the instrument's live MIDI output - program-change and mode-change follow, the VALUE-slider mirror, and the SysEx/MIDI traffic window all run off it.
 
 ### Transport selection
 
 The MIDI link is chosen in **Settings → MIDI/SysEx** (default **Auto**):
 
-- **USB** - a Kronos directly connected via USB-MIDI (no daemon/network needed). Fast and exclusive - if a DAW already holds the port, the app falls back to TCP.
+- **USB** - the instrument directly connected via USB-MIDI (no daemon/network needed). Fast and exclusive - if a DAW already holds the port, the app falls back to TCP.
 - **TCP** - the daemon's MIDI bridge (port 9875), used when the screen is connected.
 
-The footer badge shows which link is live: **USB** (green, fast), **DIN** (amber, a 5-pin interface bridging the Kronos), **TCP** (blue, network), or **-** (none). Hot-plug is automatic - plugging in a USB Kronos switches over live.
+The footer badge shows which link is live: **USB** (green, fast), **DIN** (amber, a 5-pin interface bridging the instrument), **TCP** (blue, network), or **-** (none). Hot-plug is automatic - plugging in a USB instrument switches over live.
 
-### SysEx / MIDI Monitor (Tools → SysEx/MIDI Monitor)
+### MIDI Monitor (Tools → MIDI Monitor...)
 
-- Live traffic log with per-message decode (notes, CC, PC, SysEx function codes).
-- Send raw MIDI hex.
-- **Sync Names** - dumps every program/combi name bank once and caches it, so program-change display is flash-free (a bank is re-dumped only after its storage digest changes).
-- **Set List sync** - dumps all set lists into a local cache.
+- Live traffic log with per-message decode (notes, CC, PC, SysEx function codes), per-type filter buttons (click cycles On → Solo → Off), and Copy / Copy All Shown.
+- A virtual piano and pitch joystick for sending notes and pitch bend on the selected OUT CH. Right-click a piano key or the joystick to assign a physical keyboard key to it.
+- **Pull names** (right-click the current-performance display in the status bar → *Pull names from Instrument...* → This Program / This Bank / This Mode / All) - dumps program/combi names once and caches them, so program-change display is flash-free (a bank is re-dumped only after its storage digest changes).
 
-> **Note:** SysEx receive ("Enable Exclusive") must be on in the Kronos Global/MIDI settings for the monitor, name sync, and set-list features to work. If a DAW is running, it may hold the USB port - the app auto-falls-back to TCP.
+> **Note:** SysEx receive ("Enable Exclusive") must be on in the instrument's Global/MIDI settings for the monitor, name sync, and set-list features to work. If a DAW is running, it may hold the USB port - the app auto-falls-back to TCP.
 
 ---
 
 ## Librarian (Tools → Librarian...)
 
-The Librarian is a full library manager for Kronos programs, combis, and set lists: it can pull the whole instrument into a keyboard library, import `.pcg` files, stage objects in a Merge Window, and place them back onto the Kronos with dependency resolution. Everything is undoable (Ctrl+Z) and every write to the Kronos is preceded by a backup.
+The Librarian is a full library manager for programs, combis, set lists, drum kits, and wave sequences: it can pull the whole instrument into a keyboard library, import `.pcg` files, stage objects in a Merge Window, and place them back onto the instrument with dependency resolution. Everything is undoable (Ctrl+Z) and every write to the instrument is preceded by a backup.
 
 ### PCG pane (left)
 
@@ -424,10 +466,19 @@ Load a `.pcg` file to browse its banks. Pull objects into the Merge Window (righ
 
 ### Keyboard Library (center)
 
-- **Sync Library** pulls every program/combi/set list from the Kronos into the on-disk keyboard library (content-addressed, with per-bank SHA-1 digests).
-- Cut/copy/paste to rearrange within the library, including whole-bank moves (Program banks can be copied across an EXi/HD-1 boundary, which stages a bank-type reformat for the next Commit).
-- **Commit** writes pending edits to the Kronos and issues the Store-Bank step. Conflicts (the bank changed on the Kronos since baseline) are flagged, never silently overwritten.
+- The **Sync** button pulls from and/or pushes to the instrument, depending on the mode chosen in its ▾ dropdown. The library is stored on disk (content-addressed, with per-bank SHA-1 digests).
+
+  | Mode | Behavior |
+  |---|---|
+  | **Pull Only** | Replaces the keyboard library with what is on the instrument. Pending local changes are discarded (you are asked first) |
+  | **Push Only** | Writes every pending local change to the instrument. If the instrument has changed since the last sync, you are asked before overwriting. Shown in red because it overwrites the instrument |
+  | **2-Way Sync** | Pulls the library, then pushes every pending local change |
+
+  **Force Full Sync** (below the button) pulls every object rather than only what changed; it applies to the pull half only.
+- Cut/copy/paste to rearrange within the library, including whole-bank moves (Program banks can be copied across an EXi/HD-1 boundary, which stages a bank-type reformat for the next push).
+- Conflicts (the bank changed on the instrument since baseline) are flagged, never silently overwritten; **Resolve Conflicts** pushes your copy over the instrument for every conflicted object.
 - Read-only factory banks (GM, g1–g9, gd) are browseable but never writable.
+- Delete and Clear Changes affect the keyboard library only - hardware is untouched until you sync. Clear History deletes the local audit log alone.
 
 ### Merge Window (right)
 
@@ -435,33 +486,40 @@ A staging area between a loaded `.pcg` file / the keyboard library and the instr
 
 - Stage objects from the PCG pane or from Keyboard Library ("Move to Merge Window").
 - **Auto-Fill** places everything staged into the next free slots of the correct type - dependencies are placed before their referrers, so a combi's timbres point at where its programs actually landed. Placement follows the Merge Window's own display order (source bank, then slot), so re-copying the same `.pcg` and auto-filling again lands in the same order every time.
-- Auto-Fill sends nothing to the Kronos - it only stages, exactly like dragging items across yourself. Review the result, then **Commit Changes** to push. Anything that doesn't fit (no bank of the matching type has room) stays staged.
+- Auto-Fill sends nothing to the instrument - it only stages, exactly like dragging items across yourself. Review the result, then sync to push. Anything that doesn't fit (no bank of the matching type has room) stays staged.
 - Placing is address-sensitive (you choose the destination); dependencies are resolved automatically.
 - **Force Overwrite**: placing onto a slot another combi or set list still references normally refuses, to avoid silently breaking that reference. Force Overwrite places anyway - those referrers then resolve to the *new* object, and the old occupant is diverted to the session clipboard rather than lost.
-- **Object Dependencies** (bottom right): red rows at the top are dependencies nothing staged provides. Right-click one to search a `.pcg` for it; anything found is staged, so the gap can be filled before you Commit. Below them is every program/combi/drum kit/wave sequence the selection references, nested ones included - double-click a row for more info.
+- **Object Dependencies** (bottom right): red rows at the top are dependencies nothing staged provides. Right-click one to search a `.pcg` for it; anything found is staged, so the gap can be filled before you sync. Below them is every program/combi/drum kit/wave sequence the selection references, nested ones included - double-click a row for more info.
 - Tree dots and tints: a dot marks an object staged or referenced more than once, a blue dot marks a sample reference (legend at the bottom of the window), and a conflicted, pending-delete, or read-only row is tinted instead of dotted.
 - **Preserve duplicate Programs/Combis** (Merge Window toolbar, mirrored in Settings → Librarian): when checked, placing staged content that already exists in Keyboard Library still writes a fresh copy ("preserve duplication"); when unchecked, the existing byte-identical copy is reused instead of consuming a slot. Combis are compared *after* their program references are re-pointed at local reality, so a re-copied chain still matches. Defaults: Programs reused (unchecked), Combis copied as-is (checked).
 - **Merge behavior** (Settings → Librarian): **Temporary Memory** clears the staging when the app closes; **Local Storage** persists it across sessions. Switching between them takes effect as soon as you press OK, even with the Librarian open, and carries whatever is already staged across: Temporary Memory → Local Storage writes the current staging out immediately, and Local Storage → Temporary Memory deletes the stored snapshot while keeping the staging in memory for the rest of the session. The snapshot is deleted rather than left on disk so that switching back later cannot silently re-adopt a batch from an old session.
 - **Full sync on launch** (Settings → Librarian): off by default. Pulls every bank the moment the Librarian opens instead of only the changed ones. It runs unattended, so it is deliberately a *pull only* - it never pushes, and it waits for the local-library index and the SysEx probe before starting.
-- **Force destructive write** (Settings → Librarian): off by default. Normally a bank whose contents moved on the Kronos since the last pull is excluded from the push and flagged as a conflict. With this on the keyboard library wins outright and Commit overwrites those banks silently - the standing equivalent of clicking **Resolve Conflicts** on every conflict. Anything edited at the front panel since the last pull is lost. Note that the pre-write backup does **not** protect those slots: it is built from this library's last known copy of each object, which in exactly these banks is the stale one - so the `.syx` written before the push cannot restore what was on the Kronos. It does *not* disable the gates that catch writes the Kronos would reject (a missing reference, an HD-1 body headed for an EXi bank, or a bank changing mid-write); those still refuse.
+- **Force destructive write** (Settings → Librarian): off by default. Normally a bank whose contents moved on the instrument since the last pull is excluded from the push and flagged as a conflict. With this on the keyboard library wins outright and 2-Way Sync overwrites those banks silently - the standing equivalent of clicking **Resolve Conflicts** on every conflict. Anything edited at the front panel since the last pull is lost. Note that the pre-write backup does **not** protect those slots: it is built from this library's last known copy of each object, which in exactly these banks is the stale one - so the `.syx` written before the push cannot restore what was on the instrument. It does *not* disable the gates that catch writes the instrument would reject (a missing reference, an HD-1 body headed for an EXi bank, or a bank changing mid-write); those still refuse.
+
+---
+
+## Sample Editor (Tools → Sample Editor...)
+
+View and edit `.KSC` / `.KMP` / `.KSF` sample content directly on disk - key ranges, loop points, sample rate, and destructive DSP edits. It works on a local copy; nothing reaches the instrument from here until you push it (the File menu has Pull and Push commands for collections, multisamples and samples; the File Manager and Librarian also move files).
+
+- Open a `.KSC` collection via File → Open... (or drag-and-drop) to populate the tree on the left. Selecting a multisample shows its piano keymap and zone list; selecting a zone loads its sample into the waveform view.
+- **Multisample panel**: the dropdown and Create/Rename/Delete buttons pick which multisample is being edited. Click a piano key to jump to the zone covering it, drag a zone's boundary to resize it, drag a zone to reorder it.
+- **Zone panel**: Index / Sample / Orig. Key / Top Key fields for the selected zone. Create adds an empty zone at the end of the keymap; Import Sample... decodes one or more audio files into the collection and assigns the first to the selected zone.
+- **Waveform controls** (Play/Stop `Space`, Pause, Locate Start/End `Home`/`End`, Rewind/Fast-Forward, Zoom In/Out `Ctrl+`/`Ctrl-`, Zoom to Selection, Fit `Ctrl+0`, Undo/Redo). The mouse wheel over the waveform zooms; uncheck **Scroll to Zoom** to scroll the pane instead.
+- **LOCAL EDITS** (orange panel): Select/Move tool, Use Zero (snap to zero-crossings), Loop Lock, and destructive DSP buttons - Normalize, Amplify, Soften, Trim Silence, Reverse, Remove DC Offset, Insert Silence. These only touch this app's own in-memory buffer and undo stack.
+- **KEYBOARD** (blue panel): fields written into the `.KSF` and reflected on the hardware once pushed - Loop Enabled and its Sample Start / Loop Start / Loop End / Loop Tune points, plus the Reverse and +12dB Boost flags.
+- **Save Changes** (`Ctrl+S`) writes every pending edit to disk. **Edit → Revert** discards pending edits.
+- A stereo pair (two multisamples with a shared name and opposite `-L` / `-R` suffix) shows both channels stacked in the waveform view, and an edit to one mirrors onto its partner.
 
 ---
 
 ## Mode Detection
 
-The current Kronos operating mode is read from the daemon's **STATE** command (polled every 500 ms). The daemon reports it from Eva's own live state (via its `eva_mode` kernel module), falling back to its own framebuffer pixel detection during early boot - so the mode shown is exact and doesn't depend on client-side image matching.
+The current operating mode is read from the daemon's **STATE** command (polled every 500 ms). The daemon reports it from the instrument's own live state, falling back to its own framebuffer pixel detection during early boot - so the mode shown is exact and doesn't depend on client-side image matching.
 
 - The mode is shown in the status bar and drives the lit mode button on the control surface.
 - Mode change buttons are ignored until the daemon confirms the board has finished booting (its `BOOT=` gate), so a stray press during boot can't light the wrong button.
 - The daemon also reports a program-edit context (`EDITCTX`), which lights the Combi or Sequence button while you're editing a Program from inside one.
-
-(The client still uses a reference-image match purely for the on-screen Help overlay.)
-
----
-
-## Input Tester
-
-The input tester (Settings → Raw Key Map → **Input Tester** button) lets you see exactly which keycodes the client sends for any key press, before it reaches the Kronos. Useful for diagnosing unexpected mappings or verifying raw key map entries.
 
 ---
 
@@ -471,22 +529,29 @@ The status bar at the bottom of the window shows:
 
 | Element | Description |
 |---|---|
-| Coloured dot + text | Connection state: green = connected, amber = connecting, gray = disconnected |
+| Coloured dot + text | Connection state: green = connected, amber = connecting, red = disconnected |
 | ⌨ keyboard icon | Keyboard capture state - right-click to enable/disable keyboard send |
 | FPS | Measured incoming frame rate while connected |
-| Latency | Round-trip network latency to the Kronos |
+| Latency | Round-trip network latency to the instrument |
 | Notification bubble | Click to open the log file; turns red on errors |
 | Keyboard Info | Opens a pane displaying CPU, memory, temperature, and storage stats |
-| VU meter | Audio level of a local Windows device (e.g. your DAW output). Click ▾ to pick the device; choice is saved |
+| VU meter | Audio level of a local Windows device (e.g. your DAW output). Click ▲ to pick the device; choice is saved |
 | MIDI link badge | USB (green) / DIN (amber) / TCP (blue) - which link carries MIDI/SysEx (see [MIDI / SysEx](#midi--sysex)) |
 | Change / Pull | Active streaming mode for the current connection |
-| Mode | Current Kronos operating mode - right-click to change mode |
+| Tap Tempo, Save, transport | See [Sequencer Transport, Save and Tap Tempo](#sequencer-transport-save-and-tap-tempo) |
+| Mode | Current operating mode. On a Kronos, right-click to change mode; on a Nautilus the right-click mode menu is disabled |
 
 ---
 
 ## Tray Icon
 
-The app minimises to the system tray when the window is closed with **Minimize to tray** behaviour. Right-click the tray icon to restore the window or quit.
+The main window can minimise to the system tray. Right-click the tray icon to show the window, reconnect, disconnect, or quit.
+
+---
+
+## Command Palette
+
+`Ctrl+K` (or **Help → Command Palette**) opens a fuzzy-search launcher for all app commands. Start typing to filter; press Enter or click an entry to run it. Useful for infrequently used actions without navigating menus.
 
 ---
 
@@ -495,15 +560,15 @@ The app minimises to the system tray when the window is closed with **Minimize t
 | Key | Action |
 |---|---|
 | `F1` | Open help window |
-| `F2`–`F8` | Switch Kronos mode (Setlist through Disk) |
+| `F2`–`F8` | Switch mode (Kronos: Setlist through Disk; Nautilus: E, Mode, Page, A–D) |
 | `C` | Toggle calibration mode |
 | `F` | Toggle fullscreen |
-| `M` | Toggle VGA mirror |
+| `M` | Toggle VGA mirror (Kronos only) |
 | `Q` | Quit |
 | `Z` | Toggle zoom window |
 | `+` / `−` | Zoom in / zoom out (enables zoom automatically if off) |
-| `Esc` | Send EXIT to Kronos / exit fullscreen / dismiss overlays |
-| `Enter` | Send ENTER to Kronos |
+| `Esc` | Send EXIT to the instrument / exit fullscreen / dismiss overlays |
+| `Enter` | Send ENTER to the instrument |
 | `Ctrl+1`–`Ctrl+5` | Window size: 75% / 100% / 125% / 150% / 200% |
 | `Ctrl+K` | Open command palette |
 | `Ctrl+S` | Save screenshot |
@@ -522,62 +587,62 @@ Application data is stored next to the executable (portable - the exe's own fold
 ```
 <exe directory>/
   settings.json            - connection, streaming, display, MIDI settings, key bindings, credentials
-  raw_key_mappings.json    - raw key map entries
+  raw_key_mappings.json    - input map entries
   macros.json              - recorded macro sequences
   cal_data.json            - calibration mesh
   palette_override.json    - palette overrides
-  screenremote.log         - diagnostic log (written when Debug Logging is enabled)
+  screenremote.log         - diagnostic log
 
   local_library/           - the Librarian's keyboard library (index.json, oplog.jsonl, content-addressable blobs)
-  name_cache.json          - per-Kronos program/combi name cache (program-change follow)
-  setlist_cache.json       - per-Kronos set-list cache
-  dumped_banks.json        - per-Kronos ledger of name banks already dumped
-  category_names_cache.json - per-Kronos category names (from a Global dump)
-  librarian_backups/       - timestamped .syx backups taken before every Kronos write
+  name_cache.json          - per-instrument program/combi name cache (program-change follow)
+  setlist_cache.json       - per-instrument set-list cache
+  dumped_banks.json        - per-instrument ledger of name banks already dumped
+  category_names_cache.json - per-instrument category names (from a Global dump)
+  librarian_backups/       - timestamped .syx backups taken before every instrument write
   local_library_clipboard.json - the Librarian's cross-session clipboard
 ```
 
-All files are JSON (the keyboard library uses JSON + append-only op-log + SHA-1-addressed blobs) and can be hand-edited. The **Export/Import** feature in Settings backs up/restores `settings.json` (including key bindings and macros); the keyboard library and caches are separate.
+All files are JSON (the keyboard library uses JSON + append-only op-log + SHA-1-addressed blobs) and can be hand-edited. **File → Export/Import Settings** backs up/restores `settings.json` (including key bindings and macros); the keyboard library and caches are separate.
 
-> **Note:** the keyboard library and caches are keyed per Kronos (by host for TCP, by device match for USB), so reconnecting to the same instrument reuses them.
+> **Note:** the keyboard library and caches are keyed per instrument (by host for TCP, by device match for USB), so reconnecting to the same instrument reuses them.
 
 ---
 
 ## Troubleshooting
 
 **Login dialog appears on every connect / "Authentication Failed":**
-- Saved credentials are wrong or have changed. Clear them in Settings → Connection (Username/Password) and try again.
-- The Kronos FTP service (vsftpd) must be running - check with `ps | grep vsftpd` via SSH.
-- Credentials can be tested from a command line: `ftp 192.168.1.2` (or your Kronos IP).
+- Saved credentials are wrong or have changed. Use Settings → Connection → Clear FTP Credentials and try again.
+- The instrument's FTP service (vsftpd) must be running - check with `ps | grep vsftpd` via SSH.
+- Credentials can be tested from a command line: `ftp 192.168.1.2` (or your instrument's IP).
 - If using KronosNet.conf, ensure the file at `/korg/rw/screenremote/KronosNet.conf` is readable and correctly formatted (`username:password`, one entry per line).
 - **Note:** the daemon also accepts the username `kronos` with the device's PublicID as a password (an emergency recovery path for screen connect).
 
 **Connection times out after 10 seconds:**
-- Check that the Kronos is powered on and the `screenremote` daemon is running (`ps | grep screenremote` via SSH).
-- Verify the IP address and port (use UDP discovery or check the daemon's stderr output in dmesg).
+- Check that the instrument is powered on and the `screenremote` daemon is running (`ps | grep screenremote` via SSH).
+- Verify the IP address and ports in Settings → Connection.
 - Check Windows Firewall - it may block outbound connections to port 7373.
 - Some antivirus/VPN drivers intercept socket I/O and delay connections. The 10-second watchdog is implemented by closing the socket, which bypasses this reliably.
 
 **Screen appears but touch does nothing:**
 - Confirm the control port (7374) is reachable - try `telnet 192.168.1.2 7374`.
 - Check that the stream client connected first (access control: only the stream client IP can send control commands).
-- If using a VPN or multiple network interfaces, the daemon may have bound to a different LAN IP. Check `dmesg | grep screenremote` on the Kronos for the bound address.
+- If using a VPN or multiple network interfaces, the daemon may have bound to a different LAN IP. Check `dmesg | grep screenremote` on the instrument for the bound address.
 - The daemon may still be in its boot gate (BOOT=1) - mutating commands return `ERR BOOTING` until it clears.
 
 **Keys do not produce the expected characters:**
-- Eva's character mapping is inverted from standard keyboards: unshifted keys produce uppercase, shifted keys produce lowercase. This is intentional.
+- The instrument's character mapping is inverted from standard keyboards: unshifted keys produce uppercase, shifted keys produce lowercase. This is intentional.
 - Caps Lock is emulated by injecting Left Shift - if a letter is stuck lowercase, check the keyboard status (⌨ indicator) and that Shift was released.
-- Check the raw key map (Settings → Raw Key Map) for conflicting entries.
+- Check the input map (Settings → Input Mapping) for conflicting entries.
 - Numpad keys route to physical buttons and cannot be used for text input.
 
 **Frame is frozen / no updates:**
-- Send `REFRESH` via a one-shot control connection to force a full frame resend.
-- In Change mode, if the Kronos screen is genuinely static, no frames are sent - this is normal.
+- Use **View → Refresh Display** to force a full frame resend.
+- In Change mode, if the instrument screen is genuinely static, no frames are sent - this is normal.
 
-**VGA mirror turns off after a while:**
-- The screensaver timeout has fired. Reduce or disable it in Settings → VGA Output → Screensaver timeout.
+**VGA mirror turns off after a while (Kronos):**
+- The screensaver timeout has fired. Reduce or disable it in Settings → General → Screensaver timeout.
 
 **Mode is shown as "Unknown" / mode buttons don't light:**
 - The daemon's boot gate is still closed (BOOT=1) - the daemon refuses mutating commands and reports mode as 0 until the board has finished booting. Wait a few seconds after power-on; the app disables mode presses until it clears.
-- The daemon's `eva_mode` module couldn't resolve (check MODE_DETAIL on the daemon).
+- The daemon's mode module couldn't resolve (check MODE_DETAIL on the daemon).
 - You're not connected (mode follows the daemon's STATE poll, which needs a connection).

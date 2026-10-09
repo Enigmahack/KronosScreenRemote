@@ -239,6 +239,8 @@
                                                   IsHitTestVisible="False"
                                                   Content="{TemplateBinding SelectionBoxItem}"
                                                   ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                                  ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}"
+                                                  ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}"
                                                   TextElement.Foreground="{TemplateBinding Foreground}"
                                                   Margin="5 2 2 2"
                                                   VerticalAlignment="Center"/>

@@ -1111,19 +1111,6 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         MNU_CalGrid4.Click += (sender, e) => SetCalGridSize(4);
         MNU_CalGrid5.Click += (sender, e) => SetCalGridSize(5);
 
-        MNU_TestMode.Click += async (sender, e) =>
-        {
-            var result = MessageBox.Show(
-                AppMessages.TestMode.Warning,
-                AppMessages.TestMode.Title,
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
-            if (result != MessageBoxResult.Yes) return;
-            Ctrl(DaemonCommand.Button(Mode.Program));
-            await Task.Delay(500);
-            Ctrl(DaemonCommand.EnterTestMode);
-        };
-
         MNU_Screenshot.Click            += (sender, e) => SaveScreenshot();
         MNU_QuickSave.Click             += (sender, e) => QuickSaveScreenshot();
         MNU_CopyFrame.Click             += (sender, e) => CopyFrameToClipboard();
@@ -1230,7 +1217,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
 
         var dlg = new SaveFileDialog
         {
-            Title            = "Save Kronos Screenshot",
+            Title            = "Save Instrument Screenshot",
             Filter           = "PNG Image|*.png",
             FileName         = $"kronos_{DateTime.Now:yyyyMMdd_HHmmss}.png",
             InitialDirectory = EffectiveScreenshotDir,
@@ -1368,6 +1355,19 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         return result;
     }
 
+    async void EnterKronosTestMode()
+    {
+        var result = MessageBox.Show(
+            AppMessages.TestMode.Warning,
+            AppMessages.TestMode.Title,
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (result != MessageBoxResult.Yes) return;
+        Ctrl(DaemonCommand.Button(Mode.Program));
+        await Task.Delay(500);
+        Ctrl(DaemonCommand.EnterTestMode);
+    }
+
     void OpenSettingsDialog(SettingsTab tab = SettingsTab.General)
     {
         // Snapshot the current image-adjustment values so Cancel can undo any live preview.
@@ -1378,6 +1378,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         var dlg = new SettingsWindow(_settings, m => _ = RunUserMacroAsync(m),
             showInputTester: () => new InputTesterWindow(_ctrl).OwnedBy(this).Show(),
             showButtonInjector: () => new ButtonInjectorWindow(_ctrl).OwnedBy(this).Show(),
+            enterTestMode: _deviceFamily == DeviceFamily.Nautilus ? null : EnterKronosTestMode,
             initialTab: tab,
             onImagePreview: PreviewImageAdjust)
             .OwnedBy(this);
@@ -1669,7 +1670,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         {
             color = new SolidColorBrush(Color.FromRgb(0x88, 0xAA, 0xDD));
             slash = false;
-            tip   = "Keyboard: forwarding keystrokes to Kronos";
+            tip   = "Keyboard: forwarding keystrokes to the instrument";
         }
 
         KbdStatusIcon.Foreground = color;
@@ -1730,8 +1731,8 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
     void UpdateTitle(string? suffix = null)
     {
         if (!Dispatcher.CheckAccess()) { Dispatcher.InvokeAsync(() => UpdateTitle(suffix)); return; }
-        Title = suffix == null ? "Kronos ScreenRemote"
-                               : $"Kronos ScreenRemote - {suffix}";
+        Title = suffix == null ? "Keyboard Screen Remote"
+                               : $"Keyboard Screen Remote - {suffix}";
     }
 
     // ── Status bar ────────────────────────────────────────────────────────────
@@ -2732,7 +2733,7 @@ public partial class MainWindow : ThemedWindow, ICtrlSender
         _trayIcon = new System.Windows.Forms.NotifyIcon
         {
             Icon             = appIcon,
-            Text             = "Kronos ScreenRemote",
+            Text             = "Keyboard Screen Remote",
             ContextMenuStrip = menu,
             Visible          = false
         };

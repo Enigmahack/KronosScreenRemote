@@ -90,15 +90,15 @@ sealed class KronosRemoteSampleSource : IRemoteSampleSource
                 await client.DeleteFile(remotePath).ConfigureAwait(false);
             await client.RenameGuardedAsync(part, remotePath).ConfigureAwait(false);
 
-            return RemoteSamplePushResult.Success($"Pushed '{Path.GetFileName(localPath)}' to the Kronos.");
+            return RemoteSamplePushResult.Success($"Pushed '{Path.GetFileName(localPath)}' to the instrument.");
         }
         catch (OperationCanceledException)
         {
             AppLog.Error($"Sample push '{localPath}' -> '{remotePath}' timed out "
                 + (connected ? "during the upload." : "connecting."));
             return RemoteSamplePushResult.Failed(connected
-                ? $"Push timed out: the Kronos stopped responding partway through uploading '{Path.GetFileName(localPath)}' ({PushUploadTimeout.TotalMinutes:0} min). Nothing on the Kronos is guaranteed complete - check the file there before relying on it."
-                : $"Push failed: could not connect to the Kronos at {_host} within {PushConnectTimeout.TotalSeconds:0} seconds. Nothing was uploaded.");
+                ? $"Push timed out: the instrument stopped responding partway through uploading '{Path.GetFileName(localPath)}' ({PushUploadTimeout.TotalMinutes:0} min). Nothing on the instrument is guaranteed complete - check the file there before relying on it."
+                : $"Push failed: could not connect to the instrument at {_host} within {PushConnectTimeout.TotalSeconds:0} seconds. Nothing was uploaded.");
         }
         catch (Exception ex)
         {
@@ -135,9 +135,9 @@ sealed class KronosRemoteSampleSource : IRemoteSampleSource
             Owner = _owner,
         };
         if (dlg.ShowDialog() != true || dlg.SelectedRemoteDir == null)
-            return RemoteCollectionPushResult.Failed("Push to Kronos cancelled.");
+            return RemoteCollectionPushResult.Failed("Push to instrument cancelled.");
 
         return RemoteCollectionPushResult.Success(
-            $"Pushed '{Path.GetFileName(localKscPath)}' and its content to '{dlg.SelectedRemoteDir}' on the Kronos.");
+            $"Pushed '{Path.GetFileName(localKscPath)}' and its content to '{dlg.SelectedRemoteDir}' on the instrument.");
     }
 }

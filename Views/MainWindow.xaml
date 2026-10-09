@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:KronosScreenRemote"
-        Title="Kronos ScreenRemote"
+        Title="Keyboard Screen Remote"
         Width="1870" Height="625"
         ResizeMode="CanResize"
         Focusable="True"
@@ -83,16 +83,15 @@
                 <Separator/>
                 <MenuItem x:Name="MNU_SysExTool"    Header="_MIDI Monitor..."/>
                 <MenuItem x:Name="MNU_Librarian"    Header="_Librarian..."
-                          ToolTip="Local editable library copy - Sync/Commit with the Kronos, load a .pcg file to compare and drag objects in, edit names/categories/Set List slots."/>
+                          ToolTip="Local editable library copy - Sync/Commit with the instrument, load a .pcg file to compare and drag objects in, edit names/categories/Set List slots."/>
                 <MenuItem x:Name="MNU_SampleEditor" Header="Sample _Editor..."
                           ToolTip="View/edit .KSC/.KMP/.KSF sample content on disk - key range, loop points, sample rate."/>
                 <MenuItem x:Name="MNU_FileManager" Header="_File Manager..."/>
                 <Separator/>
                 <MenuItem x:Name="MNU_KeyboardInfo" Header="_Keyboard Info..."/>
                 <MenuItem x:Name="MNU_InputTester"  Header="_Input Tester..." Visibility="Collapsed"/>
-                <MenuItem x:Name="MNU_TestMode"     Header="Enter Kronos _Test Mode"/>
                 <Separator/>
-                <MenuItem x:Name="MNU_DisableKbd"   Header="_Disable Remote Typing" IsCheckable="True" ToolTip="Disable sending keystrokes to the Kronos. All keyboard input remains local."/>
+                <MenuItem x:Name="MNU_DisableKbd"   Header="_Disable Remote Typing" IsCheckable="True" ToolTip="Disable sending keystrokes to the instrument. All keyboard input remains local."/>
             </MenuItem>
             <MenuItem x:Name="MENU_ModeSelect" Header="_Mode Select">
                 <!-- Kronos item set - visible for Kronos/Unknown, collapsed for Nautilus (toggled
@@ -286,7 +285,7 @@
             <StatusBarItem DockPanel.Dock="Right" Padding="4 0 8 0">
                 <TextBlock x:Name="ModeText" Foreground="#FF88AADD" FontSize="11"
                            VerticalAlignment="Center"
-                           ToolTip="Current Kronos display mode - right-click to change">
+                           ToolTip="Current instrument display mode - right-click to change">
                     <TextBlock.ContextMenu>
                         <ContextMenu>
                             <MenuItem x:Name="CTX_Mode_Setlist"  Header="_Setlist"/>
@@ -388,7 +387,7 @@
             <StatusBarItem x:Name="SeqTransportBarItem" DockPanel.Dock="Right" Padding="2 0" VerticalContentAlignment="Center">
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
                                 IsEnabled="{Binding IsTransportEnabled}"
-                                ToolTip="Sequencer transport - sends the front-panel SEQUENCER buttons to the Kronos">
+                                ToolTip="Sequencer transport - sends the front-panel SEQUENCER buttons to the instrument">
                         <Button x:Name="BTN_SeqLocate" Style="{StaticResource SeqTransportBtn}"
                                 TabIndex="280" AutomationProperties.Name="Locate"
                                 ToolTip="Locate - return to the locate point">
@@ -455,7 +454,7 @@
                 <Button x:Name="BTN_TapTempo" Style="{StaticResource SeqTransportBtn}"
                         Width="30" Height="24" IsEnabled="False"
                         TabIndex="340" AutomationProperties.Name="Tap Tempo"
-                        ToolTip="Tap Tempo - tap in quarter-notes to set the Kronos tempo (two taps is enough)">
+                        ToolTip="Tap Tempo - tap in quarter-notes to set the instrument tempo (two taps is enough)">
                     <Path Fill="#FFB4B4B4" Width="12" Height="12" Stretch="Uniform"
                           Data="F0 M3,0 L7,0 L9.5,10 L0.5,10 Z M5.3,2 L6.2,2 L4.7,8 L3.8,8 Z"/>
                 </Button>
@@ -539,7 +538,7 @@
             <StatusBarItem Padding="4 0">
                 <TextBlock x:Name="PingText" Foreground="#FF666666" FontSize="11"
                            VerticalAlignment="Center"
-                           ToolTip="Round-trip network latency to Kronos"/>
+                           ToolTip="Round-trip network latency to instrument"/>
             </StatusBarItem>
             <Separator Margin="2 4" Background="#FF444444" Width="1"/>
             <!-- Active MIDI link badge: USB (native, fast) / DIN (5-pin interface, slow) / TCP (network). -->
@@ -547,7 +546,7 @@
                 <Border x:Name="MidiLinkBadgeBorder" CornerRadius="3" Padding="5 1"
                         BorderThickness="1" BorderBrush="#FF444444" Background="#FF202020"
                         VerticalAlignment="Center"
-                        ToolTip="Active MIDI link - USB: Kronos native USB (fast); DIN: 5-pin MIDI interface (slow); TCP: network daemon.">
+                        ToolTip="Active MIDI link - USB: instrument native USB (fast); DIN: 5-pin MIDI interface (slow); TCP: network daemon.">
                     <TextBlock x:Name="MidiLinkBadge" Text="-" FontSize="10" FontFamily="Consolas"
                                FontWeight="Bold" Foreground="#FF777777" VerticalAlignment="Center"/>
                 </Border>
@@ -684,10 +683,10 @@
                 <TextBlock Foreground="#FF88AADD" FontSize="11"
                            VerticalAlignment="Center"
                            Text="{Binding PerformanceDisplay}"
-                           ToolTip="Current performance - bank, number, and name (via SysEx). Right-click to pull from the Kronos.">
+                           ToolTip="Current performance - bank, number, and name (via SysEx). Right-click to pull from the instrument.">
                     <TextBlock.ContextMenu>
                         <ContextMenu x:Name="CTX_PerfPullMenu">
-                            <MenuItem Header="_Pull names from Kronos...">
+                            <MenuItem Header="_Pull names from Instrument...">
                                 <MenuItem x:Name="CTX_PullThisProgram" Header="This _Program"
                                           ToolTip="Pull only the program/combi currently showing."/>
                                 <MenuItem x:Name="CTX_PullThisBank"    Header="This _Bank"

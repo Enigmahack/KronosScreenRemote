@@ -299,14 +299,14 @@ partial class SampleEditorViewModel : ObservableObject
         if (_selectedSample == null || _selectedSamplePath == null) { StatusText = "No sample loaded."; return; }
         if (_dirtySamples.ContainsKey(_selectedSamplePath)) { StatusText = "Save the sample locally first (use Save Sample), then push."; return; }
         if (!_remoteMap.TryGetValue(_selectedSamplePath, out var remotePath))
-        { StatusText = "This sample wasn't pulled from the Kronos - nowhere to push it back to."; return; }
+        { StatusText = "This sample wasn't pulled from the instrument - nowhere to push it back to."; return; }
         // Eva's own Save can write a zero-frame .KSF for a sample that was loaded but
         // never fully read. Pushing one of those over a good on-Kronos sample would
         // silently destroy it.
         if (_selectedSample.IsHeaderOnly)
         { StatusText = "Refusing to push: this sample has no audio data (header-only)."; return; }
 
-        StatusText = "Pushing to Kronos...";
+        StatusText = "Pushing to instrument...";
         var result = await source.PushAsync(_selectedSamplePath, remotePath);
         StatusText = result.StatusMessage;
     }
@@ -342,9 +342,9 @@ partial class SampleEditorViewModel : ObservableObject
         if (path == null) { StatusText = "Couldn't resolve the owning multisample."; return; }
         if (_dirtyMultisamples.ContainsKey(path)) { StatusText = "Save the multisample locally first (use Save Multisample), then push."; return; }
         if (!_remoteMap.TryGetValue(path, out var remotePath))
-        { StatusText = "This multisample wasn't pulled from the Kronos - nowhere to push it back to."; return; }
+        { StatusText = "This multisample wasn't pulled from the instrument - nowhere to push it back to."; return; }
 
-        StatusText = "Pushing to Kronos...";
+        StatusText = "Pushing to instrument...";
         var result = await source.PushAsync(path, remotePath);
         StatusText = result.StatusMessage;
     }
@@ -377,7 +377,7 @@ partial class SampleEditorViewModel : ObservableObject
         if (_collection == null || _collectionPath == null) { StatusText = "Open a collection first."; return; }
         if (HasUnsavedChanges) { StatusText = "Save changes locally first (use Save Changes), then push."; return; }
 
-        StatusText = "Pushing to Kronos...";
+        StatusText = "Pushing to instrument...";
         var result = await source.PickFolderAndPushCollectionAsync(_collectionPath, _collection);
         StatusText = result.StatusMessage;
     }

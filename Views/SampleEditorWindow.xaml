@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:KronosScreenRemote"
         xmlns:vm="clr-namespace:KronosScreenRemote.ViewModels"
-        Title="Sample Editor - Kronos" Width="1200" Height="780" MinWidth="900" MinHeight="560"
+        Title="Sample Editor - Instrument" Width="1200" Height="780" MinWidth="900" MinHeight="560"
         ResizeMode="CanResize"
         ShowInTaskbar="True"
         PreviewKeyDown="OnWindowPreviewKeyDown"
@@ -291,10 +291,10 @@
                 <MenuItem x:Name="MNU_SaveMultisample" Header="Save _Multisample" Click="OnSaveMultisample"/>
                 <MenuItem x:Name="MNU_SaveSample" Header="Save _Sample" Click="OnSaveSample"/>
                 <Separator/>
-                <MenuItem x:Name="MNU_PullCollection" Header="Pull Collection from _Kronos (.KSC)..." Click="OnPullCollectionFromKronos"/>
-                <MenuItem x:Name="MNU_PullMultisample" Header="Pull Multisample from Kronos (._KMP)..." Click="OnPullMultisampleFromKronos"/>
-                <MenuItem x:Name="MNU_PushSample" Header="Push Sample to Kronos" Click="OnPushSampleToKronos"/>
-                <MenuItem x:Name="MNU_PushMultisample" Header="Push Multisample to Kronos" Click="OnPushMultisampleToKronos"/>
+                <MenuItem x:Name="MNU_PullCollection" Header="Pull Collection from Ins_trument (.KSC)..." Click="OnPullCollectionFromKronos"/>
+                <MenuItem x:Name="MNU_PullMultisample" Header="Pull Multisample from Instrument (._KMP)..." Click="OnPullMultisampleFromKronos"/>
+                <MenuItem x:Name="MNU_PushSample" Header="Push Sample to Instrument" Click="OnPushSampleToKronos"/>
+                <MenuItem x:Name="MNU_PushMultisample" Header="Push Multisample to Instrument" Click="OnPushMultisampleToKronos"/>
                 <Separator/>
                 <MenuItem x:Name="MNU_ImportAudio" Header="_Import Audio (WAV/MP3/MP4)..." Click="OnImportAudio"/>
                 <MenuItem x:Name="MNU_ImportStereoAudio" Header="Import Audio as Stereo _Pair..." Click="OnImportStereoAudio"/>
@@ -366,7 +366,7 @@
                         ToolTip="Creates a brand-new, empty .KSC collection - same as File &gt; New Collection (.KSC)..."/>
                 <TextBlock Text="Open Collection:" VerticalAlignment="Center" Foreground="{StaticResource MutedTextBrush}" Margin="0 0 8 0"/>
                 <Button Content="From File..." Padding="10 3" Margin="0 0 6 0" Click="OnOpenCollection"/>
-                <Button Content="From Kronos..." Padding="10 3" Click="OnPullCollectionFromKronos"/>
+                <Button Content="From Instrument..." Padding="10 3" Click="OnPullCollectionFromKronos"/>
             </StackPanel>
         </Border>
 
@@ -596,11 +596,11 @@
                              marker lines in the waveform below (red/green/blue). -->
                         <Border Style="{StaticResource KronosPanel}">
                             <StackPanel>
-                                <TextBlock Text="KRONOS" Style="{StaticResource GroupPanelLabel}" Foreground="#FF3E7FC0" VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                                <TextBlock Text="KEYBOARD" Style="{StaticResource GroupPanelLabel}" Foreground="#FF3E7FC0" VerticalAlignment="Center" HorizontalAlignment="Left"/>
                                 <WrapPanel Margin="2">
                                     <CheckBox x:Name="LoopReverseBox" Content="Reverse" VerticalAlignment="Bottom" Margin="2"
                                               Checked="OnLoopReverseChanged" Unchecked="OnLoopReverseChanged"
-                                              ToolTip="The real Kronos Reverse flag (SMD1 flags bit 0x40) - reverses playback direction of the whole sample (does not touch the stored audio data) and previews reversed here too. Hardware-confirmed, saved to the .KSF."/>
+                                              ToolTip="The real instrument Reverse flag (SMD1 flags bit 0x40) - reverses playback direction of the whole sample (does not touch the stored audio data) and previews reversed here too. Hardware-confirmed, saved to the .KSF."/>
                                     <CheckBox x:Name="Sample12dbBoostBox" Content="+12dB Boost" VerticalAlignment="Bottom" Margin="2"
                                               Checked="OnSample12dbBoostChanged" Unchecked="OnSample12dbBoostChanged"
                                               ToolTip="Sample-level +12dB gain boost (SMD1 flags bit 0x01). Hardware-confirmed, saved to the .KSF."/>

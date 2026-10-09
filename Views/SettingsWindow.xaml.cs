@@ -38,6 +38,7 @@ public partial class SettingsWindow : ThemedWindow
 
     readonly Action? _showInputTester;
     readonly Action? _showButtonInjector;
+    readonly Action? _enterTestMode;
 
     // Live image-preview callback: fired on every image-slider change so the main window can
     // re-bake the tone LUT and re-render the current frame in real time. Armed only after the
@@ -55,6 +56,7 @@ public partial class SettingsWindow : ThemedWindow
 
     public SettingsWindow(AppSettings settings, Action<MacroDefinition>? playMacro = null,
                           Action? showInputTester = null, Action? showButtonInjector = null,
+                          Action? enterTestMode = null,
                           SettingsTab initialTab = SettingsTab.General,
                           Action<ImagePreview>? onImagePreview = null)
     {
@@ -62,6 +64,8 @@ public partial class SettingsWindow : ThemedWindow
         _playMacro      = playMacro;
         _showInputTester = showInputTester;
         _showButtonInjector = showButtonInjector;
+        _enterTestMode  = enterTestMode;
+        BtnTestMode.Visibility = enterTestMode != null ? Visibility.Visible : Visibility.Collapsed;
         _onImagePreview  = onImagePreview;
         BtnInputTester.IsEnabled = showInputTester != null;
         BtnButtonInjector.Visibility = settings.DebugLogging ? Visibility.Visible : Visibility.Collapsed;
@@ -73,8 +77,7 @@ public partial class SettingsWindow : ThemedWindow
 
         // Connection
         TxtHost.Text       = Result.KronosHost;
-        TxtStreamPort.Text = Result.StreamPort.ToString();
-        TxtCtrlPort.Text   = Result.CtrlPort.ToString();
+        BindSavedConnections(null);
         TxtFtpUser.Text    = Result.FtpUsername;
         TxtFtpPass.Password = Result.FtpPassword;
         TxtFtpPort.Text    = Result.FtpPort.ToString();
@@ -382,10 +385,10 @@ public partial class SettingsWindow : ThemedWindow
         // Connection
         var h = TxtHost.Text.Trim();
         if (h.Length > 0) Result.KronosHost = h;
-        if (int.TryParse(TxtStreamPort.Text, out int sp) && sp is > 0 and <= 65535)
-            Result.StreamPort = sp;
-        if (int.TryParse(TxtCtrlPort.Text, out int cp) && cp is > 0 and <= 65535)
-            Result.CtrlPort = cp;
+        // Not user-configurable: always the daemon defaults, so a value saved by an older version
+        // cannot linger without any way to see or change it.
+        Result.StreamPort = StreamReceiver.StreamPort;
+        Result.CtrlPort   = CtrlQuery.CtrlPort;
         Result.FtpUsername = TxtFtpUser.Text.Trim();
         Result.FtpPassword = TxtFtpPass.Password;
         if (int.TryParse(TxtFtpPort.Text, out int fp) && fp is > 0 and <= 65535)
@@ -707,6 +710,8 @@ public partial class SettingsWindow : ThemedWindow
 
     void OnButtonInjectorClick(object s, RoutedEventArgs e) => _showButtonInjector?.Invoke();
 
+    void OnTestModeClick(object s, RoutedEventArgs e) => _enterTestMode?.Invoke();
+
     // Selecting an existing row lights up the (always-visible) editor panel to edit it
     // directly - no separate Add-only "open" gesture needed. Suppressed while THIS class
     // changes RawList.SelectedItem itself (Add/Save/Cancel below), so those don't re-enter
@@ -829,16 +834,69 @@ public partial class SettingsWindow : ThemedWindow
         {
             var found = KronosMidiDevices.Find(match);
             if (found != null)
-                return $"USB: Kronos detected - \"{found}\". Auto and USB modes will use it.";
+                return $"USB: instrument detected - \"{found}\". Auto and USB modes will use it.";
             int ins = KronosMidiDevices.InputNames().Count;
             int outs = KronosMidiDevices.OutputNames().Count;
-            return $"USB: no Kronos (\"{match}\") found among {ins} input / {outs} output MIDI port(s). " +
+            return $"USB: no instrument (\"{match}\") found among {ins} input / {outs} output MIDI port(s). " +
                    "Auto falls back to the TCP daemon.";
         }
         catch (Exception ex)
         {
             return $"USB: MIDI enumeration failed ({ex.Message}).";
         }
+    }
+
+    // ── Saved connections ─────────────────────────────────────────────────────
+    // Edits go to Result.SavedConnections (a clone), so Cancel discards them like every other setting.
+    void BindSavedConnections(SavedConnection? select)
+    {
+        CmbSavedConnections.ItemsSource  = Result.SavedConnections.ToList();
+        CmbSavedConnections.SelectedItem = select;
+        UpdateSavedConnectionButtons();
+    }
+
+    void UpdateSavedConnectionButtons() =>
+        BtnSavedRemove.IsEnabled = BtnSavedEdit.IsEnabled = CmbSavedConnections.SelectedItem is SavedConnection;
+
+    void OnSavedConnectionSelected(object s, SelectionChangedEventArgs e)
+    {
+        UpdateSavedConnectionButtons();
+        if (CmbSavedConnections.SelectedItem is not SavedConnection c) return;
+        TxtHost.Text = c.Host;
+        TxtFtpUser.Text = c.Username;
+        TxtFtpPass.Password = c.Password;
+        TxtFtpPort.Text = c.FtpPort.ToString();
+    }
+
+    SavedConnection CurrentConnectionFields()
+    {
+        int.TryParse(TxtFtpPort.Text, out int port);
+        return new SavedConnection("", TxtHost.Text.Trim(), TxtFtpUser.Text.Trim(), TxtFtpPass.Password, port is > 0 and <= 65535 ? port : 21);
+    }
+
+    void OnSavedConnectionAdd(object s, RoutedEventArgs e)
+    {
+        var dlg = new SavedConnectionDialog(CurrentConnectionFields(), isNew: true) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+        Result.SavedConnections.Add(dlg.Result);
+        BindSavedConnections(dlg.Result);
+    }
+
+    void OnSavedConnectionEdit(object s, RoutedEventArgs e)
+    {
+        if (CmbSavedConnections.SelectedItem is not SavedConnection old) return;
+        var dlg = new SavedConnectionDialog(old, isNew: false) { Owner = this };
+        if (dlg.ShowDialog() != true) return;
+        int i = Result.SavedConnections.IndexOf(old);
+        if (i >= 0) Result.SavedConnections[i] = dlg.Result;
+        BindSavedConnections(dlg.Result);
+    }
+
+    void OnSavedConnectionRemove(object s, RoutedEventArgs e)
+    {
+        if (CmbSavedConnections.SelectedItem is not SavedConnection c) return;
+        Result.SavedConnections.Remove(c);
+        BindSavedConnections(null);
     }
 
     void OnClearFtpCredentials(object s, RoutedEventArgs e)

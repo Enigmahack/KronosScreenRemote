@@ -183,19 +183,19 @@ public partial class SampleEditorWindow : ThemedWindow
 
     void OnOpenCollection(object sender, RoutedEventArgs e)
     {
-        var dlg = new OpenFileDialog { Title = "Open Collection", Filter = "Korg KSC Files|*.KSC|All Files|*.*" };
+        var dlg = new OpenFileDialog { Title = "Open Collection", Filter = "KSC Files|*.KSC|All Files|*.*" };
         if (dlg.ShowDialog(this) == true) OpenCollectionPath(dlg.FileName);
     }
 
     void OnOpenKmpDirect(object sender, RoutedEventArgs e)
     {
-        var dlg = new OpenFileDialog { Title = "Open Multisample", Filter = "Korg KMP Files|*.KMP|All Files|*.*" };
+        var dlg = new OpenFileDialog { Title = "Open Multisample", Filter = "KMP Files|*.KMP|All Files|*.*" };
         if (dlg.ShowDialog(this) == true) OpenKmpPath(dlg.FileName);
     }
 
     void OnNewCollection(object sender, RoutedEventArgs e)
     {
-        var dlg = new SaveFileDialog { Title = "New Collection", Filter = "Korg KSC Files|*.KSC|All Files|*.*" };
+        var dlg = new SaveFileDialog { Title = "New Collection", Filter = "KSC Files|*.KSC|All Files|*.*" };
         // SelectFirstRoot (same as OpenCollectionPath already does) - without it the
         // freshly-created collection's own root node sat there unselected, requiring an
         // extra click before anything showed.
@@ -213,7 +213,7 @@ public partial class SampleEditorWindow : ThemedWindow
         var dlg = new SaveFileDialog
         {
             Title = "Save Collection As",
-            Filter = "Korg KSC Files|*.KSC|All Files|*.*",
+            Filter = "KSC Files|*.KSC|All Files|*.*",
             FileName = Path.GetFileName(owningPath),
         };
         if (dlg.ShowDialog(this) != true) return;
@@ -1304,7 +1304,7 @@ public partial class SampleEditorWindow : ThemedWindow
     {
         var name = _vm.ActiveCollectionPath is { } ksc ? System.IO.Path.GetFileName(ksc) : null;
         Title = (_vm.HasUnsavedChanges ? "*" : "")
-            + (name == null ? "Sample Editor - Kronos" : $"{name} - Sample Editor - Kronos");
+            + (name == null ? "Sample Editor - Instrument" : $"{name} - Sample Editor - Instrument");
         BtnSaveChanges.IsEnabled = _vm.HasUnsavedChanges;
         MNU_SaveChanges.IsEnabled = _vm.HasUnsavedChanges;
     }
@@ -1994,7 +1994,7 @@ public partial class SampleEditorWindow : ThemedWindow
         menu.Items.Add(new Separator());
         Add("Save Changes", OnSaveChanges, _vm.HasUnsavedChanges);
         Add("Save as...", (_, _) => OnSaveCollectionAs(owningPath));
-        Add("Push to Kronos...", OnPushCollectionToKronos);
+        Add("Push to Instrument...", OnPushCollectionToKronos);
         menu.Items.Add(new Separator());
         Add("Close Collection", (_, _) => UnloadCollectionWithConfirm(owningPath));
         Add("Close Editor", (_, _) => Close());
@@ -2301,7 +2301,7 @@ public partial class SampleEditorWindow : ThemedWindow
         var settings = Storage.LoadSettings();
         if (string.IsNullOrWhiteSpace(settings.KronosHost))
         {
-            StatusBar.Text = "No Kronos host configured - set one from the main window first.";
+            StatusBar.Text = "No instrument host configured - set one from the main window first.";
             return null;
         }
         return new KronosRemoteSampleSource(this, settings, settings.KronosHost);
@@ -2497,7 +2497,7 @@ public partial class SampleEditorWindow : ThemedWindow
 
     void OnNewZoneFromExistingKsf(object sender, RoutedEventArgs e)
     {
-        var fileDlg = new OpenFileDialog { Title = "New Zone from Existing Sample", Filter = "Korg KSF Files|*.KSF|All Files|*.*" };
+        var fileDlg = new OpenFileDialog { Title = "New Zone from Existing Sample", Filter = "KSF Files|*.KSF|All Files|*.*" };
         if (fileDlg.ShowDialog(this) != true) return;
 
         var (origKey, topKey) = PromptForZoneKeys();

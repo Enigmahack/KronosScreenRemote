@@ -75,7 +75,7 @@ internal partial class SampleRemoteBrowserDialog : ThemedWindow
         _folderPickMode = true;
         _pushLocalKscPath = localKscPath;
         _pushCollection = collection;
-        Title = "Select Folder on Kronos";
+        Title = "Select Folder on Instrument";
         BTN_Select.Content = "Select This Folder";
         LST_Items.PreviewMouseRightButtonDown += (s, e) => PrepareContextMenu(e);
         // Enabled once RefreshAsync's first listing succeeds (see there) - "push into
@@ -189,7 +189,7 @@ internal partial class SampleRemoteBrowserDialog : ThemedWindow
             MessageBox.Show(this,
                 "Choose a folder inside one of the storage volumes (SSD1, SSD2, ...) first - "
                 + "the root itself isn't a valid destination.",
-                "Select Folder on Kronos", MessageBoxButton.OK, MessageBoxImage.Warning);
+                "Select Folder on Instrument", MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         _busy = true;

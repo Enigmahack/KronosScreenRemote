@@ -66,6 +66,7 @@ static class Storage
                 if (prop.Name == nameof(AppSettings.Keybinds)     ||
                     prop.Name == nameof(AppSettings.Macros)        ||
                     prop.Name == nameof(AppSettings.RecentHosts)   ||
+                    prop.Name == nameof(AppSettings.SavedConnections) ||
                     prop.Name == nameof(AppSettings.HostCredentials) ||
                     prop.Name == nameof(AppSettings.SampleRecentFiles) || !prop.CanWrite) continue;
                 if (root[ToSnakeCase(prop.Name)] is not JsonNode node) continue;
@@ -87,6 +88,16 @@ static class Storage
             if (root["recent_hosts"] is JsonArray recentArr)
                 foreach (var rn in recentArr)
                     if (rn?.GetValue<string>() is string h) s.RecentHosts.Add(h);
+
+            if (root["saved_connections"] is JsonArray savedArr)
+                foreach (var sn in savedArr)
+                    if (sn is JsonObject so)
+                        s.SavedConnections.Add(new SavedConnection(
+                            so["name"]?.GetValue<string>() ?? "",
+                            so["host"]?.GetValue<string>() ?? "",
+                            so["username"]?.GetValue<string>() ?? "",
+                            so["password"]?.GetValue<string>() ?? "",
+                            so["ftp_port"]?.GetValue<int>() ?? 21));
 
             if (root["host_credentials"] is JsonObject credObj)
                 foreach (var kv in credObj)
@@ -142,6 +153,7 @@ static class Storage
                 if (prop.Name == nameof(AppSettings.Keybinds)     ||
                     prop.Name == nameof(AppSettings.Macros)        ||
                     prop.Name == nameof(AppSettings.RecentHosts)   ||
+                    prop.Name == nameof(AppSettings.SavedConnections) ||
                     prop.Name == nameof(AppSettings.HostCredentials) ||
                     prop.Name == nameof(AppSettings.SampleRecentFiles) || !prop.CanRead) continue;
                 root[ToSnakeCase(prop.Name)] = prop.GetValue(s) switch
@@ -158,6 +170,18 @@ static class Storage
             var recentOut = new JsonArray();
             foreach (var h in s.RecentHosts) recentOut.Add(h);
             root["recent_hosts"] = recentOut;
+
+            var savedOut = new JsonArray();
+            foreach (var c in s.SavedConnections)
+                savedOut.Add(new JsonObject
+                {
+                    ["name"]     = c.Name,
+                    ["host"]     = c.Host,
+                    ["username"] = c.Username,
+                    ["password"] = c.Password,
+                    ["ftp_port"] = c.FtpPort,
+                });
+            root["saved_connections"] = savedOut;
 
             var credOut = new JsonObject();
             foreach (var kv in s.HostCredentials)

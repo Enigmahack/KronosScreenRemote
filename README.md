@@ -1,17 +1,17 @@
-# KronosScreenRemote for Windows
+# Keyboard Screen Remote for Windows
 
-A Windows desktop application for remotely viewing and controlling a **Korg Kronos** synthesizer over Ethernet. It streams the Kronos display in real time, forwards touch/button input back to the device, and provides supplementary tools for MIDI/SysEx integration, audio monitoring, file management, and display calibration.
+A Windows desktop application for remotely viewing and controlling a **Kronos** or **Nautilus** over Ethernet. It streams the instrument display in real time, forwards touch/button input back to the device, and provides supplementary tools for MIDI/SysEx integration, audio monitoring, file management, and display calibration.
 
 *AI DISCLAIMER:*
 This application has not been vibe-coded - Some AI was used in the development of this application in terms of comments, notes, and tests, but the majority of this code has had human oversight. 
 
-> **Note:** This application requires the companion daemon running on the Kronos hardware.
+> **Note:** This application requires the companion daemon running on the instrument.
 > See [KronosScreenRemoteDaemon](https://github.com/Enigmahack/KronosScreenRemoteDaemon) for setup instructions.
 
 | Repository | Description |
 |---|---|
 | [KronosScreenRemote](https://github.com/Enigmahack/KronosScreenRemote) | This repo - Windows desktop client |
-| [KronosScreenRemoteDaemon](https://github.com/Enigmahack/KronosScreenRemoteDaemon) | Kronos-side daemon (required - gets installed on the Kronos) |
+| [KronosScreenRemoteDaemon](https://github.com/Enigmahack/KronosScreenRemoteDaemon) | Instrument-side daemon (required - gets installed on the Kronos or Nautilus) |
 
 > **Shared context**: this project is part of a larger Kronos RE/modding
 > ecosystem (this client + [KronosScreenRemotePy](../KronosScreenRemotePy/) +
@@ -22,31 +22,31 @@ This application has not been vibe-coded - Some AI was used in the development o
 ## Features
 
 - **Live Screen Streaming** - 800×600 8-bit indexed color at up to 15 FPS via TCP; supports full-frame (pull) and change-only modes for bandwidth efficiency
-- **Value Slider** - Left-panel INC/DEC buttons and draggable 0–127 value slider mirroring the Kronos front-panel VALUE control; double-click to snap to center (64)
+- **Value Slider** - Left-panel INC/DEC buttons and draggable 0–127 value slider mirroring the front-panel VALUE control (Kronos only); double-click to snap to center (64)
 - **Remote Control** - Virtual button panel (mode keys, number pad, data wheel, bank selects) with drag, scroll, keyboard-shortcut support, tap-tempo, direct-save shortcuts, sequencer controls
 <img width="1414" height="513" alt="2026-08-10 14_33_13-Kronos ScreenRemote - 192 168 100 15" src="https://github.com/user-attachments/assets/162a64b4-fbaf-4725-85bd-c8bad1be5a51" />
 
-- **Mode Detection** - The current Kronos operating mode is read from the daemon's STATE command (exact, from Eva's own state via the daemon's `eva_mode` module), with boot-gating so a stray press during boot can't light the wrong button
+- **Mode Detection** - The current operating mode is read from the daemon's STATE command (exact, from the instrument's own state), with boot-gating so a stray press during boot can't light the wrong button
 - **MIDI / SysEx Integration** - Live MIDI-out monitoring with a SysEx/MIDI traffic window; automatic program-change follow, mode follow, and VALUE-slider mirroring from the hardware. Runs over the daemon's TCP MIDI bridge (port 9875) or a direct USB-MIDI link (selectable in Settings → MIDI/SysEx; Auto prefers USB, with live hot-plug)
 <img width="1191" height="445" alt="2026-08-10 14_31_07-SysEx _ MIDI Monitor" src="https://github.com/user-attachments/assets/73eda485-7b3d-4e39-97c0-72116f87891e" />
 
-- **Librarian** - Full library manager: sync programs/combis/set lists to an on-disk keyboard library, import `.pcg` files, stage objects in a Merge Window, and place them back onto the Kronos with transitive dependency resolution and undo
+- **Librarian** - Full library manager: sync programs/combis/set lists to an on-disk keyboard library, import `.pcg` files, stage objects in a Merge Window, and place them back onto the instrument with transitive dependency resolution and undo
 <img width="951" height="596" alt="2026-08-10 14_21_27-Librarian" src="https://github.com/user-attachments/assets/3bc298f2-5738-4126-b258-0ece2ccf40af" />
 <img width="951" height="596" alt="2026-08-10 14_22_33-Select File on Kronos" src="https://github.com/user-attachments/assets/b4bced91-238e-4ed8-9eff-637dd0a33c34" />
 <img width="951" height="596" alt="2026-08-10 14_23_21-Librarian" src="https://github.com/user-attachments/assets/f92bc283-3e26-4ace-9f87-6078d15fc67f" />
 <img width="951" height="596" alt="2026-08-10 14_23_43-Set List 01 Properties" src="https://github.com/user-attachments/assets/680d6590-bf2d-4b75-939f-7244225d3a4f" />
 
-- **Set List & Name Tools** - Dump and browse Kronos Set Lists, and sync program/combi names into a per-Kronos cache for flash-free program-change display ("Sync All" collects both)
+- **Set List & Name Tools** - Dump and browse Set Lists, and sync program/combi names into a per-instrument cache for flash-free program-change display ("Sync All" collects both)
 - **Audio VU Meter** - WASAPI real-time level monitoring (L/R peak + RMS) with device selection
 <img width="1414" height="508" alt="2026-06-19 17_44_49-Kronos ValueSlider - 192 168 100 15" src="https://github.com/user-attachments/assets/fa7ad681-8056-489f-99e8-32f90af12e98" />
 
 - **Touch Calibration** - 3x3 - 5x5 warp mesh with bilinear interpolation for accurate touch-to-screen mapping
 <img width="1414" height="508" alt="2026-06-19 17_39_29-Kronos ScreenRemote - 192 168 100 15" src="https://github.com/user-attachments/assets/ebe0858e-67c6-4a45-a5fa-85590d2bbdba" />
 
-- **FTP File Manager** - Browse, upload, and download files on the Kronos SD card with conflict resolution
+- **FTP File Manager** - Browse, upload, and download files on the instrument's storage with conflict resolution
 <img width="1414" height="508" alt="2026-06-19 17_40_35-File Manager - Kronos" src="https://github.com/user-attachments/assets/82fc2864-1e3e-4553-a1de-4708fd746a75" />
 
-- **Test Mode** - Enter the Kronos built-in hardware test mode for diagnostics (Tools menu)
+- **Test Mode** - Enter the Kronos built-in hardware test mode for diagnostics (File → Settings... → Debug; Kronos only)
 - **Portable Settings** - Preferences, key bindings, and macros persist as JSON; export or import your full configuration via **File → Export/Import Settings...**
 - **Zoom & Layout Presets** - Configurable window sizes (75–200%), fullscreen, always-on-top; data input (right) and value input (left) panels can be independently hidden in Full mode or expanded/collapsed via dedicated rails in Focused mode, with panel state remembered across sessions
 <img width="904" height="508" alt="2026-06-19 17_45_52-_VariousViews" src="https://github.com/user-attachments/assets/92c41123-f285-46db-a83f-30e131370ec3" />
@@ -79,7 +79,7 @@ This application has not been vibe-coded - Some AI was used in the development o
 
 | Package | Version | Purpose |
 |---|---|---|
-| [FluentFTP](https://github.com/robinrodricks/FluentFTP) | 51.0.0 | FTP client for Kronos SD card file manager |
+| [FluentFTP](https://github.com/robinrodricks/FluentFTP) | 51.0.0 | FTP client for the instrument file manager |
 | [NAudio](https://github.com/naudio/NAudio) | 2.2.1 | WASAPI audio capture for the VU meter |
 
 Dependencies are restored automatically by NuGet during build.
@@ -137,13 +137,13 @@ KronosScreenRemote/
 
 ---
 
-## Connecting to a Kronos
+## Connecting to an Instrument
 
-1. Ensure the Kronos is connected to your local network and its **Global > Ethernet** settings have a valid IP address.
-2. Launch **KronosScreenRemote** and enter the Kronos IP in the connection bar (the app probes UDP discovery to find the daemon's ports automatically).
-3. The application connects on **TCP 7373** (screen stream) and **TCP 7374** (control commands). MIDI/SysEx monitoring uses the daemon's internal bridge on **TCP 9875**, or a direct USB-MIDI connection (Auto prefers USB when a Kronos is plugged in).
-4. FTP access (file manager) uses the standard FTP port **21** with the credentials configured on the Kronos.
-5. The **Librarian** (Tools → Librarian...) additionally syncs programs/combis/set lists from the Kronos into a keyboard library (see the [user guide](Documentation/KronosScreenRemote_Guide.md)).
+1. Ensure the instrument is connected to your local network and its **Global > Ethernet** settings have a valid IP address.
+2. Launch **Keyboard Screen Remote**, open **File → Settings... → Connection**, and enter the instrument IP address. The app then connects automatically; use **Connection → Connect** to reconnect.
+3. The application connects on **TCP 7373** (screen stream) and **TCP 7374** (control commands). MIDI/SysEx monitoring uses the daemon's internal bridge on **TCP 9875**, or a direct USB-MIDI connection (Auto prefers USB when the instrument is plugged in).
+4. FTP access (file manager) uses the standard FTP port **21** with the credentials configured on the instrument.
+5. The **Librarian** (Tools → Librarian...) additionally syncs programs/combis/set lists from the instrument into a keyboard library (see the [user guide](Documentation/KronosScreenRemote_Guide.md)).
 
 ---
 
@@ -152,10 +152,10 @@ KronosScreenRemote/
 | Shortcut | Action |
 |---|---|
 | F1 | Open help window |
-| F2–F8 | Switch Kronos operating mode (Setlist through Disk) |
+| F2–F8 | Switch operating mode (Kronos: Setlist through Disk; Nautilus: the front panel's Mode / Page / A–E buttons) |
 | C | Toggle calibration mode |
 | F | Toggle fullscreen |
-| M | Toggle VGA mirror |
+| M | Toggle VGA mirror (Kronos only) |
 | Q | Quit |
 | Z | Toggle zoom window |
 | Ctrl+1–5 | Window size preset (75%–200%) |

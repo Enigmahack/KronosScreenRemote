@@ -223,6 +223,7 @@ static class UiThemeSmokeTest
             results.Add(("  Librarian Undo command wiring", false, ex.GetType().Name + ": " + ex.Message));
         }
         Try("LoginDialog",            () => new LoginDialog("", 0));
+        Try("SavedConnectionDialog",  () => new SavedConnectionDialog(new SavedConnection("", "", "", "", 21), true));
         Try("PromptDialog",           () => new PromptDialog("test"));
         Try("ConnectionFailedDialog", () => new ConnectionFailedDialog("test"));
         Try("InsertSilenceDialog",    () => new InsertSilenceDialog(44100, 11025));
@@ -243,7 +244,7 @@ static class UiThemeSmokeTest
         // which is the point: Select must NOT be usable before a connection exists).
         {
             var pushDlg = new SampleRemoteBrowserDialog("dummy-host", 21, "user", "pass", "dummy.KSC", new KscCollection());
-            bool titleOk = pushDlg.Title == "Select Folder on Kronos";
+            bool titleOk = pushDlg.Title == "Select Folder on Instrument";
             var selectButton = (System.Windows.Controls.Button)pushDlg.FindName("BTN_Select");
             bool contentOk = (string)selectButton.Content == "Select This Folder";
             bool startsDisabled = !selectButton.IsEnabled;

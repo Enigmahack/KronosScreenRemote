@@ -145,10 +145,10 @@ sealed class StreamReceiver : IStreamReceiver
         byte status = hdrRsp[4];
         if (status == 0x01)
             throw new UnauthorizedAccessException(
-                "FTP authentication rejected by Kronos daemon (or the daemon is older than 3.0.2 and " +
+                "FTP authentication rejected by the instrument daemon (or the daemon is older than 3.0.2 and " +
                 "does not understand the v3 hello - status 0x01 is ambiguous between the two).");
         if (status == 0x02)
-            throw new IOException("Kronos could not look up credentials - user not found or account locked.");
+            throw new IOException("The instrument could not look up credentials - user not found or account locked.");
         if (status == 0x03 || status == 0x04)
         {
             var verBytes = await RecvAllAsync(_sock, 2, ct);

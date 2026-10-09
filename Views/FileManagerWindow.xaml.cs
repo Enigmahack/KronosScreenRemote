@@ -177,7 +177,7 @@ public partial class FileManagerWindow : ThemedWindow
     AsyncFtpClient? _ftp;
 
     readonly Pane _local  = new(isRemote: false, nameHeader: "Name (Local)", dir: ResolveStartFolder());
-    readonly Pane _remote = new(isRemote: true,  nameHeader: "Name (Kronos)", dir: "/");
+    readonly Pane _remote = new(isRemote: true,  nameHeader: "Name (Instrument)", dir: "/");
 
     bool _busy;
     bool _suppressDriveChange;
@@ -1445,7 +1445,7 @@ public partial class FileManagerWindow : ThemedWindow
         else
         {
             cm.Items.Add(MakeItem(
-                isRemote ? "← Send to PC" : "→ Send to Kronos",
+                isRemote ? "← Send to PC" : "→ Send to Instrument",
                 hasSelection,
                 isRemote ? (RoutedEventHandler)OnDownload : OnUpload));
         }

@@ -337,12 +337,12 @@
 
                     <TextBlock Grid.Row="3" Grid.Column="0" Text="Audio"
                                FontSize="11" Foreground="#FF666666" Margin="0,4,0,0"
-                               ToolTip="Korg audio engine state: sample rate and output channel count. 'Active' means the engine processed real-time audio since the last update; 'Idle' means it is running but silent."/>
+                               ToolTip="Audio engine state: sample rate and output channel count. 'Active' means the engine processed real-time audio since the last update; 'Idle' means it is running but silent."/>
                     <TextBlock Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="3"
                                x:Name="TXT_Audio"
                                FontSize="11" FontFamily="Consolas" Foreground="#FFD0D0D0"
                                Margin="0,4,0,0"
-                               ToolTip="Korg audio engine state: sample rate, channel count, and activity."/>
+                               ToolTip="Audio engine state: sample rate, channel count, and activity."/>
                 </Grid>
 
             </StackPanel>

@@ -1,0 +1,61 @@
+<local:ThemedWindow x:Class="KronosScreenRemote.SavedConnectionDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:KronosScreenRemote"
+        Title="Saved Connection" Width="340" SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+    <Grid Margin="18">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="3"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="10"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="3"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="10"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="3"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="10"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="3"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="10"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="3"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="8"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="12"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="Name"/>
+        <TextBox   Grid.Row="2" x:Name="TxtName"
+                  ToolTip="Friendly name shown in the Saved Connections list. Defaults to the IP address if left empty."/>
+
+        <TextBlock Grid.Row="4" Text="Instrument IP address"/>
+        <TextBox   Grid.Row="6" x:Name="TxtHost"/>
+
+        <TextBlock Grid.Row="8" Text="FTP Username"/>
+        <TextBox   Grid.Row="10" x:Name="TxtUser"/>
+
+        <TextBlock Grid.Row="12" Text="FTP Password"/>
+        <local:RevealablePasswordBox Grid.Row="14" x:Name="PwdBox"/>
+
+        <TextBlock Grid.Row="16" Text="FTP Port"/>
+        <TextBox   Grid.Row="18" x:Name="TxtPort" Width="80" HorizontalAlignment="Left"/>
+
+        <TextBlock Grid.Row="20" x:Name="ErrorText"
+                   Foreground="{StaticResource DangerTextBrush}" TextWrapping="Wrap"
+                   Visibility="Collapsed"/>
+
+        <StackPanel Grid.Row="22" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Cancel" IsCancel="True" Click="OnCancel" Margin="0 0 8 0" Style="{StaticResource DialogButtonStyle}"/>
+            <Button Content="OK" IsDefault="True" Click="OnOk" Style="{StaticResource DialogButtonStyle}"/>
+        </StackPanel>
+    </Grid>
+</local:ThemedWindow>

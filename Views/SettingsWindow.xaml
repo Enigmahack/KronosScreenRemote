@@ -68,7 +68,7 @@
 
                     <TextBlock Text="VGA output" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 0 0 8"/>
                     <CheckBox x:Name="ChkVgaMirror" Content="Enable VGA mirror on connect" Margin="0 0 0 12"
-                              ToolTip="Mirrors the Kronos touchscreen to the VGA output when connected. Applied immediately on OK."/>
+                              ToolTip="Mirrors the instrument touchscreen to the VGA output when connected. Applied immediately on OK."/>
 
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -77,9 +77,9 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <TextBlock Grid.Column="0" Text="Screensaver timeout" VerticalAlignment="Center"
-                                   ToolTip="Seconds of inactivity before the Kronos screensaver activates. 0 disables it. Applied immediately on OK."/>
+                                   ToolTip="Seconds of inactivity before the instrument screensaver activates. 0 disables it. Applied immediately on OK."/>
                         <TextBox   Grid.Column="1" x:Name="TxtSsTimeout" Width="55" HorizontalAlignment="Left"
-                                   ToolTip="Seconds of inactivity before the Kronos screensaver activates. 0 disables it."/>
+                                   ToolTip="Seconds of inactivity before the instrument screensaver activates. 0 disables it."/>
                         <TextBlock Grid.Column="2" Text="seconds  (0 = disabled)" VerticalAlignment="Center"
                                    Margin="8 0 0 0" Foreground="#FF888888" FontSize="11"/>
                     </Grid>
@@ -107,36 +107,39 @@
             <TabItem Header="Connection">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
                 <StackPanel>
-                    <Grid Margin="0 4 0 0">
+                    <Grid Margin="0 4 0 12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="130"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Saved connections" VerticalAlignment="Center"
+                                   ToolTip="Named instruments. Choosing one fills in the IP address and FTP login below."/>
+                        <ComboBox  Grid.Column="1" x:Name="CmbSavedConnections" DisplayMemberPath="Name"
+                                   SelectionChanged="OnSavedConnectionSelected" 
+                                   ToolTip="Choosing an entry fills in the IP address and FTP login below."/>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="6 0 0 0">
+                            <Button x:Name="BtnSavedAdd" Content="+" Width="26" Click="OnSavedConnectionAdd"
+                                    ToolTip="Save the current settings as a new entry."/>
+                            <Button x:Name="BtnSavedRemove" Content="-" Width="26" Margin="4 0 0 0" Click="OnSavedConnectionRemove"
+                                    ToolTip="Remove the selected entry."/>
+                            <Button x:Name="BtnSavedEdit" Content="Edit..." Padding="8 0" Margin="4 0 0 0" Click="OnSavedConnectionEdit"
+                                    ToolTip="Edit the selected entry."/>
+                        </StackPanel>
+                    </Grid>
+                    <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="130"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="8"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="8"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
 
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Kronos IP address" VerticalAlignment="Center"
-                                   ToolTip="IP address of the Kronos. Typically 192.168.100.15 over USB, or a DHCP address when connected via a router."/>
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Instrument IP address" VerticalAlignment="Center"
+                                   ToolTip="IP address of the instrument. Typically 192.168.100.15 over USB, or a DHCP address when connected via a router."/>
                         <TextBox   Grid.Row="0" Grid.Column="1" x:Name="TxtHost"
-                                   ToolTip="IP address of the Kronos. Typically 192.168.100.15 over USB, or a DHCP address when connected via a router."/>
-
-                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Stream port" VerticalAlignment="Center"
-                                   ToolTip="TCP port the screen-streaming daemon listens on. Default: 7373. Change only if remapped on the Kronos."/>
-                        <TextBox   Grid.Row="2" Grid.Column="1" x:Name="TxtStreamPort" Width="80" HorizontalAlignment="Left"
-                                   ToolTip="TCP port the screen-streaming daemon listens on. Default: 7373."/>
-
-                        <TextBlock Grid.Row="4" Grid.Column="0" Text="Control port" VerticalAlignment="Center"
-                                   ToolTip="TCP port the control daemon listens on (button presses, mode queries). Default: 7374. Change only if remapped on the Kronos."/>
-                        <TextBox   Grid.Row="4" Grid.Column="1" x:Name="TxtCtrlPort"  Width="80" HorizontalAlignment="Left"
-                                   ToolTip="TCP port the control daemon listens on. Default: 7374."/>
+                                   ToolTip="IP address of the instrument. Typically 192.168.100.15 over USB, or a DHCP address when connected via a router."/>
                     </Grid>
                     <TextBlock Margin="0 12 0 0" Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
-                               Text="Connection changes take effect on the next connect. The --host, --port, and --ctrl command-line arguments override these values for the current session only."/>
+                               Text="Connection changes take effect on the next connect."/>
 
                     <Border Background="#FF444444" Margin="0 16 0 12" Height="1"/>
                     <TextBlock Text="FTP Credentials" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 0 0 8"/>
@@ -154,19 +157,19 @@
                         </Grid.RowDefinitions>
 
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="FTP Username" VerticalAlignment="Center"
-                                   ToolTip="Username for FTP authentication to the Kronos."/>
+                                   ToolTip="Username for FTP authentication to the instrument."/>
                         <TextBox   Grid.Row="0" Grid.Column="1" x:Name="TxtFtpUser"
-                                   ToolTip="Username for FTP authentication to the Kronos."/>
+                                   ToolTip="Username for FTP authentication to the instrument."/>
 
                         <TextBlock Grid.Row="2" Grid.Column="0" Text="FTP Password" VerticalAlignment="Center"
-                                   ToolTip="Password for FTP authentication to the Kronos."/>
+                                   ToolTip="Password for FTP authentication to the instrument."/>
                         <local:RevealablePasswordBox Grid.Row="2" Grid.Column="1" x:Name="TxtFtpPass"
-                                     ToolTip="Password for FTP authentication to the Kronos."/>
+                                     ToolTip="Password for FTP authentication to the instrument."/>
 
                         <TextBlock Grid.Row="4" Grid.Column="0" Text="FTP Port" VerticalAlignment="Center"
-                                   ToolTip="TCP port for FTP connections to the Kronos. Default: 21."/>
+                                   ToolTip="TCP port for FTP connections to the instrument. Default: 21."/>
                         <TextBox   Grid.Row="4" Grid.Column="1" x:Name="TxtFtpPort" Width="80" HorizontalAlignment="Left"
-                                   ToolTip="TCP port for FTP connections to the Kronos. Default: 21."/>
+                                   ToolTip="TCP port for FTP connections to the instrument. Default: 21."/>
                     </Grid>
                     <Button x:Name="BtnClearFtp" Content="Clear FTP Credentials"
                             Width="170" HorizontalAlignment="Left" Margin="0 12 0 0"
@@ -187,7 +190,7 @@
                               BorderBrush="#FF555555"
                               ToolTip="How frames are delivered from the daemon. Takes effect on the next connect.">
                         <ComboBoxItem Content="Change-driven - send frames only when the screen changes (recommended)"
-                                      ToolTip="Recommended. The daemon sends a frame only when the display changes - uses almost no CPU when the Kronos is idle."/>
+                                      ToolTip="Recommended. The daemon sends a frame only when the display changes - uses almost no CPU when the instrument is idle."/>
                         <ComboBoxItem Content="Pull - client requests each frame individually"
                                       ToolTip="The client requests each frame individually. Try this if frames are occasionally missed in change-driven mode."/>
                     </ComboBox>
@@ -199,10 +202,10 @@
                         <Slider x:Name="SlFps" Minimum="1" Maximum="15"
                                 TickFrequency="1" IsSnapToTickEnabled="True"
                                 ValueChanged="SlFps_ValueChanged"
-                                ToolTip="Maximum frames per second the daemon will deliver. 15 fps matches the Kronos display refresh rate."/>
+                                ToolTip="Maximum frames per second the daemon will deliver. 15 fps matches the instrument display refresh rate."/>
                     </DockPanel>
                     <TextBlock Margin="0 6 0 0" Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
-                               Text="Change-driven mode consumes no CPU when the Kronos screen is idle. Pull mode may help if frames are occasionally missed. Streaming changes take effect on the next connect."/>
+                               Text="Change-driven mode consumes no CPU when the instrument screen is idle. Pull mode may help if frames are occasionally missed. Streaming changes take effect on the next connect."/>
 
                 </StackPanel>
                 </ScrollViewer>
@@ -285,7 +288,7 @@
                     <TextBlock Text="Upscaling filter" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 0 0 8"/>
                     <ComboBox x:Name="CMB_ScalingMode" HorizontalAlignment="Left" MinWidth="200"
                               BorderBrush="#FF555555"
-                              ToolTip="How the 800×600 Kronos screen is resampled when enlarged to fill the window.">
+                              ToolTip="How the 800×600 instrument screen is resampled when enlarged to fill the window.">
                         <ComboBoxItem Content="Sharp - crisp, blocky pixels (nearest-neighbor)"
                                       ToolTip="No interpolation. Razor-sharp edges, but visible pixel blocks when enlarged."/>
                         <ComboBoxItem Content="Smooth - soft, fast (bilinear)"
@@ -294,7 +297,7 @@
                                       ToolTip="Fant resampling. Best quality; the default."/>
                     </ComboBox>
                     <TextBlock Margin="0 8 0 0" Foreground="#FF888888" FontSize="11" TextWrapping="Wrap"
-                               Text="Controls how the 800×600 Kronos screen is scaled up to fill the window. Also available from View → Scaling Quality and the frame right-click menu."/>
+                               Text="Controls how the 800×600 instrument screen is scaled up to fill the window. Also available from View → Scaling Quality and the frame right-click menu."/>
 
                     <Border Background="#FF444444" Margin="0 16 0 12" Height="1"/>
                     <TextBlock Text="Adjustments" FontWeight="Bold" Foreground="#FF88AADD" Margin="0 0 0 8"/>
@@ -345,7 +348,7 @@
                         <Slider    Grid.Column="1" x:Name="SlGamma" Minimum="0.4" Maximum="2.5"
                                    SmallChange="0.05" LargeChange="0.1"
                                    ValueChanged="SlGamma_ValueChanged"
-                                   ToolTip="Non-linear midtone correction. 1.00 = no change; higher brightens midtones, useful for the dark Kronos UI."/>
+                                   ToolTip="Non-linear midtone correction. 1.00 = no change; higher brightens midtones, useful for the dark instrument UI."/>
                         <TextBlock Grid.Column="2" x:Name="TxtGammaLabel"
                                    VerticalAlignment="Center" Margin="6 0 0 0" TextAlignment="Right"/>
                     </Grid>
@@ -435,7 +438,7 @@
                         <DockPanel DockPanel.Dock="Top" LastChildFill="False" Margin="0 0 0 5">
                             <Button x:Name="BtnRawAdd"        Content="Add"         Margin="0 0 4 0"
                                     DockPanel.Dock="Left"  Click="OnRawAdd"
-                                    ToolTip="Add a custom mapping from a host key to a Kronos raw keycode."/>
+                                    ToolTip="Add a custom mapping from a host key to an instrument raw keycode."/>
                             <Button x:Name="BtnRawRemove"     Content="Remove"      IsEnabled="False"
                                     DockPanel.Dock="Left"  Click="OnRawRemove"
                                     ToolTip="Remove the selected raw key mapping."/>
@@ -447,7 +450,7 @@
                                    Text="Custom mappings override the default key map and take effect immediately. Select a row to edit it below."/>
                         <ListView x:Name="RawList" SelectionMode="Single"
                                   SelectionChanged="OnRawSelectionChanged"
-                                  ToolTip="Custom host-key → Kronos keycode mappings. These override the default key map and apply immediately. Select a row to edit it below.">
+                                  ToolTip="Custom host-key → instrument keycode mappings. These override the default key map and apply immediately. Select a row to edit it below.">
                             <ListView.View>
                                 <GridView>
                                     <GridViewColumn Header="Host Key" Width="100" DisplayMemberBinding="{Binding HostKeyDisplay}"/>
@@ -612,7 +615,7 @@
                             <Slider    Grid.Column="1" x:Name="SlMacroDelay"
                                        Minimum="10" Maximum="500" TickFrequency="10" IsSnapToTickEnabled="True"
                                        ValueChanged="OnMacroDelayChanged"
-                                       ToolTip="Pause between each key event during macro playback. Increase if the Kronos misses steps."/>
+                                       ToolTip="Pause between each key event during macro playback. Increase if the instrument misses steps."/>
                             <TextBlock Grid.Column="2" x:Name="TxtMacroDelayLabel"
                                        VerticalAlignment="Center" Margin="6 0 0 0" TextAlignment="Right"/>
                         </Grid>
@@ -657,6 +660,9 @@
                     <Button x:Name="BtnButtonInjector" Content="Button Injector..." HorizontalAlignment="Left"
                             Padding="8 3" Click="OnButtonInjectorClick"
                             ToolTip="Send any daemon-recognized front-panel BUTTON by name and watch what happens on the mirrored screen - for mapping Nautilus's relabeled buttons."/>
+                    <Button x:Name="BtnTestMode" Content="Enter Instrument Test Mode..." HorizontalAlignment="Left"
+                            Margin="0 10 0 0" Padding="8 3" Click="OnTestModeClick"
+                            ToolTip="Put the instrument into its built-in hardware test mode. Unsaved changes are lost."/>
                 </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -674,7 +680,7 @@
                                    Foreground="#FF888888" FontSize="11"/>
                         <ComboBox Grid.Column="1" x:Name="CMB_MidiTransport"
                                   BorderBrush="#FF555555" Width="160"
-                                  ToolTip="Which path carries MIDI/SysEx to the Kronos. The screen/video is always over TCP. Auto prefers a directly-connected Kronos USB device.">
+                                  ToolTip="Which path carries MIDI/SysEx to the instrument. The screen/video is always over TCP. Auto prefers a directly-connected instrument USB device.">
                             <ComboBoxItem Content="Auto (prefer USB)"/>
                             <ComboBoxItem Content="TCP (daemon)"/>
                             <ComboBoxItem Content="USB (direct)"/>
@@ -694,24 +700,24 @@
                     <Border Background="#FF444444" Margin="0 0 0 14" Height="1"/>
 
                     <CheckBox x:Name="ChkSysExPollOnChanges" Content="SysEx Poll on Changes" Margin="0 0 0 6"
-                              ToolTip="Triggers a SysEx check-in when the Kronos sends a Program Change or Bank Select message. Requires Monitor MIDI to be enabled."/>
+                              ToolTip="Triggers a SysEx check-in when the instrument sends a Program Change or Bank Select message. Requires Monitor MIDI to be enabled."/>
                     <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap" Margin="0 0 0 16"
-                               Text="Automatically updates the current performance display when a Program Change or Bank Select is received from the Kronos."/>
+                               Text="Automatically updates the current performance display when a Program Change or Bank Select is received from the instrument."/>
 
                     <Border Background="#FF444444" Margin="0 0 0 14" Height="1"/>
 
                     <CheckBox x:Name="ChkPullNamesOnChange" Content="Pull Names on Program Change" Margin="0 0 0 6"
                               ToolTip="When you select a program/combi whose name isn't cached yet, fetch just that name over MIDI. Best over USB, where a name fetch takes milliseconds. Requires Monitor MIDI."/>
                     <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap" Margin="0 0 0 16"
-                               Text="Fills the performance name as you navigate, without a full Sync Names sweep. Over the daemon/DIN path this can be slow and briefly flash the Kronos display; over USB it is near-instant."/>
+                               Text="Fills the performance name as you navigate, without a full names pull. Over the daemon/DIN path this can be slow and briefly flash the instrument display; over USB it is near-instant."/>
 
                     <Border Background="#FF444444" Margin="0 0 0 14" Height="1"/>
 
                     <CheckBox x:Name="ChkProactivePoll" Content="Proactive SysEx Polling" Margin="0 0 0 6"
-                              ToolTip="Enabling this can cause the Kronos to slow down during the check-in. Only enable if you require it."
+                              ToolTip="Enabling this can cause the instrument to slow down during the check-in. Only enable if you require it."
                               Checked="OnProactivePollChanged" Unchecked="OnProactivePollChanged"/>
                     <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap" Margin="0 0 0 12"
-                               Text="Periodically queries the Kronos for the current performance name on a fixed schedule, regardless of MIDI activity."/>
+                               Text="Periodically queries the instrument for the current performance name on a fixed schedule, regardless of MIDI activity."/>
 
                     <Grid>
                         <Grid.ColumnDefinitions>
@@ -741,10 +747,10 @@
                                    Foreground="#FF888888" FontSize="11"/>
                         <TextBox Grid.Column="1" x:Name="TXT_ValueSliderCc"
                                  BorderBrush="#FF555555" Width="60" MaxLength="3"
-                                 ToolTip="MIDI CC# the Kronos VALUE slider transmits (default 18). The UI value slider follows this controller. Change it if your Kronos assigns the value slider to a different CC."/>
+                                 ToolTip="MIDI CC# the instrument VALUE slider transmits (default 18). The UI value slider follows this controller. Change it if your instrument assigns the value slider to a different CC."/>
                     </Grid>
                     <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap" Margin="0 6 0 0"
-                               Text="Keeps the on-screen value slider in sync with physical VALUE slider moves on the Kronos. Requires Monitor MIDI and SysEx transmit enabled on the Kronos."/>
+                               Text="Keeps the on-screen value slider in sync with physical VALUE slider moves on the instrument. Requires Monitor MIDI and SysEx transmit enabled on the instrument."/>
                 </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -784,15 +790,15 @@
 
                     <CheckBox x:Name="ChkLibrarianFullSyncOnLaunch" Content="Full sync on launch"
                               Margin="0 0 0 6"
-                              ToolTip="Pull every bank from the Kronos as soon as the Librarian opens. Never writes to the Kronos."/>
+                              ToolTip="Pull every bank from the instrument as soon as the Librarian opens. Never writes to the instrument."/>
                     <TextBlock Foreground="#FF888888" FontSize="11" TextWrapping="Wrap" Margin="0 0 0 12"
-                               Text="Reads every program, combi, set list, drum kit, and wave sequence instead of only the banks whose digest changed. Slow on a full library and is a pull only: nothing is pushed to the Kronos without user intervention."/>
+                               Text="Reads every program, combi, set list, drum kit, and wave sequence instead of only the banks whose digest changed. Slow on a full library and is a pull only: nothing is pushed to the instrument without user intervention."/>
 
                     <CheckBox x:Name="ChkLibrarianForceDestructiveWrite" Content="Force destructive write"
                               Margin="0 0 0 6"
-                              ToolTip="2-Way Sync overwrites the Kronos even where it changed since the last pull, without asking."/>
+                              ToolTip="2-Way Sync overwrites the instrument even where it changed since the last pull, without asking."/>
                     <TextBlock Foreground="#FFCC8888" FontSize="11" TextWrapping="Wrap"
-                               Text="With this on, the keyboard library is treated as the source of truth and 2-Way Sync overwrites the Kronos to match it, without asking."/>
+                               Text="With this on, the keyboard library is treated as the source of truth and 2-Way Sync overwrites the instrument to match it, without asking."/>
                 </StackPanel>
                 </ScrollViewer>
             </TabItem>

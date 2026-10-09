@@ -459,7 +459,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
             Title = AppMessages.Librarian.Shell.ScanPcgDialogTitle,
-            Filter = "Korg PCG Files|*.pcg|All Files|*.*",
+            Filter = "PCG Files|*.pcg|All Files|*.*",
         };
         if (dlg.ShowDialog(this) != true) return;
 
@@ -508,7 +508,7 @@ internal partial class LibrarianShellWindow : ThemedWindow
         var dlg = new Microsoft.Win32.OpenFileDialog
         {
             Title = AppMessages.Librarian.Shell.ScanPcgDialogTitle,
-            Filter = "Korg PCG Files|*.pcg|All Files|*.*",
+            Filter = "PCG Files|*.pcg|All Files|*.*",
         };
         if (dlg.ShowDialog(this) != true) return (none, "");
 

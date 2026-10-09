@@ -113,7 +113,7 @@ partial class PcgPaneViewModel : ObservableObject
 
     public async Task LoadFromComputerAsync(Window owner)
     {
-        var dlg = new OpenFileDialog { Title = "Load PCG... From Computer", Filter = "Korg PCG Files|*.pcg|All Files|*.*" };
+        var dlg = new OpenFileDialog { Title = "Load PCG... From Computer", Filter = "PCG Files|*.pcg|All Files|*.*" };
         if (dlg.ShowDialog(owner) != true) return;
 
         int epoch = ++_loadEpoch;

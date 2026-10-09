@@ -38,9 +38,9 @@ public static class LibrarianSyncModeText
     public static string Tooltip(this LibrarianSyncMode mode) => mode switch
     {
         LibrarianSyncMode.PullOnly =>
-            "Replace the keyboard library with what is on the Kronos. Pending local changes are discarded (you are asked first).",
+            "Replace the keyboard library with what is on the instrument. Pending local changes are discarded (you are asked first).",
         LibrarianSyncMode.PushOnly =>
-            "Write every pending local change to the Kronos. If the Kronos has changed since the last sync you are asked before overwriting it.",
+            "Write every pending local change to the instrument. If the instrument has changed since the last sync you are asked before overwriting it.",
         _ =>
             "Pull the library, then push every pending local change.",
     };

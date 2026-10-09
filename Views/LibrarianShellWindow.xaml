@@ -344,10 +344,10 @@
                                 <ContextMenu>
                                     <MenuItem Header="Pull Only" IsCheckable="True"
                                               IsChecked="{Binding SyncModeIsPullOnly, Mode=TwoWay}"
-                                              ToolTip="Replace the keyboard library with what is on the Kronos. Pending local changes are discarded (you are asked first)."/>
+                                              ToolTip="Replace the keyboard library with what is on the instrument. Pending local changes are discarded (you are asked first)."/>
                                     <MenuItem Header="Push Only" IsCheckable="True"
                                               IsChecked="{Binding SyncModeIsPushOnly, Mode=TwoWay}"
-                                              ToolTip="Write every pending local change to the Kronos. If the Kronos has changed since the last sync you are asked before overwriting it."/>
+                                              ToolTip="Write every pending local change to the instrument. If the instrument has changed since the last sync you are asked before overwriting it."/>
                                     <MenuItem Header="2-Way Sync" IsCheckable="True"
                                               IsChecked="{Binding SyncModeIsTwoWay, Mode=TwoWay}"
                                               ToolTip="Pull the library, then push every pending local change."/>
@@ -382,7 +382,7 @@
                 <Button DockPanel.Dock="Right" x:Name="BTN_RecheckSysEx" Content="Re-check"
                         Margin="10 0 0 0" Padding="10 2" VerticalAlignment="Top"
                         Command="{Binding RecheckSysExCommand}"
-                        ToolTip="Ask the Kronos again, after changing GLOBAL &gt; MIDI."/>
+                        ToolTip="Ask the instrument again, after changing GLOBAL &gt; MIDI."/>
                 <TextBlock Foreground="#FFFFC0C0" FontSize="13" FontWeight="Bold" TextWrapping="Wrap"
                            Text="{Binding SysExOffBannerText}"/>
             </DockPanel>
@@ -409,7 +409,7 @@
                         Margin="10 0 0 0" Padding="10 2" VerticalAlignment="Top"
                         Command="{Binding ResolveConflictsKeepMineCommand}"
                         ToolTipService.ShowOnDisabled="True"
-                        ToolTip="Push your copy over the Kronos for every conflicted object."/>
+                        ToolTip="Push your copy over the instrument for every conflicted object."/>
                 <TextBlock Foreground="#FFFFE0A0" FontSize="13" FontWeight="Bold" TextWrapping="Wrap"
                            Text="{Binding ConflictBannerText}"/>
             </DockPanel>
@@ -686,7 +686,7 @@
                         <Button Content="From Computer" Margin="8 0 0 0" Padding="8 2"
                                 Command="{Binding LoadPcgFromComputerCommand}"
                                 CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=Window}}"/>
-                        <Button Content="From Kronos" Margin="8 0 0 0" Padding="8 2"
+                        <Button Content="From Instrument" Margin="8 0 0 0" Padding="8 2"
                                 Command="{Binding LoadPcgFromKronosCommand}"
                                 CommandParameter="{Binding RelativeSource={RelativeSource AncestorType=Window}}"/>
                     </StackPanel>

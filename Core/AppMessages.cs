@@ -40,7 +40,7 @@ public static class AppMessages
         // ── No IP configured ──
         public const string NoIpTitle = "Connection";
         public const string NoIpConfigured =
-            "No Kronos IP address is configured.\n\nGo to Settings and enter the Kronos IP address.";
+            "No instrument IP address is configured.\n\nGo to Settings and enter the instrument IP address.";
 
         // ── Status line ──
         public static string Connected(string host, DeviceFamily family) => family switch
@@ -65,17 +65,17 @@ public static class AppMessages
     public static class Screenshot
     {
         public const string Title = "Screenshot";
-        public const string NoFrameAvailable = "No frame available - connect to Kronos first.";
+        public const string NoFrameAvailable = "No frame available - connect to the instrument first.";
         public static string SaveFailed(string detail) => $"Failed to save screenshot:\n{detail}";
     }
 
     /// <summary>Kronos Test Mode confirmation (MainWindow).</summary>
     public static class TestMode
     {
-        public const string Title = "Kronos Test Mode";
+        public const string Title = "Instrument Test Mode";
         public const string Warning =
-            "This will place you into the Kronos Test Mode. All unsaved changes will be lost, " +
-            "and your Kronos will need to be restarted after complete. Also, this is potentially " +
+            "This will place you into Test Mode. All unsaved changes will be lost, " +
+            "and your instrument will need to be restarted after complete. Also, this is potentially " +
             "a dangerous operation and should only be performed if you are aware of the risk.\n\n" +
             "Do you wish to continue?";
     }
@@ -84,8 +84,8 @@ public static class AppMessages
     public static class Quit
     {
         public const string Title              = "Quit";
-        public const string DisconnectAndQuit  = "Disconnect from Kronos and quit?";
-        public const string QuitApp            = "Quit Kronos ScreenRemote?";
+        public const string DisconnectAndQuit  = "Disconnect from the instrument and quit?";
+        public const string QuitApp            = "Quit Keyboard Screen Remote?";
     }
 
     /// <summary>Calibration dialogs (MainWindow.Calibration / MainWindow.Input).</summary>
@@ -162,12 +162,12 @@ public static class AppMessages
         // ── Popups ──
         public const string OpenNotConnectedTitle = "File Manager";
         public const string OpenNotConnected =
-            "Not connected to Kronos.\n\nConnect to Kronos first, then open the File Manager.";
-        public static string ConfirmDeleteRemote(int count) => $"Delete {count} item(s) from Kronos?";
+            "Not connected to the instrument.\n\nConnect to the instrument first, then open the File Manager.";
+        public static string ConfirmDeleteRemote(int count) => $"Delete {count} item(s) from the instrument?";
         public static string ConfirmDeleteLocal(int count)  => $"Delete {count} item(s)?";
 
         // ── Connection / listing ──
-        public const string Connecting = "Connecting to Kronos FTP...";
+        public const string Connecting = "Connecting to instrument FTP...";
         public const string Connected  = "Connected.";
         public static string ConnectFailed(string detail)   => $"FTP connect failed: {detail}";
         public const string Reconnecting = "Reconnecting...";
@@ -193,7 +193,7 @@ public static class AppMessages
         public static string FolderSomeFailedUpload(string name) => $"{name}: some files failed to upload - source kept";
 
         // ── Download ──
-        public const string SelectKronosFilesToDownload = "Select one or more Kronos files or folders to download.";
+        public const string SelectKronosFilesToDownload = "Select one or more instrument files or folders to download.";
         public static string Downloading(int count) => $"Downloading {count} file(s)...";
         public static string DownloadIncomplete(string name, object status) =>
             $"Download of {name} did not complete ({status}) - source kept";
@@ -289,7 +289,7 @@ public static class AppMessages
             // hidden until the first Sync populates it, so an empty library reads as "nothing
             // synced yet" rather than a broken, un-expandable tree.
             public const string EmptyLibraryHint =
-                "Your keyboard library is empty.\nClick “Sync Library” to pull it from your Kronos.";
+                "Your keyboard library is empty.\nClick “Sync Library” to pull it from your instrument.";
 
             public const string NothingToCut = "Nothing selected to cut.";
             public const string CutOneAtATime =
@@ -426,7 +426,7 @@ public static class AppMessages
             public static string ChecksumWarningsSuffix(int count) => $" ({count} bank chunk(s) failed their checksum - see log)";
             public const string FtpLoginFailedOrCancelled = "FTP login failed or was cancelled.";
             public const string LoadFromKronosCancelled =
-                "Load from Kronos cancelled - the previously loaded file (if any) is unchanged.";
+                "Load from instrument cancelled - the previously loaded file (if any) is unchanged.";
         }
 
         /// <summary>Shell - destructive confirmations, drop-target hints, sync/commit status.</summary>
@@ -438,29 +438,29 @@ public static class AppMessages
             // nothing can be pulled from or pushed to the instrument. Verbose by design - the
             // exact GLOBAL > MIDI checkboxes are the whole point of the message.
             public const string SysExOffFix =
-                "On the Kronos: GLOBAL > MIDI, and check every MIDI Filter box (Program Change, " +
+                "On the instrument: GLOBAL > MIDI, and check every MIDI Filter box (Program Change, " +
                 "Bank Change, Combi Change, After Touch, Control Change and Exclusive).";
             public const string SysExOffBanner =
-                "The Kronos is not answering SysEx. Keyboard Library, the Merge Window and PCG files " +
+                "The instrument is not answering SysEx. Keyboard Library, the Merge Window and PCG files " +
                 "still work; Sync and Commit are disabled until it answers. " + SysExOffFix;
-            public const string SysExOffCommitTooltip = "Disabled - the Kronos is not answering SysEx.";
+            public const string SysExOffCommitTooltip = "Disabled - the instrument is not answering SysEx.";
 
             // ── Conflicts (LibrarianShellViewModel.ResolveConflictsKeepMineAsync) ──
             public static string ConflictBanner(int count) =>
-                $"{count} local change(s) can't be pushed - their banks changed on the Kronos since this "
+                $"{count} local change(s) can't be pushed - their banks changed on the instrument since this "
                 + "library last pulled them. Sync Library to pull those banks, or Resolve Conflicts to "
-                + "push your copy over what's on the Kronos.";
+                + "push your copy over what's on the instrument.";
             public static string ConflictsResolved(int objects, int rebased, int banks) =>
                 $"Resolved {objects} conflict(s) across {rebased}/{banks} bank(s) - Commit to push them.";
             public const string ResolveConflictsTooltip =
-                "Push your copy over the Kronos for every conflicted object.";
+                "Push your copy over the instrument for every conflicted object.";
             public const string ResolveConflictsTitle = "Resolve Conflicts";
             public static string ResolveConflictsConfirm(int count, string banks) =>
-                $"Push this library's copy of {count} conflicted object(s) over the Kronos?\n\n"
+                $"Push this library's copy of {count} conflicted object(s) over the instrument?\n\n"
                 + $"Banks affected: {banks}\n\n"
-                + "Those banks changed on the Kronos since this library last pulled them. Continuing "
+                + "Those banks changed on the instrument since this library last pulled them. Continuing "
                 + "means the next push overwrites whatever changed there with your local copy.\n\n"
-                + "To keep the Kronos copy instead, cancel and run Sync Library in 2-Way or Pull Only.";
+                + "To keep the instrument copy instead, cancel and run Sync Library in 2-Way or Pull Only.";
 
             // ── Sync-row status (LibrarianShellViewModel) ──
             public const string Indexing        = "Indexing keyboard library...";
@@ -489,7 +489,7 @@ public static class AppMessages
             // point of the setting is that the push stops asking, so the state has to be visible
             // somewhere that isn't a dialog.
             public const string DestructiveWriteArmed =
-                "Force destructive write is ON - 2-Way Sync overwrites the Kronos without conflict checks.";
+                "Force destructive write is ON - 2-Way Sync overwrites the instrument without conflict checks.";
             public static string CommitResult(int written, int deleted, int notPushed = 0) =>
                 $"Pushed {written} object(s)." + (deleted > 0 ? $" Deleted {deleted}." : "")
                 + (notPushed > 0 ? $" {notPushed} NOT pushed - see below." : "");
@@ -501,23 +501,23 @@ public static class AppMessages
                 $"Pull complete - {fetched} object(s) pulled"
                 + (discarded > 0 ? $", {discarded} local change(s) discarded." : ", no local changes to discard.");
             public static string PullDiscardPrompt(int count) =>
-                "Pull Only replaces the keyboard library with what is on the Kronos."
+                "Pull Only replaces the keyboard library with what is on the instrument."
                 + Environment.NewLine + Environment.NewLine
                 + $"{count} pending local change(s) - edits and slots marked for deletion - will be "
                 + "DISCARDED. This cannot be undone."
                 + Environment.NewLine + Environment.NewLine
                 + "Continue?";
             public static string PushConflictSummary(int count) =>
-                $"{count} object(s) changed on the Kronos since the last sync.";
+                $"{count} object(s) changed on the instrument since the last sync.";
             public static string PushOverwritePrompt(string reason) =>
                 "Push Only could not write safely:"
                 + Environment.NewLine + Environment.NewLine + reason
                 + Environment.NewLine + Environment.NewLine
-                + "Overwrite the Kronos with the keyboard library anyway? This is DESTRUCTIVE - "
+                + "Overwrite the instrument with the keyboard library anyway? This is DESTRUCTIVE - "
                 + "whatever is on the instrument for those objects is replaced.";
-            public const string PushOverwriting = "Overwriting Kronos from keyboard library...";
+            public const string PushOverwriting = "Overwriting the instrument from keyboard library...";
             public const string PullDiscardTitle   = "Discard Local Changes?";
-            public const string PushOverwriteTitle = "Overwrite the Kronos?";
+            public const string PushOverwriteTitle = "Overwrite the instrument?";
             public const string CancelledPendingDeps = "Cancelled - unresolved dependencies still pending.";
             // A Sync/Commit that threw partway (as opposed to a clean push failure returning an
             // error) - surfaced so the operation doesn't look like it silently did nothing.
@@ -549,7 +549,7 @@ public static class AppMessages
             public const string ChangeBankTypeTitle = "Change bank type";
             public static string ChangeBankType(string bankLabel, string curType, string newType) =>
                 $"{bankLabel} is currently {curType}, but you're copying a {newType} bank into it.\n\n" +
-                $"Changing the bank type ERASES everything currently in {bankLabel} on the Kronos and replaces it with this whole bank. This takes effect on Commit.\n\n" +
+                $"Changing the bank type ERASES everything currently in {bankLabel} on the instrument and replaces it with this whole bank. This takes effect on Commit.\n\n" +
                 $"Proceed?";
 
             // Cross-pane placement gate (Merge Window / Loaded PCG File -> Keyboard Library):
@@ -558,14 +558,14 @@ public static class AppMessages
             // requested) - see LibrarianShellViewModel.ConfirmDestinationBankAsync.
             public const string ConfirmStaleBankTitle = "Keyboard Library may be out of sync";
             public static string ConfirmStaleBank(string bankLabel) =>
-                $"{bankLabel} in Keyboard Library has never been confirmed against the Kronos this session " +
+                $"{bankLabel} in Keyboard Library has never been confirmed against the instrument this session " +
                 $"(no successful Sync has checked it yet).\n\n" +
                 $"If it changed on the instrument - a front-panel edit, or a write from elsewhere - placing here " +
                 $"bases the edit on a copy that may already be stale, and Sync's own conflict check only catches " +
                 $"this at push time, after the placement is already made.\n\n" +
                 $"Run Sync Library first to be sure, or place anyway?";
             public const string PlacementCancelledOutOfSync =
-                "Cancelled - destination bank not confirmed in sync with the Kronos.";
+                "Cancelled - destination bank not confirmed in sync with the instrument.";
 
             // ── Drop-target status hints ──
             public const string DropNotRecognizedLibraryObject = "Drop didn't carry a recognized library object.";
@@ -593,7 +593,7 @@ public static class AppMessages
             // Shown in the dependency lists for a reference into a read-only ROM Program bank
             // (GM, g(1)-g(9), g(d)) - those live on the instrument itself, so they're never a gap
             // and never something to place. See ObjectReferenceWalker.IsAlwaysAvailable.
-            public const string RomBankAlwaysAvailable = "ROM bank, always available on the Kronos";
+            public const string RomBankAlwaysAvailable = "ROM bank, always available on the instrument";
 
             // A reference that resolves to an INIT/placeholder Program - satisfied, but not really
             // the sound the referrer wants. See ProgramBody.IsInit.
@@ -690,10 +690,10 @@ public static class AppMessages
             // digest. Those conflicts are deliberately left in place - see the method's comment.
             public static readonly PlanWarning CheckResolveNoDigest = PlanWarning.Check(
                 "some banks gave no digest - their conflicts were left in place rather than cleared "
-                + "without a working baseline. Try again once the Kronos is answering.");
+                + "without a working baseline. Try again once the instrument is answering.");
 
             public static PlanWarning CheckConflictedNotPushed(int count, string banks) => PlanWarning.Check(
-                $"{count} object(s) in {banks} were NOT pushed - those banks changed on the Kronos since "
+                $"{count} object(s) in {banks} were NOT pushed - those banks changed on the instrument since "
                 + "this library last pulled them, so overwriting them would clobber whatever changed. "
                 + "Sync Library to pull them, or use Resolve Conflicts to push your copy anyway.");
 
@@ -701,7 +701,7 @@ public static class AppMessages
             // nothing at all - see its NoReplyGiveUp. Verbose on purpose: this is the one message
             // that has to turn "the Librarian sat there for hours" into a two-minute fix.
             public static readonly PlanWarning RefuseNoInstrumentReply = PlanWarning.Refuse(
-                "the Kronos answered no SysEx requests, so nothing could be pulled. " + Shell.SysExOffFix);
+                "the instrument answered no SysEx requests, so nothing could be pulled. " + Shell.SysExOffFix);
         }
 
         /// <summary>Move/placement planner gate reasons (BatchMoveModel / LibrarianModel PlanMove).
@@ -757,7 +757,7 @@ public static class AppMessages
         public static string Heading(int count) =>
             $"{count} reference{(count == 1 ? "" : "s")} below point at an object that isn't in your Keyboard Library.\n\n" +
             "These are addresses INSIDE the Combis/Set Lists you're about to push: each one names a slot the " +
-            "Kronos will look in, which is currently empty (or holds something else). Those objects will load, " +
+            "instrument will look in, which is currently empty (or holds something else). Those objects will load, " +
             "but the listed timbres/slots will sound wrong.\n\n" +
             "Right-click any row to see what needs it, or to search a .pcg file for the missing object - " +
             "anything found is staged in the Merge Window, and placing it anywhere repoints the reference " +
